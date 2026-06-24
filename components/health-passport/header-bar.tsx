@@ -19,7 +19,7 @@ const addOptions = [
   { label: 'Upload MRI Scan', icon: ScanLine },
 ]
 
-export function HeaderBar() {
+export function HeaderBar({ onAddEntry }: { onAddEntry?: () => void }) {
   const [open, setOpen] = useState(false)
   const [lang, setLang] = useState<'RU' | 'EN'>('EN')
   const menuRef = useRef<HTMLDivElement>(null)
@@ -50,15 +50,23 @@ export function HeaderBar() {
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="relative" ref={menuRef}>
+        <div className="relative flex items-center" ref={menuRef}>
+          <Button
+            size="sm"
+            onClick={() => onAddEntry?.()}
+            className="rounded-r-none"
+          >
+            <Plus className="size-3.5" />
+            Add New Entry
+          </Button>
           <Button
             size="sm"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
             aria-haspopup="menu"
+            aria-label="Choose entry type"
+            className="rounded-l-none border-l border-primary-foreground/20 px-2"
           >
-            <Plus className="size-3.5" />
-            Add New Entry
             <ChevronDown className="size-3.5 opacity-80" />
           </Button>
           {open && (
@@ -70,7 +78,10 @@ export function HeaderBar() {
                 <button
                   key={opt.label}
                   role="menuitem"
-                  onClick={() => setOpen(false)}
+                  onClick={() => {
+                    setOpen(false)
+                    onAddEntry?.()
+                  }}
                   className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                 >
                   <opt.icon className="size-4 text-muted-foreground" />

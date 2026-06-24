@@ -10,8 +10,9 @@ import { HistoryList } from '@/components/health-passport/history-list'
 import { ResultsPanel } from '@/components/health-passport/results-panel'
 import { FlowsheetMatrix } from '@/components/health-passport/flowsheet-matrix'
 import { BiomarkerDetails } from '@/components/health-passport/biomarker-details'
+import { AddEntry } from '@/components/health-passport/add-entry'
 
-type View = 'timeline' | 'flowsheet' | 'details'
+type View = 'timeline' | 'flowsheet' | 'details' | 'add-entry'
 
 const tabs: { id: Exclude<View, 'details'>; label: string }[] = [
   { id: 'timeline', label: 'Timeline & Vitals' },
@@ -24,11 +25,11 @@ export default function Page() {
 
   return (
     <div className="min-h-screen bg-background">
-      <HeaderBar />
+      <HeaderBar onAddEntry={() => setCurrentView('add-entry')} />
 
       {/* Sub-header */}
       <nav className="border-b border-border bg-card px-5">
-        {currentView === 'details' ? (
+        {currentView === 'details' || currentView === 'add-entry' ? (
           <div className="flex items-center py-2">
             <Button
               variant="ghost"
@@ -36,7 +37,7 @@ export default function Page() {
               className="gap-1.5 text-muted-foreground hover:text-foreground"
             >
               <ArrowLeft className="size-4" />
-              Back to Timeline
+              {currentView === 'add-entry' ? 'Back to Dashboard' : 'Back to Timeline'}
             </Button>
           </div>
         ) : (
@@ -83,6 +84,12 @@ export default function Page() {
       {currentView === 'details' && (
         <main className="p-5">
           <BiomarkerDetails />
+        </main>
+      )}
+
+      {currentView === 'add-entry' && (
+        <main className="p-5">
+          <AddEntry onSave={() => setCurrentView('timeline')} />
         </main>
       )}
     </div>

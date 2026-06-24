@@ -54,6 +54,13 @@ export function HistoryList({ selectedId, onSelect }: HistoryListProps) {
                 </p>
                 <p className="text-xs text-muted-foreground">{event.date}</p>
                 <p className="text-xs text-muted-foreground/80">{event.subtext}</p>
+                {event.attachments ? (
+                  <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                    <Paperclip className="size-3" />
+                    {event.attachments}{' '}
+                    {event.attachments === 1 ? 'Attachment' : 'Attachments'}
+                  </span>
+                ) : null}
               </div>
             </button>
           )
