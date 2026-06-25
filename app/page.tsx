@@ -11,8 +11,16 @@ import { ResultsPanel } from '@/components/health-passport/results-panel'
 import { FlowsheetMatrix } from '@/components/health-passport/flowsheet-matrix'
 import { BiomarkerDetails } from '@/components/health-passport/biomarker-details'
 import { AddEntry } from '@/components/health-passport/add-entry'
+import { PrintSetup, type PrintLang } from '@/components/health-passport/print-setup'
+import { PrintEditor } from '@/components/health-passport/print-editor'
 
-type View = 'timeline' | 'flowsheet' | 'details' | 'add-entry'
+type View =
+  | 'timeline'
+  | 'flowsheet'
+  | 'details'
+  | 'add-entry'
+  | 'print-setup'
+  | 'print-editor'
 
 const tabs: { id: Exclude<View, 'details'>; label: string }[] = [
   { id: 'timeline', label: 'Timeline & Vitals' },
@@ -22,14 +30,32 @@ const tabs: { id: Exclude<View, 'details'>; label: string }[] = [
 export default function Page() {
   const [currentView, setCurrentView] = useState<View>('timeline')
   const [selectedEvent, setSelectedEvent] = useState('blood-oct')
+  const [printLang, setPrintLang] = useState<PrintLang>('ru')
+  const [printBilingual, setPrintBilingual] = useState(false)
+
+  // The editor renders its own chrome and is hidden from print output.
+  if (currentView === 'print-editor') {
+    return (
+      <PrintEditor
+        lang={printLang}
+        bilingual={printBilingual}
+        onBack={() => setCurrentView('print-setup')}
+      />
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background">
-      <HeaderBar onAddEntry={() => setCurrentView('add-entry')} />
+      <HeaderBar
+        onAddEntry={() => setCurrentView('add-entry')}
+        onPrint={() => setCurrentView('print-setup')}
+      />
 
       {/* Sub-header */}
-      <nav className="border-b border-border bg-card px-5">
-        {currentView === 'details' || currentView === 'add-entry' ? (
+      <nav className="border-b border-border bg-card px-5 print:hidden">
+        {currentView === 'details' ||
+        currentView === 'add-entry' ||
+        currentView === 'print-setup' ? (
           <div className="flex items-center py-2">
             <Button
               variant="ghost"
@@ -37,7 +63,9 @@ export default function Page() {
               className="gap-1.5 text-muted-foreground hover:text-foreground"
             >
               <ArrowLeft className="size-4" />
-              {currentView === 'add-entry' ? 'Back to Dashboard' : 'Back to Timeline'}
+              {currentView === 'add-entry' || currentView === 'print-setup'
+                ? 'Back to Dashboard'
+                : 'Back to Timeline'}
             </Button>
           </div>
         ) : (
@@ -90,6 +118,18 @@ export default function Page() {
       {currentView === 'add-entry' && (
         <main className="p-5">
           <AddEntry onSave={() => setCurrentView('timeline')} />
+        </main>
+      )}
+
+      {currentView === 'print-setup' && (
+        <main className="p-5">
+          <PrintSetup
+            onGenerate={(lang, bilingual) => {
+              setPrintLang(lang)
+              setPrintBilingual(bilingual)
+              setCurrentView('print-editor')
+            }}
+          />
         </main>
       )}
     </div>
