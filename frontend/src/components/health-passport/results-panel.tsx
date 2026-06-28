@@ -1,0 +1,180 @@
+'use client'
+
+import { useMemo, useState } from 'react'
+import {
+  Search,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react'
+
+import { cn } from '@/lib/utils'
+import { Input } from '@/components/ui/input'
+import { Card } from '@/components/ui/card'
+import { StatusBadge } from '@/components/shared/StatusBadge'
+import { ExpandedBiomarkerDetails } from './expanded-biomarker-details'
+import type { BiomarkerResult, Status } from '@/lib/types'
+
+const GRID_COLS =
+  'grid grid-cols-[1.5fr_1.5fr_1fr_1fr_1fr_1.2fr_40px] items-center gap-x-3'
+
+const statusText: Record<Status, string> = {
+  normal: 'text-status-normal',
+  low: 'text-status-low',
+  high: 'text-status-high',
+}
+
+export function ResultsPanel({
+  biomarkers,
+  labName,
+  date,
+  onViewDetails,
+}: {
+  biomarkers: BiomarkerResult[]
+  labName: string
+  date: string
+  onViewDetails?: (id: string) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return biomarkers
+    return biomarkers.filter(
+      (b) =>
+        b.definition.name_en.toLowerCase().includes(q) ||
+        b.definition.name_ru.toLowerCase().includes(q),
+    )
+  }, [query, biomarkers])
+
+  return (
+    <Card className="overflow-hidden border-border">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
+        <div className="leading-tight">
+          <h2 className="text-base font-semibold text-foreground">
+            Blood Test Results
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            {date} · {labName} · Translated from original Russian lab report
+          </p>
+        </div>
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search biomarkers..."
+            className="pl-8"
+          />
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <div className="min-w-[720px]">
+          <div
+            className={cn(
+              GRID_COLS,
+              'border-b border-border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground',
+            )}
+          >
+            <span>Biomarker (EN)</span>
+            <span>Original (RU)</span>
+            <span>Latest</span>
+            <span>Unit</span>
+            <span>Range</span>
+            <span>Status</span>
+            <span aria-hidden />
+          </div>
+
+          {filtered.map((b) => {
+            const expandable = true
+            const isOpen = expandedId === b.id && expandable
+            return (
+              <FlowRow
+                key={b.id}
+                biomarker={b}
+                expandable={expandable}
+                isOpen={isOpen}
+                onToggle={() =>
+                  expandable &&
+                  setExpandedId((cur) => (cur === b.id ? null : b.id))
+                }
+                onViewDetails={onViewDetails}
+              />
+            )
+          })}
+
+          {filtered.length === 0 && (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+              No biomarkers match &ldquo;{query}&rdquo;.
+            </p>
+          )}
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function FlowRow({
+  biomarker,
+  expandable,
+  isOpen,
+  onToggle,
+  onViewDetails,
+}: {
+  biomarker: BiomarkerResult
+  expandable: boolean
+  isOpen: boolean
+  onToggle: () => void
+  onViewDetails?: (id: string) => void
+}) {
+  return (
+    <div className={cn('border-b border-border', isOpen && 'bg-muted/40')}>
+      <div
+        onClick={onToggle}
+        className={cn(
+          GRID_COLS,
+          'px-4 py-3 text-sm transition-colors',
+          expandable && 'cursor-pointer hover:bg-muted/50',
+        )}
+      >
+        <span className="truncate font-semibold text-foreground">
+          {biomarker.definition.name_en}
+        </span>
+        <span className="truncate text-xs text-muted-foreground/70">
+          {biomarker.definition.name_ru}
+        </span>
+        <span className="font-medium text-foreground">{biomarker.value}</span>
+        <span className="text-muted-foreground">{biomarker.definition.unit}</span>
+        <span className="text-muted-foreground">
+          {biomarker.definition.range_min} – {biomarker.definition.range_max}
+        </span>
+        <span>
+          <StatusBadge status={biomarker.status} />
+        </span>
+        <span className="flex justify-end">
+          {expandable ? (
+            isOpen ? (
+              <ChevronUp className="size-4 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="size-4 text-muted-foreground" />
+            )
+          ) : (
+            <ChevronDown className="size-4 text-muted-foreground/30" />
+          )}
+        </span>
+      </div>
+
+      {isOpen && (
+        <div className="px-3 pb-3">
+          <ExpandedBiomarkerDetails
+            biomarker={biomarker}
+            onViewDetails={
+              onViewDetails ? () => onViewDetails(biomarker.id) : undefined
+            }
+          />
+        </div>
+      )}
+    </div>
+  )
+}
