@@ -90,8 +90,8 @@ export default function BiomarkerChartInner({
               boxShadow: '0 4px 12px rgb(0 0 0 / 0.06)',
             }}
             labelStyle={{ color: '#71717a', fontWeight: 500 }}
-            labelFormatter={(label: string) => {
-              const { label: mainLabel, sub } = splitDateLabel(label)
+            labelFormatter={(label: any) => {
+              const { label: mainLabel, sub } = splitDateLabel(String(label))
               return sub ? (
                 <div>
                   <div>{mainLabel}</div>
