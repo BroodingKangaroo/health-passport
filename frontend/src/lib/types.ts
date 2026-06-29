@@ -177,5 +177,7 @@ export interface FlowsheetResponse {
 }
 
 export interface SaveEntryResponse {
+  success: boolean
+  message: string
   id: string
 }

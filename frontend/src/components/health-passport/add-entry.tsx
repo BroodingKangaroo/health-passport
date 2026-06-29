@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import {
   UploadCloud,
   Loader2,
@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Field } from '@/components/shared/Field'
 import { DoctorVisitForm } from './DoctorVisitForm'
 import { LabResultForm } from './LabResultForm'
+import { saveMedicalEntry } from '@/services/api'
 import type { UploadState, EntryMode, FormCategory, FormBiomarkerRow } from '@/lib/types'
 
 const docPills = [
@@ -56,12 +57,20 @@ function manualCategories(): FormCategory[] {
   return [{ id: 'cat-1', name: 'General', rows: [newRow()] }]
 }
 
-export function AddEntry({ onSave }: { onSave: () => void }) {
+export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const [uploadState, setUploadState] = useState<UploadState>('idle')
   const [entryMode, setEntryMode] = useState<EntryMode>('ai')
   const [categories, setCategories] = useState<FormCategory[]>(aiCategories)
   const [documentType, setDocumentType] = useState('blood_test')
   const [activeFile, setActiveFile] = useState(0)
+  const [saving, setSaving] = useState(false)
+  const [visitFormData, setVisitFormData] = useState<any>(null)
+  const dateRef = useRef<HTMLInputElement>(null)
+  const clinicRef = useRef<HTMLInputElement>(null)
+  const providerRef = useRef<HTMLInputElement>(null)
+  const titleRef = useRef<HTMLInputElement>(null)
+  const notesRef = useRef<HTMLTextAreaElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (uploadState !== 'scanning') return
@@ -112,6 +121,34 @@ export function AddEntry({ onSave }: { onSave: () => void }) {
 
   function updateCategoryName(catId: string, name: string) {
     setCategories((prev) => prev.map((c) => (c.id === catId ? { ...c, name } : c)))
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const fd = new FormData()
+      fd.append('type', documentType)
+      fd.append('date', dateRef.current?.value ?? '')
+      fd.append('clinic', clinicRef.current?.value ?? '')
+      fd.append('provider', providerRef.current?.value ?? '')
+      const autoTitle = documentType === 'blood_test' ? 'Blood Test Panel' : documentType === 'doctor_visit' ? 'Doctor Visit' : 'Medical Record'
+      fd.append('title', titleRef.current?.value || autoTitle)
+      fd.append('notes', notesRef.current?.value ?? '')
+      fd.append('biomarkers', JSON.stringify(categories))
+      if (documentType === 'doctor_visit' && visitFormData) {
+        fd.append('visit_data', JSON.stringify(visitFormData))
+      }
+      if (fileRef.current?.files?.[0]) {
+        fd.append('file', fileRef.current.files[0])
+      }
+      const resp = await saveMedicalEntry(fd)
+      console.log('Entry saved:', resp.id)
+      await onSave()
+    } catch (err) {
+      console.error('Failed to save entry:', err)
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (uploadState === 'idle' || uploadState === 'scanning') {
@@ -210,17 +247,21 @@ export function AddEntry({ onSave }: { onSave: () => void }) {
               <h2 className="mb-3 text-sm font-semibold text-foreground">
                 Attachments (Optional)
               </h2>
-              <div className="flex aspect-[3/4] flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border bg-background/60 px-4 text-center">
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border bg-background/60 px-4 text-center transition-colors hover:border-primary/40 hover:bg-primary/5"
+              >
                 <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <ImagePlus className="size-6" />
                 </div>
                 <p className="text-xs font-medium text-foreground">
-                  Add a photo or scan later
+                  {fileRef.current?.files?.[0]?.name ?? 'Add a photo or scan'}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  Drag &amp; drop or click to attach
+                  Click to attach
                 </p>
-              </div>
+              </button>
             </div>
           ) : (
             <>
@@ -324,19 +365,23 @@ export function AddEntry({ onSave }: { onSave: () => void }) {
                 </select>
               </Field>
               <Field label="Date">
-                <Input type="date" defaultValue="2026-10-12" />
+                <Input ref={dateRef} type="date" defaultValue="2026-10-12" />
               </Field>
               <Field label="Clinic / Source">
-                <Input defaultValue={isManual ? '' : 'Invitro Lab'} placeholder="e.g. Invitro Lab" />
+                <Input ref={clinicRef} defaultValue={isManual ? '' : 'Invitro Lab'} placeholder="e.g. Invitro Lab" />
               </Field>
               <Field label="Provider / Doctor">
-                <Input placeholder="e.g. Dr. Ivanova" />
+                <Input ref={providerRef} placeholder="e.g. Dr. Ivanova" />
+              </Field>
+              <Field label="Title (optional)">
+                <Input ref={titleRef} placeholder="e.g. Pre-Operative Baseline" />
               </Field>
             </div>
 
             <div className="mt-3">
               <Field label="Patient Notes &amp; Context">
                 <textarea
+                  ref={notesRef}
                   rows={2}
                   placeholder="e.g. Fasted for 12 hours, felt slight fatigue..."
                   className="flex w-full rounded-lg border border-input bg-background px-2.5 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
@@ -345,7 +390,7 @@ export function AddEntry({ onSave }: { onSave: () => void }) {
             </div>
 
             {documentType === 'doctor_visit' ? (
-              <DoctorVisitForm />
+              <DoctorVisitForm onDataChange={setVisitFormData} />
             ) : (
               <LabResultForm
                 categories={categories}
@@ -359,10 +404,13 @@ export function AddEntry({ onSave }: { onSave: () => void }) {
           </div>
 
           <div className="mt-auto flex items-center justify-end gap-2 border-t border-border p-4">
-            <Button variant="ghost" onClick={onSave}>
+            <input ref={fileRef} type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png" />
+            <Button variant="ghost" onClick={onSave} disabled={saving}>
               Cancel
             </Button>
-            <Button onClick={onSave}>Save to HealthPassport</Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? 'Saving...' : 'Save to HealthPassport'}
+            </Button>
           </div>
         </Card>
       </div>

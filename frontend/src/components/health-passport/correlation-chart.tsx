@@ -35,7 +35,7 @@ function CustomTooltip({ active, payload, label, biomarkers }: any) {
     return (
       <div className="rounded-md border border-border bg-white p-3 shadow-lg">
         <p className="mb-2 text-sm font-semibold">{label}</p>
-        {payload.map((entry: any) => {
+        {payload.filter((entry: any) => !entry.dataKey.startsWith('dash_')).map((entry: any) => {
           const name = entry.dataKey.replace('norm_', '')
           const raw = entry.payload[`raw_${name}`]
           const b = biomarkers.find((x: BiomarkerResult) => x.id === name)
@@ -103,10 +103,12 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
       b.history!.forEach((r) => dateSet.add(r.date))
       dateSet.add(b.date)
     })
-    const dates = Array.from(dateSet)
+    const dates = Array.from(dateSet).sort(
+      (a, b) => new Date(a).getTime() - new Date(b).getTime(),
+    )
 
-    return dates.map((date) => {
-      const entry: Record<string, number | string> = { date }
+    const data = dates.map((date) => {
+      const entry: Record<string, number | string | null> = { date }
       selected.forEach((b) => {
         const reading =
           b.history!.find((r) => r.date === date) ??
@@ -116,10 +118,39 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
           entry[`norm_${b.id}`] =
             ((reading.value - b.definition.range_min) / range) * 100
           entry[`raw_${b.id}`] = reading.value
+        } else {
+          entry[`norm_${b.id}`] = null
+          entry[`raw_${b.id}`] = null
         }
+        entry[`dash_${b.id}`] = null
       })
       return entry
     })
+
+    selected.forEach((b) => {
+      const dataKey = `norm_${b.id}`
+      const dashKey = `dash_${b.id}`
+      let prevIdx = -1
+      data.forEach((row, i) => {
+        if (row[dataKey] !== null) {
+          if (prevIdx === -1 && i > 0) {
+            data[0][dashKey] = row[dataKey] as number
+            data[i][dashKey] = row[dataKey] as number
+          }
+          if (prevIdx >= 0 && prevIdx < i - 1) {
+            data[prevIdx][dashKey] = data[prevIdx][dataKey] as number
+            data[i][dashKey] = row[dataKey] as number
+          }
+          prevIdx = i
+        }
+      })
+      if (prevIdx >= 0 && prevIdx < data.length - 1) {
+        data[prevIdx][dashKey] = data[prevIdx][dataKey] as number
+        data[data.length - 1][dashKey] = data[prevIdx][dataKey] as number
+      }
+    })
+
+    return data
   }, [selectedIds, allBiomarkers])
 
   return (
@@ -192,6 +223,7 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
                   tick={{ fontSize: 11, fill: '#71717a' }}
                   tickLine={false}
                   axisLine={{ stroke: '#d4d4d8' }}
+                  padding={{ left: 20, right: 20 }}
                 />
                 <YAxis hide domain={[-20, 120]} />
                 <ReferenceArea
@@ -201,17 +233,28 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
                   fillOpacity={0.05}
                 />
                 <Tooltip content={<CustomTooltip biomarkers={allBiomarkers} />} />
-                {selectedIds.map((id) => (
+                {selectedIds.flatMap((id) => [
                   <Line
-                    key={id}
+                    key={`${id}-solid`}
                     type="monotone"
                     dataKey={`norm_${id}`}
                     stroke={colorMap[id]}
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 5, fill: colorMap[id] }}
-                  />
-                ))}
+                  />,
+                  <Line
+                    key={`${id}-dash`}
+                    type="linear"
+                    dataKey={`dash_${id}`}
+                    stroke={colorMap[id]}
+                    strokeWidth={1.5}
+                    strokeDasharray="5 3"
+                    dot={false}
+                    activeDot={false}
+                    connectNulls={true}
+                  />,
+                ])}
               </LineChart>
             </ResponsiveContainer>
           ) : (

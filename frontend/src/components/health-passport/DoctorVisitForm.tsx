@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, X, Pill, CheckCircle, Activity } from 'lucide-react'
 
 import { Input } from '@/components/ui/input'
@@ -8,12 +8,16 @@ import { Button } from '@/components/ui/button'
 import { Field } from '@/components/shared/Field'
 import type { Prescription, Recommendation } from '@/lib/types'
 
-export function DoctorVisitForm() {
+export function DoctorVisitForm({ onDataChange }: { onDataChange?: (data: any) => void }) {
   const [diagnosis, setDiagnosis] = useState('')
   const [chiefComplaint, setChiefComplaint] = useState('')
   const [objectiveFindings, setObjectiveFindings] = useState('')
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
+
+  useEffect(() => {
+    onDataChange?.({ diagnosis, chiefComplaint, objectiveFindings, prescriptions, recommendations })
+  }, [diagnosis, chiefComplaint, objectiveFindings, prescriptions, recommendations, onDataChange])
 
   function addPrescription() {
     setPrescriptions((prev) => [

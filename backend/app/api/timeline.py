@@ -1,237 +1,250 @@
-from fastapi import APIRouter
+from datetime import datetime
 
-from app.schemas import TimelineResponse, MedicalEvent, BiomarkerResult, BiomarkerDefinition, VisitData, VisitNote, Prescription, Attachment, Reading
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
+
+from app.schemas import (
+    TimelineResponse,
+    MedicalEvent,
+    BiomarkerResult,
+    BiomarkerDefinition as BiomarkerDefinitionSchema,
+    VisitData,
+    VisitNote,
+    Prescription,
+    Attachment as AttachmentSchema,
+    Reading,
+)
+from app.db.session import get_db
+from app.db.models import (
+    MedicalEntry as MedicalEntryModel,
+    BiomarkerDefinition as BiomarkerDefinitionModel,
+    BiomarkerReading,
+    VisitData as VisitDataModel,
+    Attachment as AttachmentModel,
+)
+from app.db.seed import DEFAULT_PATIENT_ID
 
 router = APIRouter()
 
-BLOOD_EVENTS = [
-    ("blood-feb", "Feb 18, 2026", "Pre-Operative Baseline", "CBC, PT/PTT, Type & Screen", "CityLab Diagnostics"),
-    ("blood-may", "May 05, 2026", "Annual Physical Labs", "CBC, CMP, Lipid Panel", "Invitro Lab"),
-    ("blood-jun", "Jun 28, 2026", "Follow-up Panel", "CBC, Basic Metabolic", "Invitro Lab"),
-    ("blood-aug", "Aug 10, 2026", "Pre-Surgery Panel", "CBC, PT/PTT, Type & Screen", "CityLab Diagnostics"),
-    ("blood-sep", "Sep 20, 2026", "Routine Blood Draw", "CBC, Basic Metabolic", "Invitro Lab"),
-    ("blood-oct", "Oct 15, 2026", "Comprehensive Blood Panel", "CBC, CMP, Lipid Panel", "Invitro Lab"),
-    ("blood-dec", "Dec 03, 2026", "Quarterly Monitoring", "CBC, CMP, Iron Panel, Lipid Panel", "Invitro Lab"),
-    ("blood-jan", "Jan 12, 2027", "New Year Baseline", "CBC, CMP, Lipid Panel, Iron Panel, Thyroid, Vitamins", "CityLab Diagnostics"),
-]
 
-BLOOD_ATTACHMENTS = {
-    "blood-feb": [Attachment(id="feb-lab", name="PreOp_Lab_Report_Feb2026.pdf", type="Lab Report", size="312 KB")],
-    "blood-may": [Attachment(id="may-lab", name="Annual_Lab_Report_May2026.pdf", type="Lab Report", size="198 KB")],
-    "blood-jun": [Attachment(id="jun-lab", name="FollowUp_Lab_Report_Jun2026.pdf", type="Lab Report", size="176 KB")],
-    "blood-aug": [Attachment(id="aug-lab", name="PreSurgery_Lab_Report_Aug2026.pdf", type="Lab Report", size="284 KB")],
-    "blood-oct": [Attachment(id="r1", name="Lab_Report_Oct2026.pdf", type="Lab Report", size="245 KB")],
-    "blood-dec": [Attachment(id="dec-lab", name="Quarterly_Lab_Report_Dec2026.pdf", type="Lab Report", size="220 KB")],
-    "blood-jan": [Attachment(id="jan-lab", name="NewYear_Baseline_Lab_Report_Jan2027.pdf", type="Lab Report", size="356 KB")],
-}
-
-MOCK_EVENTS = [
-    *[MedicalEvent(id=eid, type="blood_test", date=date, title=title, subtitle=sub, category="Labs", status="Completed", clinic=clinic, attachments=BLOOD_ATTACHMENTS.get(eid, [])) for eid, date, title, sub, clinic in BLOOD_EVENTS],
-    MedicalEvent(
-        id="cardio", type="doctor_visit", date="Sep 05, 2026",
-        title="Cardiology Follow-up", subtitle="Dr. Elena Ivanova",
-        category="Cardiology", status="Completed", clinic="Central Heart Institute",
-        attachments=[
-            Attachment(id="consult", name="Consultation_Notes_Sep2026.pdf", type="Physician commentary", size="128 KB"),
-            Attachment(id="ekg", name="EKG_Strip_Scan.pdf", type="Diagnostic image", size="2.1 MB"),
-        ],
-    ),
-    MedicalEvent(
-        id="ortho", type="doctor_visit", date="Aug 22, 2026",
-        title="Orthopedic Consultation", subtitle="Dr. James Mitchell, DO",
-        category="Orthopedics", status="Completed", clinic="Northern Sports Medicine",
-    ),
-    MedicalEvent(
-        id="neuro", type="doctor_visit", date="Oct 18, 2026",
-        title="Neurology Assessment", subtitle="Dr. S. Reynolds, MD, PhD",
-        category="Neurology", status="Scheduled", clinic="Neurology Associates",
-    ),
-    MedicalEvent(
-        id="derm", type="procedure", date="Sep 12, 2026",
-        title="Skin Biopsy", subtitle="Left upper arm",
-        category="Dermatology", status="Completed", clinic="Dermatology Clinic",
-        attachments=[
-            Attachment(id="path", name="Pathology_Report.pdf", type="Pathology", size="890 KB"),
-        ],
-    ),
-]
-
-MOCK_VISITS = {
-    "cardio": VisitData(
-        specialty="Cardiology Follow-up",
-        provider="Dr. Elena Ivanova, MD",
-        date="Sep 05, 2026",
-        clinic="Central Heart Institute",
-        verdict="Mild Sinus Tachycardia - Under Control. Patient responding well to current regimen.",
-        notes=[
-            VisitNote(heading="Chief Complaint & Subjective", text="Patient reports occasional palpitations during heavy exercise. Denies chest pain, shortness of breath, or dizziness. Mentions feeling generally fatigued in the mornings."),
-            VisitNote(heading=None, text="Vitals taken at desk: BP 118/76, HR 88 bpm, O2 99%. Weight stable."),
-            VisitNote(heading="Objective Findings", text="Heart rhythm is regular. No murmurs, gallops, or rubs heard. Lungs are clear to auscultation bilaterally. EKG performed in-office reveals Normal Sinus Rhythm, rate 88, with no ST-T wave abnormalities."),
-        ],
-        prescriptions=[
-            Prescription(id=1, name="Metoprolol Succinate", dose="25mg", instruction="1 tablet daily (morning)"),
-        ],
-        recommendations=[
-            "Schedule 6-month follow-up EKG and consultation.",
-            "Comprehensive Metabolic Panel (CMP) prior to next visit.",
-        ],
-        attachments=[
-            Attachment(id="consult", name="Consultation_Notes_Sep2026.pdf", type="Physician commentary", size="128 KB"),
-            Attachment(id="ekg", name="EKG_Strip_Scan.pdf", type="Diagnostic image", size="2.1 MB"),
-        ],
-    ),
-    "neuro": VisitData(
-        specialty="Neurology Assessment",
-        provider="Dr. S. Reynolds, MD, PhD",
-        date="Oct 18, 2026",
-        clinic="Neurology Associates",
-        verdict="Suspected Migraine with Brainstem Aura. MRI brain scheduled to rule out structural causes.",
-        notes=[
-            VisitNote(heading="Chief Complaint", text="Patient reports recurrent episodes of vertigo, blurred vision, and unilateral throbbing headache lasting 4-72 hours. Episodes increased in frequency over the past 2 months — now 3-4 per month."),
-            VisitNote(heading=None, text="Patient also notes photophobia, phonophobia, and occasional nausea during episodes. No aura prior to onset. Family history positive for migraines (mother)."),
-            VisitNote(heading="Physical Exam", text="Cranial nerves II-XII intact. Motor strength 5/5 throughout. Sensation intact. Reflexes 2+ and symmetric. Coordination and gait normal. No papilledema on fundoscopy."),
-            VisitNote(heading="Assessment", text="1. Migraine without aura (G43.0) — likely diagnosis. 2. Rule out brainstem pathology with MRI. 3. Consider starting prophylactic therapy if frequency exceeds 4/month."),
-        ],
-        prescriptions=[
-            Prescription(id=3, name="Sumatriptan Succinate", dose="50mg", instruction="Take 1 tablet at onset of migraine; may repeat once after 2 hours if no relief (max 2/day)"),
-            Prescription(id=4, name="Vitamin B2 (Riboflavin)", dose="400mg", instruction="1 tablet daily for migraine prophylaxis"),
-        ],
-        recommendations=[
-            "MRI brain with and without contrast to rule out structural causes.",
-            "Keep headache diary for 8 weeks tracking triggers, frequency, and severity.",
-            "Follow-up in 4 weeks to review MRI results and assess response to Sumatriptan.",
-            "Consider neurology referral if symptoms worsen or atypical features develop.",
-        ],
-        attachments=[
-            Attachment(id="neuro-ref", name="Neurology_Referral.pdf", type="Referral letter", size="92 KB"),
-        ],
-    ),
-    "ortho": VisitData(
-        specialty="Orthopedic Consultation",
-        provider="Dr. James Mitchell, DO",
-        date="Aug 22, 2026",
-        clinic="Northern Sports Medicine",
-        verdict="Left knee patellar tendinopathy (Jumper's Knee). MRI confirms mild tendinosis without tear.",
-        notes=[
-            VisitNote(heading="Chief Complaint", text="Left anterior knee pain for 3 months, worse with squatting and stairs. Patient is a recreational basketball player."),
-            VisitNote(heading="Physical Exam", text="Tenderness over patellar tendon at tibial insertion. Pain with resisted knee extension. No effusion. Full range of motion."),
-            VisitNote(heading="Imaging Review", text="MRI left knee: Mild thickening and signal increase in proximal patellar tendon consistent with tendinosis. No tear."),
-        ],
-        prescriptions=[
-            Prescription(id=2, name="Ibuprofen", dose="400mg", instruction="Take 1 tablet twice daily with food as needed for pain"),
-        ],
-        recommendations=[
-            "Physical therapy 2x/week for 6 weeks focusing on eccentric quad strengthening.",
-            "Activity modification - avoid jumping and deep squatting for 4 weeks.",
-            "Follow-up in 8 weeks with repeat clinical assessment.",
-        ],
-        attachments=[
-            Attachment(id="mri", name="MRI_Left_Knee.pdf", type="MRI Report", size="3.4 MB"),
-        ],
-    ),
-}
-
-_DEFS = {
-    "wbc": BiomarkerDefinition(id="wbc", name_en="WBC", name_ru="Лейкоциты", category="Complete Blood Count", range_min=4.0, range_max=11.0, unit="K/µL"),
-    "rbc": BiomarkerDefinition(id="rbc", name_en="RBC", name_ru="Эритроциты", category="Complete Blood Count", range_min=4.2, range_max=5.8, unit="M/µL"),
-    "hb": BiomarkerDefinition(id="hb", name_en="Hemoglobin", name_ru="Гемоглобин", category="Complete Blood Count", range_min=12.0, range_max=16.0, unit="g/dL"),
-    "hct": BiomarkerDefinition(id="hct", name_en="Hematocrit", name_ru="Гематокрит", category="Complete Blood Count", range_min=36.0, range_max=48.0, unit="%"),
-    "plt": BiomarkerDefinition(id="plt", name_en="Platelets", name_ru="Тромбоциты", category="Complete Blood Count", range_min=150, range_max=450, unit="K/µL"),
-    "glu": BiomarkerDefinition(id="glu", name_en="Glucose", name_ru="Глюкоза", category="Comprehensive Metabolic Panel", range_min=65, range_max=100, unit="mg/dL"),
-    "bun": BiomarkerDefinition(id="bun", name_en="BUN", name_ru="Мочевина", category="Comprehensive Metabolic Panel", range_min=7, range_max=25, unit="mg/dL"),
-    "cre": BiomarkerDefinition(id="cre", name_en="Creatinine", name_ru="Креатинин", category="Comprehensive Metabolic Panel", range_min=0.6, range_max=1.2, unit="mg/dL"),
-    "ldl": BiomarkerDefinition(id="ldl", name_en="LDL Cholesterol", name_ru="ЛПНП холестерин", category="Lipid Panel", range_min=0, range_max=130, unit="mg/dL"),
-    "hdl": BiomarkerDefinition(id="hdl", name_en="HDL Cholesterol", name_ru="ЛПВП холестерин", category="Lipid Panel", range_min=40, range_max=999, unit="mg/dL"),
-    "trig": BiomarkerDefinition(id="trig", name_en="Triglycerides", name_ru="Триглицериды", category="Lipid Panel", range_min=0, range_max=150, unit="mg/dL"),
-    # Iron Panel
-    "iron": BiomarkerDefinition(id="iron", name_en="Iron", name_ru="Железо", category="Iron Panel", range_min=60, range_max=170, unit="µg/dL"),
-    "ferritin": BiomarkerDefinition(id="ferritin", name_en="Ferritin", name_ru="Ферритин", category="Iron Panel", range_min=30, range_max=400, unit="ng/mL"),
-    "tibc": BiomarkerDefinition(id="tibc", name_en="TIBC", name_ru="ОЖСС", category="Iron Panel", range_min=250, range_max=450, unit="µg/dL"),
-    # Thyroid Panel
-    "tsh": BiomarkerDefinition(id="tsh", name_en="TSH", name_ru="ТТГ", category="Thyroid Panel", range_min=0.4, range_max=4.0, unit="mIU/L"),
-    "t4": BiomarkerDefinition(id="t4", name_en="Free T4", name_ru="Т4 свободный", category="Thyroid Panel", range_min=0.8, range_max=1.8, unit="ng/dL"),
-    # Vitamins
-    "b12": BiomarkerDefinition(id="b12", name_en="Vitamin B12", name_ru="Витамин B12", category="Vitamins", range_min=200, range_max=900, unit="pg/mL"),
-    "d": BiomarkerDefinition(id="d", name_en="Vitamin D", name_ru="Витамин D", category="Vitamins", range_min=30, range_max=100, unit="ng/mL"),
-}
-
-BLOOD_DATES = [e[1] for e in BLOOD_EVENTS]
-
-BIOMARKER_VALUES = {
-    "wbc": [5.2, 5.0, 5.3, 5.5, 6.8, 7.2, 6.5, 6.1],
-    "rbc": [4.3, 4.4, 4.4, 4.5, 4.7, 4.9, 4.8, 4.7],
-    "hb": [12.8, 13.0, 13.2, 13.5, 13.8, 14.2, 14.0, 13.9],
-    "hct": [38.5, 39.0, 39.8, 40.2, 41.5, 42.0, 41.2, 40.8],
-    "plt": [275, 268, 262, 260, 248, 255, 250, 245],
-    "glu": [88, 92, 90, 95, 88, 92, 85, 90],
-    "bun": [14, 15, 14, 15, 16, 18, 17, 16],
-    "cre": [0.8, 0.8, 0.9, 0.8, 0.8, 0.9, 1.0, 1.1],
-    "ldl": [155, 150, 148, 142, 125, 118, 115, 112],
-    "hdl": [42, 44, 46, 48, 52, 55, 56, 58],
-    "trig": [165, 160, 158, 155, 145, 132, 130, 128],
-    "iron": [65, 72, 78, 85, 78, 72, 75, 78],
-    "ferritin": [45, 40, 35, 31, 26, 22, 20, 18],
-    "tibc": [320, 335, 348, 356, 372, 388, 395, 410],
-    "tsh": [2.5, 2.3, 2.0, 1.8, 1.9, 2.1, 2.0, 1.8],
-    "t4": [1.0, 1.0, 1.1, 1.1, 1.1, 1.2, 1.2, 1.3],
-    "b12": [280, 295, 305, 310, 325, 340, 360, 380],
-    "d": [38, 36, 35, 35, 32, 28, 26, 24],
-}
+def _parse_date(date_str: str):
+    return datetime.strptime(date_str, "%b %d, %Y").timetuple()[:3]
 
 
-def _status(value: float, rmin: float, rmax: float) -> str:
-    if value < rmin:
-        return "low"
-    if value > rmax:
-        return "high"
-    return "normal"
-
-
-TIMELINE_VALUES = {k: (v[-1], BLOOD_DATES[-1]) for k, v in BIOMARKER_VALUES.items()}
-
-HISTORICAL_READINGS = {
-    k: [
-        Reading(
-            date=BLOOD_DATES[i],
-            value=v[i],
-            status=_status(v[i], _DEFS[k].range_min, _DEFS[k].range_max),
-        )
-        for i in range(len(v) - 1)
-    ]
-    for k, v in BIOMARKER_VALUES.items()
-}
-
-MOCK_BIOMARKERS = [
-    BiomarkerResult(
-        id=k,
-        definition=_DEFS[k],
-        value=v[0],
-        date=v[1],
-        status=_status(v[0], _DEFS[k].range_min, _DEFS[k].range_max),
-        history=HISTORICAL_READINGS.get(k, []),
+def _events_from_db(db: Session):
+    entries = sorted(
+        db.query(MedicalEntryModel)
+        .filter(MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID)
+        .all(),
+        key=lambda e: _parse_date(e.date),
     )
-    for k, v in TIMELINE_VALUES.items()
-]
+    return [
+        MedicalEvent(
+            id=e.id,
+            type=e.type,
+            date=e.date,
+            title=e.title,
+            subtitle=e.subtitle or "",
+            category=e.category or "",
+            status=e.status or "",
+            clinic=e.clinic or "",
+            attachments=[
+                AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size)
+                for a in e.attachments
+            ],
+        )
+        for e in entries
+    ]
+
+
+def _biomarkers_from_db(db: Session):
+    blood_tests = sorted(
+        db.query(MedicalEntryModel)
+        .filter(
+            MedicalEntryModel.type == "blood_test",
+            MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID,
+        )
+        .all(),
+        key=lambda e: _parse_date(e.date),
+    )
+    if not blood_tests:
+        return []
+
+    all_biomarker_ids: set[str] = set()
+    entry_map: dict[str, MedicalEntryModel] = {}
+    for bt in blood_tests:
+        entry_map[bt.id] = bt
+        readings = (
+            db.query(BiomarkerReading)
+            .filter(BiomarkerReading.entry_id == bt.id)
+            .all()
+        )
+        all_biomarker_ids.update(r.biomarker_id for r in readings)
+
+    results = []
+    for bid in sorted(all_biomarker_ids):
+        defn = (
+            db.query(BiomarkerDefinitionModel)
+            .filter(BiomarkerDefinitionModel.id == bid)
+            .first()
+        )
+        if not defn:
+            continue
+
+        readings_query = sorted(
+            db.query(BiomarkerReading, MedicalEntryModel.date)
+            .join(MedicalEntryModel, BiomarkerReading.entry_id == MedicalEntryModel.id)
+            .filter(
+                BiomarkerReading.biomarker_id == bid,
+                MedicalEntryModel.type == "blood_test",
+                MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID,
+            )
+            .all(),
+            key=lambda row: _parse_date(row.date),
+        )
+
+        if not readings_query:
+            continue
+
+        latest_reading, latest_date = readings_query[-1]
+        history = [
+            Reading(date=date, value=r.value, status=r.status)
+            for r, date in readings_query[:-1]
+        ]
+
+        results.append(BiomarkerResult(
+            id=bid,
+            definition=BiomarkerDefinitionSchema(
+                id=defn.id,
+                name_en=defn.name_en,
+                name_ru=defn.name_ru,
+                category=defn.category,
+                range_min=defn.range_min,
+                range_max=defn.range_max,
+                unit=defn.unit,
+            ),
+            value=latest_reading.value,
+            date=latest_date,
+            status=latest_reading.status,
+            history=history,
+        ))
+    return results
+
+
+def _visits_from_db(db: Session):
+    visits: dict[str, VisitData] = {}
+    visit_data_rows = (
+        db.query(VisitDataModel, MedicalEntryModel)
+        .join(MedicalEntryModel, VisitDataModel.entry_id == MedicalEntryModel.id)
+        .filter(MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID)
+        .all()
+    )
+    for vd, entry in visit_data_rows:
+        entry_attachments = [
+            AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size)
+            for a in entry.attachments
+        ]
+        visits[entry.id] = VisitData(
+            specialty=vd.specialty,
+            provider=vd.provider,
+            date=vd.date,
+            clinic=vd.clinic,
+            verdict=vd.verdict,
+            notes=[VisitNote(**n) for n in (vd.notes or [])],
+            prescriptions=[Prescription(**p) for p in (vd.prescriptions or [])],
+            recommendations=vd.recommendations or [],
+            attachments=entry_attachments,
+        )
+    return visits
 
 
 @router.get("/api/timeline", response_model=TimelineResponse)
-async def get_timeline():
-    return TimelineResponse(events=MOCK_EVENTS, biomarkers=MOCK_BIOMARKERS, visits=MOCK_VISITS)
+async def get_timeline(db: Session = Depends(get_db)):
+    return TimelineResponse(
+        events=_events_from_db(db),
+        biomarkers=_biomarkers_from_db(db),
+        visits=_visits_from_db(db),
+    )
 
 
 @router.get("/api/biomarker/{biomarker_id}", response_model=BiomarkerResult)
-async def get_biomarker_detail(biomarker_id: str):
-    for b in MOCK_BIOMARKERS:
-        if b.definition.id == biomarker_id:
-            return b
-    from fastapi import HTTPException
-    raise HTTPException(status_code=404, detail=f"Biomarker '{biomarker_id}' not found")
+async def get_biomarker_detail(biomarker_id: str, db: Session = Depends(get_db)):
+    defn = (
+        db.query(BiomarkerDefinitionModel)
+        .filter(BiomarkerDefinitionModel.id == biomarker_id)
+        .first()
+    )
+    if not defn:
+        raise HTTPException(status_code=404, detail=f"Biomarker '{biomarker_id}' not found")
+
+    readings_query = sorted(
+        db.query(BiomarkerReading, MedicalEntryModel.date)
+        .join(MedicalEntryModel, BiomarkerReading.entry_id == MedicalEntryModel.id)
+        .filter(
+            BiomarkerReading.biomarker_id == biomarker_id,
+            MedicalEntryModel.type == "blood_test",
+            MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID,
+        )
+        .all(),
+        key=lambda row: _parse_date(row.date),
+    )
+    if not readings_query:
+        raise HTTPException(status_code=404, detail=f"Biomarker '{biomarker_id}' not found")
+
+    latest_reading, latest_date = readings_query[-1]
+    history = [
+        Reading(date=date, value=r.value, status=r.status)
+        for r, date in readings_query[:-1]
+    ]
+    return BiomarkerResult(
+        id=biomarker_id,
+        definition=BiomarkerDefinitionSchema(
+            id=defn.id,
+            name_en=defn.name_en,
+            name_ru=defn.name_ru,
+            category=defn.category,
+            range_min=defn.range_min,
+            range_max=defn.range_max,
+            unit=defn.unit,
+        ),
+        value=latest_reading.value,
+        date=latest_date,
+        status=latest_reading.status,
+        history=history,
+    )
 
 
 @router.get("/api/visit-data/{event_id}", response_model=VisitData)
-async def get_visit_data(event_id: str):
-    visit = MOCK_VISITS.get(event_id)
-    if visit is None:
-        from fastapi import HTTPException
+async def get_visit_data(event_id: str, db: Session = Depends(get_db)):
+    entry = (
+        db.query(MedicalEntryModel)
+        .filter(
+            MedicalEntryModel.id == event_id,
+            MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID,
+        )
+        .first()
+    )
+    if not entry:
         raise HTTPException(status_code=404, detail=f"Visit '{event_id}' not found")
-    return visit
+    vd = (
+        db.query(VisitDataModel)
+        .filter(VisitDataModel.entry_id == event_id)
+        .first()
+    )
+    if not vd:
+        raise HTTPException(status_code=404, detail=f"Visit '{event_id}' not found")
+    entry_attachments = [
+        AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size)
+        for a in entry.attachments
+    ]
+    return VisitData(
+        specialty=vd.specialty,
+        provider=vd.provider,
+        date=vd.date,
+        clinic=vd.clinic,
+        verdict=vd.verdict,
+        notes=[VisitNote(**n) for n in (vd.notes or [])],
+        prescriptions=[Prescription(**p) for p in (vd.prescriptions or [])],
+        recommendations=vd.recommendations or [],
+        attachments=entry_attachments,
+    )

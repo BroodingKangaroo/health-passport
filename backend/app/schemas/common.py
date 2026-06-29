@@ -25,6 +25,7 @@ class SaveEntryRequest(BaseModel):
 class SaveEntryResponse(BaseModel):
     success: bool
     message: str
+    id: str = ""
 
 
 class ApiError(BaseModel):

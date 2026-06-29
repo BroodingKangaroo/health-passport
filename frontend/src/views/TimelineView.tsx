@@ -9,7 +9,7 @@ import { HistoryList } from '@/components/health-passport/history-list'
 import { DoctorVisitDetails } from '@/components/health-passport/doctor-visit-details'
 import { BloodTestDetails } from '@/components/health-passport/blood-test-details'
 import { useTimelineData } from '@/hooks/useTimelineData'
-import type { MedicalEvent, BiomarkerResult, Status } from '@/lib/types'
+import type { MedicalEvent, BiomarkerResult, Status, Reading } from '@/lib/types'
 
 export function TimelineView() {
   const router = useRouter()
@@ -90,20 +90,22 @@ export function TimelineView() {
 
 function biomarkersAtDate(biomarkers: BiomarkerResult[], date: string): BiomarkerResult[] {
   if (!date) return biomarkers
-  return biomarkers.map((b) => {
-    const all: { date: string; value: number; status: string }[] = [
-      ...(b.history ?? []),
-      { date: b.date, value: b.value, status: b.status },
-    ]
-    const idx = all.findIndex((r) => r.date === date)
-    if (idx === -1) return b
-    const current = all[idx]
-    return {
-      ...b,
-      value: current.value,
-      date: current.date,
-      status: current.status as Status,
-      history: all.slice(0, idx),
-    }
-  })
+  return biomarkers
+    .map((b): BiomarkerResult | null => {
+      const all: Reading[] = [
+        ...(b.history ?? []),
+        { date: b.date, value: b.value, status: b.status },
+      ]
+      const idx = all.findIndex((r) => r.date === date)
+      if (idx === -1) return null
+      const current = all[idx]
+      return {
+        ...b,
+        value: current.value,
+        date: current.date,
+        status: current.status as Status,
+        history: all.slice(0, idx),
+      }
+    })
+    .filter((b): b is BiomarkerResult => b !== null)
 }
