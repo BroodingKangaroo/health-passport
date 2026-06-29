@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Field } from '@/components/shared/Field'
 import { DoctorVisitForm } from './DoctorVisitForm'
 import { LabResultForm } from './LabResultForm'
-import { saveMedicalEntry } from '@/services/api'
+import { saveMedicalEntry, fetchEntriesByDate } from '@/services/api'
 import type { UploadState, EntryMode, FormCategory, FormBiomarkerRow } from '@/lib/types'
 
 const docPills = [
@@ -65,7 +65,12 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const [activeFile, setActiveFile] = useState(0)
   const [saving, setSaving] = useState(false)
   const [visitFormData, setVisitFormData] = useState<any>(null)
+  const [timeValue, setTimeValue] = useState('')
+  const [dateValue, setDateValue] = useState('2026-10-12')
+  const [duplicateWarning, setDuplicateWarning] = useState(false)
+  const [timeRequired, setTimeRequired] = useState(false)
   const dateRef = useRef<HTMLInputElement>(null)
+  const timeRef = useRef<HTMLInputElement>(null)
   const clinicRef = useRef<HTMLInputElement>(null)
   const providerRef = useRef<HTMLInputElement>(null)
   const titleRef = useRef<HTMLInputElement>(null)
@@ -81,6 +86,29 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     }, 2000)
     return () => clearTimeout(t)
   }, [uploadState])
+
+  useEffect(() => {
+    if (!dateValue || documentType !== 'blood_test') {
+      setDuplicateWarning(false)
+      setTimeRequired(false)
+      return
+    }
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetchEntriesByDate(dateValue, 'blood_test')
+        if (res.count > 0) {
+          setDuplicateWarning(true)
+          setTimeRequired(true)
+        } else {
+          setDuplicateWarning(false)
+          setTimeRequired(false)
+        }
+      } catch {
+        // ignore fetch errors
+      }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [dateValue, documentType])
 
   function startManual() {
     setEntryMode('manual')
@@ -129,6 +157,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
       const fd = new FormData()
       fd.append('type', documentType)
       fd.append('date', dateRef.current?.value ?? '')
+      fd.append('time', timeValue)
       fd.append('clinic', clinicRef.current?.value ?? '')
       fd.append('provider', providerRef.current?.value ?? '')
       const autoTitle = documentType === 'blood_test' ? 'Blood Test Panel' : documentType === 'doctor_visit' ? 'Doctor Visit' : 'Medical Record'
@@ -365,7 +394,28 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                 </select>
               </Field>
               <Field label="Date">
-                <Input ref={dateRef} type="date" defaultValue="2026-10-12" />
+                <Input
+                  ref={dateRef}
+                  type="date"
+                  defaultValue="2026-10-12"
+                  onChange={(e) => setDateValue(e.target.value)}
+                />
+              </Field>
+              <Field
+                label={timeRequired ? 'Time (required)' : 'Time (optional)'}
+              >
+                <Input
+                  ref={timeRef}
+                  type="time"
+                  value={timeValue}
+                  onChange={(e) => setTimeValue(e.target.value)}
+                  className={timeRequired ? 'border-red-500' : ''}
+                />
+                {duplicateWarning && (
+                  <p className="mt-1 text-xs text-red-500">
+                    There&apos;s already a blood test on this date. Time is required.
+                  </p>
+                )}
               </Field>
               <Field label="Clinic / Source">
                 <Input ref={clinicRef} defaultValue={isManual ? '' : 'Invitro Lab'} placeholder="e.g. Invitro Lab" />
@@ -408,7 +458,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
             <Button variant="ghost" onClick={onSave} disabled={saving}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button onClick={handleSave} disabled={saving || (timeRequired && !timeValue)}>
               {saving ? 'Saving...' : 'Save to HealthPassport'}
             </Button>
           </div>

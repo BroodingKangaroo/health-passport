@@ -18,7 +18,7 @@ class TestTimeline:
         assert "events" in data
         assert "biomarkers" in data
         assert "visits" in data
-        assert len(data["events"]) == 12
+        assert len(data["events"]) == 13
 
     async def test_timeline_event_fields(self, client):
         # when
@@ -36,17 +36,26 @@ class TestTimeline:
         # given
         MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        CURRENT_YEAR = 2026
+
+        def _parse_display_date(d: str):
+            parts = d.replace(" at ", " ").split()
+            month = MONTHS.index(parts[0])
+            day = int(parts[1].rstrip(","))
+            if len(parts) == 2:
+                year = CURRENT_YEAR
+            elif ":" in parts[-1]:
+                year = int(parts[2].rstrip(",")) if len(parts) >= 4 else CURRENT_YEAR
+            else:
+                year = int(parts[-1])
+            return (year, month, day)
 
         # when
         resp = await client.get("/api/timeline")
         dates = [e["date"] for e in resp.json()["events"]]
 
         # then
-        assert dates == sorted(dates, key=lambda d: (
-            int(d.split()[-1]),
-            MONTHS.index(d[:3]),
-            int(d.split()[1].rstrip(",")),
-        ))
+        assert dates == sorted(dates, key=_parse_display_date)
 
     async def test_timeline_biomarker_fields(self, client):
         # when
@@ -75,7 +84,7 @@ class TestTimeline:
 
         # then
         for b in biomarkers:
-            assert b["date"] in ("Dec 03, 2026", "Jan 12, 2027")
+            assert b["date"] in ("Dec 03", "Jan 12, 2027")
 
     async def test_timeline_visits_structure(self, client):
         # when
@@ -120,7 +129,7 @@ class TestFlowsheet:
         assert "dates" in data
         assert "matrix" in data
         assert "biomarkers" in data
-        assert len(data["dates"]) == 8
+        assert len(data["dates"]) == 9
 
     async def test_flowsheet_categories(self, client):
         # when

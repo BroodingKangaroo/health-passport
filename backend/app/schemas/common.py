@@ -5,6 +5,11 @@ from .biomarker import BiomarkerResult, MatrixCategory
 from .medical_event import MedicalEvent, VisitData
 
 
+class DateHeader(BaseModel):
+    label: str
+    sub: Optional[str] = None
+
+
 class TimelineResponse(BaseModel):
     events: list[MedicalEvent]
     biomarkers: list[BiomarkerResult]
@@ -12,7 +17,7 @@ class TimelineResponse(BaseModel):
 
 
 class FlowsheetResponse(BaseModel):
-    dates: list[str]
+    dates: list[DateHeader]
     matrix: list[MatrixCategory]
     biomarkers: list[BiomarkerResult]
 

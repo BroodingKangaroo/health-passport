@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from app.db.models import (
     Patient,
     BiomarkerDefinition,
@@ -70,7 +72,7 @@ def _seed_blood_tests(db) -> None:
             id=eid,
             patient_id=DEFAULT_PATIENT_ID,
             type="blood_test",
-            date=BLOOD_TEST_DATES[i],
+            date=datetime.fromisoformat(BLOOD_TEST_DATES[i]).replace(tzinfo=timezone.utc),
             title=BLOOD_TEST_TITLES[i],
             subtitle=BLOOD_TEST_SUBTITLES[i],
             category="Labs",
@@ -107,7 +109,7 @@ def _seed_doctor_visits(db) -> None:
             id=eid,
             patient_id=DEFAULT_PATIENT_ID,
             type="doctor_visit",
-            date=vd["date"],
+            date=datetime.fromisoformat(vd["date"]).replace(tzinfo=timezone.utc),
             title=vd["title"],
             subtitle=vd["subtitle"],
             category=vd["category"],
@@ -149,7 +151,7 @@ def _seed_procedures(db) -> None:
             id=eid,
             patient_id=DEFAULT_PATIENT_ID,
             type=proc["type"],
-            date=proc["date"],
+            date=datetime.fromisoformat(proc["date"]).replace(tzinfo=timezone.utc),
             title=proc["title"],
             subtitle=proc["subtitle"],
             category=proc["category"],

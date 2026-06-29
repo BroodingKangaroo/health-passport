@@ -19,3 +19,5 @@ backend/venv/
 __pycache__/
 *.pyc
 *.pyo
+backend/health_passport.db
+backend/static/uploads/*

@@ -38,7 +38,7 @@ class MedicalEntry(Base):
     id = Column(String, primary_key=True)
     patient_id = Column(String, ForeignKey("patients.id"), nullable=False)
     type = Column(String, nullable=False)
-    date = Column(String, nullable=False)
+    date = Column(DateTime(timezone=True), nullable=False)
     title = Column(String, nullable=False)
     subtitle = Column(String, default="")
     category = Column(String, default="")

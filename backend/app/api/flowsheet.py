@@ -1,10 +1,11 @@
-from datetime import datetime
+from collections import Counter
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.schemas import (
     FlowsheetResponse,
+    DateHeader,
     MatrixCategory,
     MatrixRow,
     MatrixCell,
@@ -19,26 +20,36 @@ from app.db.models import (
 )
 from app.mock_db import CATEGORY_GROUPING
 from app.db.seed import DEFAULT_PATIENT_ID
+from app.api._format import to_display_datetime, short_date_label, flowsheet_date_header
 
 router = APIRouter()
 
 
-def _parse_date(date_str: str):
-    return datetime.strptime(date_str, "%b %d, %Y").timetuple()[:3]
-
-
 def _build_flowsheet(db: Session):
-    blood_tests = sorted(
+    blood_tests = (
         db.query(MedicalEntryModel)
         .filter(
             MedicalEntryModel.type == "blood_test",
             MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID,
         )
-        .all(),
-        key=lambda e: _parse_date(e.date),
+        .order_by(MedicalEntryModel.date)
+        .all()
     )
 
-    date_labels = [e.date.split(",")[0] for e in blood_tests]
+    headers = [flowsheet_date_header(e.date) for e in blood_tests]
+    header_labels = [h[0] for h in headers]
+    label_counts = Counter(header_labels)
+
+    date_headers: list[DateHeader] = []
+    seen: dict[str, int] = {}
+    for i, e in enumerate(blood_tests):
+        label, sub = headers[i]
+        if label_counts[label] > 1:
+            same_subs = {h[1] for h in headers if h[0] == label}
+            if len(same_subs) == 1:
+                seen[label] = seen.get(label, 0) + 1
+                label = f"{label} (#{seen[label]})"
+        date_headers.append(DateHeader(label=label, sub=sub))
 
     all_defns = db.query(BiomarkerDefinitionModel).all()
     defn_map = {d.id: d for d in all_defns}
@@ -85,7 +96,7 @@ def _build_flowsheet(db: Session):
             defn = defn_map.get(def_id)
             if not defn:
                 continue
-            label = bt.date.split(",")[0].lower().replace(" ", "-")
+            label = short_date_label(bt.date).lower().replace(" ", "-")
             biomarkers.append(BiomarkerResult(
                 id=f"{def_id}-{label}",
                 definition=BiomarkerDefinitionSchema(
@@ -98,11 +109,11 @@ def _build_flowsheet(db: Session):
                     unit=defn.unit,
                 ),
                 value=reading.value,
-                date=bt.date,
+                date=to_display_datetime(bt.date),
                 status=reading.status,
             ))
 
-    return date_labels, matrix, biomarkers
+    return date_headers, matrix, biomarkers
 
 
 @router.get("/api/flowsheet", response_model=FlowsheetResponse)

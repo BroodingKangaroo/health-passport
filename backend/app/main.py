@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.timeline import router as timeline_router
 from app.api.flowsheet import router as flowsheet_router
@@ -34,6 +35,8 @@ app.add_middleware(
 app.include_router(timeline_router)
 app.include_router(flowsheet_router)
 app.include_router(entries_router)
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/")

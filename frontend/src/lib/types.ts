@@ -77,6 +77,7 @@ export interface VisitAttachment {
   name: string
   type: string
   size: string
+  url?: string
 }
 
 export interface VisitData {
@@ -170,8 +171,13 @@ export interface TimelineResponse {
   visits: Record<string, VisitData>
 }
 
+export interface DateHeader {
+  label: string
+  sub?: string | null
+}
+
 export interface FlowsheetResponse {
-  dates: readonly string[]
+  dates: readonly DateHeader[]
   matrix: MatrixCategory[]
   biomarkers: BiomarkerResult[]
 }

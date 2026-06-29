@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 
 import type { BiomarkerResult, Reading } from '@/lib/types'
+import { splitDateLabel } from '@/lib/utils'
 
 interface BiomarkerChartProps {
   biomarker: BiomarkerResult
@@ -51,10 +52,27 @@ export default function BiomarkerChartInner({
           />
           <XAxis
             dataKey="date"
-            tick={{ fontSize: compact ? 9 : 11, fill: '#71717a' }}
             tickLine={false}
             axisLine={{ stroke: '#d4d4d8' }}
-            tickMargin={compact ? 4 : 8}
+            tick={({ x, y, payload }: any) => {
+              const { label, sub } = splitDateLabel(payload.value)
+              const fs = compact ? 9 : 11
+              const subFs = compact ? 8 : 9
+              const dy1 = compact ? 10 : 12
+              const dy2 = compact ? 20 : 24
+              return (
+                <g transform={`translate(${x},${y})`}>
+                  <text x={0} y={0} dy={dy1} textAnchor="middle" fill="#71717a" fontSize={fs}>
+                    {label}
+                  </text>
+                  {sub && (
+                    <text x={0} y={0} dy={dy2} textAnchor="middle" fill="#a1a1aa" fontSize={subFs}>
+                      {sub}
+                    </text>
+                  )}
+                </g>
+              )
+            }}
           />
           <YAxis
             domain={[0, Math.ceil(yMax)]}
@@ -72,6 +90,17 @@ export default function BiomarkerChartInner({
               boxShadow: '0 4px 12px rgb(0 0 0 / 0.06)',
             }}
             labelStyle={{ color: '#71717a', fontWeight: 500 }}
+            labelFormatter={(label: string) => {
+              const { label: mainLabel, sub } = splitDateLabel(label)
+              return sub ? (
+                <div>
+                  <div>{mainLabel}</div>
+                  <div style={{ fontSize: '0.75em', color: '#a1a1aa' }}>{sub}</div>
+                </div>
+              ) : (
+                mainLabel
+              )
+            }}
             formatter={(value: number) => [`${value} ${biomarker.definition.unit}`, 'Result']}
           />
           <Line

@@ -19,6 +19,7 @@ class Attachment(BaseModel):
     name: str
     type: str
     size: str
+    url: Optional[str] = None
 
 
 class MedicalEvent(BaseModel):

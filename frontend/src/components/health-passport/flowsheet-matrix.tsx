@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Sparkline } from '@/components/shared/Sparkline'
-import type { MatrixCategory, MatrixCell, BiomarkerResult, Status } from '@/lib/types'
+import type { DateHeader, MatrixCategory, MatrixCell, BiomarkerResult, Status } from '@/lib/types'
 
 const statusText: Record<Status, string> = {
   normal: 'text-foreground',
@@ -33,7 +33,7 @@ function Cell({ cell }: { cell: MatrixCell }) {
 }
 
 interface FlowsheetMatrixProps {
-  dates: readonly string[]
+  dates: readonly DateHeader[]
   matrix: MatrixCategory[]
   biomarkers: BiomarkerResult[]
 }
@@ -96,10 +96,15 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
             <span>Biomarker / Range</span>
             <span className="text-left">TREND</span>
             {dates.map((date, i) => (
-              <span key={date} className="text-right">
-                {date}
-                {i === dates.length - 1 && (
-                  <span className="ml-1 text-primary">(Latest)</span>
+              <span key={`${date.label}-${i}`} className="text-right leading-tight">
+                <span>
+                  {date.label}
+                  {i === dates.length - 1 && (
+                    <span className="ml-1 text-primary">(Latest)</span>
+                  )}
+                </span>
+                {date.sub && (
+                  <span className="block text-[9px] text-muted-foreground/60">{date.sub}</span>
                 )}
               </span>
             ))}

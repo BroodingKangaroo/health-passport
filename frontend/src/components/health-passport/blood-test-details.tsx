@@ -38,9 +38,9 @@ export function BloodTestDetails({
     attachments[0]?.id ?? null,
   )
 
-  const handleDownload = useCallback((name: string) => {
+  const handleDownload = useCallback((name: string, url: string) => {
     const a = document.createElement('a')
-    a.href = '/attachment-preview.pdf'
+    a.href = url
     a.download = name
     document.body.appendChild(a)
     a.click()
@@ -116,14 +116,14 @@ export function BloodTestDetails({
                     </div>
                     <div className="flex shrink-0 gap-2">
                       <button
-                        onClick={(e) => { e.stopPropagation(); handlePrintDocument('/attachment-preview.pdf') }}
+                        onClick={(e) => { e.stopPropagation(); handlePrintDocument(att.url || '/attachment-preview.pdf') }}
                         className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                       >
                         <Printer className="size-4" />
                         Print
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); handleDownload(att.name) }}
+                        onClick={(e) => { e.stopPropagation(); handleDownload(att.name, att.url || '/attachment-preview.pdf') }}
                         className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                       >
                         <Download className="size-4" />
@@ -143,7 +143,7 @@ export function BloodTestDetails({
                 {attachments.find((a) => a.id === activeAttachmentId)?.name}
               </p>
               <div className="flex-1 min-h-0 w-full overflow-hidden rounded-xl border border-border">
-                <DocumentViewer url="/attachment-preview.pdf" />
+                <DocumentViewer url={attachments.find((a) => a.id === activeAttachmentId)?.url || '/attachment-preview.pdf'} />
               </div>
             </>
           )}

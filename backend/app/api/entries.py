@@ -2,11 +2,12 @@ import json
 import os
 import re
 import uuid
-from datetime import datetime as dt
+from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Form, UploadFile, File, Depends
+from fastapi import APIRouter, Form, UploadFile, File, Depends, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.schemas import SaveEntryResponse
 from app.db.session import get_db
@@ -18,21 +19,43 @@ from app.db.models import (
 )
 from app.mock_db import _status
 from app.db.seed import DEFAULT_PATIENT_ID
+from app.api._format import to_display_datetime
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
 
 router = APIRouter()
 
 
-def _normalize_date(date_str: str) -> str:
-    if re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
-        parsed = dt.strptime(date_str, "%Y-%m-%d")
-        return parsed.strftime("%b %d, %Y")
-    return date_str
+def _normalize_date(date_str: str, time_str: str = "") -> datetime:
+    if time_str:
+        dt = datetime.fromisoformat(f"{date_str}T{time_str}")
+    else:
+        dt = datetime.fromisoformat(date_str)
+    return dt.replace(tzinfo=timezone.utc)
+
+
+@router.get("/api/entries/by-date")
+async def get_entries_by_date(
+    date: str = Query(...),
+    type: str = Query(""),
+    db: Session = Depends(get_db),
+):
+    target = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
+    q = db.query(MedicalEntryModel).filter(
+        MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID,
+        func.date(MedicalEntryModel.date) == func.date(target),
+    )
+    if type:
+        q = q.filter(MedicalEntryModel.type == type)
+    return {"date": date, "count": q.count()}
 
 
 @router.post("/api/entry", response_model=SaveEntryResponse)
 async def save_entry(
     type: str = Form(...),
     date: str = Form(""),
+    time: str = Form(""),
     clinic: str = Form(""),
     provider: str = Form(""),
     title: str = Form(""),
@@ -43,13 +66,13 @@ async def save_entry(
     db: Session = Depends(get_db),
 ):
     entry_id = uuid.uuid4().hex[:8]
-    normalized_date = _normalize_date(date)
+    entry_date = _normalize_date(date, time)
 
     entry = MedicalEntryModel(
         id=entry_id,
         patient_id=DEFAULT_PATIENT_ID,
         type=type,
-        date=normalized_date,
+        date=entry_date,
         title=title or f"{type.replace('_', ' ').title()} — {date}",
         subtitle=provider,
         category="Labs" if type == "blood_test" else "",
@@ -62,10 +85,9 @@ async def save_entry(
 
     if file and file.filename:
         ext = os.path.splitext(file.filename)[1]
-        saved_name = f"{entry_id}{ext}"
-        save_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "frontend", "public", "uploads")
-        os.makedirs(save_dir, exist_ok=True)
-        save_path = os.path.join(save_dir, saved_name)
+        saved_name = f"{uuid.uuid4().hex}{ext}"
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        save_path = os.path.join(UPLOAD_DIR, saved_name)
         content = await file.read()
         with open(save_path, "wb") as f:
             f.write(content)
@@ -76,7 +98,7 @@ async def save_entry(
             name=file.filename,
             type="Uploaded Document",
             size=f"{len(content) // 1024} KB",
-            file_path=saved_name,
+            file_path=f"/static/uploads/{saved_name}",
         )
         db.add(att)
         db.flush()
@@ -117,7 +139,7 @@ async def save_entry(
             entry_id=entry_id,
             specialty=title,
             provider=provider,
-            date=normalized_date,
+            date=to_display_datetime(entry_date),
             clinic=clinic,
             verdict=vd.get("diagnosis", ""),
             notes=[

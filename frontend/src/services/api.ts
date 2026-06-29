@@ -35,6 +35,12 @@ export async function fetchBiomarkerDetail(id: string): Promise<BiomarkerResult>
   return apiGet<BiomarkerResult>(`/biomarker/${id}`)
 }
 
+/* ----- Entries by Date ----- */
+export async function fetchEntriesByDate(date: string, type?: string): Promise<{ date: string; count: number }> {
+  const params = `date=${date}${type ? `&type=${type}` : ''}`
+  return apiGet<{ date: string; count: number }>(`/entries/by-date?${params}`)
+}
+
 /* ----- Save Entry ----- */
 export async function saveMedicalEntry(formData: FormData): Promise<SaveEntryResponse> {
   const res = await fetch(`${API_BASE}/entry`, { method: 'POST', body: formData })

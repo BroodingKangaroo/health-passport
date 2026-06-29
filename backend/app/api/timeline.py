@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 
@@ -23,33 +21,30 @@ from app.db.models import (
     Attachment as AttachmentModel,
 )
 from app.db.seed import DEFAULT_PATIENT_ID
+from app.api._format import to_display_datetime
 
 router = APIRouter()
 
 
-def _parse_date(date_str: str):
-    return datetime.strptime(date_str, "%b %d, %Y").timetuple()[:3]
-
-
 def _events_from_db(db: Session):
-    entries = sorted(
+    entries = (
         db.query(MedicalEntryModel)
         .filter(MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID)
-        .all(),
-        key=lambda e: _parse_date(e.date),
+        .order_by(MedicalEntryModel.date)
+        .all()
     )
     return [
         MedicalEvent(
             id=e.id,
             type=e.type,
-            date=e.date,
+            date=to_display_datetime(e.date),
             title=e.title,
             subtitle=e.subtitle or "",
             category=e.category or "",
             status=e.status or "",
             clinic=e.clinic or "",
             attachments=[
-                AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size)
+                AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size, url=a.file_path)
                 for a in e.attachments
             ],
         )
@@ -58,14 +53,14 @@ def _events_from_db(db: Session):
 
 
 def _biomarkers_from_db(db: Session):
-    blood_tests = sorted(
+    blood_tests = (
         db.query(MedicalEntryModel)
         .filter(
             MedicalEntryModel.type == "blood_test",
             MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID,
         )
-        .all(),
-        key=lambda e: _parse_date(e.date),
+        .order_by(MedicalEntryModel.date)
+        .all()
     )
     if not blood_tests:
         return []
@@ -91,7 +86,7 @@ def _biomarkers_from_db(db: Session):
         if not defn:
             continue
 
-        readings_query = sorted(
+        readings_query = (
             db.query(BiomarkerReading, MedicalEntryModel.date)
             .join(MedicalEntryModel, BiomarkerReading.entry_id == MedicalEntryModel.id)
             .filter(
@@ -99,8 +94,8 @@ def _biomarkers_from_db(db: Session):
                 MedicalEntryModel.type == "blood_test",
                 MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID,
             )
-            .all(),
-            key=lambda row: _parse_date(row.date),
+            .order_by(MedicalEntryModel.date)
+            .all()
         )
 
         if not readings_query:
@@ -108,7 +103,7 @@ def _biomarkers_from_db(db: Session):
 
         latest_reading, latest_date = readings_query[-1]
         history = [
-            Reading(date=date, value=r.value, status=r.status)
+            Reading(date=to_display_datetime(date), value=r.value, status=r.status)
             for r, date in readings_query[:-1]
         ]
 
@@ -124,7 +119,7 @@ def _biomarkers_from_db(db: Session):
                 unit=defn.unit,
             ),
             value=latest_reading.value,
-            date=latest_date,
+            date=to_display_datetime(latest_date),
             status=latest_reading.status,
             history=history,
         ))
@@ -141,7 +136,7 @@ def _visits_from_db(db: Session):
     )
     for vd, entry in visit_data_rows:
         entry_attachments = [
-            AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size)
+            AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size, url=a.file_path)
             for a in entry.attachments
         ]
         visits[entry.id] = VisitData(
@@ -177,7 +172,7 @@ async def get_biomarker_detail(biomarker_id: str, db: Session = Depends(get_db))
     if not defn:
         raise HTTPException(status_code=404, detail=f"Biomarker '{biomarker_id}' not found")
 
-    readings_query = sorted(
+    readings_query = (
         db.query(BiomarkerReading, MedicalEntryModel.date)
         .join(MedicalEntryModel, BiomarkerReading.entry_id == MedicalEntryModel.id)
         .filter(
@@ -185,15 +180,15 @@ async def get_biomarker_detail(biomarker_id: str, db: Session = Depends(get_db))
             MedicalEntryModel.type == "blood_test",
             MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID,
         )
-        .all(),
-        key=lambda row: _parse_date(row.date),
+        .order_by(MedicalEntryModel.date)
+        .all()
     )
     if not readings_query:
         raise HTTPException(status_code=404, detail=f"Biomarker '{biomarker_id}' not found")
 
     latest_reading, latest_date = readings_query[-1]
     history = [
-        Reading(date=date, value=r.value, status=r.status)
+        Reading(date=to_display_datetime(date), value=r.value, status=r.status)
         for r, date in readings_query[:-1]
     ]
     return BiomarkerResult(
@@ -208,7 +203,7 @@ async def get_biomarker_detail(biomarker_id: str, db: Session = Depends(get_db))
             unit=defn.unit,
         ),
         value=latest_reading.value,
-        date=latest_date,
+        date=to_display_datetime(latest_date),
         status=latest_reading.status,
         history=history,
     )
@@ -234,7 +229,7 @@ async def get_visit_data(event_id: str, db: Session = Depends(get_db)):
     if not vd:
         raise HTTPException(status_code=404, detail=f"Visit '{event_id}' not found")
     entry_attachments = [
-        AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size)
+        AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size, url=a.file_path)
         for a in entry.attachments
     ]
     return VisitData(

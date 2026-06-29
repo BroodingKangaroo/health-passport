@@ -12,7 +12,7 @@ import {
   Tooltip,
 } from 'recharts'
 
-import { cn } from '@/lib/utils'
+import { cn, splitDateLabel } from '@/lib/utils'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import type { BiomarkerResult } from '@/lib/types'
@@ -32,9 +32,11 @@ const CLINICAL_PALETTE = [
 
 function CustomTooltip({ active, payload, label, biomarkers }: any) {
   if (active && payload && payload.length) {
+    const { label: mainLabel, sub } = splitDateLabel(label)
     return (
       <div className="rounded-md border border-border bg-white p-3 shadow-lg">
-        <p className="mb-2 text-sm font-semibold">{label}</p>
+        <p className="text-sm font-semibold">{mainLabel}</p>
+        {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
         {payload.filter((entry: any) => !entry.dataKey.startsWith('dash_')).map((entry: any) => {
           const name = entry.dataKey.replace('norm_', '')
           const raw = entry.payload[`raw_${name}`]
@@ -220,10 +222,24 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
               >
                 <XAxis
                   dataKey="date"
-                  tick={{ fontSize: 11, fill: '#71717a' }}
                   tickLine={false}
                   axisLine={{ stroke: '#d4d4d8' }}
                   padding={{ left: 20, right: 20 }}
+                  tick={({ x, y, payload }: any) => {
+                    const { label, sub } = splitDateLabel(payload.value)
+                    return (
+                      <g transform={`translate(${x},${y})`}>
+                        <text x={0} y={0} dy={12} textAnchor="middle" fill="#71717a" fontSize={11}>
+                          {label}
+                        </text>
+                        {sub && (
+                          <text x={0} y={0} dy={24} textAnchor="middle" fill="#a1a1aa" fontSize={9}>
+                            {sub}
+                          </text>
+                        )}
+                      </g>
+                    )
+                  }}
                 />
                 <YAxis hide domain={[-20, 120]} />
                 <ReferenceArea

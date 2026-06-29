@@ -1,14 +1,14 @@
-name: Backend Tests
+name: Tests
 
 on:
   push:
     branches: [main]
-    paths: ['backend/**']
+    paths: ['backend/**', 'frontend/**']
   pull_request:
-    paths: ['backend/**']
+    paths: ['backend/**', 'frontend/**']
 
 jobs:
-  test:
+  backend-test:
     runs-on: ubuntu-latest
 
     defaults:
@@ -31,3 +31,26 @@ jobs:
       - name: Run tests
         run: |
           python -m pytest tests/ -v
+
+  frontend-test:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: |
+          npx vitest run
