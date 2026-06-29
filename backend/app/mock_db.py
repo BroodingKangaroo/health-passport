@@ -105,6 +105,126 @@ def _build_biomarkers_for_date(date_idx: int) -> dict[str, dict]:
     return result
 
 
+DOCTOR_VISITS: list[dict] = [
+    {
+        "id": "cardio",
+        "type": "doctor_visit",
+        "date": "Sep 05, 2026",
+        "title": "Cardiology Follow-up",
+        "subtitle": "Dr. Elena Ivanova",
+        "category": "Cardiology",
+        "status": "Completed",
+        "clinic": "Central Heart Institute",
+        "attachments": [
+            {"id": "consult", "name": "Consultation_Notes_Sep2026.pdf", "type": "Physician commentary", "size": "128 KB"},
+            {"id": "ekg", "name": "EKG_Strip_Scan.pdf", "type": "Diagnostic image", "size": "2.1 MB"},
+        ],
+        "visit_data": {
+            "specialty": "Cardiology Follow-up",
+            "provider": "Dr. Elena Ivanova, MD",
+            "date": "Sep 05, 2026",
+            "clinic": "Central Heart Institute",
+            "verdict": "Mild Sinus Tachycardia - Under Control. Patient responding well to current regimen.",
+            "notes": [
+                {"heading": "Chief Complaint & Subjective", "text": "Patient reports occasional palpitations during heavy exercise. Denies chest pain, shortness of breath, or dizziness. Mentions feeling generally fatigued in the mornings."},
+                {"heading": None, "text": "Vitals taken at desk: BP 118/76, HR 88 bpm, O2 99%. Weight stable."},
+                {"heading": "Objective Findings", "text": "Heart rhythm is regular. No murmurs, gallops, or rubs heard. Lungs are clear to auscultation bilaterally. EKG performed in-office reveals Normal Sinus Rhythm, rate 88, with no ST-T wave abnormalities."},
+            ],
+            "prescriptions": [
+                {"id": 1, "name": "Metoprolol Succinate", "dose": "25mg", "instruction": "1 tablet daily (morning)"},
+            ],
+            "recommendations": [
+                "Schedule 6-month follow-up EKG and consultation.",
+                "Comprehensive Metabolic Panel (CMP) prior to next visit.",
+            ],
+        },
+    },
+    {
+        "id": "ortho",
+        "type": "doctor_visit",
+        "date": "Aug 22, 2026",
+        "title": "Orthopedic Consultation",
+        "subtitle": "Dr. James Mitchell, DO",
+        "category": "Orthopedics",
+        "status": "Completed",
+        "clinic": "Northern Sports Medicine",
+        "attachments": [],
+        "visit_data": {
+            "specialty": "Orthopedic Consultation",
+            "provider": "Dr. James Mitchell, DO",
+            "date": "Aug 22, 2026",
+            "clinic": "Northern Sports Medicine",
+            "verdict": "Left knee patellar tendinopathy (Jumper's Knee). MRI confirms mild tendinosis without tear.",
+            "notes": [
+                {"heading": "Chief Complaint", "text": "Left anterior knee pain for 3 months, worse with squatting and stairs. Patient is a recreational basketball player."},
+                {"heading": "Physical Exam", "text": "Tenderness over patellar tendon at tibial insertion. Pain with resisted knee extension. No effusion. Full range of motion."},
+                {"heading": "Imaging Review", "text": "MRI left knee: Mild thickening and signal increase in proximal patellar tendon consistent with tendinosis. No tear."},
+            ],
+            "prescriptions": [
+                {"id": 2, "name": "Ibuprofen", "dose": "400mg", "instruction": "Take 1 tablet twice daily with food as needed for pain"},
+            ],
+            "recommendations": [
+                "Physical therapy 2x/week for 6 weeks focusing on eccentric quad strengthening.",
+                "Activity modification - avoid jumping and deep squatting for 4 weeks.",
+                "Follow-up in 8 weeks with repeat clinical assessment.",
+            ],
+        },
+    },
+    {
+        "id": "neuro",
+        "type": "doctor_visit",
+        "date": "Oct 18, 2026",
+        "title": "Neurology Assessment",
+        "subtitle": "Dr. S. Reynolds, MD, PhD",
+        "category": "Neurology",
+        "status": "Scheduled",
+        "clinic": "Neurology Associates",
+        "attachments": [
+            {"id": "neuro-ref", "name": "Neurology_Referral.pdf", "type": "Referral letter", "size": "92 KB"},
+        ],
+        "visit_data": {
+            "specialty": "Neurology Assessment",
+            "provider": "Dr. S. Reynolds, MD, PhD",
+            "date": "Oct 18, 2026",
+            "clinic": "Neurology Associates",
+            "verdict": "Suspected Migraine with Brainstem Aura. MRI brain scheduled to rule out structural causes.",
+            "notes": [
+                {"heading": "Chief Complaint", "text": "Patient reports recurrent episodes of vertigo, blurred vision, and unilateral throbbing headache lasting 4-72 hours. Episodes increased in frequency over the past 2 months — now 3-4 per month."},
+                {"heading": None, "text": "Patient also notes photophobia, phonophobia, and occasional nausea during episodes. No aura prior to onset. Family history positive for migraines (mother)."},
+                {"heading": "Physical Exam", "text": "Cranial nerves II-XII intact. Motor strength 5/5 throughout. Sensation intact. Reflexes 2+ and symmetric. Coordination and gait normal. No papilledema on fundoscopy."},
+                {"heading": "Assessment", "text": "1. Migraine without aura (G43.0) — likely diagnosis. 2. Rule out brainstem pathology with MRI. 3. Consider starting prophylactic therapy if frequency exceeds 4/month."},
+            ],
+            "prescriptions": [
+                {"id": 3, "name": "Sumatriptan Succinate", "dose": "50mg", "instruction": "Take 1 tablet at onset of migraine; may repeat once after 2 hours if no relief (max 2/day)"},
+                {"id": 4, "name": "Vitamin B2 (Riboflavin)", "dose": "400mg", "instruction": "1 tablet daily for migraine prophylaxis"},
+            ],
+            "recommendations": [
+                "MRI brain with and without contrast to rule out structural causes.",
+                "Keep headache diary for 8 weeks tracking triggers, frequency, and severity.",
+                "Follow-up in 4 weeks to review MRI results and assess response to Sumatriptan.",
+                "Consider neurology referral if symptoms worsen or atypical features develop.",
+            ],
+        },
+    },
+]
+
+PROCEDURES: list[dict] = [
+    {
+        "id": "derm",
+        "type": "procedure",
+        "date": "Sep 12, 2026",
+        "title": "Skin Biopsy",
+        "subtitle": "Left upper arm",
+        "category": "Dermatology",
+        "status": "Completed",
+        "clinic": "Dermatology Clinic",
+        "attachments": [
+            {"id": "path", "name": "Pathology_Report.pdf", "type": "Pathology", "size": "890 KB"},
+        ],
+    },
+]
+
+
 def _seed() -> None:
     for i, eid in enumerate(BLOOD_TEST_IDS):
         biomarkers = _build_biomarkers_for_date(i)
@@ -130,131 +250,8 @@ def _seed() -> None:
             "biomarkers": biomarkers,
         })
 
-    MOCK_DATABASE.extend([
-        {
-            "id": "cardio",
-            "type": "doctor_visit",
-            "date": "Sep 05, 2026",
-            "title": "Cardiology Follow-up",
-            "subtitle": "Dr. Elena Ivanova",
-            "category": "Cardiology",
-            "status": "Completed",
-            "clinic": "Central Heart Institute",
-            "attachments": [
-                {"id": "consult", "name": "Consultation_Notes_Sep2026.pdf", "type": "Physician commentary", "size": "128 KB"},
-                {"id": "ekg", "name": "EKG_Strip_Scan.pdf", "type": "Diagnostic image", "size": "2.1 MB"},
-            ],
-            "visit_data": {
-                "specialty": "Cardiology Follow-up",
-                "provider": "Dr. Elena Ivanova, MD",
-                "date": "Sep 05, 2026",
-                "clinic": "Central Heart Institute",
-                "verdict": "Mild Sinus Tachycardia - Under Control. Patient responding well to current regimen.",
-                "notes": [
-                    {"heading": "Chief Complaint & Subjective", "text": "Patient reports occasional palpitations during heavy exercise. Denies chest pain, shortness of breath, or dizziness. Mentions feeling generally fatigued in the mornings."},
-                    {"heading": None, "text": "Vitals taken at desk: BP 118/76, HR 88 bpm, O2 99%. Weight stable."},
-                    {"heading": "Objective Findings", "text": "Heart rhythm is regular. No murmurs, gallops, or rubs heard. Lungs are clear to auscultation bilaterally. EKG performed in-office reveals Normal Sinus Rhythm, rate 88, with no ST-T wave abnormalities."},
-                ],
-                "prescriptions": [
-                    {"id": 1, "name": "Metoprolol Succinate", "dose": "25mg", "instruction": "1 tablet daily (morning)"},
-                ],
-                "recommendations": [
-                    "Schedule 6-month follow-up EKG and consultation.",
-                    "Comprehensive Metabolic Panel (CMP) prior to next visit.",
-                ],
-                "attachments": [
-                    {"id": "consult", "name": "Consultation_Notes_Sep2026.pdf", "type": "Physician commentary", "size": "128 KB"},
-                    {"id": "ekg", "name": "EKG_Strip_Scan.pdf", "type": "Diagnostic image", "size": "2.1 MB"},
-                ],
-            },
-        },
-        {
-            "id": "ortho",
-            "type": "doctor_visit",
-            "date": "Aug 22, 2026",
-            "title": "Orthopedic Consultation",
-            "subtitle": "Dr. James Mitchell, DO",
-            "category": "Orthopedics",
-            "status": "Completed",
-            "clinic": "Northern Sports Medicine",
-            "attachments": [],
-            "visit_data": {
-                "specialty": "Orthopedic Consultation",
-                "provider": "Dr. James Mitchell, DO",
-                "date": "Aug 22, 2026",
-                "clinic": "Northern Sports Medicine",
-                "verdict": "Left knee patellar tendinopathy (Jumper's Knee). MRI confirms mild tendinosis without tear.",
-                "notes": [
-                    {"heading": "Chief Complaint", "text": "Left anterior knee pain for 3 months, worse with squatting and stairs. Patient is a recreational basketball player."},
-                    {"heading": "Physical Exam", "text": "Tenderness over patellar tendon at tibial insertion. Pain with resisted knee extension. No effusion. Full range of motion."},
-                    {"heading": "Imaging Review", "text": "MRI left knee: Mild thickening and signal increase in proximal patellar tendon consistent with tendinosis. No tear."},
-                ],
-                "prescriptions": [
-                    {"id": 2, "name": "Ibuprofen", "dose": "400mg", "instruction": "Take 1 tablet twice daily with food as needed for pain"},
-                ],
-                "recommendations": [
-                    "Physical therapy 2x/week for 6 weeks focusing on eccentric quad strengthening.",
-                    "Activity modification - avoid jumping and deep squatting for 4 weeks.",
-                    "Follow-up in 8 weeks with repeat clinical assessment.",
-                ],
-                "attachments": [
-                    {"id": "mri", "name": "MRI_Left_Knee.pdf", "type": "MRI Report", "size": "3.4 MB"},
-                ],
-            },
-        },
-        {
-            "id": "neuro",
-            "type": "doctor_visit",
-            "date": "Oct 18, 2026",
-            "title": "Neurology Assessment",
-            "subtitle": "Dr. S. Reynolds, MD, PhD",
-            "category": "Neurology",
-            "status": "Scheduled",
-            "clinic": "Neurology Associates",
-            "attachments": [
-                {"id": "neuro-ref", "name": "Neurology_Referral.pdf", "type": "Referral letter", "size": "92 KB"},
-            ],
-            "visit_data": {
-                "specialty": "Neurology Assessment",
-                "provider": "Dr. S. Reynolds, MD, PhD",
-                "date": "Oct 18, 2026",
-                "clinic": "Neurology Associates",
-                "verdict": "Suspected Migraine with Brainstem Aura. MRI brain scheduled to rule out structural causes.",
-                "notes": [
-                    {"heading": "Chief Complaint", "text": "Patient reports recurrent episodes of vertigo, blurred vision, and unilateral throbbing headache lasting 4-72 hours. Episodes increased in frequency over the past 2 months — now 3-4 per month."},
-                    {"heading": None, "text": "Patient also notes photophobia, phonophobia, and occasional nausea during episodes. No aura prior to onset. Family history positive for migraines (mother)."},
-                    {"heading": "Physical Exam", "text": "Cranial nerves II-XII intact. Motor strength 5/5 throughout. Sensation intact. Reflexes 2+ and symmetric. Coordination and gait normal. No papilledema on fundoscopy."},
-                    {"heading": "Assessment", "text": "1. Migraine without aura (G43.0) — likely diagnosis. 2. Rule out brainstem pathology with MRI. 3. Consider starting prophylactic therapy if frequency exceeds 4/month."},
-                ],
-                "prescriptions": [
-                    {"id": 3, "name": "Sumatriptan Succinate", "dose": "50mg", "instruction": "Take 1 tablet at onset of migraine; may repeat once after 2 hours if no relief (max 2/day)"},
-                    {"id": 4, "name": "Vitamin B2 (Riboflavin)", "dose": "400mg", "instruction": "1 tablet daily for migraine prophylaxis"},
-                ],
-                "recommendations": [
-                    "MRI brain with and without contrast to rule out structural causes.",
-                    "Keep headache diary for 8 weeks tracking triggers, frequency, and severity.",
-                    "Follow-up in 4 weeks to review MRI results and assess response to Sumatriptan.",
-                    "Consider neurology referral if symptoms worsen or atypical features develop.",
-                ],
-                "attachments": [
-                    {"id": "neuro-ref", "name": "Neurology_Referral.pdf", "type": "Referral letter", "size": "92 KB"},
-                ],
-            },
-        },
-        {
-            "id": "derm",
-            "type": "procedure",
-            "date": "Sep 12, 2026",
-            "title": "Skin Biopsy",
-            "subtitle": "Left upper arm",
-            "category": "Dermatology",
-            "status": "Completed",
-            "clinic": "Dermatology Clinic",
-            "attachments": [
-                {"id": "path", "name": "Pathology_Report.pdf", "type": "Pathology", "size": "890 KB"},
-            ],
-        },
-    ])
+    MOCK_DATABASE.extend(DOCTOR_VISITS)
+    MOCK_DATABASE.extend(PROCEDURES)
 
 
 _seed()
