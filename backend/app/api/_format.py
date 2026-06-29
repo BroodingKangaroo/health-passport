@@ -7,9 +7,7 @@ def _current_year() -> int:
 
 
 def to_display_datetime(dt: datetime) -> str:
-    base = dt.strftime("%b %d")
-    if dt.year != _current_year():
-        base += dt.strftime(", %Y")
+    base = dt.strftime("%b %d, %Y")
     if dt.hour != 0 or dt.minute != 0:
         base += dt.strftime(" at %H:%M")
     return base
