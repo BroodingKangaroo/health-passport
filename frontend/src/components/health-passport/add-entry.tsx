@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import {
   UploadCloud,
   Loader2,
@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ImagePlus,
+  AlertCircle,
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -21,16 +22,22 @@ import { Button } from '@/components/ui/button'
 import { Field } from '@/components/shared/Field'
 import { DoctorVisitForm } from './DoctorVisitForm'
 import { LabResultForm } from './LabResultForm'
-import { saveMedicalEntry, fetchEntriesByDate } from '@/services/api'
-import type { UploadState, EntryMode, FormCategory, FormBiomarkerRow } from '@/lib/types'
+import { ImagingForm } from './ImagingForm'
+import { saveMedicalEntry, fetchEntriesByDate, extractMedicalData } from '@/services/api'
+import type {
+  UploadState,
+  EntryMode,
+  FormCategory,
+  FormBiomarkerRow,
+  StandardizedMedicalRecord,
+  StandardizedBiomarker,
+} from '@/lib/types'
 
 const docPills = [
   { emoji: '📄', label: 'Lab Results' },
   { emoji: '📝', label: 'Doctor Notes' },
   { emoji: '🩻', label: 'MRI / Scans' },
 ]
-
-const mockFiles = ['Page_1.jpg', 'Page_2.jpg', 'Page_3.jpg']
 
 function newRow(): FormBiomarkerRow {
   return {
@@ -42,33 +49,59 @@ function newRow(): FormBiomarkerRow {
   }
 }
 
-const aiCategories: FormCategory[] = [
-  {
-    id: 'cbc',
-    name: 'Complete Blood Count',
-    rows: [
-      { id: 'hemoglobin', name: 'Hemoglobin', value: '142', unit: 'g/L', range: '130-170' },
-      { id: 'ferritin', name: 'Ferritin', value: '22', unit: 'ng/mL', range: '30-400' },
-    ],
-  },
-]
-
 function manualCategories(): FormCategory[] {
   return [{ id: 'cat-1', name: 'General', rows: [newRow()] }]
+}
+
+function biomarkersToCategories(biomarkers: StandardizedBiomarker[]): FormCategory[] {
+  const grouped: Record<string, StandardizedBiomarker[]> = {}
+  for (const b of biomarkers) {
+    const cat = b.category || 'General'
+    if (!grouped[cat]) grouped[cat] = []
+    grouped[cat].push(b)
+  }
+  return Object.entries(grouped).map(([name, rows]) => ({
+    id: `ai-cat-${name.toLowerCase().replace(/\s+/g, '-')}`,
+    name,
+    rows: rows.map((r) => ({
+      id: `ai-bm-${r.standard_name_en.toLowerCase().replace(/\s+/g, '-')}-${Math.random().toString(36).slice(2, 4)}`,
+      name: r.standard_name_en,
+      value: String(r.standard_value),
+      unit: r.standard_unit,
+      range: r.standard_range_min != null && r.standard_range_max != null
+        ? `${r.standard_range_min}-${r.standard_range_max}`
+        : r.standard_range_min != null
+          ? `> ${r.standard_range_min}`
+          : r.standard_range_max != null
+            ? `< ${r.standard_range_max}`
+            : '',
+      original_name: r.raw_name,
+      original_value: r.raw_value,
+      original_unit: r.raw_unit,
+      original_range: r.raw_range_string,
+    })),
+  }))
 }
 
 export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const [uploadState, setUploadState] = useState<UploadState>('idle')
   const [entryMode, setEntryMode] = useState<EntryMode>('ai')
-  const [categories, setCategories] = useState<FormCategory[]>(aiCategories)
+  const [categories, setCategories] = useState<FormCategory[]>(manualCategories())
   const [documentType, setDocumentType] = useState('blood_test')
   const [activeFile, setActiveFile] = useState(0)
   const [saving, setSaving] = useState(false)
   const [visitFormData, setVisitFormData] = useState<any>(null)
+  const [imagingFormData, setImagingFormData] = useState<any>(null)
   const [timeValue, setTimeValue] = useState('')
-  const [dateValue, setDateValue] = useState('2026-10-12')
+  const [dateValue, setDateValue] = useState('')
   const [duplicateWarning, setDuplicateWarning] = useState(false)
   const [timeRequired, setTimeRequired] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const [prefillClinic, setPrefillClinic] = useState('')
+  const [prefillProvider, setPrefillProvider] = useState('')
+  const [prefillTitle, setPrefillTitle] = useState('')
+  const [prefillNotes, setPrefillNotes] = useState('')
   const dateRef = useRef<HTMLInputElement>(null)
   const timeRef = useRef<HTMLInputElement>(null)
   const clinicRef = useRef<HTMLInputElement>(null)
@@ -76,16 +109,54 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const titleRef = useRef<HTMLInputElement>(null)
   const notesRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const uploadFileRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    if (uploadState !== 'scanning') return
-    const t = setTimeout(() => {
+  const runExtraction = useCallback(async (file: File) => {
+    setAiError(null)
+    setUploadState('scanning')
+    try {
+      const result = await extractMedicalData(file)
       setEntryMode('ai')
-      setCategories(aiCategories)
+      setDocumentType(result.entry_type)
+
+      if (result.date) {
+        setDateValue(result.date)
+      }
+      if (result.time) {
+        setTimeValue(result.time)
+      }
+      if (result.clinic) setPrefillClinic(result.clinic)
+      if (result.provider) setPrefillProvider(result.provider)
+      if (result.title) setPrefillTitle(result.title)
+      if (result.notes) setPrefillNotes(result.notes)
+
+      if (result.entry_type === 'blood_test' && result.biomarkers && result.biomarkers.length > 0) {
+        setCategories(biomarkersToCategories(result.biomarkers))
+        setVisitFormData(null)
+        setImagingFormData(null)
+      } else if (result.entry_type === 'doctor_visit' && result.visit_data) {
+        setVisitFormData(result.visit_data)
+        setCategories(manualCategories())
+        setImagingFormData(null)
+      } else if (result.entry_type === 'imaging') {
+        setImagingFormData(result.imaging_data ?? null)
+        setCategories(manualCategories())
+        setVisitFormData(null)
+      } else {
+        setCategories(manualCategories())
+        setVisitFormData(null)
+        setImagingFormData(null)
+      }
+
       setUploadState('editor')
-    }, 2000)
-    return () => clearTimeout(t)
-  }, [uploadState])
+    } catch (err: any) {
+      const msg = err?.message || 'AI extraction failed'
+      setAiError(msg)
+      setEntryMode('manual')
+      setCategories(manualCategories())
+      setUploadState('editor')
+    }
+  }, [])
 
   useEffect(() => {
     if (!dateValue || documentType !== 'blood_test') {
@@ -110,10 +181,24 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     return () => clearTimeout(t)
   }, [dateValue, documentType])
 
+  function handleFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setSelectedFile(file)
+    if (fileRef.current) {
+      const dt = new DataTransfer()
+      dt.items.add(file)
+      fileRef.current.files = dt.files
+    }
+    runExtraction(file)
+  }
+
   function startManual() {
     setEntryMode('manual')
     setCategories(manualCategories())
     setUploadState('editor')
+    setSelectedFile(null)
+    setAiError(null)
   }
 
   function updateRow(catId: string, rowId: string, key: keyof FormBiomarkerRow, val: string) {
@@ -160,14 +245,16 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
       fd.append('time', timeValue)
       fd.append('clinic', clinicRef.current?.value ?? '')
       fd.append('provider', providerRef.current?.value ?? '')
-      const autoTitle = documentType === 'blood_test' ? 'Blood Test Panel' : documentType === 'doctor_visit' ? 'Doctor Visit' : 'Medical Record'
+      const autoTitle = documentType === 'blood_test' ? 'Blood Test Panel' : documentType === 'doctor_visit' ? 'Doctor Visit' : documentType === 'imaging' ? 'Imaging Report' : 'Medical Record'
       fd.append('title', titleRef.current?.value || autoTitle)
       fd.append('notes', notesRef.current?.value ?? '')
       fd.append('biomarkers', JSON.stringify(categories))
       if (documentType === 'doctor_visit' && visitFormData) {
         fd.append('visit_data', JSON.stringify(visitFormData))
       }
-      if (fileRef.current?.files?.[0]) {
+      if (selectedFile) {
+        fd.append('file', selectedFile)
+      } else if (fileRef.current?.files?.[0]) {
         fd.append('file', fileRef.current.files[0])
       }
       const resp = await saveMedicalEntry(fd)
@@ -193,9 +280,17 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
           </p>
         </div>
 
+        <input
+          ref={uploadFileRef}
+          type="file"
+          className="hidden"
+          accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp"
+          onChange={handleFilePicked}
+        />
+
         <button
           type="button"
-          onClick={() => uploadState === 'idle' && setUploadState('scanning')}
+          onClick={() => uploadState === 'idle' && uploadFileRef.current?.click()}
           disabled={uploadState === 'scanning'}
           className={cn(
             'w-full rounded-xl border-2 border-dashed border-primary/30 bg-accent/40 p-12 text-center transition',
@@ -285,7 +380,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                   <ImagePlus className="size-6" />
                 </div>
                 <p className="text-xs font-medium text-foreground">
-                  {fileRef.current?.files?.[0]?.name ?? 'Add a photo or scan'}
+                  {selectedFile?.name ?? 'Add a photo or scan'}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
                   Click to attach
@@ -293,95 +388,53 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
               </button>
             </div>
           ) : (
-            <>
-              <div className="flex items-center justify-between border-b border-border p-4">
-                <h2 className="text-sm font-semibold text-foreground">
-                  Attached Documents ({mockFiles.length})
-                </h2>
-                <button
-                  aria-label="Zoom document"
-                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <ZoomIn className="size-4" />
-                </button>
-              </div>
-
-              <div className="flex gap-2 overflow-x-auto border-b border-border p-3">
-                {mockFiles.map((file, i) => (
-                  <button
-                    key={file}
-                    onClick={() => setActiveFile(i)}
-                    className={cn(
-                      'flex shrink-0 items-center gap-1.5 rounded-md border bg-card px-2.5 py-1.5 text-xs font-medium transition-colors',
-                      i === activeFile
-                        ? 'border-primary text-foreground ring-1 ring-primary'
-                        : 'border-border text-muted-foreground hover:border-primary/40',
-                    )}
-                  >
-                    <FileText className="size-3.5" />
-                    {file}
-                  </button>
-                ))}
-                <button className="flex shrink-0 items-center gap-1 rounded-md border border-dashed border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
-                  <Plus className="size-3.5" />
-                  Add File
-                </button>
-              </div>
-
-              <div className="p-4">
-                <div className="flex aspect-[3/4] flex-col items-center justify-center gap-3 rounded-lg border border-border bg-muted/60 text-center">
-                  <FileText className="size-10 text-muted-foreground/60" />
-                  <p className="text-xs font-medium text-muted-foreground">
-                    📄 {mockFiles[activeFile]}
+            <div className="p-4">
+              <h2 className="mb-3 text-sm font-semibold text-foreground">
+                Attached Document
+              </h2>
+              <div className="flex aspect-[3/4] flex-col items-center justify-center gap-3 rounded-lg border border-border bg-muted/60 text-center">
+                <FileText className="size-10 text-muted-foreground/60" />
+                <p className="text-xs font-medium text-foreground">
+                  {selectedFile?.name ?? 'Document'}
+                </p>
+                {selectedFile && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {(selectedFile.size / 1024).toFixed(0)} KB
                   </p>
-                </div>
-
-                <div className="mt-3 flex items-center justify-between">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={activeFile === 0}
-                    onClick={() => setActiveFile((i) => Math.max(0, i - 1))}
-                    className="gap-1 text-muted-foreground hover:text-foreground"
-                  >
-                    <ChevronLeft className="size-4" />
-                    Prev
-                  </Button>
-                  <span className="text-xs font-medium text-muted-foreground">
-                    {activeFile + 1} of {mockFiles.length}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={activeFile === mockFiles.length - 1}
-                    onClick={() =>
-                      setActiveFile((i) => Math.min(mockFiles.length - 1, i + 1))
-                    }
-                    className="gap-1 text-muted-foreground hover:text-foreground"
-                  >
-                    Next
-                    <ChevronRight className="size-4" />
-                  </Button>
-                </div>
+                )}
               </div>
-            </>
+            </div>
           )}
         </Card>
 
         <Card className="flex flex-col overflow-hidden">
           <div className="p-4">
-            {!isManual && (
+            {aiError && (
+              <div className="mb-4 flex items-start gap-3 rounded-lg border border-status-high/20 bg-status-high/5 p-3">
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-status-high" />
+                <div className="text-xs text-foreground">
+                  <span className="font-semibold">AI extraction failed</span>
+                  <p className="mt-1 text-muted-foreground">{aiError}</p>
+                  <p className="mt-1">Switched to manual entry. Fill in the details below.</p>
+                </div>
+              </div>
+            )}
+
+            {!isManual && !aiError && (
               <div className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
                 <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
                 <p className="text-xs text-foreground">
                   <span className="font-semibold">AI successfully identified</span>{' '}
-                  a Blood Test Panel and extracted 14 biomarkers across 3 pages.
+                  a{documentType === 'blood_test' ? ' Blood Test Panel' : documentType === 'doctor_visit' ? ' Doctor Visit' : documentType === 'imaging' ? 'n Imaging Report' : ' medical document'}
+                  {documentType === 'blood_test' && categories.length > 0 && (
+                    <> and extracted {categories.reduce((s, c) => s + c.rows.length, 0)} biomarkers.</>
+                  )}
                   Please review for accuracy.
                 </p>
               </div>
             )}
 
-            <div className={cn('grid gap-3 sm:grid-cols-2', !isManual && 'mt-5')}>
+            <div className={cn('grid gap-3 sm:grid-cols-2', !isManual && !aiError && 'mt-5')}>
               <Field label="Document Type">
                 <select
                   value={documentType}
@@ -397,13 +450,11 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                 <Input
                   ref={dateRef}
                   type="date"
-                  defaultValue="2026-10-12"
+                  defaultValue={dateValue}
                   onChange={(e) => setDateValue(e.target.value)}
                 />
               </Field>
-              <Field
-                label={timeRequired ? 'Time (required)' : 'Time (optional)'}
-              >
+              <Field label={timeRequired ? 'Time (required)' : 'Time (optional)'}>
                 <Input
                   ref={timeRef}
                   type="time"
@@ -418,13 +469,13 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                 )}
               </Field>
               <Field label="Clinic / Source">
-                <Input ref={clinicRef} defaultValue={isManual ? '' : 'Invitro Lab'} placeholder="e.g. Invitro Lab" />
+                <Input ref={clinicRef} defaultValue={prefillClinic} placeholder="e.g. Invitro Lab" />
               </Field>
               <Field label="Provider / Doctor">
-                <Input ref={providerRef} placeholder="e.g. Dr. Ivanova" />
+                <Input ref={providerRef} defaultValue={prefillProvider} placeholder="e.g. Dr. Ivanova" />
               </Field>
               <Field label="Title (optional)">
-                <Input ref={titleRef} placeholder="e.g. Pre-Operative Baseline" />
+                <Input ref={titleRef} defaultValue={prefillTitle} placeholder="e.g. Pre-Operative Baseline" />
               </Field>
             </div>
 
@@ -432,6 +483,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
               <Field label="Patient Notes &amp; Context">
                 <textarea
                   ref={notesRef}
+                  defaultValue={prefillNotes}
                   rows={2}
                   placeholder="e.g. Fasted for 12 hours, felt slight fatigue..."
                   className="flex w-full rounded-lg border border-input bg-background px-2.5 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
@@ -440,7 +492,15 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
             </div>
 
             {documentType === 'doctor_visit' ? (
-              <DoctorVisitForm onDataChange={setVisitFormData} />
+              <DoctorVisitForm
+                initialData={visitFormData}
+                onDataChange={setVisitFormData}
+              />
+            ) : documentType === 'imaging' ? (
+              <ImagingForm
+                initialData={imagingFormData}
+                onDataChange={setImagingFormData}
+              />
             ) : (
               <LabResultForm
                 categories={categories}
@@ -467,4 +527,3 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     </div>
   )
 }
-

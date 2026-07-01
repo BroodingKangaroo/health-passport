@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -7,8 +8,12 @@ from fastapi.staticfiles import StaticFiles
 from app.api.timeline import router as timeline_router
 from app.api.flowsheet import router as flowsheet_router
 from app.api.entries import router as entries_router
+from app.api.ai import router as ai_router
+from app.api.biomarkers import router as biomarkers_router
 from app.db.session import init_db, SessionLocal
 from app.db.seed import seed_db
+
+load_dotenv()
 
 
 @asynccontextmanager
@@ -16,7 +21,7 @@ async def lifespan(app: FastAPI):
     init_db()
     db = SessionLocal()
     try:
-        seed_db(db)
+        pass  # seed_db(db) — disabled for testing
     finally:
         db.close()
     yield
@@ -35,6 +40,8 @@ app.add_middleware(
 app.include_router(timeline_router)
 app.include_router(flowsheet_router)
 app.include_router(entries_router)
+app.include_router(ai_router)
+app.include_router(biomarkers_router)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 

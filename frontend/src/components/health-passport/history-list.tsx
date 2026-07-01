@@ -15,7 +15,7 @@ import {
   ArrowUpDown,
   AlertTriangle,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import type { MedicalEvent, EventType, BiomarkerResult } from '@/lib/types'
 
 const iconMap: Record<EventType, ComponentType<{ className?: string }>> = {
@@ -347,8 +347,8 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                   <p className="truncate text-sm font-semibold text-foreground">
                     {event.title}
                   </p>
-                  <p className="text-xs text-muted-foreground">{event.date}</p>
-                  <p className="text-xs text-muted-foreground/80">{event.clinic}</p>
+                  <p className="text-xs text-muted-foreground">{formatDate(event.date)}</p>
+                  <p className="truncate text-xs text-muted-foreground/80" title={event.clinic}>{event.clinic}</p>
                 </div>
                 {count > 0 && (
                   <span className="ml-auto flex shrink-0 items-center gap-1 text-sm text-muted-foreground/50">

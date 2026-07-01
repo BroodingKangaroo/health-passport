@@ -2,7 +2,7 @@
 
 import { ArrowRight } from 'lucide-react'
 
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { BiomarkerChart } from '@/components/shared/BiomarkerChart'
 import type { BiomarkerResult, Status } from '@/lib/types'
@@ -64,7 +64,7 @@ export function ExpandedBiomarkerDetails({
           {biomarker.definition.name_en} Dynamics
         </h3>
         <p className="mb-2 text-xs text-muted-foreground">
-          Reference: {biomarker.definition.range_min} – {biomarker.definition.range_max} {biomarker.definition.unit}
+          Reference: {biomarker.range || (biomarker.definition.range_min != null ? `${biomarker.definition.range_min} – ${biomarker.definition.range_max}` : '—')} {biomarker.definition.unit}
         </p>
         <BiomarkerChart biomarker={biomarker} data={chartData} height={250} />
       </div>
@@ -101,7 +101,7 @@ export function ExpandedBiomarkerDetails({
                 key={reading.date}
                 className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs"
               >
-                <span className="text-muted-foreground">{reading.date}</span>
+                <span className="text-muted-foreground">{formatDate(reading.date)}</span>
                 <span className="font-semibold text-foreground">
                   {reading.value} {biomarker.definition.unit}
                 </span>

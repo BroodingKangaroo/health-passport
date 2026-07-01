@@ -21,7 +21,7 @@ from app.db.models import (
     Attachment as AttachmentModel,
 )
 from app.db.seed import DEFAULT_PATIENT_ID
-from app.api._format import to_display_datetime
+
 
 router = APIRouter()
 
@@ -37,7 +37,7 @@ def _events_from_db(db: Session):
         MedicalEvent(
             id=e.id,
             type=e.type,
-            date=to_display_datetime(e.date),
+            date=e.date.isoformat(),
             title=e.title,
             subtitle=e.subtitle or "",
             category=e.category or "",
@@ -103,7 +103,13 @@ def _biomarkers_from_db(db: Session):
 
         latest_reading, latest_date = readings_query[-1]
         history = [
-            Reading(date=to_display_datetime(date), value=r.value, status=r.status)
+            Reading(
+                date=date.isoformat(), value=r.value, status=r.status,
+                original_name=r.original_name or "",
+                original_value=r.original_value or "",
+                original_unit=r.original_unit or "",
+                original_range=r.original_range or "",
+            )
             for r, date in readings_query[:-1]
         ]
 
@@ -119,9 +125,14 @@ def _biomarkers_from_db(db: Session):
                 unit=defn.unit,
             ),
             value=latest_reading.value,
-            date=to_display_datetime(latest_date),
+            date=latest_date.isoformat(),
             status=latest_reading.status,
             history=history,
+            range=latest_reading.original_range or (f"{defn.range_min}-{defn.range_max}" if defn.range_min is not None else ""),
+            original_name=latest_reading.original_name or "",
+            original_value=latest_reading.original_value or "",
+            original_unit=latest_reading.original_unit or "",
+            original_range=latest_reading.original_range or "",
         ))
     return results
 
@@ -188,7 +199,7 @@ async def get_biomarker_detail(biomarker_id: str, db: Session = Depends(get_db))
 
     latest_reading, latest_date = readings_query[-1]
     history = [
-        Reading(date=to_display_datetime(date), value=r.value, status=r.status)
+        Reading(date=date.isoformat(), value=r.value, status=r.status)
         for r, date in readings_query[:-1]
     ]
     return BiomarkerResult(
@@ -203,9 +214,14 @@ async def get_biomarker_detail(biomarker_id: str, db: Session = Depends(get_db))
             unit=defn.unit,
         ),
         value=latest_reading.value,
-        date=to_display_datetime(latest_date),
+        date=latest_date.isoformat(),
         status=latest_reading.status,
         history=history,
+        range=latest_reading.original_range or (f"{defn.range_min}-{defn.range_max}" if defn.range_min is not None else ""),
+        original_name=latest_reading.original_name or "",
+        original_value=latest_reading.original_value or "",
+        original_unit=latest_reading.original_unit or "",
+        original_range=latest_reading.original_range or "",
     )
 
 

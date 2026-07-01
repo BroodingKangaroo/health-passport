@@ -6,14 +6,32 @@ import { Plus, X, Pill, CheckCircle, Activity } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/shared/Field'
-import type { Prescription, Recommendation } from '@/lib/types'
+import type { Prescription, Recommendation, ExtractedVisitData } from '@/lib/types'
 
-export function DoctorVisitForm({ onDataChange }: { onDataChange?: (data: any) => void }) {
-  const [diagnosis, setDiagnosis] = useState('')
-  const [chiefComplaint, setChiefComplaint] = useState('')
-  const [objectiveFindings, setObjectiveFindings] = useState('')
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([])
+export function DoctorVisitForm({
+  initialData,
+  onDataChange,
+}: {
+  initialData?: ExtractedVisitData | null
+  onDataChange?: (data: any) => void
+}) {
+  const [diagnosis, setDiagnosis] = useState(initialData?.diagnosis ?? '')
+  const [chiefComplaint, setChiefComplaint] = useState(initialData?.chief_complaint ?? '')
+  const [objectiveFindings, setObjectiveFindings] = useState(initialData?.objective_findings ?? '')
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>(
+    initialData?.prescriptions?.map((p, i) => ({
+      id: `rx-${Date.now()}-${i}`,
+      name: p.name,
+      dosage: p.dosage,
+      instructions: p.instructions,
+    })) ?? [],
+  )
+  const [recommendations, setRecommendations] = useState<Recommendation[]>(
+    initialData?.recommendations?.map((r, i) => ({
+      id: `rec-${Date.now()}-${i}`,
+      text: r,
+    })) ?? [],
+  )
 
   useEffect(() => {
     onDataChange?.({ diagnosis, chiefComplaint, objectiveFindings, prescriptions, recommendations })

@@ -18,9 +18,8 @@ from app.db.models import (
     BiomarkerDefinition as BiomarkerDefinitionModel,
     BiomarkerReading,
 )
-from app.mock_db import CATEGORY_GROUPING
 from app.db.seed import DEFAULT_PATIENT_ID
-from app.api._format import to_display_datetime, short_date_label, flowsheet_date_header
+from app.api._format import short_date_label, flowsheet_date_header
 
 router = APIRouter()
 
@@ -63,31 +62,57 @@ def _build_flowsheet(db: Session):
         )
         biomarker_readings_map[bt.id] = {r.biomarker_id: r for r in readings}
 
+    all_def_ids = set()
+    for readings in biomarker_readings_map.values():
+        all_def_ids.update(readings.keys())
+
+    cat_rows: dict[str, list[MatrixRow]] = {}
+    for def_id in all_def_ids:
+        defn = defn_map.get(def_id)
+        if not defn:
+            continue
+        cat = defn.category or "General"
+        cells = []
+        for bt in blood_tests:
+            reading = biomarker_readings_map.get(bt.id, {}).get(def_id)
+            if reading is not None:
+                cells.append(MatrixCell(
+                    value=str(reading.value),
+                    status=reading.status,
+                ))
+            else:
+                cells.append(MatrixCell(value="—", status="normal"))
+        first_reading = next(
+            (bt_readings.get(def_id) for bt_readings in biomarker_readings_map.values() if def_id in bt_readings),
+            None,
+        )
+        original_name = first_reading.original_name if first_reading and first_reading.original_name else defn.name_ru
+        original_range = first_reading.original_range if first_reading and first_reading.original_range else ""
+        row_range = original_range or (f"{defn.range_min} – {defn.range_max} {defn.unit}" if defn.range_min is not None else "")
+        cat_rows.setdefault(cat, []).append(MatrixRow(
+            id=def_id,
+            name=defn.name_en,
+            original=original_name,
+            range=row_range,
+            cells=cells,
+        ))
+
+    seeded_order = [
+        "Complete Blood Count",
+        "Comprehensive Metabolic Panel",
+        "Lipid Panel",
+        "Iron Panel",
+        "Thyroid Panel",
+        "Vitamins",
+    ]
     matrix = []
-    for cat_name, def_ids in CATEGORY_GROUPING.items():
-        rows = []
-        for def_id in def_ids:
-            defn = defn_map.get(def_id)
-            if not defn:
-                continue
-            cells = []
-            for bt in blood_tests:
-                reading = biomarker_readings_map.get(bt.id, {}).get(def_id)
-                if reading is not None:
-                    cells.append(MatrixCell(
-                        value=str(reading.value),
-                        status=reading.status,
-                    ))
-                else:
-                    cells.append(MatrixCell(value="—", status="normal"))
-            rows.append(MatrixRow(
-                id=def_id,
-                name=defn.name_en,
-                original=defn.name_ru,
-                range=f"{defn.range_min} – {defn.range_max} {defn.unit}",
-                cells=cells,
-            ))
-        matrix.append(MatrixCategory(category=cat_name, rows=rows))
+    for cat in seeded_order:
+        if cat in cat_rows:
+            rows = sorted(cat_rows.pop(cat), key=lambda r: r.name.lower())
+            matrix.append(MatrixCategory(category=cat, rows=rows))
+    for cat in sorted(cat_rows):
+        rows = sorted(cat_rows[cat], key=lambda r: r.name.lower())
+        matrix.append(MatrixCategory(category=cat, rows=rows))
 
     biomarkers = []
     for bt in blood_tests:
@@ -109,8 +134,13 @@ def _build_flowsheet(db: Session):
                     unit=defn.unit,
                 ),
                 value=reading.value,
-                date=to_display_datetime(bt.date),
+                date=bt.date.isoformat(),
                 status=reading.status,
+                range=reading.original_range or (f"{defn.range_min}-{defn.range_max}" if defn.range_min is not None else ""),
+                original_name=reading.original_name or "",
+                original_value=reading.original_value or "",
+                original_unit=reading.original_unit or "",
+                original_range=reading.original_range or "",
             ))
 
     return date_headers, matrix, biomarkers

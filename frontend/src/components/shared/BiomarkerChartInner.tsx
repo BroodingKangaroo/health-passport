@@ -29,8 +29,9 @@ export default function BiomarkerChartInner({
 }: BiomarkerChartProps) {
   const data = dataProp ?? biomarker.history ?? []
   const values = data.map((d) => d.value)
-  const dataMax = Math.max(...values, biomarker.definition.range_max)
-  const yMax = Math.min(dataMax, biomarker.definition.range_max * 1.4)
+  const rm = biomarker.definition.range_max
+  const dataMax = rm != null ? Math.max(...values, rm) : (values.length > 0 ? Math.max(...values) : 0)
+  const yMax = rm != null ? Math.min(dataMax, rm * 1.4) : dataMax * 1.2
 
   return (
     <div className="w-full" style={{ height }}>
@@ -44,12 +45,14 @@ export default function BiomarkerChartInner({
             stroke="#d4d4d8"
             vertical={false}
           />
-          <ReferenceArea
-            y1={biomarker.definition.range_min}
-            y2={biomarker.definition.range_max}
-            fill="#22c55e"
-            fillOpacity={0.06}
-          />
+          {biomarker.definition.range_min != null && biomarker.definition.range_max != null && (
+            <ReferenceArea
+              y1={biomarker.definition.range_min}
+              y2={biomarker.definition.range_max}
+              fill="#22c55e"
+              fillOpacity={0.06}
+            />
+          )}
           <XAxis
             dataKey="date"
             tickLine={false}
@@ -93,10 +96,10 @@ export default function BiomarkerChartInner({
             labelFormatter={(label: any) => {
               const { label: mainLabel, sub } = splitDateLabel(String(label))
               return sub ? (
-                <div>
-                  <div>{mainLabel}</div>
-                  <div style={{ fontSize: '0.75em', color: '#a1a1aa' }}>{sub}</div>
-                </div>
+                <>
+                  <span>{mainLabel}</span>
+                  <span style={{ fontSize: '0.75em', color: '#a1a1aa' }}> — {sub}</span>
+                </>
               ) : (
                 mainLabel
               )

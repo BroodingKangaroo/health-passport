@@ -147,8 +147,8 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
                     <Sparkline
                       id={row.id}
                       history={history}
-                      refMin={bioResults[0]?.definition.range_min}
-                      refMax={bioResults[0]?.definition.range_max}
+                      refMin={bioResults[0]?.definition.range_min ?? undefined}
+                      refMax={bioResults[0]?.definition.range_max ?? undefined}
                     />
                     {row.cells.map((cell, i) => (
                       <Cell key={i} cell={cell} />
@@ -168,7 +168,9 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
 
           {filtered.length === 0 && (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              No biomarkers match &ldquo;{query}&rdquo;.
+              {query
+                ? `No biomarkers match \u201c${query}\u201d.`
+                : 'No biomarkers recorded for this entry.'}
             </p>
           )}
         </div>

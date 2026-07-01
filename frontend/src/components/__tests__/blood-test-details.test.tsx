@@ -33,6 +33,17 @@ const eventNoAttachments: MedicalEvent = {
 
 const emptyBiomarkers: BiomarkerResult[] = []
 
+const longLabName = 'Very Long Laboratory Name — Comprehensive Diagnostic Medical Testing Services Limited'
+
+const eventWithLongLabName: MedicalEvent = {
+  id: 'test-event',
+  date: 'Jan 15, 2027',
+  type: 'blood_test' as const,
+  title: 'Test Panel',
+  clinic: longLabName,
+  attachments: [],
+}
+
 describe('BloodTestDetails', () => {
   it('renders DocumentViewer with the active attachment url', () => {
     render(<BloodTestDetails event={baseEvent} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} />)
@@ -63,5 +74,21 @@ describe('BloodTestDetails', () => {
     fireEvent.click(documentsTab)
 
     expect(screen.getByText('No documents available for this event.')).toBeDefined()
+  })
+
+  it('keeps search input on same row and shows full lab name on hover when lab name is long', () => {
+    render(<BloodTestDetails event={eventWithLongLabName} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} />)
+
+    const searchInput = screen.getByPlaceholderText('Search biomarkers...')
+
+    const headerContainer = searchInput.closest('.flex-nowrap')
+    expect(headerContainer).toBeTruthy()
+
+    const searchWrapper = headerContainer?.querySelector('.shrink-0')
+    expect(searchWrapper).toBeTruthy()
+
+    const subtitle = screen.getByText((content) => content.includes(longLabName))
+    expect(subtitle.className).toContain('truncate')
+    expect(subtitle.getAttribute('title')).toBe(`Jan 15, 2027 · ${longLabName}`)
   })
 })

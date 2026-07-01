@@ -25,8 +25,8 @@ class BiomarkerDefinition(Base):
     name_en = Column(String, nullable=False)
     name_ru = Column(String, nullable=False)
     category = Column(String, nullable=False)
-    range_min = Column(Float, nullable=False)
-    range_max = Column(Float, nullable=False)
+    range_min = Column(Float, nullable=True)
+    range_max = Column(Float, nullable=True)
     unit = Column(String, nullable=False)
 
     readings = relationship("BiomarkerReading", back_populates="definition")
@@ -61,6 +61,10 @@ class BiomarkerReading(Base):
     biomarker_id = Column(String, ForeignKey("biomarker_definitions.id"), nullable=False)
     value = Column(Float, nullable=False)
     status = Column(String, nullable=False)
+    original_name = Column(String, nullable=True)
+    original_value = Column(String, nullable=True)
+    original_unit = Column(String, nullable=True)
+    original_range = Column(String, nullable=True)
 
     entry = relationship("MedicalEntry", back_populates="biomarker_readings")
     definition = relationship("BiomarkerDefinition", back_populates="readings")

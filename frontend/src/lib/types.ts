@@ -15,8 +15,8 @@ export interface BiomarkerDefinition {
   name_en: string
   name_ru: string
   unit: string
-  range_min: number
-  range_max: number
+  range_min: number | null
+  range_max: number | null
   category: string
 }
 
@@ -24,6 +24,10 @@ export interface Reading {
   date: string
   value: number
   status: Status
+  original_name?: string
+  original_value?: string
+  original_unit?: string
+  original_range?: string
 }
 
 export interface BiomarkerResult {
@@ -33,6 +37,11 @@ export interface BiomarkerResult {
   date: string
   status: Status
   history?: Reading[]
+  range?: string
+  original_name?: string
+  original_value?: string
+  original_unit?: string
+  original_range?: string
 }
 
 /* ----- Events ----- */
@@ -144,6 +153,10 @@ export interface FormBiomarkerRow {
   value: string
   unit: string
   range: string
+  original_name?: string
+  original_value?: string
+  original_unit?: string
+  original_range?: string
 }
 
 export interface FormCategory {
@@ -162,6 +175,54 @@ export interface Prescription {
 export interface Recommendation {
   id: string
   text: string
+}
+
+/* ----- AI Extraction Types (two-pass: Standardized output) ----- */
+export interface StandardizedBiomarker {
+  raw_name: string
+  raw_value: string
+  raw_unit: string
+  raw_range_string: string
+  standard_name_en: string
+  standard_value: number
+  standard_unit: string
+  standard_range_min: number | null
+  standard_range_max: number | null
+  status: string
+  category: string
+}
+
+export interface ExtractedPrescription {
+  name: string
+  dosage: string
+  instructions: string
+}
+
+export interface ExtractedVisitData {
+  diagnosis: string
+  chief_complaint: string
+  objective_findings: string
+  prescriptions: ExtractedPrescription[]
+  recommendations: string[]
+}
+
+export interface ExtractedImagingData {
+  modality: string
+  findings: string
+  conclusion: string
+}
+
+export interface StandardizedMedicalRecord {
+  entry_type: 'blood_test' | 'doctor_visit' | 'imaging' | 'unknown'
+  date?: string | null
+  time?: string | null
+  clinic?: string | null
+  provider?: string | null
+  title?: string | null
+  notes?: string | null
+  biomarkers?: StandardizedBiomarker[] | null
+  visit_data?: ExtractedVisitData | null
+  imaging_data?: ExtractedImagingData | null
 }
 
 /* ----- API Response Types ----- */

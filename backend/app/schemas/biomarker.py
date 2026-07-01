@@ -6,6 +6,10 @@ class Reading(BaseModel):
     date: str
     value: float
     status: str
+    original_name: Optional[str] = None
+    original_value: Optional[str] = None
+    original_unit: Optional[str] = None
+    original_range: Optional[str] = None
 
 
 class BiomarkerDefinition(BaseModel):
@@ -13,8 +17,8 @@ class BiomarkerDefinition(BaseModel):
     name_en: str
     name_ru: str
     category: str
-    range_min: float
-    range_max: float
+    range_min: Optional[float] = None
+    range_max: Optional[float] = None
     unit: str
 
 
@@ -23,8 +27,23 @@ class BiomarkerResult(BaseModel):
     definition: BiomarkerDefinition
     value: float
     date: str
-    status: str  # 'normal' | 'low' | 'high'
+    status: str
     history: list[Reading] = []
+    range: str = ""
+    original_name: Optional[str] = None
+    original_value: Optional[str] = None
+    original_unit: Optional[str] = None
+    original_range: Optional[str] = None
+
+
+class BiomarkerDefinitionResponse(BaseModel):
+    id: str
+    name_en: str
+    name_ru: str
+    category: str
+    unit: str
+    range_min: Optional[float] = None
+    range_max: Optional[float] = None
 
 
 class MatrixCell(BaseModel):

@@ -66,7 +66,7 @@ class TestSaveBloodTest:
         events = timeline.json()["events"]
         saved = [e for e in events if e["id"] == entry_id]
         assert len(saved) == 1
-        assert saved[0]["date"] == "Nov 15, 2026"
+        assert saved[0]["date"] == "2026-11-15T00:00:00"
         assert saved[0]["clinic"] == "Test Lab"
 
     async def test_saved_blood_test_appears_in_flowsheet(self, client):

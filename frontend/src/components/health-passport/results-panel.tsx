@@ -7,7 +7,7 @@ import {
   ChevronUp,
 } from 'lucide-react'
 
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { StatusBadge } from '@/components/shared/StatusBadge'
@@ -49,16 +49,16 @@ export function ResultsPanel({
 
   return (
     <Card className="overflow-hidden border-border">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
-        <div className="leading-tight">
+      <div className="flex flex-nowrap items-center justify-between gap-3 border-b border-border p-4">
+        <div className="min-w-0 leading-tight">
           <h2 className="text-base font-semibold text-foreground">
             Blood Test Results
           </h2>
-          <p className="text-xs text-muted-foreground">
-            {date} · {labName} · Translated from original Russian lab report
+          <p className="truncate text-xs text-muted-foreground" title={`${formatDate(date)} · ${labName}`}>
+            {formatDate(date)} · {labName}
           </p>
         </div>
-        <div className="relative w-full sm:w-64">
+        <div className="relative shrink-0 sm:w-64">
           <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
@@ -78,7 +78,7 @@ export function ResultsPanel({
             )}
           >
             <span>Biomarker (EN)</span>
-            <span>Original (RU)</span>
+            <span>Original Name</span>
             <span>Latest</span>
             <span>Unit</span>
             <span>Range</span>
@@ -106,7 +106,9 @@ export function ResultsPanel({
 
           {filtered.length === 0 && (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              No biomarkers match &ldquo;{query}&rdquo;.
+              {query
+                ? `No biomarkers match \u201c${query}\u201d.`
+                : 'No biomarkers recorded for this entry.'}
             </p>
           )}
         </div>
@@ -142,12 +144,12 @@ function FlowRow({
           {biomarker.definition.name_en}
         </span>
         <span className="truncate text-xs text-muted-foreground/70">
-          {biomarker.definition.name_ru}
+          {biomarker.original_name || biomarker.definition.name_ru}
         </span>
         <span className="font-medium text-foreground">{biomarker.value}</span>
         <span className="text-muted-foreground">{biomarker.definition.unit}</span>
         <span className="text-muted-foreground">
-          {biomarker.definition.range_min} – {biomarker.definition.range_max}
+          {biomarker.range || (biomarker.definition.range_min != null ? `${biomarker.definition.range_min} – ${biomarker.definition.range_max}` : '—')}
         </span>
         <span>
           <StatusBadge status={biomarker.status} />

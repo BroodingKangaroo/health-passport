@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { useSearchParams, notFound } from 'next/navigation'
 import { ArrowDown, Sparkles, BookOpen } from 'lucide-react'
 
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { BiomarkerChart } from '@/components/shared/BiomarkerChart'
@@ -49,7 +49,7 @@ export function BiomarkerDetails() {
             <span className="text-muted-foreground/70">/ {biomarker.definition.name_ru}</span>
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Reference range: {biomarker.definition.range_min} – {biomarker.definition.range_max} {biomarker.definition.unit}
+            Reference range: {biomarker.range || (biomarker.definition.range_min != null ? `${biomarker.definition.range_min} – ${biomarker.definition.range_max}` : '—')} {biomarker.definition.unit}
           </p>
         </div>
         <div
@@ -87,8 +87,7 @@ export function BiomarkerDetails() {
               All-Time Dynamics
             </h2>
             <p className="mb-3 text-xs text-muted-foreground">
-              Historical trend · reference band {biomarker.definition.range_min} –{' '}
-              {biomarker.definition.range_max} {biomarker.definition.unit}
+              Historical trend · reference band {biomarker.range || (biomarker.definition.range_min != null ? `${biomarker.definition.range_min} – ${biomarker.definition.range_max}` : '—')} {biomarker.definition.unit}
             </p>
             <BiomarkerChart biomarker={biomarker} data={chartData} height={350} />
           </Card>
@@ -111,7 +110,7 @@ export function BiomarkerDetails() {
                     key={entry.date}
                     className="grid grid-cols-[1fr_1fr_1fr] items-center gap-x-3 border-b border-border px-4 py-3 text-sm transition-colors last:border-0 hover:bg-muted/40"
                   >
-                    <span className="text-muted-foreground">{entry.date}</span>
+                    <span className="text-muted-foreground">{formatDate(entry.date)}</span>
                     <span
                       className={cn(
                         'font-semibold tabular-nums',
@@ -146,7 +145,7 @@ export function BiomarkerDetails() {
             <p className="text-sm leading-relaxed text-muted-foreground">
               {biomarker.definition.name_en} ({biomarker.definition.name_ru}) is measured at{' '}
               {biomarker.value} {biomarker.definition.unit}. The standard reference range
-              is {biomarker.definition.range_min} – {biomarker.definition.range_max} {biomarker.definition.unit}.
+              is {biomarker.range || (biomarker.definition.range_min != null ? `${biomarker.definition.range_min} – ${biomarker.definition.range_max}` : '—')} {biomarker.definition.unit}.
             </p>
           </Card>
 

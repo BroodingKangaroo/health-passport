@@ -2,17 +2,19 @@ import json
 import os
 import re
 import uuid
+import hashlib
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Form, UploadFile, File, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from app.schemas import SaveEntryResponse
 from app.db.session import get_db
 from app.db.models import (
     MedicalEntry as MedicalEntryModel,
+    BiomarkerDefinition as BiomarkerDefinitionModel,
     BiomarkerReading,
     Attachment as AttachmentModel,
     VisitData as VisitDataModel,
@@ -24,10 +26,29 @@ from app.api._format import to_display_datetime
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
 
+def _compute_status_from_range(value: float, range_str: str) -> str:
+    rng = range_str.strip()
+    if not rng:
+        return "normal"
+    lt = re.match(r"<\s*([\d.]+)", rng)
+    if lt:
+        return "normal" if value <= float(lt.group(1)) else "high"
+    gt = re.match(r">\s*([\d.]+)", rng)
+    if gt:
+        return "normal" if value >= float(gt.group(1)) else "low"
+    m = re.match(r"([\d.]+)\s*[–-]?\s*([\d.]+)", rng)
+    if m:
+        lo, hi = float(m.group(1)), float(m.group(2))
+        return _status(value, lo, hi)
+    return "normal"
+
+
 router = APIRouter()
 
 
 def _normalize_date(date_str: str, time_str: str = "") -> datetime:
+    if not date_str:
+        date_str = datetime.now().strftime("%Y-%m-%d")
     if time_str:
         dt = datetime.fromisoformat(f"{date_str}T{time_str}")
     else:
@@ -104,7 +125,6 @@ async def save_entry(
         db.flush()
 
     if biomarkers and biomarkers != "[]":
-        parsed_biomarkers: dict[str, dict] = {}
         categories_data = json.loads(biomarkers)
         for cat in categories_data:
             for row in cat.get("rows", []):
@@ -117,19 +137,41 @@ async def save_entry(
                 except ValueError:
                     continue
 
-                derived_status = "normal"
-                rng = row.get("range", "").strip()
-                if rng:
-                    m = re.match(r"([\d.]+)\s*[–-]?\s*([\d.]+)", rng)
-                    if m:
-                        lo, hi = float(m.group(1)), float(m.group(2))
-                        derived_status = _status(float_value, lo, hi)
+                defn = (
+                    db.query(BiomarkerDefinitionModel)
+                    .filter(
+                        or_(
+                            BiomarkerDefinitionModel.name_en.ilike(name),
+                            BiomarkerDefinitionModel.name_ru.ilike(name),
+                        )
+                    )
+                    .first()
+                )
+                if not defn:
+                    defn_id = f"auto-{hashlib.md5(name.lower().encode()).hexdigest()[:8]}"
+                    defn = BiomarkerDefinitionModel(
+                        id=defn_id,
+                        name_en=name,
+                        name_ru=name,
+                        category=cat.get("name", "General"),
+                        range_min=None,
+                        range_max=None,
+                        unit=row.get("unit", ""),
+                    )
+                    db.add(defn)
+                    db.flush()
+
+                derived_status = _compute_status_from_range(float_value, row.get("range", ""))
 
                 db.add(BiomarkerReading(
                     entry_id=entry_id,
-                    biomarker_id=row["id"],
+                    biomarker_id=defn.id,
                     value=float_value,
                     status=derived_status,
+                    original_name=row.get("original_name"),
+                    original_value=row.get("original_value"),
+                    original_unit=row.get("original_unit"),
+                    original_range=row.get("original_range"),
                 ))
         db.flush()
 

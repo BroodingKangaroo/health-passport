@@ -5,15 +5,27 @@ import { Plus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { BiomarkerCombobox } from './biomarker-combobox'
+import { RangeInput } from './range-input'
 import type { FormCategory, FormBiomarkerRow } from '@/lib/types'
+
+function parseRange(range: string): { lo?: number; hi?: number } {
+  const lt = range.match(/<\s*([\d.]+)/)
+  if (lt) return { hi: Number.parseFloat(lt[1]) }
+  const gt = range.match(/>\s*([\d.]+)/)
+  if (gt) return { lo: Number.parseFloat(gt[1]) }
+  const m = range.match(/(-?\d+(?:\.\d+)?)\s*[-–]?\s*(-?\d+(?:\.\d+)?)/)
+  if (m) return { lo: Number.parseFloat(m[1]), hi: Number.parseFloat(m[2]) }
+  return {}
+}
 
 function isOutOfRange(value: string, range: string) {
   const v = Number.parseFloat(value)
-  const m = range.match(/(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)/)
-  if (Number.isNaN(v) || !m) return false
-  const lo = Number.parseFloat(m[1])
-  const hi = Number.parseFloat(m[2])
-  return v < lo || v > hi
+  if (Number.isNaN(v)) return false
+  const { lo, hi } = parseRange(range)
+  if (lo !== undefined && v < lo) return true
+  if (hi !== undefined && v > hi) return true
+  return false
 }
 
 export function LabResultForm({
@@ -73,12 +85,12 @@ export function LabResultForm({
                     key={row.id}
                     className="grid grid-cols-[1.4fr_0.9fr_0.7fr_1fr_36px] items-center gap-x-2 border-b border-border px-3 py-2 last:border-b-0"
                   >
-                    <Input
+                    <BiomarkerCombobox
                       value={row.name}
-                      placeholder="Name"
-                      onChange={(e) =>
-                        updateRow(cat.id, row.id, 'name', e.target.value)
-                      }
+                      originalName={row.original_name}
+                      onNameChange={(name) => updateRow(cat.id, row.id, 'name', name)}
+                      onUnitChange={(unit) => updateRow(cat.id, row.id, 'unit', unit)}
+                      onRangeChange={(range) => updateRow(cat.id, row.id, 'range', range)}
                     />
                     <div className="relative">
                       <Input
@@ -104,12 +116,9 @@ export function LabResultForm({
                         updateRow(cat.id, row.id, 'unit', e.target.value)
                       }
                     />
-                    <Input
+                    <RangeInput
                       value={row.range}
-                      placeholder="—"
-                      onChange={(e) =>
-                        updateRow(cat.id, row.id, 'range', e.target.value)
-                      }
+                      onChange={(v) => updateRow(cat.id, row.id, 'range', v)}
                     />
                     <button
                       aria-label={`Remove ${row.name || 'biomarker'}`}

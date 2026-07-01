@@ -2,7 +2,9 @@ import type {
   TimelineResponse,
   FlowsheetResponse,
   BiomarkerResult,
+  BiomarkerDefinition,
   SaveEntryResponse,
+  StandardizedMedicalRecord,
 } from '@/lib/types'
 
 const API_BASE = 'http://localhost:8000/api'
@@ -39,6 +41,20 @@ export async function fetchBiomarkerDetail(id: string): Promise<BiomarkerResult>
 export async function fetchEntriesByDate(date: string, type?: string): Promise<{ date: string; count: number }> {
   const params = `date=${date}${type ? `&type=${type}` : ''}`
   return apiGet<{ date: string; count: number }>(`/entries/by-date?${params}`)
+}
+
+/* ----- Biomarker Definitions ----- */
+export async function fetchBiomarkerDefinitions(): Promise<BiomarkerDefinition[]> {
+  return apiGet<BiomarkerDefinition[]>('/biomarkers/definitions')
+}
+
+/* ----- AI Extraction ----- */
+export async function extractMedicalData(file: File): Promise<StandardizedMedicalRecord> {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await fetch(`${API_BASE}/extract`, { method: 'POST', body: fd })
+  if (!res.ok) throw new ApiError(res.status, 'POST /extract failed')
+  return res.json()
 }
 
 /* ----- Save Entry ----- */
