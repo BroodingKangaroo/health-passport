@@ -70,7 +70,9 @@ def ocr_document(bytes_data: bytes, client: Mistral) -> Optional[str]:
 
     markdown = "\n\n".join(page.markdown for page in ocr_response.pages)
     markdown = re.sub(r'!\[.*?\]\(.*?\)', '', markdown)
-    return markdown.strip()
+    markdown = markdown.strip()
+    logger.info("OCR returned %d pages, %d chars", len(ocr_response.pages), len(markdown))
+    return markdown
 
 
 def _parse_llm_response(result: object, markdown: str) -> RawMedicalRecord:

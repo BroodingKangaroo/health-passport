@@ -60,6 +60,7 @@ async def extract_medical_data(
     )
 
     client = _get_client()
+    logger.info("File: %s, size: %d bytes, type: %s", file.filename, len(bytes_data), ext)
 
     async def event_stream():
         error = None
@@ -71,7 +72,7 @@ async def extract_medical_data(
                 extractor.ocr_document, bytes_data, client
             )
             elapsed = time.perf_counter() - t0
-            logger.info("OCR took %.2fs", elapsed)
+            logger.info("OCR took %.2fs — %d chars", elapsed, len(markdown) if markdown else 0)
 
             if markdown is None:
                 yield _sse(
@@ -97,7 +98,8 @@ async def extract_medical_data(
             t0 = time.perf_counter()
             raw = await asyncio.to_thread(extractor.llm_extract, markdown, client)
             elapsed = time.perf_counter() - t0
-            logger.info("Extraction took %.2fs", elapsed)
+            bm_count = len(raw.biomarkers) if raw.biomarkers else 0
+            logger.info("Extraction took %.2fs — type: %s, biomarkers: %d", elapsed, raw.entry_type, bm_count)
 
             if raw.entry_type == "unknown":
                 yield _sse(
@@ -124,7 +126,8 @@ async def extract_medical_data(
                 matcher.match_and_convert, raw, definitions, client
             )
             elapsed = time.perf_counter() - t0
-            logger.info("Matching took %.2fs", elapsed)
+            std_count = len(result.biomarkers) if result.biomarkers else 0
+            logger.info("Matching took %.2fs — biomarkers: %d", elapsed, std_count)
 
             yield _sse("result", result.model_dump())
             return
