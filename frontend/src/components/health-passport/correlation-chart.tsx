@@ -117,8 +117,10 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
           (b.date === date ? { date: b.date, value: b.value, status: b.status } : undefined)
         if (reading) {
           const parsed = (b.range || '').match(/([\d.]+)\s*[-–]?\s*([\d.]+)/)
-          const refMin = parsed ? Number.parseFloat(parsed[1]) : b.definition.range_min
-          const refMax = parsed ? Number.parseFloat(parsed[2]) : b.definition.range_max
+          const defMin = b.definition.range_min
+          const defMax = b.definition.range_max
+          const refMin = parsed ? Number.parseFloat(parsed[1]) : (defMin != null ? defMin : 0)
+          const refMax = parsed ? Number.parseFloat(parsed[2]) : (defMax != null ? defMax : 1)
           const range = refMax - refMin || 1
           entry[`norm_${b.id}`] = ((reading.value - refMin) / range) * 100
           entry[`raw_${b.id}`] = reading.value

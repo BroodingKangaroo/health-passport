@@ -10,6 +10,16 @@ import { Input } from '@/components/ui/input'
 import { Sparkline } from '@/components/shared/Sparkline'
 import type { DateHeader, MatrixCategory, MatrixCell, BiomarkerResult, Status } from '@/lib/types'
 
+function parseRefRange(range: string): { refMin?: number; refMax?: number } {
+  const lt = range.match(/<\s*([\d.]+)/)
+  if (lt) return { refMax: Number.parseFloat(lt[1]) }
+  const gt = range.match(/>\s*([\d.]+)/)
+  if (gt) return { refMin: Number.parseFloat(gt[1]) }
+  const m = range.match(/([\d.]+)\s*[-–]?\s*([\d.]+)/)
+  if (m) return { refMin: Number.parseFloat(m[1]), refMax: Number.parseFloat(m[2]) }
+  return {}
+}
+
 const statusText: Record<Status, string> = {
   normal: 'text-foreground',
   low: 'text-status-low',
@@ -118,7 +128,7 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
               </div>
               {cat.rows.map((row) => {
                 const bioResults = biomarkers.filter((b) => b.definition.id === row.id)
-                const history = bioResults.map((b) => ({ value: b.value }))
+                const history = bioResults.map((b) => ({ value: b.value, status: b.status }))
                 const hasBio = bioResults.length > 0
                 return (
                   <div
@@ -147,8 +157,7 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
                     <Sparkline
                       id={row.id}
                       history={history}
-                      refMin={bioResults[0]?.definition.range_min ?? undefined}
-                      refMax={bioResults[0]?.definition.range_max ?? undefined}
+                      {...parseRefRange(row.range)}
                     />
                     {row.cells.map((cell, i) => (
                       <Cell key={i} cell={cell} />

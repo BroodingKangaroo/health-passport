@@ -4,7 +4,7 @@ import { ResponsiveContainer, LineChart, Line, YAxis } from 'recharts'
 
 interface SparklineProps {
   id: string
-  history: { value: number }[]
+  history: { value: number; status?: string }[]
   refMin?: number
   refMax?: number
 }
@@ -16,16 +16,18 @@ export function Sparkline({ id, history, refMin, refMax }: SparklineProps) {
   const dataMax = Math.max(...values)
   const dataMin = Math.min(...values)
   const range = dataMax - dataMin || 1
-  const hasRef = refMin !== undefined && refMax !== undefined
-  const hasHigh = hasRef && dataMax > refMax
-  const hasLow = hasRef && dataMin < refMin
+  const hasRef = refMin !== undefined || refMax !== undefined
+  const safeRefMin = refMin !== undefined ? refMin : -Infinity
+  const safeRefMax = refMax !== undefined ? refMax : Infinity
+  const hasHigh = dataMax > safeRefMax
+  const hasLow = dataMin < safeRefMin
   const isCompletelyNormal = hasRef && !hasHigh && !hasLow
 
   const upperOffset = hasHigh
-    ? Math.max(0, Math.min(1, (dataMax - refMax) / range))
+    ? Math.max(0, Math.min(1, (dataMax - safeRefMax) / range))
     : 0
   const lowerOffset = hasLow
-    ? Math.max(0, Math.min(1, (dataMax - refMin) / range))
+    ? Math.max(0, Math.min(1, (dataMax - safeRefMin) / range))
     : 1
 
   return (
@@ -68,23 +70,40 @@ export function Sparkline({ id, history, refMin, refMax }: SparklineProps) {
             isAnimationActive={false}
             dot={
               hasRef
-                ? (props: { cx?: number; cy?: number; payload: { value: number; date: string } }) => {
-                    const isOut =
-                      props.payload.value > refMax ||
-                      props.payload.value < refMin
-                    if (isOut && props.cx != null && props.cy != null) {
-                      return (
-                        <circle
-                          key={props.payload.date}
-                          cx={props.cx}
-                          cy={props.cy}
-                          r={2.5}
-                          fill="#ef4444"
-                          stroke="none"
-                        />
-                      )
-                    }
-                    return null
+                ? (props: { cx?: number; cy?: number; payload: { value: number; status?: string } }) => {
+                    if (props.cx == null || props.cy == null) return null
+                    const isAbnormal = props.payload.status === 'high' || props.payload.status === 'low'
+                    const color = isAbnormal ? '#ef4444' : '#3b82f6'
+                    return (
+                      <circle
+                        key={`dot-${props.cx}-${props.cy}`}
+                        cx={props.cx}
+                        cy={props.cy}
+                        r={3}
+                        fill="#fff"
+                        stroke={color}
+                        strokeWidth={2}
+                      />
+                    )
+                  }
+                : false
+            }
+            activeDot={
+              hasRef
+                ? (props: { cx?: number; cy?: number; payload: { value: number; status?: string } }) => {
+                    if (props.cx == null || props.cy == null) return null
+                    const isAbnormal = props.payload.status === 'high' || props.payload.status === 'low'
+                    const color = isAbnormal ? '#ef4444' : '#3b82f6'
+                    return (
+                      <circle
+                        key={`active-${props.cx}-${props.cy}`}
+                        cx={props.cx}
+                        cy={props.cy}
+                        r={4}
+                        fill={color}
+                        stroke="none"
+                      />
+                    )
                   }
                 : false
             }
