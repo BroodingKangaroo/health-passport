@@ -145,7 +145,12 @@ export interface PrintCategory {
 
 /* ----- Form Types ----- */
 export type UploadState = 'idle' | 'scanning' | 'editor'
-export type ProgressStage = 'ocr_scanning' | 'extracting' | 'matching'
+export type ProgressStage = 'ocr_scanning' | 'extracting' | 'matching' | 'completed'
+export type ProgressEventPayload = {
+  stage: ProgressStage
+  markdown_chars?: number
+  biomarker_count?: number
+}
 export type EntryMode = 'ai' | 'manual'
 
 export interface FormBiomarkerRow {

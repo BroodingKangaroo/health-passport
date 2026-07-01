@@ -94,7 +94,7 @@ async def extract_medical_data(
                 return
 
             # Stage 2: LLM extraction
-            yield _sse("progress", {"stage": "extracting"})
+            yield _sse("progress", {"stage": "extracting", "markdown_chars": len(markdown)})
             t0 = time.perf_counter()
             raw = await asyncio.to_thread(extractor.llm_extract, markdown, client)
             elapsed = time.perf_counter() - t0
@@ -120,7 +120,7 @@ async def extract_medical_data(
                 return
 
             # Stage 3: Matching
-            yield _sse("progress", {"stage": "matching"})
+            yield _sse("progress", {"stage": "matching", "biomarker_count": bm_count})
             t0 = time.perf_counter()
             result = await asyncio.to_thread(
                 matcher.match_and_convert, raw, definitions, client

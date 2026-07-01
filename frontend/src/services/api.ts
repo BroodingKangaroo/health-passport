@@ -5,7 +5,7 @@ import type {
   BiomarkerDefinition,
   SaveEntryResponse,
   StandardizedMedicalRecord,
-  ProgressStage,
+  ProgressEventPayload,
 } from '@/lib/types'
 
 const API_BASE = 'http://localhost:8000/api'
@@ -52,7 +52,7 @@ export async function fetchBiomarkerDefinitions(): Promise<BiomarkerDefinition[]
 /* ----- AI Extraction (SSE stream) ----- */
 export async function extractMedicalData(
   file: File,
-  onProgress?: (stage: ProgressStage) => void,
+  onProgress?: (payload: ProgressEventPayload) => void,
 ): Promise<StandardizedMedicalRecord> {
   const fd = new FormData()
   fd.append('file', file)
@@ -82,7 +82,7 @@ export async function extractMedicalData(
       }
       if (eventType === 'progress') {
         const parsed = JSON.parse(data)
-        onProgress?.(parsed.stage as ProgressStage)
+        onProgress?.(parsed as ProgressEventPayload)
       } else if (eventType === 'result') {
         return JSON.parse(data) as StandardizedMedicalRecord
       } else if (eventType === 'error') {

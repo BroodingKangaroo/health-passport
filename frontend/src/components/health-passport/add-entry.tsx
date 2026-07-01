@@ -14,6 +14,7 @@ import {
   ChevronRight,
   ImagePlus,
   AlertCircle,
+  CheckCircle2,
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -32,6 +33,7 @@ import type {
   StandardizedMedicalRecord,
   StandardizedBiomarker,
   ProgressStage,
+  ProgressEventPayload,
 } from '@/lib/types'
 
 const DocumentViewer = dynamic(
@@ -51,6 +53,14 @@ const docPills = [
   { emoji: '📝', label: 'Doctor Notes' },
   { emoji: '🩻', label: 'MRI / Scans' },
 ]
+
+function estimateExtractionTime(chars: number): number {
+  return Math.max(5, chars * 0.006)
+}
+
+function estimateMatchingTime(biomarkers: number): number {
+  return biomarkers === 0 ? 5 : Math.max(15, biomarkers * 1.5)
+}
 
 function newRow(): FormBiomarkerRow {
   return {
@@ -112,6 +122,8 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
   const [progressStage, setProgressStage] = useState<ProgressStage>('ocr_scanning')
+  const [markdownChars, setMarkdownChars] = useState<number | null>(null)
+  const [biomarkerCount, setBiomarkerCount] = useState<number | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [prefillClinic, setPrefillClinic] = useState('')
@@ -122,6 +134,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     ocr_scanning: 1,
     extracting: 2,
     matching: 3,
+    completed: 4,
   }
   const totalSteps = 3
 
@@ -138,6 +151,10 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
       label: 'Standardizing results...',
       detail: 'Matching biomarkers against known definitions, normalizing units, and computing reference statuses.',
     },
+    completed: {
+      label: 'Done! Reviewing results...',
+      detail: 'AI extraction complete. Opening the editor for your review.',
+    },
   }
 
   const dateRef = useRef<HTMLInputElement>(null)
@@ -148,14 +165,55 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const notesRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const uploadFileRef = useRef<HTMLInputElement>(null)
+  const stageEntryTimeRef = useRef(0)
+  const stageEstimateRef = useRef(0)
+  const elapsedRef = useRef(0)
+  const extractionStartRef = useRef(0)
+  const stageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hasLeftOcrRef = useRef(false)
 
   const runExtraction = useCallback(async (file: File) => {
     setAiError(null)
     setUploadState('scanning')
     setProgressStage('ocr_scanning')
+    setMarkdownChars(null)
+    setBiomarkerCount(null)
     setElapsedSeconds(0)
+    stageEntryTimeRef.current = 0
+    stageEstimateRef.current = 0
+    elapsedRef.current = 0
+    extractionStartRef.current = performance.now()
+    if (stageTimeoutRef.current !== null) clearTimeout(stageTimeoutRef.current)
+    stageTimeoutRef.current = null
+    hasLeftOcrRef.current = false
     try {
-      const result = await extractMedicalData(file, setProgressStage)
+      const result = await extractMedicalData(file, (payload) => {
+        const now = elapsedRef.current
+        if (payload.markdown_chars != null) {
+          setMarkdownChars(payload.markdown_chars)
+          stageEntryTimeRef.current = now
+          const estExt = estimateExtractionTime(payload.markdown_chars)
+          const estBm = Math.round(payload.markdown_chars * 0.007)
+          const estMatch = estimateMatchingTime(estBm)
+          stageEstimateRef.current = Math.round(estExt + estMatch)
+        }
+        if (payload.biomarker_count != null) {
+          setBiomarkerCount(payload.biomarker_count)
+          stageEntryTimeRef.current = now
+          stageEstimateRef.current = Math.round(estimateMatchingTime(payload.biomarker_count))
+        }
+        if (stageTimeoutRef.current !== null) clearTimeout(stageTimeoutRef.current)
+        stageTimeoutRef.current = null
+        if (!hasLeftOcrRef.current && payload.stage !== 'ocr_scanning') {
+          hasLeftOcrRef.current = true
+          const took = performance.now() - extractionStartRef.current
+          if (took < 1200) {
+            stageTimeoutRef.current = setTimeout(() => setProgressStage(payload.stage), 1200 - took)
+            return
+          }
+        }
+        setProgressStage(payload.stage)
+      })
       setEntryMode('ai')
       setDocumentType(result.entry_type)
 
@@ -188,6 +246,8 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         setImagingFormData(null)
       }
 
+      setProgressStage('completed')
+      await new Promise((r) => setTimeout(r, 1500))
       setUploadState('editor')
     } catch (err: any) {
       const msg = err?.message || 'AI extraction failed'
@@ -233,10 +293,16 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   useEffect(() => {
     if (uploadState !== 'scanning') return
     const interval = setInterval(() => {
-      setElapsedSeconds((s) => s + 1)
+      setElapsedSeconds((s) => {
+        const n = s + 1
+        elapsedRef.current = n
+        return n
+      })
     }, 1000)
     return () => clearInterval(interval)
   }, [uploadState])
+
+
 
   function handleFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -330,6 +396,24 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   }
 
   if (uploadState === 'idle' || uploadState === 'scanning') {
+    let progressWidth: number
+    let remainingSeconds: number | null = null
+
+    if (progressStage === 'completed') {
+      progressWidth = 100
+      remainingSeconds = 0
+    } else if (progressStage === 'ocr_scanning') {
+      progressWidth = 2
+    } else if (progressStage === 'extracting' && markdownChars !== null) {
+      remainingSeconds = Math.max(0, stageEstimateRef.current - (elapsedSeconds - stageEntryTimeRef.current))
+      progressWidth = Math.min(90, (elapsedSeconds / (elapsedSeconds + remainingSeconds)) * 100)
+    } else if (progressStage === 'matching' && biomarkerCount !== null) {
+      remainingSeconds = Math.max(0, stageEstimateRef.current - (elapsedSeconds - stageEntryTimeRef.current))
+      progressWidth = Math.min(95, (elapsedSeconds / (elapsedSeconds + remainingSeconds)) * 100)
+    } else {
+      progressWidth = ((stageStep[progressStage] - 1) / totalSteps) * 100
+    }
+
     return (
       <div className="mx-auto max-w-3xl py-4">
         <div className="mb-6 text-center">
@@ -386,7 +470,22 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3 py-2">
-              <Loader2 className="size-10 animate-spin text-primary" />
+              <div className="relative size-10">
+                <div className={`absolute inset-0 transition-all duration-400 ease-out ${
+                  progressStage === 'completed' ? 'scale-50 opacity-0' : 'scale-100 opacity-100'
+                }`}>
+                  <Loader2 className="size-10 animate-spin text-primary" />
+                </div>
+                <div
+                  className={`absolute inset-0 flex items-center justify-center ${
+                    progressStage === 'completed'
+                      ? 'animate-[scale-in_0.5s_cubic-bezier(0.34,1.56,0.64,1)_forwards]'
+                      : 'scale-0 opacity-0'
+                  }`}
+                >
+                  <CheckCircle2 className="size-10 text-primary" />
+                </div>
+              </div>
               <p className="text-sm font-semibold text-foreground">
                 {stageInfo[progressStage].label}
               </p>
@@ -397,11 +496,15 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary/10">
                   <div
                     className="h-full rounded-full bg-primary transition-all duration-700 ease-out"
-                    style={{ width: `${((stageStep[progressStage] - 1) / totalSteps) * 100}%` }}
+                    style={{ width: `${progressWidth}%` }}
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Step {stageStep[progressStage]} of {totalSteps} · {elapsedSeconds}s elapsed
+                  {progressStage === 'completed'
+                    ? 'Complete!'
+                    : <>Step {stageStep[progressStage]} of {totalSteps}
+                      {remainingSeconds !== null ? <> · ~{remainingSeconds}s remaining</> : <> · estimating...</>}</>
+                  }
                 </p>
               </div>
             </div>
