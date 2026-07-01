@@ -11,11 +11,35 @@ from app.schemas.ai import (
 )
 
 
+def _parse_sse_result(body: str) -> dict:
+    """Extract the first 'result' event data from an SSE stream body."""
+    for part in body.split("\n\n"):
+        if not part:
+            continue
+        lines = part.split("\n")
+        event_type = ""
+        data_lines: list[str] = []
+        for line in lines:
+            if line.startswith("event: "):
+                event_type = line[7:]
+            elif line.startswith("data: "):
+                data_lines.append(line[6:])
+        if event_type == "result":
+            return json.loads("\n".join(data_lines))
+    msg = f"No result event found in SSE body:\n{body}"
+    raise AssertionError(msg)
+
+
 class TestExtractEndpoint:
     @patch("app.api.ai.matcher.match_and_convert")
-    @patch("app.api.ai.extractor.extract_raw")
-    async def test_extract_blood_test_success(self, mock_extract, mock_match, client, monkeypatch):
+    @patch("app.api.ai.extractor.llm_extract")
+    @patch("app.api.ai.extractor.ocr_document")
+    async def test_extract_blood_test_success(
+        self, mock_ocr, mock_llm, mock_match, client, monkeypatch
+    ):
         monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+
+        mock_ocr.return_value = "OCR markdown text"
 
         raw = RawMedicalRecord(
             entry_type="blood_test",
@@ -27,7 +51,7 @@ class TestExtractEndpoint:
                 RawBiomarker(name="Лейкоциты", value="6.5", unit="K/µL", raw_range_string="4.0-11.0", category="Общий анализ крови"),
             ],
         )
-        mock_extract.return_value = raw
+        mock_llm.return_value = raw
 
         std = StandardizedMedicalRecord(
             entry_type="blood_test",
@@ -57,7 +81,7 @@ class TestExtractEndpoint:
         )
 
         assert resp.status_code == 200
-        data = resp.json()
+        data = _parse_sse_result(resp.text)
         assert data["entry_type"] == "blood_test"
         assert data["date"] == "2026-06-15"
         assert data["clinic"] == "Invitro Lab"
@@ -72,9 +96,14 @@ class TestExtractEndpoint:
         assert data["biomarkers"][1]["standard_value"] == 6.5
 
     @patch("app.api.ai.matcher.match_and_convert")
-    @patch("app.api.ai.extractor.extract_raw")
-    async def test_extract_doctor_visit_success(self, mock_extract, mock_match, client, monkeypatch):
+    @patch("app.api.ai.extractor.llm_extract")
+    @patch("app.api.ai.extractor.ocr_document")
+    async def test_extract_doctor_visit_success(
+        self, mock_ocr, mock_llm, mock_match, client, monkeypatch
+    ):
         monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+
+        mock_ocr.return_value = "OCR markdown text"
 
         raw = RawMedicalRecord(
             entry_type="doctor_visit",
@@ -87,7 +116,7 @@ class TestExtractEndpoint:
                 objective_findings="BP 150/95, heart rate normal",
             ),
         )
-        mock_extract.return_value = raw
+        mock_llm.return_value = raw
 
         std = StandardizedMedicalRecord(
             entry_type="doctor_visit",
@@ -104,14 +133,19 @@ class TestExtractEndpoint:
         )
 
         assert resp.status_code == 200
-        data = resp.json()
+        data = _parse_sse_result(resp.text)
         assert data["entry_type"] == "doctor_visit"
         assert data["visit_data"]["diagnosis"] == "Hypertension"
 
     @patch("app.api.ai.matcher.match_and_convert")
-    @patch("app.api.ai.extractor.extract_raw")
-    async def test_extract_imaging_success(self, mock_extract, mock_match, client, monkeypatch):
+    @patch("app.api.ai.extractor.llm_extract")
+    @patch("app.api.ai.extractor.ocr_document")
+    async def test_extract_imaging_success(
+        self, mock_ocr, mock_llm, mock_match, client, monkeypatch
+    ):
         monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+
+        mock_ocr.return_value = "OCR markdown text"
 
         raw = RawMedicalRecord(
             entry_type="imaging",
@@ -124,7 +158,7 @@ class TestExtractEndpoint:
                 conclusion="Minor age-related changes, no acute pathology",
             ),
         )
-        mock_extract.return_value = raw
+        mock_llm.return_value = raw
 
         std = StandardizedMedicalRecord(
             entry_type="imaging",
@@ -141,7 +175,7 @@ class TestExtractEndpoint:
         )
 
         assert resp.status_code == 200
-        data = resp.json()
+        data = _parse_sse_result(resp.text)
         assert data["entry_type"] == "imaging"
         assert data["imaging_data"]["modality"] == "MRI"
         assert "L4-L5" in data["imaging_data"]["findings"]
@@ -170,24 +204,31 @@ class TestExtractEndpoint:
         data = resp.json()
         assert "Empty file" in data["detail"]
 
-    @patch("app.api.ai.extractor.extract_raw")
-    async def test_extract_ocr_failure(self, mock_extract, client, monkeypatch):
+    @patch("app.api.ai.extractor.ocr_document")
+    async def test_extract_ocr_failure(self, mock_ocr, client, monkeypatch):
         monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
-        mock_extract.side_effect = Exception("OCR service unavailable")
+        mock_ocr.side_effect = Exception("OCR service unavailable")
 
         resp = await client.post(
             "/api/extract",
             files={"file": ("lab.pdf", b"fake content", "application/pdf")},
         )
 
-        assert resp.status_code == 502
-        data = resp.json()
-        assert "OCR processing failed" in data["detail"]
+        assert resp.status_code == 200
+        for part in resp.text.split("\n\n"):
+            if "event: error" in part:
+                assert "OCR service unavailable" in part
+                return
+        assert False, "Expected error event in SSE stream"
 
-    @patch("app.api.ai.extractor.extract_raw")
-    async def test_extract_chat_fallback_on_parse_error(self, mock_extract, client, monkeypatch):
+    @patch("app.api.ai.extractor.llm_extract")
+    @patch("app.api.ai.extractor.ocr_document")
+    async def test_extract_chat_fallback_on_parse_error(
+        self, mock_ocr, mock_llm, client, monkeypatch
+    ):
         monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
-        mock_extract.return_value = RawMedicalRecord(
+        mock_ocr.return_value = "Some OCR text"
+        mock_llm.return_value = RawMedicalRecord(
             entry_type="unknown",
             notes="Raw OCR text:\n\nSome lab result text\nGlucose: 95 mg/dL",
         )
@@ -198,7 +239,7 @@ class TestExtractEndpoint:
         )
 
         assert resp.status_code == 200
-        data = resp.json()
+        data = _parse_sse_result(resp.text)
         assert data["entry_type"] == "unknown"
         assert "Raw OCR text" in data["notes"]
 
@@ -213,15 +254,16 @@ class TestExtractEndpoint:
         assert "MISTRAL_API_KEY not configured" in data["detail"]
 
     @patch("app.api.ai.matcher.match_and_convert")
-    @patch("app.api.ai.extractor.extract_raw")
-    async def test_extract_allowed_extensions(self, mock_extract, mock_match, client, monkeypatch):
+    @patch("app.api.ai.extractor.llm_extract")
+    @patch("app.api.ai.extractor.ocr_document")
+    async def test_extract_allowed_extensions(
+        self, mock_ocr, mock_llm, mock_match, client, monkeypatch
+    ):
         monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
 
-        raw = RawMedicalRecord(entry_type="blood_test")
-        mock_extract.return_value = raw
-
-        std = StandardizedMedicalRecord(entry_type="blood_test")
-        mock_match.return_value = std
+        mock_ocr.return_value = "OCR text"
+        mock_llm.return_value = RawMedicalRecord(entry_type="blood_test")
+        mock_match.return_value = StandardizedMedicalRecord(entry_type="blood_test")
 
         for filename in ("scan.jpg", "scan.jpeg", "scan.png", "scan.tiff", "scan.tif", "scan.bmp"):
             resp = await client.post(

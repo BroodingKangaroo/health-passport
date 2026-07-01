@@ -1,9 +1,16 @@
+import logging
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+
+log_file = logging.FileHandler("app.log")
+log_file.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+log_file.setLevel(logging.INFO)
+logging.getLogger().setLevel(logging.INFO)
+logging.getLogger().addHandler(log_file)
 
 from app.api.timeline import router as timeline_router
 from app.api.flowsheet import router as flowsheet_router

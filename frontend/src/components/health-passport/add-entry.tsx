@@ -31,6 +31,7 @@ import type {
   FormBiomarkerRow,
   StandardizedMedicalRecord,
   StandardizedBiomarker,
+  ProgressStage,
 } from '@/lib/types'
 
 const DocumentViewer = dynamic(
@@ -110,11 +111,35 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const [timeRequired, setTimeRequired] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
+  const [progressStage, setProgressStage] = useState<ProgressStage>('ocr_scanning')
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [prefillClinic, setPrefillClinic] = useState('')
   const [prefillProvider, setPrefillProvider] = useState('')
   const [prefillTitle, setPrefillTitle] = useState('')
   const [prefillNotes, setPrefillNotes] = useState('')
+  const stageStep: Record<ProgressStage, number> = {
+    ocr_scanning: 1,
+    extracting: 2,
+    matching: 3,
+  }
+  const totalSteps = 3
+
+  const stageInfo: Record<ProgressStage, { label: string; detail: string }> = {
+    ocr_scanning: {
+      label: 'Scanning document pages...',
+      detail: 'Running optical character recognition to extract text from each page of your document.',
+    },
+    extracting: {
+      label: 'Identifying medical data...',
+      detail: 'Extracting test names, values, units, reference ranges, and clinical findings from the text.',
+    },
+    matching: {
+      label: 'Standardizing results...',
+      detail: 'Matching biomarkers against known definitions, normalizing units, and computing reference statuses.',
+    },
+  }
+
   const dateRef = useRef<HTMLInputElement>(null)
   const timeRef = useRef<HTMLInputElement>(null)
   const clinicRef = useRef<HTMLInputElement>(null)
@@ -127,8 +152,10 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const runExtraction = useCallback(async (file: File) => {
     setAiError(null)
     setUploadState('scanning')
+    setProgressStage('ocr_scanning')
+    setElapsedSeconds(0)
     try {
-      const result = await extractMedicalData(file)
+      const result = await extractMedicalData(file, setProgressStage)
       setEntryMode('ai')
       setDocumentType(result.entry_type)
 
@@ -202,6 +229,14 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     }
     setObjectUrl(null)
   }, [selectedFile])
+
+  useEffect(() => {
+    if (uploadState !== 'scanning') return
+    const interval = setInterval(() => {
+      setElapsedSeconds((s) => s + 1)
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [uploadState])
 
   function handleFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -353,12 +388,22 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
             <div className="flex flex-col items-center gap-3 py-2">
               <Loader2 className="size-10 animate-spin text-primary" />
               <p className="text-sm font-semibold text-foreground">
-                Scanning documents...
+                {stageInfo[progressStage].label}
               </p>
               <p className="max-w-sm text-pretty text-xs text-muted-foreground">
-                Identifying document type and extracting medical data from all
-                pages using AI...
+                {stageInfo[progressStage].detail}
               </p>
+              <div className="mt-1 w-full max-w-xs space-y-1.5">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary/10">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-700 ease-out"
+                    style={{ width: `${((stageStep[progressStage] - 1) / totalSteps) * 100}%` }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Step {stageStep[progressStage]} of {totalSteps} · {elapsedSeconds}s elapsed
+                </p>
+              </div>
             </div>
           )}
         </button>

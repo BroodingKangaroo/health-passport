@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+from typing import Optional
 
 from mistralai import Mistral
 from mistralai.models import DocumentURLChunk
@@ -46,7 +47,11 @@ RAW_EXTRACTION_PROMPT = (
 )
 
 
-def _ocr_to_markdown(bytes_data: bytes, client: Mistral):
+def ocr_document(bytes_data: bytes, client: Mistral) -> Optional[str]:
+    """Run OCR on the document bytes and return markdown text.
+
+    Returns None when the document format is not supported by the OCR engine.
+    """
     try:
         b64 = base64.b64encode(bytes_data).decode()
         data_url = f"data:application/pdf;base64,{b64}"
@@ -81,29 +86,8 @@ def _parse_llm_response(result: object, markdown: str) -> RawMedicalRecord:
     )
 
 
-def extract_raw(
-    bytes_data: bytes,
-    filename: str,
-    client: Mistral,
-) -> RawMedicalRecord:
-    ext = os.path.splitext(filename)[1].lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        raise ValueError(
-            f"Unsupported file type '{ext}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
-        )
-
-    markdown = _ocr_to_markdown(bytes_data, client)
-    if markdown is None:
-        return RawMedicalRecord(
-            entry_type="unknown",
-            notes="The uploaded document appears to contain images that cannot be processed. You can enter the data manually below.",
-        )
-    if not markdown:
-        return RawMedicalRecord(
-            entry_type="unknown",
-            notes="OCR returned no text content",
-        )
-
+def llm_extract(markdown: str, client: Mistral) -> RawMedicalRecord:
+    """Run LLM extraction on OCR markdown text, returning a RawMedicalRecord."""
     try:
         chat_response = client.chat.parse(
             model="mistral-large-latest",
@@ -123,3 +107,29 @@ def extract_raw(
 
     result = chat_response.choices[0].message.content
     return _parse_llm_response(result, markdown)
+
+
+def extract_raw(
+    bytes_data: bytes,
+    filename: str,
+    client: Mistral,
+) -> RawMedicalRecord:
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise ValueError(
+            f"Unsupported file type '{ext}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+        )
+
+    markdown = ocr_document(bytes_data, client)
+    if markdown is None:
+        return RawMedicalRecord(
+            entry_type="unknown",
+            notes="The uploaded document appears to contain images that cannot be processed. You can enter the data manually below.",
+        )
+    if not markdown:
+        return RawMedicalRecord(
+            entry_type="unknown",
+            notes="OCR returned no text content",
+        )
+
+    return llm_extract(markdown, client)

@@ -5,6 +5,7 @@ import type {
   BiomarkerDefinition,
   SaveEntryResponse,
   StandardizedMedicalRecord,
+  ProgressStage,
 } from '@/lib/types'
 
 const API_BASE = 'http://localhost:8000/api'
@@ -48,13 +49,49 @@ export async function fetchBiomarkerDefinitions(): Promise<BiomarkerDefinition[]
   return apiGet<BiomarkerDefinition[]>('/biomarkers/definitions')
 }
 
-/* ----- AI Extraction ----- */
-export async function extractMedicalData(file: File): Promise<StandardizedMedicalRecord> {
+/* ----- AI Extraction (SSE stream) ----- */
+export async function extractMedicalData(
+  file: File,
+  onProgress?: (stage: ProgressStage) => void,
+): Promise<StandardizedMedicalRecord> {
   const fd = new FormData()
   fd.append('file', file)
   const res = await fetch(`${API_BASE}/extract`, { method: 'POST', body: fd })
   if (!res.ok) throw new ApiError(res.status, 'POST /extract failed')
-  return res.json()
+
+  const reader = res.body!.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    const parts = buffer.split('\n\n')
+    buffer = parts.pop() || ''
+
+    for (const part of parts) {
+      if (!part.trim()) continue
+      const lines = part.split('\n')
+      let eventType = ''
+      let data = ''
+      for (const line of lines) {
+        if (line.startsWith('event: ')) eventType = line.slice(7)
+        if (line.startsWith('data: ')) data += line.slice(6)
+      }
+      if (eventType === 'progress') {
+        const parsed = JSON.parse(data)
+        onProgress?.(parsed.stage as ProgressStage)
+      } else if (eventType === 'result') {
+        return JSON.parse(data) as StandardizedMedicalRecord
+      } else if (eventType === 'error') {
+        throw new Error(JSON.parse(data).message)
+      }
+    }
+  }
+
+  throw new Error('Stream ended without result event')
 }
 
 /* ----- Save Entry ----- */
