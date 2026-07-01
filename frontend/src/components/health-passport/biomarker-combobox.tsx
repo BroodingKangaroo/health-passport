@@ -93,7 +93,7 @@ export function BiomarkerCombobox({
         />
         {originalName && (
           <span
-            className="truncate text-[10px] text-muted-foreground/50"
+            className="mt-1 truncate text-xs text-muted-foreground"
             title={originalName}
           >
             {originalName}
@@ -104,7 +104,7 @@ export function BiomarkerCombobox({
   }
 
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -112,7 +112,7 @@ export function BiomarkerCombobox({
             role="combobox"
             aria-expanded={open}
             className={cn(
-              'h-9 w-full justify-between px-3 text-sm font-normal',
+              'h-8 w-full justify-between px-3 text-sm font-normal',
               !selected && 'text-muted-foreground',
             )}
           >
@@ -174,7 +174,7 @@ export function BiomarkerCombobox({
       </Popover>
       {originalName && (
         <span
-          className="truncate text-[10px] text-muted-foreground/50"
+          className="mt-1 truncate text-xs text-muted-foreground"
           title={originalName}
         >
           {originalName}

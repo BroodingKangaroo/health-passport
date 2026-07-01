@@ -34,7 +34,7 @@ export function DoctorVisitForm({
   )
 
   useEffect(() => {
-    onDataChange?.({ diagnosis, chiefComplaint, objectiveFindings, prescriptions, recommendations })
+    onDataChange?.({ diagnosis, chief_complaint: chiefComplaint, objective_findings: objectiveFindings, prescriptions, recommendations })
   }, [diagnosis, chiefComplaint, objectiveFindings, prescriptions, recommendations, onDataChange])
 
   function addPrescription() {

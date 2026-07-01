@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import {
   UploadCloud,
   Loader2,
@@ -16,7 +17,6 @@ import {
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
-import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/shared/Field'
@@ -32,6 +32,18 @@ import type {
   StandardizedMedicalRecord,
   StandardizedBiomarker,
 } from '@/lib/types'
+
+const DocumentViewer = dynamic(
+  () => import('@/components/shared/DocumentViewer').then((m) => m.DocumentViewer),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        Loading document viewer...
+      </div>
+    ),
+  },
+)
 
 const docPills = [
   { emoji: '📄', label: 'Lab Results' },
@@ -98,6 +110,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const [timeRequired, setTimeRequired] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
+  const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [prefillClinic, setPrefillClinic] = useState('')
   const [prefillProvider, setPrefillProvider] = useState('')
   const [prefillTitle, setPrefillTitle] = useState('')
@@ -181,6 +194,15 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     return () => clearTimeout(t)
   }, [dateValue, documentType])
 
+  useEffect(() => {
+    if (selectedFile) {
+      const url = URL.createObjectURL(selectedFile)
+      setObjectUrl(url)
+      return () => URL.revokeObjectURL(url)
+    }
+    setObjectUrl(null)
+  }, [selectedFile])
+
   function handleFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -199,6 +221,11 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     setUploadState('editor')
     setSelectedFile(null)
     setAiError(null)
+  }
+
+  function handleFileRefChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) setSelectedFile(file)
   }
 
   function updateRow(catId: string, rowId: string, key: keyof FormBiomarkerRow, val: string) {
@@ -363,18 +390,51 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const isManual = entryMode === 'manual'
 
   return (
-    <div className="mx-auto max-w-6xl py-4">
-      <div className="grid gap-5 lg:grid-cols-[1fr_1.5fr]">
-        <Card className="flex h-fit flex-col overflow-hidden bg-muted/30">
-          {isManual ? (
-            <div className="p-4">
+    <div className="mx-auto w-full max-w-[1600px] px-6 py-4">
+      <div className="flex items-start gap-5">
+        {/* LEFT COLUMN — Document Preview */}
+        <div className="sticky top-6 w-[45%] h-[calc(100vh-8rem)] overflow-hidden rounded-xl border bg-card">
+          {objectUrl ? (
+            selectedFile?.type === 'application/pdf' ? (
+              <DocumentViewer url={objectUrl} />
+            ) : selectedFile?.type.startsWith('image/') ? (
+              <div className="flex h-full w-full items-center justify-center p-4">
+                <div className="relative h-full w-full overflow-hidden rounded-lg">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={objectUrl}
+                    alt={selectedFile?.name ?? 'Uploaded image'}
+                    className="h-full w-full object-contain"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center p-4">
+                <h2 className="mb-3 text-sm font-semibold text-foreground">
+                  Attached Document
+                </h2>
+                <div className="flex aspect-[3/4] w-full max-w-xs flex-col items-center justify-center gap-3 rounded-lg border border-border bg-muted/60 text-center">
+                  <FileText className="size-10 text-muted-foreground/60" />
+                  <p className="text-xs font-medium text-foreground">
+                    {selectedFile?.name ?? 'Document'}
+                  </p>
+                  {selectedFile && (
+                    <p className="text-[11px] text-muted-foreground">
+                      {(selectedFile.size / 1024).toFixed(0)} KB
+                    </p>
+                  )}
+                </div>
+              </div>
+            )
+          ) : isManual ? (
+            <div className="flex h-full flex-col items-center justify-center p-4">
               <h2 className="mb-3 text-sm font-semibold text-foreground">
                 Attachments (Optional)
               </h2>
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border bg-background/60 px-4 text-center transition-colors hover:border-primary/40 hover:bg-primary/5"
+                className="flex aspect-[3/4] w-full max-w-xs flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border bg-background/60 px-4 text-center transition-colors hover:border-primary/40 hover:bg-primary/5"
               >
                 <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <ImagePlus className="size-6" />
@@ -388,11 +448,11 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
               </button>
             </div>
           ) : (
-            <div className="p-4">
+            <div className="flex h-full flex-col items-center justify-center p-4">
               <h2 className="mb-3 text-sm font-semibold text-foreground">
                 Attached Document
               </h2>
-              <div className="flex aspect-[3/4] flex-col items-center justify-center gap-3 rounded-lg border border-border bg-muted/60 text-center">
+              <div className="flex aspect-[3/4] w-full max-w-xs flex-col items-center justify-center gap-3 rounded-lg border border-border bg-muted/60 text-center">
                 <FileText className="size-10 text-muted-foreground/60" />
                 <p className="text-xs font-medium text-foreground">
                   {selectedFile?.name ?? 'Document'}
@@ -405,10 +465,11 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
               </div>
             </div>
           )}
-        </Card>
+        </div>
 
-        <Card className="flex flex-col overflow-hidden">
-          <div className="p-4">
+        {/* RIGHT COLUMN — Form */}
+        <div className="w-[55%] flex flex-col overflow-hidden rounded-xl border bg-card h-[calc(100vh-8rem)]">
+          <div className="flex-1 overflow-y-auto p-4">
             {aiError && (
               <div className="mb-4 flex items-start gap-3 rounded-lg border border-status-high/20 bg-status-high/5 p-3">
                 <AlertCircle className="mt-0.5 size-4 shrink-0 text-status-high" />
@@ -513,8 +574,8 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
             )}
           </div>
 
-          <div className="mt-auto flex items-center justify-end gap-2 border-t border-border p-4">
-            <input ref={fileRef} type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png" />
+          <div className="flex items-center justify-end gap-2 border-t border-border bg-card p-4">
+            <input ref={fileRef} type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileRefChange} />
             <Button variant="ghost" onClick={onSave} disabled={saving}>
               Cancel
             </Button>
@@ -522,7 +583,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
               {saving ? 'Saving...' : 'Save to HealthPassport'}
             </Button>
           </div>
-        </Card>
+        </div>
       </div>
     </div>
   )

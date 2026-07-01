@@ -104,9 +104,15 @@ export function DoctorVisitDetails({ visit }: { visit: VisitData }) {
                       {note.heading}
                     </h3>
                   )}
-                  <p className="text-sm leading-relaxed text-muted-foreground">
-                    {note.text}
-                  </p>
+                  {note.text ? (
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                      {note.text}
+                    </p>
+                  ) : (
+                    <p className="text-sm italic text-muted-foreground/50">
+                      No {note.heading?.toLowerCase() || 'information'} recorded
+                    </p>
+                  )}
                 </div>
                 {i === 1 && <div className="h-px bg-border/50" />}
               </Fragment>

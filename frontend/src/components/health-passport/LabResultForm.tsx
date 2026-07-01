@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { BiomarkerCombobox } from './biomarker-combobox'
 import { RangeInput } from './range-input'
+import { UnitCombobox } from './unit-combobox'
 import type { FormCategory, FormBiomarkerRow } from '@/lib/types'
 
 function parseRange(range: string): { lo?: number; hi?: number } {
@@ -70,7 +71,7 @@ export function LabResultForm({
               className="mb-1.5 w-full bg-transparent text-[11px] font-semibold uppercase tracking-wide text-muted-foreground outline-none focus:text-foreground"
             />
             <div className="overflow-hidden rounded-lg border border-border">
-              <div className="grid grid-cols-[1.4fr_0.9fr_0.7fr_1fr_36px] items-center gap-x-2 border-b border-border bg-muted/50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <div className="grid grid-cols-[minmax(220px,3fr)_100px_120px_minmax(200px,2fr)_auto] items-center gap-x-2 border-b border-border bg-muted/50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 <span>Biomarker</span>
                 <span>Value</span>
                 <span>Unit</span>
@@ -83,7 +84,7 @@ export function LabResultForm({
                 return (
                   <div
                     key={row.id}
-                    className="grid grid-cols-[1.4fr_0.9fr_0.7fr_1fr_36px] items-center gap-x-2 border-b border-border px-3 py-2 last:border-b-0"
+                    className="grid grid-cols-[minmax(220px,3fr)_100px_120px_minmax(200px,2fr)_auto] items-start gap-x-2 border-b border-border px-3 py-2 last:border-b-0"
                   >
                     <BiomarkerCombobox
                       value={row.name}
@@ -109,12 +110,10 @@ export function LabResultForm({
                         />
                       )}
                     </div>
-                    <Input
+                    <UnitCombobox
                       value={row.unit}
                       placeholder="—"
-                      onChange={(e) =>
-                        updateRow(cat.id, row.id, 'unit', e.target.value)
-                      }
+                      onChange={(unit) => updateRow(cat.id, row.id, 'unit', unit)}
                     />
                     <RangeInput
                       value={row.range}

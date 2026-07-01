@@ -17,6 +17,9 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
       </div>
     )
   }
+
+  const isImage = /\.(jpg|jpeg|png|gif|webp|tiff|tif|bmp)$/i.test(url)
+
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const renderTaskRef = useRef<pdfjs.RenderTask | null>(null)
@@ -35,6 +38,10 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (isImage) {
+      setLoading(false)
+      return
+    }
     let cancelled = false
     setLoading(true)
     pdfjs.getDocument({ url }).promise.then(async (doc) => {
@@ -91,6 +98,7 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
   }, [scale])
 
   useEffect(() => {
+    if (isImage) return
     const el = scrollRef.current
     if (!el) return
     const handler = (e: WheelEvent) => {
@@ -173,6 +181,26 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
       e.currentTarget.releasePointerCapture(e.pointerId)
     }
   }, [])
+
+  if (isImage) {
+    return (
+      <div className="flex h-full min-w-0 flex-col bg-muted/20">
+        <div className="flex items-center justify-between border-b border-border bg-card px-3 py-2">
+          <span className="text-xs font-medium text-muted-foreground">
+            Image preview
+          </span>
+        </div>
+        <div className="flex-1 flex items-center justify-center overflow-auto bg-muted/20 p-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={url}
+            alt="Document preview"
+            className="h-full w-full object-contain"
+          />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-muted/20">
