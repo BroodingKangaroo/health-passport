@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test'
 
+function sseEvent(data: unknown): string {
+  return `event: result\ndata: ${JSON.stringify(data)}\n\n`
+}
+
 async function uploadFile(page, name: string, type: string, content: string) {
   const input = page.locator('input[type="file"]')
   await input.waitFor({ state: 'attached', timeout: 5000 })
@@ -14,8 +18,8 @@ test.describe('AddEntry - AI Extraction', () => {
     await page.route('**/api/extract', async (route) => {
       await route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
+        contentType: 'text/event-stream',
+        body: sseEvent({
           entry_type: 'blood_test',
           date: '2099-03-15',
           clinic: 'E2E AI Lab',
@@ -23,8 +27,8 @@ test.describe('AddEntry - AI Extraction', () => {
           title: 'E2E AI Blood Test',
           notes: 'E2E AI extraction notes',
           biomarkers: [
-            { name: 'Hemoglobin', value: '145', unit: 'g/L', range: '130-170', category: 'Complete Blood Count' },
-            { name: 'WBC', value: '7.2', unit: 'K/µL', range: '4.0-11.0', category: 'Complete Blood Count' },
+            { raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170', standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L', standard_range_min: 130, standard_range_max: 170, status: '', category: 'Complete Blood Count' },
+            { raw_name: 'WBC', raw_value: '7.2', raw_unit: 'K/µL', raw_range_string: '4.0-11.0', standard_name_en: 'WBC', standard_value: 7.2, standard_unit: 'K/µL', standard_range_min: 4.0, standard_range_max: 11.0, status: '', category: 'Complete Blood Count' },
           ],
           visit_data: null,
           imaging_data: null,
@@ -40,9 +44,9 @@ test.describe('AddEntry - AI Extraction', () => {
     await expect(page.locator('input[value="Dr. AI"]')).toBeVisible()
     await expect(page.locator('input[value="E2E AI Blood Test"]')).toBeVisible()
     await expect(page.getByPlaceholder('e.g. Fasted for 12')).toHaveValue('E2E AI extraction notes')
-    await expect(page.locator('input[value="Hemoglobin"]')).toBeVisible()
+    await expect(page.locator('button[role="combobox"]').filter({ hasText: 'Hemoglobin' })).toBeVisible()
     await expect(page.locator('input[value="145"]')).toBeVisible()
-    await expect(page.locator('input[value="WBC"]')).toBeVisible()
+    await expect(page.locator('button[role="combobox"]').filter({ hasText: 'WBC' })).toBeVisible()
 
     await page.getByText('Save to HealthPassport').click()
     await page.waitForURL('/')
@@ -53,8 +57,8 @@ test.describe('AddEntry - AI Extraction', () => {
     await page.route('**/api/extract', async (route) => {
       await route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
+        contentType: 'text/event-stream',
+        body: sseEvent({
           entry_type: 'doctor_visit',
           date: '2099-04-10',
           clinic: 'E2E AI Clinic',
@@ -78,12 +82,12 @@ test.describe('AddEntry - AI Extraction', () => {
     await uploadFile(page, 'test-visit.pdf', 'application/pdf', 'fake visit content')
 
     await expect(page.getByPlaceholder('e.g., Mild Sinus Tachycardia')).toHaveValue('E2E AI Diagnosis', { timeout: 10000 })
-    await expect(page.getByPlaceholder('Patient reports occasional palpitations')).toHaveValue('E2E Chief Complaint')
-    await expect(page.getByPlaceholder('Heart rhythm is regular. No murmurs')).toHaveValue('E2E Objective Findings')
+    await expect(page.getByPlaceholder('e.g., symptoms, duration, severity...')).toHaveValue('E2E Chief Complaint')
+    await expect(page.getByPlaceholder('e.g., physical exam findings, vital signs...')).toHaveValue('E2E Objective Findings')
     await expect(page.locator('input[value="E2E AI Drug"]')).toBeVisible()
     await expect(page.locator('input[value="10mg"]')).toBeVisible()
     await expect(page.locator('input[value="Once daily"]')).toBeVisible()
-    await expect(page.locator('input[value="E2E AI Recommendation"]')).toBeVisible()
+    await expect(page.locator('textarea').filter({ hasText: 'E2E AI Recommendation' })).toBeVisible()
 
     await page.getByText('Save to HealthPassport').click()
     await page.waitForURL('/')
@@ -94,8 +98,8 @@ test.describe('AddEntry - AI Extraction', () => {
     await page.route('**/api/extract', async (route) => {
       await route.fulfill({
         status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
+        contentType: 'text/event-stream',
+        body: sseEvent({
           entry_type: 'imaging',
           date: '2099-05-20',
           clinic: 'E2E AI Rad Center',

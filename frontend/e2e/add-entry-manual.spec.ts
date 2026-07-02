@@ -12,11 +12,11 @@ test.describe('AddEntry - Manual Entry', () => {
     await page.getByPlaceholder('e.g. Pre-Operative Baseline').fill('E2E Manual Blood Test')
     await page.getByPlaceholder('e.g. Fasted for 12').fill('Manual e2e test notes')
 
-    await page.getByPlaceholder('Name').fill('Glucose')
-    const placeholders = page.locator('input[placeholder="—"]')
-    await placeholders.nth(0).fill('95')
-    await placeholders.nth(1).fill('mg/dL')
-    await placeholders.nth(2).fill('70-100')
+    await page.locator('button[role="combobox"]').filter({ hasText: 'Search biomarker' }).click()
+    await page.getByPlaceholder('Search biomarker…').fill('Glucose')
+    await page.getByRole('option', { name: /Glucose/ }).click()
+
+    await page.locator('input[placeholder="—"]').first().fill('95')
 
     await page.getByText('Save to HealthPassport').click()
 
