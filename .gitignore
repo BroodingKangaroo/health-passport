@@ -18,6 +18,7 @@ node_modules
 # Python
 backend/venv/
 __pycache__/
+.pytest_cache/
 *.pyc
 *.pyo
 backend/health_passport.db
@@ -27,3 +28,4 @@ backend/app.log
 
 # TypeScript
 *.tsbuildinfo
+.next/
