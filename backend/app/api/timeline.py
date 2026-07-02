@@ -137,6 +137,53 @@ def _biomarkers_from_db(db: Session):
     return results
 
 
+def _ensure_tx(val, default="") -> dict:
+    if isinstance(val, dict):
+        return {"original": val.get("original", default), "translated_en": val.get("translated_en", default)}
+    if isinstance(val, str):
+        return {"original": val, "translated_en": val}
+    return {"original": default, "translated_en": default}
+
+
+def _map_note(n: dict) -> VisitNote:
+    if "text" in n and "text_original" not in n:
+        return VisitNote(
+            heading=n.get("heading"),
+            text_translated=n.get("text", ""),
+            text_original=n.get("text", ""),
+        )
+    return VisitNote(
+        heading=n.get("heading"),
+        text_translated=n.get("text_translated", ""),
+        text_original=n.get("text_original", ""),
+    )
+
+
+def _map_rx(p: dict) -> Prescription:
+    if isinstance(p.get("instruction"), str):
+        return Prescription(
+            id=p.get("id", 0),
+            name=_ensure_tx(p.get("name", "")),
+            dose=_ensure_tx(p.get("dose", "")),
+            instruction=_ensure_tx(p.get("instruction", "")),
+        )
+    return Prescription(
+        id=p.get("id", 0),
+        name=_ensure_tx(p.get("name", {})),
+        dose=_ensure_tx(p.get("dose", {})),
+        instruction=_ensure_tx(p.get("instruction", {})),
+    )
+
+
+def _map_rec(r) -> dict:
+    if isinstance(r, str):
+        return {"original": r, "translated_en": r}
+    if isinstance(r, dict):
+        return {"original": r.get("original", r.get("text_original", "")),
+                "translated_en": r.get("translated_en", r.get("text_translated", ""))}
+    return {"original": "", "translated_en": ""}
+
+
 def _visits_from_db(db: Session):
     visits: dict[str, VisitData] = {}
     visit_data_rows = (
@@ -155,10 +202,10 @@ def _visits_from_db(db: Session):
             provider=vd.provider,
             date=vd.date,
             clinic=vd.clinic,
-            verdict=vd.verdict,
-            notes=[VisitNote(**n) for n in (vd.notes or [])],
-            prescriptions=[Prescription(**p) for p in (vd.prescriptions or [])],
-            recommendations=vd.recommendations or [],
+            verdict=_ensure_tx(vd.verdict),
+            notes=[_map_note(n) for n in (vd.notes or [])],
+            prescriptions=[_map_rx(p) for p in (vd.prescriptions or [])],
+            recommendations=[_map_rec(r) for r in (vd.recommendations or [])],
             attachments=entry_attachments,
         )
     return visits
@@ -253,9 +300,9 @@ async def get_visit_data(event_id: str, db: Session = Depends(get_db)):
         provider=vd.provider,
         date=vd.date,
         clinic=vd.clinic,
-        verdict=vd.verdict,
-        notes=[VisitNote(**n) for n in (vd.notes or [])],
-        prescriptions=[Prescription(**p) for p in (vd.prescriptions or [])],
-        recommendations=vd.recommendations or [],
+        verdict=_ensure_tx(vd.verdict),
+        notes=[_map_note(n) for n in (vd.notes or [])],
+        prescriptions=[_map_rx(p) for p in (vd.prescriptions or [])],
+        recommendations=[_map_rec(r) for r in (vd.recommendations or [])],
         attachments=entry_attachments,
     )

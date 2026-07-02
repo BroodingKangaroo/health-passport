@@ -19,7 +19,7 @@ const baseVisit: VisitData = {
   provider: 'Dr. Test',
   date: 'Jan 15, 2027',
   clinic: 'Heart Institute',
-  verdict: 'Hypertension',
+  verdict: { original: 'Hypertension', translated_en: 'Hypertension' },
   notes: [],
   prescriptions: [],
   recommendations: [],

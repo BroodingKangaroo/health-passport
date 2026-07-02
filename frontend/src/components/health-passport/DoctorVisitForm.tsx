@@ -1,12 +1,176 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Plus, X, Pill, CheckCircle, Activity } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Plus, X, Pill, CheckCircle, Activity, Languages } from 'lucide-react'
+import { useAutoResize } from '@/lib/hooks/useAutoResize'
 
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/shared/Field'
-import type { Prescription, Recommendation, ExtractedVisitData } from '@/lib/types'
+import type { TranslatedText, ExtractedVisitData } from '@/lib/types'
+
+
+function TxViewer({ value, label }: { value: TranslatedText; label: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div>
+      <div className="relative">
+        <textarea
+          value={value.translated_en}
+          readOnly
+          rows={3}
+          className="flex w-full rounded-lg border border-input bg-background px-2.5 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+        />
+        <span className="absolute right-2 top-2 rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
+          EN
+        </span>
+      </div>
+      {value.original && value.original !== value.translated_en && (
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="mt-1 flex items-center gap-1 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+        >
+          <Languages className="size-3" />
+          {open ? 'Hide' : 'Show'} original text
+        </button>
+      )}
+      {open && value.original && (
+        <div className="mt-1 rounded border border-dashed border-muted-foreground/20 bg-muted/30 p-2 text-xs italic text-muted-foreground/70">
+          {value.original}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function TxField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  rows = 1,
+}: {
+  label: string
+  value: TranslatedText
+  onChange: (val: TranslatedText) => void
+  placeholder?: string
+  rows?: number
+}) {
+  const [showOriginal, setShowOriginal] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const resize = useAutoResize(textareaRef)
+
+  useEffect(() => { resize() }, [value.translated_en, resize])
+
+  return (
+    <Field label={label}>
+      <div className="relative">
+        <textarea
+          ref={textareaRef}
+          value={value.translated_en}
+          onChange={(e) => {
+            onChange({ ...value, translated_en: e.target.value })
+            resize()
+          }}
+          placeholder={placeholder}
+          rows={rows}
+          className="flex w-full resize-none overflow-y-hidden rounded-lg border border-input bg-background px-2.5 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+        />
+        <span className="absolute right-2 top-2 rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
+          EN
+        </span>
+      </div>
+      {value.original && value.original !== value.translated_en && (
+        <button
+          type="button"
+          onClick={() => setShowOriginal(!showOriginal)}
+          className="mt-1 flex items-center gap-1 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+        >
+          <Languages className="size-3" />
+          {showOriginal ? 'Hide' : 'Show'} original text
+        </button>
+      )}
+      {showOriginal && value.original && (
+        <div className="mt-1 rounded border border-dashed border-muted-foreground/20 bg-muted/30 p-2 text-xs italic text-muted-foreground/70">
+          {value.original}
+        </div>
+      )}
+    </Field>
+  )
+}
+
+
+function _tx(text: string | TranslatedText): TranslatedText {
+  if (typeof text === 'string') return { original: text, translated_en: text }
+  return text
+}
+
+
+interface PrescriptionFormItem {
+  id: string
+  name_editable: string
+  name_original: string
+  dosage_editable: string
+  dosage_original: string
+  instructions_editable: string
+  instructions_original: string
+}
+
+interface RecommendationFormItem {
+  id: string
+  editable: string
+  original: string
+}
+
+function RecommendationRow({
+  item,
+  onRemove,
+  setRecItem,
+}: {
+  item: RecommendationFormItem
+  onRemove: () => void
+  setRecItem: (val: RecommendationFormItem) => void
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  const resize = useAutoResize(ref)
+
+  useEffect(() => { resize() }, [item.editable, resize])
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-start gap-2">
+        <div className="relative flex-1">
+          <textarea
+            ref={ref}
+            value={item.editable}
+            onChange={(e) => {
+              setRecItem({ ...item, editable: e.target.value })
+              resize()
+            }}
+            placeholder="Task / recommendation"
+            rows={1}
+            className="flex w-full resize-none overflow-y-hidden rounded-lg border border-input bg-background px-2.5 py-2 pr-8 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+          />
+          <span className="absolute right-2 top-2 rounded bg-blue-500/10 px-1 py-0.5 text-[10px] font-medium text-blue-500">EN</span>
+        </div>
+        <button
+          onClick={onRemove}
+          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-status-high-bg hover:text-status-high"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+      {item.original && item.original !== item.editable && (
+        <div className="ml-2 text-xs italic text-muted-foreground/50">
+          Original: {item.original}
+        </div>
+      )}
+    </div>
+  )
+}
+
 
 export function DoctorVisitForm({
   initialData,
@@ -15,26 +179,48 @@ export function DoctorVisitForm({
   initialData?: ExtractedVisitData | null
   onDataChange?: (data: any) => void
 }) {
-  const [diagnosis, setDiagnosis] = useState(initialData?.diagnosis ?? '')
-  const [chiefComplaint, setChiefComplaint] = useState(initialData?.chief_complaint ?? '')
-  const [objectiveFindings, setObjectiveFindings] = useState(initialData?.objective_findings ?? '')
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>(
+  const [diagnosis, setDiagnosis] = useState<TranslatedText>(_tx(initialData?.diagnosis ?? ''))
+  const [chiefComplaint, setChiefComplaint] = useState<TranslatedText>(_tx(initialData?.chief_complaint ?? ''))
+  const [objectiveFindings, setObjectiveFindings] = useState<TranslatedText>(_tx(initialData?.objective_findings ?? ''))
+
+  const diagnosisRef = useRef<HTMLTextAreaElement>(null)
+  const resizeDiagnosis = useAutoResize(diagnosisRef)
+
+  const [prescriptions, setPrescriptions] = useState<PrescriptionFormItem[]>(
     initialData?.prescriptions?.map((p, i) => ({
       id: `rx-${Date.now()}-${i}`,
-      name: p.name,
-      dosage: p.dosage,
-      instructions: p.instructions,
+      name_editable: _tx(p.name).translated_en,
+      name_original: _tx(p.name).original,
+      dosage_editable: _tx(p.dosage).translated_en,
+      dosage_original: _tx(p.dosage).original,
+      instructions_editable: _tx(p.instructions).translated_en,
+      instructions_original: _tx(p.instructions).original,
     })) ?? [],
   )
-  const [recommendations, setRecommendations] = useState<Recommendation[]>(
+
+  const [recommendations, setRecommendations] = useState<RecommendationFormItem[]>(
     initialData?.recommendations?.map((r, i) => ({
       id: `rec-${Date.now()}-${i}`,
-      text: r,
+      editable: _tx(r).translated_en,
+      original: _tx(r).original,
     })) ?? [],
   )
 
   useEffect(() => {
-    onDataChange?.({ diagnosis, chief_complaint: chiefComplaint, objective_findings: objectiveFindings, prescriptions, recommendations })
+    onDataChange?.({
+      diagnosis,
+      chief_complaint: chiefComplaint,
+      objective_findings: objectiveFindings,
+      prescriptions: prescriptions.map((p) => ({
+        name: { original: p.name_original, translated_en: p.name_editable },
+        dosage: { original: p.dosage_original, translated_en: p.dosage_editable },
+        instructions: { original: p.instructions_original, translated_en: p.instructions_editable },
+      })),
+      recommendations: recommendations.map((r) => ({
+        original: r.original,
+        translated_en: r.editable,
+      })),
+    })
   }, [diagnosis, chiefComplaint, objectiveFindings, prescriptions, recommendations, onDataChange])
 
   function addPrescription() {
@@ -42,17 +228,14 @@ export function DoctorVisitForm({
       ...prev,
       {
         id: `rx-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        name: '',
-        dosage: '',
-        instructions: '',
+        name_editable: '',
+        name_original: '',
+        dosage_editable: '',
+        dosage_original: '',
+        instructions_editable: '',
+        instructions_original: '',
       },
     ])
-  }
-
-  function updatePrescription(id: string, key: keyof Prescription, value: string) {
-    setPrescriptions((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, [key]: value } : p)),
-    )
   }
 
   function removePrescription(id: string) {
@@ -64,15 +247,10 @@ export function DoctorVisitForm({
       ...prev,
       {
         id: `rec-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        text: '',
+        editable: '',
+        original: '',
       },
     ])
-  }
-
-  function updateRecommendation(id: string, value: string) {
-    setRecommendations((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, text: value } : r)),
-    )
   }
 
   function removeRecommendation(id: string) {
@@ -94,34 +272,50 @@ export function DoctorVisitForm({
             </span>
           </div>
           <textarea
-            value={diagnosis}
-            onChange={(e) => setDiagnosis(e.target.value)}
+            ref={diagnosisRef}
+            value={diagnosis.translated_en}
+            onChange={(e) => {
+              setDiagnosis({ ...diagnosis, translated_en: e.target.value })
+              resizeDiagnosis()
+            }}
             placeholder="e.g., Mild Sinus Tachycardia - Under Control..."
             rows={2}
             className="flex w-full rounded-lg border border-blue-500/20 bg-background px-2.5 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
           />
+          {diagnosis.original && diagnosis.original !== diagnosis.translated_en && (
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById('diagnosis-original')
+                if (el) el.classList.toggle('hidden')
+              }}
+              className="mt-1 flex items-center gap-1 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+            >
+              <Languages className="size-3" />
+              Show original text
+            </button>
+          )}
+          {diagnosis.original && (
+            <div id="diagnosis-original" className="hidden mt-1 rounded border border-dashed border-muted-foreground/20 bg-muted/30 p-2 text-xs italic text-muted-foreground/70">
+              {diagnosis.original}
+            </div>
+          )}
         </div>
 
         <div className="mt-4 space-y-4">
-          <Field label="Chief Complaint &amp; Subjective">
-            <textarea
-              value={chiefComplaint}
-              onChange={(e) => setChiefComplaint(e.target.value)}
-              placeholder="Patient reports occasional palpitations during heavy exercise..."
-              rows={3}
-              className="flex w-full rounded-lg border border-input bg-background px-2.5 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
-            />
-          </Field>
+          <TxField
+            label="Chief Complaint & Subjective"
+            value={chiefComplaint}
+            onChange={setChiefComplaint}
+            placeholder="e.g., symptoms, duration, severity..."
+          />
 
-          <Field label="Objective Findings">
-            <textarea
-              value={objectiveFindings}
-              onChange={(e) => setObjectiveFindings(e.target.value)}
-              placeholder="Heart rhythm is regular. No murmurs, gallops, or rubs heard..."
-              rows={3}
-              className="flex w-full rounded-lg border border-input bg-background px-2.5 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
-            />
-          </Field>
+          <TxField
+            label="Objective Findings"
+            value={objectiveFindings}
+            onChange={setObjectiveFindings}
+            placeholder="e.g., physical exam findings, vital signs..."
+          />
         </div>
       </div>
 
@@ -130,35 +324,69 @@ export function DoctorVisitForm({
           Prescriptions &amp; Medications
         </h3>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           {prescriptions.map((p) => (
             <div
               key={p.id}
-              className="grid grid-cols-[1fr_0.6fr_1fr_auto] items-center gap-2"
+              className="rounded-xl border border-border bg-card p-4"
             >
-              <Input
-                value={p.name}
-                onChange={(e) => updatePrescription(p.id, 'name', e.target.value)}
-                placeholder="Medication name"
-              />
-              <Input
-                value={p.dosage}
-                onChange={(e) => updatePrescription(p.id, 'dosage', e.target.value)}
-                placeholder="Dosage"
-              />
-              <Input
-                value={p.instructions}
-                onChange={(e) =>
-                  updatePrescription(p.id, 'instructions', e.target.value)
-                }
-                placeholder="Instructions"
-              />
-              <button
-                onClick={() => removePrescription(p.id)}
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-status-high-bg hover:text-status-high"
-              >
-                <X className="size-4" />
-              </button>
+              <div className="grid grid-cols-[1fr_0.6fr_1fr_auto] items-center gap-2">
+                <div className="relative">
+                  <Input
+                    value={p.name_editable}
+                    onChange={(e) =>
+                      setPrescriptions((prev) =>
+                        prev.map((r) => (r.id === p.id ? { ...r, name_editable: e.target.value } : r)),
+                      )
+                    }
+                    placeholder="Medication name"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-blue-500/10 px-1 py-0.5 text-[10px] font-medium text-blue-500">EN</span>
+                </div>
+                <div className="relative">
+                  <Input
+                    value={p.dosage_editable}
+                    onChange={(e) =>
+                      setPrescriptions((prev) =>
+                        prev.map((r) => (r.id === p.id ? { ...r, dosage_editable: e.target.value } : r)),
+                      )
+                    }
+                    placeholder="Dosage"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-blue-500/10 px-1 py-0.5 text-[10px] font-medium text-blue-500">EN</span>
+                </div>
+                <div className="relative">
+                  <Input
+                    value={p.instructions_editable}
+                    onChange={(e) =>
+                      setPrescriptions((prev) =>
+                        prev.map((r) => (r.id === p.id ? { ...r, instructions_editable: e.target.value } : r)),
+                      )
+                    }
+                    placeholder="Instructions"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-blue-500/10 px-1 py-0.5 text-[10px] font-medium text-blue-500">EN</span>
+                </div>
+                <button
+                  onClick={() => removePrescription(p.id)}
+                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-status-high-bg hover:text-status-high"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+              {(p.name_original || p.dosage_original || p.instructions_original) && (
+                <details className="mt-2 group">
+                  <summary className="cursor-pointer text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors">
+                    <Languages className="mr-1 inline size-3" />
+                    Show original text
+                  </summary>
+                  <div className="mt-1 space-y-1 rounded border border-dashed border-muted-foreground/20 bg-muted/30 p-2 text-xs italic text-muted-foreground/70">
+                    {p.name_original && <div>Name: {p.name_original}</div>}
+                    {p.dosage_original && <div>Dosage: {p.dosage_original}</div>}
+                    {p.instructions_original && <div>Instructions: {p.instructions_original}</div>}
+                  </div>
+                </details>
+              )}
             </div>
           ))}
         </div>
@@ -181,19 +409,16 @@ export function DoctorVisitForm({
 
         <div className="flex flex-col gap-2">
           {recommendations.map((r) => (
-            <div key={r.id} className="flex items-center gap-2">
-              <Input
-                value={r.text}
-                onChange={(e) => updateRecommendation(r.id, e.target.value)}
-                placeholder="Task / recommendation"
-              />
-              <button
-                onClick={() => removeRecommendation(r.id)}
-                className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-status-high-bg hover:text-status-high"
-              >
-                <X className="size-4" />
-              </button>
-            </div>
+            <RecommendationRow
+              key={r.id}
+              item={r}
+              onRemove={() => removeRecommendation(r.id)}
+              setRecItem={(val) =>
+                setRecommendations((prev) =>
+                  prev.map((rec) => (rec.id === r.id ? val : rec)),
+                )
+              }
+            />
           ))}
         </div>
 

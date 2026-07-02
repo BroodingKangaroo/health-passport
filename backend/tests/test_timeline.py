@@ -92,7 +92,7 @@ class TestTimeline:
 
         # then
         assert len(cardio["prescriptions"]) == 1
-        assert cardio["prescriptions"][0]["name"] == "Metoprolol Succinate"
+        assert cardio["prescriptions"][0]["name"]["translated_en"] == "Metoprolol Succinate"
 
 
 class TestFlowsheet:

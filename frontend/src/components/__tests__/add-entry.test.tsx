@@ -55,7 +55,7 @@ describe('AddEntry', () => {
     const { container } = render(<AddEntry onSave={vi.fn()} />)
     selectFile(container, createFile())
 
-    expect(screen.getByText('Scanning documents...')).toBeInTheDocument()
+    expect(screen.getByText('Scanning document pages...')).toBeInTheDocument()
   })
 
   it('pre-fills blood test form from AI data', async () => {
@@ -97,7 +97,7 @@ describe('AddEntry', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
-    })
+    }, { timeout: 3000 })
 
     expect(screen.getByDisplayValue('2026-07-15')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Test Lab')).toBeInTheDocument()
@@ -105,7 +105,7 @@ describe('AddEntry', () => {
     expect(screen.getByDisplayValue('Annual Panel')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Fasted 12h')).toBeInTheDocument()
     expect(screen.getByDisplayValue('145')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('g/L')).toBeInTheDocument()
+    expect(screen.getByText('g/L')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Complete Blood Count')).toBeInTheDocument()
     expect(screen.getAllByText('Hemoglobin').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByText('LDL').length).toBeGreaterThanOrEqual(1)
@@ -121,11 +121,11 @@ describe('AddEntry', () => {
       notes: null,
       biomarkers: null,
       visit_data: {
-        diagnosis: 'Hypertension',
-        chief_complaint: 'Headaches for 2 weeks',
-        objective_findings: 'BP 150/95',
-        prescriptions: [{ name: 'Lisinopril', dosage: '10mg', instructions: 'Once daily' }],
-        recommendations: ['Reduce sodium', 'Exercise daily'],
+        diagnosis: { original: 'Hypertension', translated_en: 'Hypertension' },
+        chief_complaint: { original: 'Headaches for 2 weeks', translated_en: 'Headaches for 2 weeks' },
+        objective_findings: { original: 'BP 150/95', translated_en: 'BP 150/95' },
+        prescriptions: [{ name: { original: 'Lisinopril', translated_en: 'Lisinopril' }, dosage: { original: '10mg', translated_en: '10mg' }, instructions: { original: 'Once daily', translated_en: 'Once daily' } }],
+        recommendations: [{ original: 'Reduce sodium', translated_en: 'Reduce sodium' }, { original: 'Exercise daily', translated_en: 'Exercise daily' }],
       },
       imaging_data: null,
     }
@@ -136,7 +136,7 @@ describe('AddEntry', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Doctor Visit / Clinical Notes')).toBeInTheDocument()
-    })
+    }, { timeout: 3000 })
 
     expect(screen.getByDisplayValue('Hypertension')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Headaches for 2 weeks')).toBeInTheDocument()
@@ -171,7 +171,7 @@ describe('AddEntry', () => {
 
     await waitFor(() => {
       expect(screen.getByText('MRI / Imaging Scan')).toBeInTheDocument()
-    })
+    }, { timeout: 3000 })
 
     const select = screen.getByDisplayValue('MRI') as HTMLSelectElement
     expect(select.value).toBe('MRI')

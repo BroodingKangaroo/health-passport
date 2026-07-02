@@ -177,22 +177,65 @@ async def save_entry(
 
     if visit_data and visit_data != "":
         vd = json.loads(visit_data)
+
+        diagnosis = vd.get("diagnosis", {})
+        chief_complaint = vd.get("chief_complaint", {})
+        objective_findings = vd.get("objective_findings", {})
+
+        notes = []
+        if chief_complaint.get("translated_en") or chief_complaint.get("original"):
+            notes.append({
+                "heading": "Chief Complaint & Subjective",
+                "text_original": chief_complaint.get("original", ""),
+                "text_translated": chief_complaint.get("translated_en", ""),
+            })
+        if objective_findings.get("translated_en") or objective_findings.get("original"):
+            notes.append({
+                "heading": "Objective Findings",
+                "text_original": objective_findings.get("original", ""),
+                "text_translated": objective_findings.get("translated_en", ""),
+            })
+
+        def _get_tx(field, key):
+            val = field.get(key) if isinstance(field, dict) else field
+            return val if isinstance(val, str) else ""
+
         db.add(VisitDataModel(
             entry_id=entry_id,
-            specialty=title,
-            provider=provider,
+            specialty=title or "",
+            provider=provider or "",
             date=to_display_datetime(entry_date),
-            clinic=clinic,
-            verdict=vd.get("diagnosis", ""),
-            notes=[
-                {"heading": "Chief Complaint & Subjective", "text": vd.get("chief_complaint", "")},
-                {"heading": "Objective Findings", "text": vd.get("objective_findings", "")},
-            ],
+            clinic=clinic or "",
+            verdict={
+                "original": _get_tx(diagnosis, "original"),
+                "translated_en": _get_tx(diagnosis, "translated_en"),
+            },
+            notes=notes,
             prescriptions=[
-                {"id": i + 1, "name": rx["name"], "dose": rx["dosage"], "instruction": rx["instructions"]}
+                {
+                    "id": i + 1,
+                    "name": {
+                        "original": _get_tx(rx.get("name", {}), "original"),
+                        "translated_en": _get_tx(rx.get("name", {}), "translated_en"),
+                    },
+                    "dose": {
+                        "original": _get_tx(rx.get("dosage", {}), "original"),
+                        "translated_en": _get_tx(rx.get("dosage", {}), "translated_en"),
+                    },
+                    "instruction": {
+                        "original": _get_tx(rx.get("instructions", {}), "original"),
+                        "translated_en": _get_tx(rx.get("instructions", {}), "translated_en"),
+                    },
+                }
                 for i, rx in enumerate(vd.get("prescriptions", []))
             ],
-            recommendations=[r["text"] for r in vd.get("recommendations", [])],
+            recommendations=[
+                {
+                    "text_original": _get_tx(r, "original"),
+                    "text_translated": _get_tx(r, "translated_en"),
+                }
+                for r in vd.get("recommendations", [])
+            ],
         ))
         db.flush()
 

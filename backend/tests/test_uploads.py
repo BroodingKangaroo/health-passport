@@ -87,9 +87,9 @@ class TestFileUpload:
         # given
         content = b"visit notes pdf"
         visit_data = json.dumps({
-            "diagnosis": "Test Diagnosis",
-            "chief_complaint": "Cough",
-            "objective_findings": "Clear lungs",
+            "diagnosis": {"original": "Test Diagnosis", "translated_en": "Test Diagnosis"},
+            "chief_complaint": {"original": "Cough", "translated_en": "Cough"},
+            "objective_findings": {"original": "Clear lungs", "translated_en": "Clear lungs"},
             "prescriptions": [],
             "recommendations": [],
         })

@@ -9,12 +9,15 @@ from app.schemas.ai import (
     RawMedicalRecord,
     StandardizedMedicalRecord,
     StandardizedBiomarker,
+    StandardizedVisitData,
+    StandardizedPrescription,
+    TranslatedText,
 )
 from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
 
 logger = logging.getLogger(__name__)
 
-NORMALIZE_PROMPT = """You are a medical data standardization assistant. Given raw biomarker data extracted from a medical document, perform the following tasks:
+NORMALIZE_PROMPT = """You are a medical data standardization and translation assistant. Given raw biomarker and clinical data extracted from a medical document, perform the following tasks:
 
 1. **Date/Time Normalization**: Parse the raw date string into ISO format (YYYY-MM-DD). Ensure time is present and formatted as HH:mm. If the raw date string contains a time (e.g., "2026-10-15T09:00"), extract and populate the time field separately. If the date is ambiguous, use your best judgment based on context.
 
@@ -41,7 +44,28 @@ For each biomarker always provide:
 - category
 
 Do NOT provide a status field. Status is computed server-side after this step.
-Preserve the clinic, provider, title, notes, visit_data, and imaging_data fields from the raw record exactly as provided.
+
+Preserve the clinic, provider, title, notes, and imaging_data fields from the raw record exactly as provided.
+
+**For doctor_visit entries, act as a professional medical translator:**
+
+When entry_type is "doctor_visit", every free-text clinical field must be transformed into a dual-language object with both the original text and an English translation:
+
+- `diagnosis`: TranslatedText with original source text and English translation
+- `chief_complaint`: TranslatedText with original and translation
+- `objective_findings`: TranslatedText with original and translation
+- `prescriptions[*].name`: TranslatedText — keep international generic name if identifiable, translate localized brand names to English; always preserve the original
+- `prescriptions[*].dosage`: TranslatedText — convert localized units to standard English (e.g., "мг" → "mg", "табл." → "tab"), preserve original
+- `prescriptions[*].instructions`: TranslatedText — full medical translation of dosage instructions
+- `recommendations[*]`: TranslatedText with original and translation
+
+Translation rules:
+- Provide highly accurate English medical translation using proper medical terminology
+- Preserve all clinical nuance, qualifiers, severity descriptors, and numerical values
+- For medication names: keep the international generic name if identifiable in English; if only a localized brand name exists, transliterate and annotate
+- For dosage units: convert localized abbreviations to standard English medical abbreviations
+- ALWAYS carry over the original text untouched into the "original" field
+- If the text is already in English, set both original and translated_en to the same value
 
 Return ONLY valid JSON matching the provided schema. Do not include any text outside the JSON."""
 
@@ -97,6 +121,10 @@ def _apply_status(result: StandardizedMedicalRecord) -> None:
         )
 
 
+def _tx(text: str) -> TranslatedText:
+    return TranslatedText(original=text, translated_en=text)
+
+
 def _fallback_standardize(raw: RawMedicalRecord) -> StandardizedMedicalRecord:
     biomarkers: list[StandardizedBiomarker] = []
     if raw.biomarkers:
@@ -120,6 +148,24 @@ def _fallback_standardize(raw: RawMedicalRecord) -> StandardizedMedicalRecord:
                 category=b.category or "General",
             ))
 
+    visit_data = None
+    if raw.visit_data:
+        vd = raw.visit_data
+        visit_data = StandardizedVisitData(
+            diagnosis=_tx(vd.diagnosis),
+            chief_complaint=_tx(vd.chief_complaint),
+            objective_findings=_tx(vd.objective_findings),
+            prescriptions=[
+                StandardizedPrescription(
+                    name=_tx(p.name),
+                    dosage=_tx(p.dosage),
+                    instructions=_tx(p.instructions),
+                )
+                for p in (vd.prescriptions or [])
+            ],
+            recommendations=[_tx(r) for r in (vd.recommendations or [])],
+        )
+
     return StandardizedMedicalRecord(
         entry_type=raw.entry_type,
         date=_normalize_date(raw.date or ""),
@@ -129,7 +175,7 @@ def _fallback_standardize(raw: RawMedicalRecord) -> StandardizedMedicalRecord:
         title=raw.title,
         notes=raw.notes,
         biomarkers=biomarkers or None,
-        visit_data=raw.visit_data,
+        visit_data=visit_data,
         imaging_data=raw.imaging_data,
     )
 

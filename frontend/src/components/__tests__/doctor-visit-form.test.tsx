@@ -19,13 +19,13 @@ describe('DoctorVisitForm', () => {
 
   it('pre-fills from initialData', () => {
     const initial: ExtractedVisitData = {
-      diagnosis: 'Diabetes Type 2',
-      chief_complaint: 'Increased thirst and frequent urination',
-      objective_findings: 'HbA1c 8.2%, BMI 32',
+      diagnosis: { original: 'Diabetes Type 2', translated_en: 'Diabetes Type 2' },
+      chief_complaint: { original: 'Increased thirst and frequent urination', translated_en: 'Increased thirst and frequent urination' },
+      objective_findings: { original: 'HbA1c 8.2%, BMI 32', translated_en: 'HbA1c 8.2%, BMI 32' },
       prescriptions: [
-        { name: 'Metformin', dosage: '500mg', instructions: 'Twice daily with meals' },
+        { name: { original: 'Metformin', translated_en: 'Metformin' }, dosage: { original: '500mg', translated_en: '500mg' }, instructions: { original: 'Twice daily with meals', translated_en: 'Twice daily with meals' } },
       ],
-      recommendations: ['Monitor blood glucose daily', 'Dietary consultation'],
+      recommendations: [{ original: 'Monitor blood glucose daily', translated_en: 'Monitor blood glucose daily' }, { original: 'Dietary consultation', translated_en: 'Dietary consultation' }],
     }
 
     render(<DoctorVisitForm initialData={initial} />)
@@ -48,7 +48,9 @@ describe('DoctorVisitForm', () => {
     fireEvent.change(textareas[0], { target: { value: 'Asthma' } })
 
     expect(onDataChange).toHaveBeenCalledWith(
-      expect.objectContaining({ diagnosis: 'Asthma' }),
+      expect.objectContaining({
+        diagnosis: expect.objectContaining({ translated_en: 'Asthma' }),
+      }),
     )
   })
 

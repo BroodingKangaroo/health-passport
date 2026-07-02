@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { useAutoResize } from '@/lib/hooks/useAutoResize'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/shared/Field'
@@ -164,6 +165,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const providerRef = useRef<HTMLInputElement>(null)
   const titleRef = useRef<HTMLInputElement>(null)
   const notesRef = useRef<HTMLTextAreaElement>(null)
+  const resizeNotes = useAutoResize(notesRef)
   const fileRef = useRef<HTMLInputElement>(null)
   const uploadFileRef = useRef<HTMLInputElement>(null)
   const stageEntryTimeRef = useRef(0)
@@ -342,7 +344,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     return () => clearInterval(interval)
   }, [uploadState])
 
-
+  useEffect(() => { resizeNotes() }, [resizeNotes, prefillNotes])
 
   function handleFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -675,11 +677,11 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                 <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
                 <p className="text-xs text-foreground">
                   <span className="font-semibold">AI successfully identified</span>{' '}
-                  a{documentType === 'blood_test' ? ' Blood Test Panel' : documentType === 'doctor_visit' ? ' Doctor Visit' : documentType === 'imaging' ? 'n Imaging Report' : ' medical document'}
+                  a{documentType === 'blood_test' ? ' Blood Test Panel' : documentType === 'doctor_visit' ? ' Doctor Visit.' : documentType === 'imaging' ? 'n Imaging Report' : ' medical document'}
                   {documentType === 'blood_test' && categories.length > 0 && (
                     <> and extracted {categories.reduce((s, c) => s + c.rows.length, 0)} biomarkers.</>
                   )}
-                  Please review for accuracy.
+                  {' '}Please review for accuracy.
                 </p>
               </div>
             )}
@@ -734,6 +736,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                 <textarea
                   ref={notesRef}
                   defaultValue={prefillNotes}
+                  onInput={resizeNotes}
                   rows={2}
                   placeholder="e.g. Fasted for 12 hours, felt slight fatigue..."
                   className="flex w-full rounded-lg border border-input bg-background px-2.5 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"

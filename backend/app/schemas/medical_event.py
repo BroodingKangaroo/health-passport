@@ -1,17 +1,20 @@
 from pydantic import BaseModel
 from typing import Optional
 
+from .ai import TranslatedText
+
 
 class Prescription(BaseModel):
     id: int
-    name: str
-    dose: str
-    instruction: str
+    name: TranslatedText
+    dose: TranslatedText
+    instruction: TranslatedText
 
 
 class VisitNote(BaseModel):
     heading: Optional[str] = None
-    text: str
+    text_translated: str = ""
+    text_original: str = ""
 
 
 class Attachment(BaseModel):
@@ -39,8 +42,8 @@ class VisitData(BaseModel):
     provider: str
     date: str
     clinic: str
-    verdict: str
+    verdict: TranslatedText
     notes: list[VisitNote]
     prescriptions: list[Prescription]
-    recommendations: list[str]
+    recommendations: list[TranslatedText]
     attachments: list[Attachment]

@@ -12,6 +12,7 @@ import {
   Download,
   Printer,
   Paperclip,
+  Languages,
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -31,6 +32,7 @@ const DocumentViewer = dynamic(
 
 export function DoctorVisitDetails({ visit }: { visit: VisitData }) {
   const [activeTab, setActiveTab] = useState<'summary' | 'document'>('summary')
+  const [showOriginal, setShowOriginal] = useState(false)
   const [activeAttachmentId, setActiveAttachmentId] = useState(visit.attachments[0]?.id ?? null)
 
   const handleDownload = useCallback((name: string, url: string) => {
@@ -42,32 +44,52 @@ export function DoctorVisitDetails({ visit }: { visit: VisitData }) {
     document.body.removeChild(a)
   }, [])
 
+  const verdictText = showOriginal ? visit.verdict.original : visit.verdict.translated_en
+  const verdictLabel = showOriginal ? 'Original' : 'Translated'
+
   return (
     <div className="flex h-full w-full flex-col bg-background px-6 pb-6">
-      <div className="flex items-center gap-4">
-        <button
-          onClick={() => setActiveTab('summary')}
-          className={
-            activeTab === 'summary'
-              ? 'inline-flex items-center gap-1.5 text-sm font-semibold text-foreground'
-              : 'inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
-          }
-        >
-          <FileText className="size-4" />
-          Translated Summary
-        </button>
-        <span className="text-sm text-muted-foreground/20">|</span>
-        <button
-          onClick={() => setActiveTab('document')}
-          className={
-            activeTab === 'document'
-              ? 'inline-flex items-center gap-1.5 text-sm font-semibold text-foreground'
-              : 'inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
-          }
-        >
-          <Paperclip className="size-4" />
-          Original Document ({visit.attachments.length})
-        </button>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setActiveTab('summary')}
+            className={
+              activeTab === 'summary'
+                ? 'inline-flex items-center gap-1.5 text-sm font-semibold text-foreground'
+                : 'inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
+            }
+          >
+            <FileText className="size-4" />
+            {showOriginal ? 'Original Summary' : 'Translated Summary'}
+          </button>
+          <span className="text-sm text-muted-foreground/20">|</span>
+          <button
+            onClick={() => setActiveTab('document')}
+            className={
+              activeTab === 'document'
+                ? 'inline-flex items-center gap-1.5 text-sm font-semibold text-foreground'
+                : 'inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
+            }
+          >
+            <Paperclip className="size-4" />
+            Original Document ({visit.attachments.length})
+          </button>
+        </div>
+
+        {activeTab === 'summary' && (
+          <button
+            onClick={() => setShowOriginal(!showOriginal)}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
+              showOriginal
+                ? 'border-blue-500/30 bg-blue-500/10 text-blue-600'
+                : 'border-border bg-muted/30 text-muted-foreground hover:bg-muted',
+            )}
+          >
+            <Languages className="size-3.5" />
+            {showOriginal ? 'Showing Original' : 'View Original Language'}
+          </button>
+        )}
       </div>
 
       {activeTab === 'summary' ? (
@@ -83,80 +105,137 @@ export function DoctorVisitDetails({ visit }: { visit: VisitData }) {
             </span>
           </div>
 
-          <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4">
-            <div className="mb-1 flex items-center gap-2">
-              <Activity className="size-4 text-blue-500" />
-              <span className="text-xs font-semibold uppercase tracking-wide text-blue-500">
-                Primary Diagnosis
+          <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-6">
+            <div className="mb-1 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Activity className="size-4 text-blue-500" />
+                <span className="text-xs font-semibold uppercase tracking-wide text-blue-500">
+                  Primary Diagnosis
+                </span>
+              </div>
+              <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
+                {verdictLabel}
               </span>
             </div>
-            <p className="text-sm leading-relaxed text-foreground">
-              {visit.verdict}
-            </p>
+            {verdictText ? (
+              <p className="text-sm leading-relaxed text-foreground">
+                {verdictText}
+              </p>
+            ) : (
+              <p className="text-sm italic text-muted-foreground/50">
+                No diagnosis recorded
+              </p>
+            )}
           </div>
 
-          <div className="bg-card border border-border rounded-xl p-6 space-y-6">
-            {visit.notes.map((note, i) => (
+          <div className="bg-card border border-border rounded-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                Clinical Notes
+              </h3>
+              <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
+                {verdictLabel}
+              </span>
+            </div>
+            <div className="space-y-6">
+            {visit.notes.length > 0 ? visit.notes.map((note, i) => (
               <Fragment key={i}>
                 <div>
                   {note.heading && (
-                    <h3 className="text-sm font-semibold text-foreground">
-                      {note.heading}
-                    </h3>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-foreground">
+                        {note.heading}
+                      </h3>
+                      <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
+                        {verdictLabel}
+                      </span>
+                    </div>
                   )}
-                  {note.text ? (
-                    <p className="text-sm leading-relaxed text-muted-foreground">
-                      {note.text}
-                    </p>
-                  ) : (
-                    <p className="text-sm italic text-muted-foreground/50">
-                      No {note.heading?.toLowerCase() || 'information'} recorded
-                    </p>
-                  )}
+                  {(() => {
+                    const noteText = showOriginal ? note.text_original : note.text_translated
+                    return noteText ? (
+                      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                        {noteText}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-sm italic text-muted-foreground/50">
+                        No {note.heading?.toLowerCase() || 'information'} recorded
+                      </p>
+                    )
+                  })()}
                 </div>
                 {i === 1 && <div className="h-px bg-border/50" />}
               </Fragment>
-            ))}
+            )) : (
+              <p className="text-sm italic text-muted-foreground/50">
+                No clinical notes recorded
+              </p>
+            )}
+            </div>
           </div>
 
-          {visit.prescriptions.length > 0 && (
-            <div className="bg-card border border-border rounded-xl p-6">
-              <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase mb-4">
+          <div className="bg-card border border-border rounded-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                 Prescriptions
               </h3>
-              {visit.prescriptions.map((p) => (
-                <div
-                  key={p.id}
-                  className="mb-3 flex items-center justify-between rounded-xl border border-border/50 bg-background p-4 transition-all hover:bg-background/80 cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <Pill className="size-5 text-primary" />
-                    <div>
-                      <span className="text-sm font-medium text-foreground">{p.name}</span>
-                      <span className="ml-2 text-xs text-muted-foreground">{p.dose}</span>
-                    </div>
-                  </div>
-                  <span className="text-xs text-muted-foreground">{p.instruction}</span>
-                </div>
-              ))}
+              <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
+                {verdictLabel}
+              </span>
             </div>
-          )}
+            {visit.prescriptions.length > 0 ? visit.prescriptions.map((p) => (
+              <div
+                key={p.id}
+                className="mb-2 flex items-start gap-3 rounded-xl border border-border/50 bg-background p-3 transition-all hover:bg-background/80 cursor-pointer"
+              >
+                <Pill className="mt-0.5 size-5 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-sm font-medium text-foreground">
+                      {showOriginal ? p.name.original : p.name.translated_en}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {showOriginal ? p.dose.original : p.dose.translated_en}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {showOriginal ? p.instruction.original : p.instruction.translated_en}
+                  </p>
+                </div>
+              </div>
+            )) : (
+              <p className="text-sm italic text-muted-foreground/50">
+                No prescriptions recorded
+              </p>
+            )}
+          </div>
 
-          {visit.recommendations.length > 0 && (
-            <div className="bg-card border border-border rounded-xl p-6">
-              <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase mb-4">
+          <div className="bg-card border border-border rounded-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                 Recommendations
               </h3>
+              <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
+                {verdictLabel}
+              </span>
+            </div>
+            {visit.recommendations.length > 0 ? (
               <ul className="space-y-2">
                 {visit.recommendations.map((rec, i) => (
                   <li key={i} className="flex items-start gap-2">
                     <CheckCircle className="mt-0.5 size-4 shrink-0 text-green-500" />
-                    <span className="text-sm text-muted-foreground">{rec}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {showOriginal ? rec.original : rec.translated_en}
+                    </span>
                   </li>
                 ))}
               </ul>
-            </div>
-          )}
+            ) : (
+              <p className="text-sm italic text-muted-foreground/50">
+                No recommendations recorded
+              </p>
+            )}
+          </div>
         </div>
       ) : (
         <div className="mt-5 flex w-full min-w-0 flex-1 flex-col min-h-0">

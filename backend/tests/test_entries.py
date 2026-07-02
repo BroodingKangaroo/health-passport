@@ -148,9 +148,9 @@ class TestSaveDoctorVisit:
     async def test_save_doctor_visit_returns_200(self, client):
         # given
         visit_data = json.dumps({
-            "diagnosis": "Hypertension",
-            "chief_complaint": "Chest pain",
-            "objective_findings": "BP 140/90",
+            "diagnosis": {"original": "Hypertension", "translated_en": "Hypertension"},
+            "chief_complaint": {"original": "Chest pain", "translated_en": "Chest pain"},
+            "objective_findings": {"original": "BP 140/90", "translated_en": "BP 140/90"},
             "prescriptions": [],
             "recommendations": [],
         })
@@ -178,9 +178,9 @@ class TestSaveDoctorVisit:
     async def test_saved_doctor_visit_appears_in_visits(self, client):
         # given
         visit_data = json.dumps({
-            "diagnosis": "Hypertension",
-            "chief_complaint": "Chest pain",
-            "objective_findings": "BP 140/90",
+            "diagnosis": {"original": "Hypertension", "translated_en": "Hypertension"},
+            "chief_complaint": {"original": "Chest pain", "translated_en": "Chest pain"},
+            "objective_findings": {"original": "BP 140/90", "translated_en": "BP 140/90"},
             "prescriptions": [],
             "recommendations": [],
         })
@@ -203,19 +203,23 @@ class TestSaveDoctorVisit:
         # then
         visits = timeline.json()["visits"]
         assert visit_id in visits
-        assert visits[visit_id]["verdict"] == "Hypertension"
+        assert visits[visit_id]["verdict"]["translated_en"] == "Hypertension"
 
     async def test_saved_doctor_visit_includes_prescriptions(self, client):
         # given
         visit_data = json.dumps({
-            "diagnosis": "Allergic Rhinitis",
-            "chief_complaint": "Sneezing",
-            "objective_findings": "Nasal congestion",
+            "diagnosis": {"original": "Allergic Rhinitis", "translated_en": "Allergic Rhinitis"},
+            "chief_complaint": {"original": "Sneezing", "translated_en": "Sneezing"},
+            "objective_findings": {"original": "Nasal congestion", "translated_en": "Nasal congestion"},
             "prescriptions": [
-                {"name": "Cetirizine", "dosage": "10mg", "instructions": "1 tablet daily"},
+                {
+                    "name": {"original": "Cetirizine", "translated_en": "Cetirizine"},
+                    "dosage": {"original": "10mg", "translated_en": "10mg"},
+                    "instructions": {"original": "1 tablet daily", "translated_en": "1 tablet daily"},
+                },
             ],
             "recommendations": [
-                {"text": "Avoid allergens"},
+                {"original": "Avoid allergens", "translated_en": "Avoid allergens"},
             ],
         })
 
@@ -237,5 +241,5 @@ class TestSaveDoctorVisit:
         # then
         v = timeline.json()["visits"][visit_id]
         assert len(v["prescriptions"]) == 1
-        assert v["prescriptions"][0]["name"] == "Cetirizine"
+        assert v["prescriptions"][0]["name"]["translated_en"] == "Cetirizine"
         assert len(v["recommendations"]) == 1

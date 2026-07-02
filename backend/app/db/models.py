@@ -91,7 +91,7 @@ class VisitData(Base):
     provider = Column(String, nullable=False)
     date = Column(String, nullable=False)
     clinic = Column(String, nullable=False)
-    verdict = Column(String, nullable=False)
+    verdict = Column(JSON, nullable=False)
     notes = Column(JSON, nullable=False)
     prescriptions = Column(JSON, nullable=False)
     recommendations = Column(JSON, nullable=False)

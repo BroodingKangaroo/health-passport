@@ -3,6 +3,13 @@ from typing import Optional
 from typing_extensions import Literal
 
 
+# +++++ Reusable dual-language text container +++++
+
+class TranslatedText(BaseModel):
+    original: str = ""
+    translated_en: str = ""
+
+
 # +++++ Pass 1 — Raw extraction (preserve source text exactly as written) +++++
 
 class RawBiomarker(BaseModel):
@@ -46,7 +53,7 @@ class RawMedicalRecord(BaseModel):
     imaging_data: Optional[RawImagingData] = None
 
 
-# +++++ Pass 2 — Standardized (normalized, matched, converted) +++++
+# +++++ Pass 2 — Standardized (normalized, matched, converted, translated) +++++
 
 class StandardizedBiomarker(BaseModel):
     raw_name: str
@@ -62,6 +69,20 @@ class StandardizedBiomarker(BaseModel):
     category: str = ""
 
 
+class StandardizedPrescription(BaseModel):
+    name: TranslatedText
+    dosage: TranslatedText
+    instructions: TranslatedText
+
+
+class StandardizedVisitData(BaseModel):
+    diagnosis: TranslatedText
+    chief_complaint: TranslatedText
+    objective_findings: TranslatedText
+    prescriptions: list[StandardizedPrescription] = []
+    recommendations: list[TranslatedText] = []
+
+
 class StandardizedMedicalRecord(BaseModel):
     entry_type: Literal["blood_test", "doctor_visit", "imaging", "unknown"]
     date: Optional[str] = None
@@ -71,12 +92,11 @@ class StandardizedMedicalRecord(BaseModel):
     title: Optional[str] = None
     notes: Optional[str] = None
     biomarkers: Optional[list[StandardizedBiomarker]] = None
-    visit_data: Optional[RawVisitData] = None
+    visit_data: Optional[StandardizedVisitData] = None
     imaging_data: Optional[RawImagingData] = None
 
 
 # +++++ Legacy aliases for types shared across passes +++++
 
 ExtractedPrescription = RawPrescription
-ExtractedVisitData = RawVisitData
 ExtractedImagingData = RawImagingData

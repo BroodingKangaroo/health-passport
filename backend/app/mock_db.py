@@ -106,6 +106,11 @@ def _build_biomarkers_for_date(date_idx: int) -> dict[str, dict]:
     return result
 
 
+def _wrap_tx(text: str) -> dict:
+    """Wrap a string into a dual-language TranslatedText dict."""
+    return {"original": text, "translated_en": text}
+
+
 DOCTOR_VISITS: list[dict] = [
     {
         "id": "cardio",
@@ -125,18 +130,18 @@ DOCTOR_VISITS: list[dict] = [
             "provider": "Dr. Elena Ivanova, MD",
             "date": "2026-09-05",
             "clinic": "Central Heart Institute",
-            "verdict": "Mild Sinus Tachycardia - Under Control. Patient responding well to current regimen.",
+            "verdict": _wrap_tx("Mild Sinus Tachycardia - Under Control. Patient responding well to current regimen."),
             "notes": [
-                {"heading": "Chief Complaint & Subjective", "text": "Patient reports occasional palpitations during heavy exercise. Denies chest pain, shortness of breath, or dizziness. Mentions feeling generally fatigued in the mornings."},
-                {"heading": None, "text": "Vitals taken at desk: BP 118/76, HR 88 bpm, O2 99%. Weight stable."},
-                {"heading": "Objective Findings", "text": "Heart rhythm is regular. No murmurs, gallops, or rubs heard. Lungs are clear to auscultation bilaterally. EKG performed in-office reveals Normal Sinus Rhythm, rate 88, with no ST-T wave abnormalities."},
+                {"heading": "Chief Complaint & Subjective", "text_original": "Patient reports occasional palpitations during heavy exercise. Denies chest pain, shortness of breath, or dizziness. Mentions feeling generally fatigued in the mornings.", "text_translated": "Patient reports occasional palpitations during heavy exercise. Denies chest pain, shortness of breath, or dizziness. Mentions feeling generally fatigued in the mornings."},
+                {"heading": None, "text_original": "Vitals taken at desk: BP 118/76, HR 88 bpm, O2 99%. Weight stable.", "text_translated": "Vitals taken at desk: BP 118/76, HR 88 bpm, O2 99%. Weight stable."},
+                {"heading": "Objective Findings", "text_original": "Heart rhythm is regular. No murmurs, gallops, or rubs heard. Lungs are clear to auscultation bilaterally. EKG performed in-office reveals Normal Sinus Rhythm, rate 88, with no ST-T wave abnormalities.", "text_translated": "Heart rhythm is regular. No murmurs, gallops, or rubs heard. Lungs are clear to auscultation bilaterally. EKG performed in-office reveals Normal Sinus Rhythm, rate 88, with no ST-T wave abnormalities."},
             ],
             "prescriptions": [
-                {"id": 1, "name": "Metoprolol Succinate", "dose": "25mg", "instruction": "1 tablet daily (morning)"},
+                {"id": 1, "name": _wrap_tx("Metoprolol Succinate"), "dose": _wrap_tx("25mg"), "instruction": _wrap_tx("1 tablet daily (morning)")},
             ],
             "recommendations": [
-                "Schedule 6-month follow-up EKG and consultation.",
-                "Comprehensive Metabolic Panel (CMP) prior to next visit.",
+                _wrap_tx("Schedule 6-month follow-up EKG and consultation."),
+                _wrap_tx("Comprehensive Metabolic Panel (CMP) prior to next visit."),
             ],
         },
     },
@@ -155,19 +160,19 @@ DOCTOR_VISITS: list[dict] = [
             "provider": "Dr. James Mitchell, DO",
             "date": "2026-08-22",
             "clinic": "Northern Sports Medicine",
-            "verdict": "Left knee patellar tendinopathy (Jumper's Knee). MRI confirms mild tendinosis without tear.",
+            "verdict": _wrap_tx("Left knee patellar tendinopathy (Jumper's Knee). MRI confirms mild tendinosis without tear."),
             "notes": [
-                {"heading": "Chief Complaint", "text": "Left anterior knee pain for 3 months, worse with squatting and stairs. Patient is a recreational basketball player."},
-                {"heading": "Physical Exam", "text": "Tenderness over patellar tendon at tibial insertion. Pain with resisted knee extension. No effusion. Full range of motion."},
-                {"heading": "Imaging Review", "text": "MRI left knee: Mild thickening and signal increase in proximal patellar tendon consistent with tendinosis. No tear."},
+                {"heading": "Chief Complaint", "text_original": "Left anterior knee pain for 3 months, worse with squatting and stairs. Patient is a recreational basketball player.", "text_translated": "Left anterior knee pain for 3 months, worse with squatting and stairs. Patient is a recreational basketball player."},
+                {"heading": "Physical Exam", "text_original": "Tenderness over patellar tendon at tibial insertion. Pain with resisted knee extension. No effusion. Full range of motion.", "text_translated": "Tenderness over patellar tendon at tibial insertion. Pain with resisted knee extension. No effusion. Full range of motion."},
+                {"heading": "Imaging Review", "text_original": "MRI left knee: Mild thickening and signal increase in proximal patellar tendon consistent with tendinosis. No tear.", "text_translated": "MRI left knee: Mild thickening and signal increase in proximal patellar tendon consistent with tendinosis. No tear."},
             ],
             "prescriptions": [
-                {"id": 2, "name": "Ibuprofen", "dose": "400mg", "instruction": "Take 1 tablet twice daily with food as needed for pain"},
+                {"id": 2, "name": _wrap_tx("Ibuprofen"), "dose": _wrap_tx("400mg"), "instruction": _wrap_tx("Take 1 tablet twice daily with food as needed for pain")},
             ],
             "recommendations": [
-                "Physical therapy 2x/week for 6 weeks focusing on eccentric quad strengthening.",
-                "Activity modification - avoid jumping and deep squatting for 4 weeks.",
-                "Follow-up in 8 weeks with repeat clinical assessment.",
+                _wrap_tx("Physical therapy 2x/week for 6 weeks focusing on eccentric quad strengthening."),
+                _wrap_tx("Activity modification - avoid jumping and deep squatting for 4 weeks."),
+                _wrap_tx("Follow-up in 8 weeks with repeat clinical assessment."),
             ],
         },
     },
@@ -188,22 +193,22 @@ DOCTOR_VISITS: list[dict] = [
             "provider": "Dr. S. Reynolds, MD, PhD",
             "date": "2026-10-18",
             "clinic": "Neurology Associates",
-            "verdict": "Suspected Migraine with Brainstem Aura. MRI brain scheduled to rule out structural causes.",
+            "verdict": _wrap_tx("Suspected Migraine with Brainstem Aura. MRI brain scheduled to rule out structural causes."),
             "notes": [
-                {"heading": "Chief Complaint", "text": "Patient reports recurrent episodes of vertigo, blurred vision, and unilateral throbbing headache lasting 4-72 hours. Episodes increased in frequency over the past 2 months — now 3-4 per month."},
-                {"heading": None, "text": "Patient also notes photophobia, phonophobia, and occasional nausea during episodes. No aura prior to onset. Family history positive for migraines (mother)."},
-                {"heading": "Physical Exam", "text": "Cranial nerves II-XII intact. Motor strength 5/5 throughout. Sensation intact. Reflexes 2+ and symmetric. Coordination and gait normal. No papilledema on fundoscopy."},
-                {"heading": "Assessment", "text": "1. Migraine without aura (G43.0) — likely diagnosis. 2. Rule out brainstem pathology with MRI. 3. Consider starting prophylactic therapy if frequency exceeds 4/month."},
+                {"heading": "Chief Complaint", "text_original": "Patient reports recurrent episodes of vertigo, blurred vision, and unilateral throbbing headache lasting 4-72 hours. Episodes increased in frequency over the past 2 months — now 3-4 per month.", "text_translated": "Patient reports recurrent episodes of vertigo, blurred vision, and unilateral throbbing headache lasting 4-72 hours. Episodes increased in frequency over the past 2 months — now 3-4 per month."},
+                {"heading": None, "text_original": "Patient also notes photophobia, phonophobia, and occasional nausea during episodes. No aura prior to onset. Family history positive for migraines (mother).", "text_translated": "Patient also notes photophobia, phonophobia, and occasional nausea during episodes. No aura prior to onset. Family history positive for migraines (mother)."},
+                {"heading": "Physical Exam", "text_original": "Cranial nerves II-XII intact. Motor strength 5/5 throughout. Sensation intact. Reflexes 2+ and symmetric. Coordination and gait normal. No papilledema on fundoscopy.", "text_translated": "Cranial nerves II-XII intact. Motor strength 5/5 throughout. Sensation intact. Reflexes 2+ and symmetric. Coordination and gait normal. No papilledema on fundoscopy."},
+                {"heading": "Assessment", "text_original": "1. Migraine without aura (G43.0) — likely diagnosis. 2. Rule out brainstem pathology with MRI. 3. Consider starting prophylactic therapy if frequency exceeds 4/month.", "text_translated": "1. Migraine without aura (G43.0) — likely diagnosis. 2. Rule out brainstem pathology with MRI. 3. Consider starting prophylactic therapy if frequency exceeds 4/month."},
             ],
             "prescriptions": [
-                {"id": 3, "name": "Sumatriptan Succinate", "dose": "50mg", "instruction": "Take 1 tablet at onset of migraine; may repeat once after 2 hours if no relief (max 2/day)"},
-                {"id": 4, "name": "Vitamin B2 (Riboflavin)", "dose": "400mg", "instruction": "1 tablet daily for migraine prophylaxis"},
+                {"id": 3, "name": _wrap_tx("Sumatriptan Succinate"), "dose": _wrap_tx("50mg"), "instruction": _wrap_tx("Take 1 tablet at onset of migraine; may repeat once after 2 hours if no relief (max 2/day)")},
+                {"id": 4, "name": _wrap_tx("Vitamin B2 (Riboflavin)"), "dose": _wrap_tx("400mg"), "instruction": _wrap_tx("1 tablet daily for migraine prophylaxis")},
             ],
             "recommendations": [
-                "MRI brain with and without contrast to rule out structural causes.",
-                "Keep headache diary for 8 weeks tracking triggers, frequency, and severity.",
-                "Follow-up in 4 weeks to review MRI results and assess response to Sumatriptan.",
-                "Consider neurology referral if symptoms worsen or atypical features develop.",
+                _wrap_tx("MRI brain with and without contrast to rule out structural causes."),
+                _wrap_tx("Keep headache diary for 8 weeks tracking triggers, frequency, and severity."),
+                _wrap_tx("Follow-up in 4 weeks to review MRI results and assess response to Sumatriptan."),
+                _wrap_tx("Consider neurology referral if symptoms worsen or atypical features develop."),
             ],
         },
     },

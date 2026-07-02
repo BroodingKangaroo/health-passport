@@ -1,3 +1,8 @@
+export interface TranslatedText {
+  original: string
+  translated_en: string
+}
+
 export type Status = 'normal' | 'low' | 'high'
 
 /* ----- Patient ----- */
@@ -71,14 +76,15 @@ export interface MedicalEvent {
 /* ----- Visit Data ----- */
 export interface VisitNote {
   heading: string | null
-  text: string
+  text_translated: string
+  text_original: string
 }
 
 export interface VisitPrescription {
   id: number
-  name: string
-  dose: string
-  instruction: string
+  name: TranslatedText
+  dose: TranslatedText
+  instruction: TranslatedText
 }
 
 export interface VisitAttachment {
@@ -94,10 +100,10 @@ export interface VisitData {
   provider: string
   date: string
   clinic: string
-  verdict: string
+  verdict: TranslatedText
   notes: VisitNote[]
   prescriptions: VisitPrescription[]
-  recommendations: string[]
+  recommendations: TranslatedText[]
   attachments: VisitAttachment[]
 }
 
@@ -183,6 +189,8 @@ export interface Recommendation {
   text: string
 }
 
+
+
 /* ----- AI Extraction Types (two-pass: Standardized output) ----- */
 export interface StandardizedBiomarker {
   raw_name: string
@@ -199,17 +207,17 @@ export interface StandardizedBiomarker {
 }
 
 export interface ExtractedPrescription {
-  name: string
-  dosage: string
-  instructions: string
+  name: TranslatedText
+  dosage: TranslatedText
+  instructions: TranslatedText
 }
 
 export interface ExtractedVisitData {
-  diagnosis: string
-  chief_complaint: string
-  objective_findings: string
+  diagnosis: TranslatedText
+  chief_complaint: TranslatedText
+  objective_findings: TranslatedText
   prescriptions: ExtractedPrescription[]
-  recommendations: string[]
+  recommendations: TranslatedText[]
 }
 
 export interface ExtractedImagingData {

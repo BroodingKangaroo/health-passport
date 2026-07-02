@@ -8,6 +8,9 @@ from app.schemas.ai import (
     RawImagingData,
     StandardizedMedicalRecord,
     StandardizedBiomarker,
+    StandardizedVisitData,
+    StandardizedPrescription,
+    TranslatedText,
 )
 
 
@@ -123,7 +126,13 @@ class TestExtractEndpoint:
             date="2026-06-10",
             clinic="City Hospital",
             provider="Dr. Smith",
-            visit_data=raw.visit_data,
+            visit_data=StandardizedVisitData(
+                diagnosis=TranslatedText(original="Hypertension", translated_en="Hypertension"),
+                chief_complaint=TranslatedText(original="Headaches for 2 weeks", translated_en="Headaches for 2 weeks"),
+                objective_findings=TranslatedText(original="BP 150/95, heart rate normal", translated_en="BP 150/95, heart rate normal"),
+                prescriptions=[],
+                recommendations=[],
+            ),
         )
         mock_match.return_value = std
 
@@ -135,7 +144,8 @@ class TestExtractEndpoint:
         assert resp.status_code == 200
         data = _parse_sse_result(resp.text)
         assert data["entry_type"] == "doctor_visit"
-        assert data["visit_data"]["diagnosis"] == "Hypertension"
+        assert data["visit_data"]["diagnosis"]["translated_en"] == "Hypertension"
+        assert data["visit_data"]["diagnosis"]["original"] == "Hypertension"
 
     @patch("app.api.ai.matcher.match_and_convert")
     @patch("app.api.ai.extractor.llm_extract")
