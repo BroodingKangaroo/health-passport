@@ -58,8 +58,9 @@ function estimateExtractionTime(chars: number): number {
   return Math.max(5, chars * 0.006)
 }
 
-function estimateMatchingTime(biomarkers: number): number {
-  return biomarkers === 0 ? 5 : Math.max(15, biomarkers * 1.5)
+function estimateMatchingTime(biomarkers: number, chars: number): number {
+  if (biomarkers > 0) return Math.max(12, biomarkers * 1.2 + 8)
+  return Math.max(15, chars * 0.025)
 }
 
 function newRow(): FormBiomarkerRow {
@@ -171,6 +172,11 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const extractionStartRef = useRef(0)
   const stageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hasLeftOcrRef = useRef(false)
+  const markdownCharsRef = useRef<number | null>(null)
+  const barElRef = useRef<HTMLDivElement>(null)
+  const barStartRef = useRef(0)
+  const barStageRef = useRef<ProgressStage>('ocr_scanning')
+  const barStageEntryRef = useRef(0)
 
   const runExtraction = useCallback(async (file: File) => {
     setAiError(null)
@@ -186,21 +192,34 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     if (stageTimeoutRef.current !== null) clearTimeout(stageTimeoutRef.current)
     stageTimeoutRef.current = null
     hasLeftOcrRef.current = false
+    markdownCharsRef.current = null
+    barStartRef.current = performance.now()
+    barStageRef.current = 'ocr_scanning'
+    barStageEntryRef.current = 0
+    const setStage = (stage: string) => {
+      const s = stage as ProgressStage
+      barStageRef.current = s
+      barStageEntryRef.current = (performance.now() - barStartRef.current) / 1000
+      setProgressStage(s)
+    }
+
     try {
       const result = await extractMedicalData(file, (payload) => {
         const now = elapsedRef.current
         if (payload.markdown_chars != null) {
+          markdownCharsRef.current = payload.markdown_chars
           setMarkdownChars(payload.markdown_chars)
           stageEntryTimeRef.current = now
           const estExt = estimateExtractionTime(payload.markdown_chars)
           const estBm = Math.round(payload.markdown_chars * 0.007)
-          const estMatch = estimateMatchingTime(estBm)
+          const estMatch = estimateMatchingTime(estBm, payload.markdown_chars)
           stageEstimateRef.current = Math.round(estExt + estMatch)
         }
         if (payload.biomarker_count != null) {
           setBiomarkerCount(payload.biomarker_count)
           stageEntryTimeRef.current = now
-          stageEstimateRef.current = Math.round(estimateMatchingTime(payload.biomarker_count))
+          const chars = markdownCharsRef.current ?? 0
+          stageEstimateRef.current = Math.round(estimateMatchingTime(payload.biomarker_count, chars))
         }
         if (stageTimeoutRef.current !== null) clearTimeout(stageTimeoutRef.current)
         stageTimeoutRef.current = null
@@ -208,11 +227,11 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
           hasLeftOcrRef.current = true
           const took = performance.now() - extractionStartRef.current
           if (took < 1200) {
-            stageTimeoutRef.current = setTimeout(() => setProgressStage(payload.stage), 1200 - took)
+            stageTimeoutRef.current = setTimeout(() => setStage(payload.stage), 1200 - took)
             return
           }
         }
-        setProgressStage(payload.stage)
+        setStage(payload.stage)
       })
       setEntryMode('ai')
       setDocumentType(result.entry_type)
@@ -246,7 +265,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         setImagingFormData(null)
       }
 
-      setProgressStage('completed')
+      setStage('completed')
       await new Promise((r) => setTimeout(r, 1500))
       setUploadState('editor')
     } catch (err: any) {
@@ -289,6 +308,27 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     }
     setObjectUrl(null)
   }, [selectedFile])
+
+  useEffect(() => {
+    if (uploadState !== 'scanning') return
+    let rafId: number
+    const tick = () => {
+      const el = barElRef.current
+      if (!el) { rafId = requestAnimationFrame(tick); return }
+      const stage = barStageRef.current
+      if (stage === 'completed') { el.style.width = '100%'; return }
+      if (stage === 'ocr_scanning') { el.style.width = '2%'; rafId = requestAnimationFrame(tick); return }
+      const totalElapsed = (performance.now() - barStartRef.current) / 1000
+      const cap = stage === 'extracting' ? 90 : 95
+      const stageElapsed = Math.max(0, totalElapsed - barStageEntryRef.current)
+      const remaining = Math.max(0, stageEstimateRef.current - stageElapsed)
+      const denom = totalElapsed + remaining
+      el.style.width = `${denom > 0 ? Math.min(cap, (totalElapsed / denom) * 100) : cap}%`
+      rafId = requestAnimationFrame(tick)
+    }
+    rafId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafId)
+  }, [uploadState])
 
   useEffect(() => {
     if (uploadState !== 'scanning') return
@@ -495,7 +535,8 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
               <div className="mt-1 w-full max-w-xs space-y-1.5">
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary/10">
                   <div
-                    className="h-full rounded-full bg-primary transition-all duration-700 ease-out"
+                    ref={barElRef}
+                    className="h-full rounded-full bg-primary"
                     style={{ width: `${progressWidth}%` }}
                   />
                 </div>
