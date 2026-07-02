@@ -15,7 +15,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'venv/bin/python -m uvicorn app.main:app --port 8000',
+      command: 'sh -c "test -x venv/bin/python && exec venv/bin/python -m uvicorn app.main:app --port 8000 || exec python3 -m uvicorn app.main:app --port 8000"',
       port: 8000,
       cwd: '../backend',
       reuseExistingServer: !process.env.CI,
