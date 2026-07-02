@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
+const staticProxy = process.env.STATIC_PROXY_URL || 'http://localhost:8000'
+
 const nextConfig = {
+  output: 'standalone',
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -11,7 +14,7 @@ const nextConfig = {
     return [
       {
         source: '/static/:path*',
-        destination: 'http://localhost:8000/static/:path*',
+        destination: `${staticProxy}/static/:path*`,
       },
     ]
   },
