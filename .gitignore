@@ -28,4 +28,3 @@ backend/app.log
 
 # TypeScript
 *.tsbuildinfo
-.next/
