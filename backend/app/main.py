@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -50,6 +51,7 @@ app.include_router(entries_router)
 app.include_router(ai_router)
 app.include_router(biomarkers_router)
 
+os.makedirs("static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
