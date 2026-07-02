@@ -17,7 +17,7 @@ test.describe('Timeline', () => {
     await page.getByText('Pre-Operative Baseline').click()
 
     await expect(page.getByRole('button', { name: 'Test Results' })).toBeVisible()
-    await expect(page.getByText('Hemoglobin')).toBeVisible()
+    await expect(page.getByText('Hemoglobin').first()).toBeVisible()
   })
 
   test('shows doctor visit details when a visit event is clicked', async ({ page }) => {
