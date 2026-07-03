@@ -16,6 +16,10 @@ class BiomarkerDefinition(BaseModel):
     id: str
     name_en: str
     name_ru: str
+    name_es: Optional[str] = None
+    name_de: Optional[str] = None
+    name_fr: Optional[str] = None
+    name_he: Optional[str] = None
     category: str
     range_min: Optional[float] = None
     range_max: Optional[float] = None
@@ -40,6 +44,10 @@ class BiomarkerDefinitionResponse(BaseModel):
     id: str
     name_en: str
     name_ru: str
+    name_es: Optional[str] = None
+    name_de: Optional[str] = None
+    name_fr: Optional[str] = None
+    name_he: Optional[str] = None
     category: str
     unit: str
     range_min: Optional[float] = None

@@ -187,3 +187,23 @@
     @apply font-sans;
   }
 }
+
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    border-color: #d1d5db !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  :root {
+    color-scheme: light !important;
+  }
+
+  html, body {
+    background: white !important;
+    color: black !important;
+  }
+}

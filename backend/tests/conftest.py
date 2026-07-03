@@ -35,12 +35,14 @@ async def client(db_session):
     from app.api.flowsheet import router as flowsheet_router
     from app.api.entries import router as entries_router
     from app.api.ai import router as ai_router
+    from app.api.biomarkers import router as biomarkers_router
 
     app = FastAPI()
     app.include_router(timeline_router)
     app.include_router(flowsheet_router)
     app.include_router(entries_router)
     app.include_router(ai_router)
+    app.include_router(biomarkers_router)
 
     async def override_get_db():
         yield db_session

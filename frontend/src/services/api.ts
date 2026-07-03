@@ -30,7 +30,9 @@ export async function fetchTimelineEvents(): Promise<TimelineResponse> {
 
 /* ----- Flowsheet ----- */
 export async function fetchFlowsheetData(): Promise<FlowsheetResponse> {
-  return apiGet<FlowsheetResponse>('/flowsheet')
+  const res = await fetch(`${API_BASE}/flowsheet`, { cache: 'no-store' })
+  if (!res.ok) throw new ApiError(res.status, 'GET /flowsheet failed')
+  return res.json()
 }
 
 /* ----- Biomarker Detail ----- */

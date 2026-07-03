@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import {
   Printer,
   GripVertical,
@@ -10,8 +10,8 @@ import {
 
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Field } from '@/components/shared/Field'
-import type { PrintLang, DateCol, Marker, PrintCategory } from '@/lib/types'
+import { usePrintConfig } from '@/hooks/usePrintConfig'
+import type { PrintLang, DateHeader, MatrixCategory, BiomarkerResult, BiomarkerDefinition } from '@/lib/types'
 
 const LANG_NAME: Record<PrintLang, string> = {
   ru: 'Russian',
@@ -22,155 +22,11 @@ const LANG_NAME: Record<PrintLang, string> = {
   he: 'Hebrew',
 }
 
-const ALL_DATES: DateCol[] = [
-  { id: 'd01', year: '2023', short: 'Mar 15', ru: '15.03.23' },
-  { id: 'd02', year: '2024', short: 'Jan 20', ru: '20.01.24' },
-  { id: 'd03', year: '2024', short: 'Aug 10', ru: '10.08.24' },
-  { id: 'd04', year: '2025', short: 'Feb 02', ru: '02.02.25' },
-  { id: 'd05', year: '2025', short: 'Jun 14', ru: '14.06.25' },
-  { id: 'd06', year: '2025', short: 'Aug 18', ru: '18.08.25' },
-  { id: 'd07', year: '2025', short: 'Nov 03', ru: '03.11.25' },
-  { id: 'd08', year: '2026', short: 'Jan 15', ru: '15.01.26' },
-  { id: 'd09', year: '2026', short: 'Mar 06', ru: '06.03.26' },
-  { id: 'd10', year: '2026', short: 'Apr 22', ru: '22.04.26' },
-  { id: 'd11', year: '2026', short: 'Jul 10', ru: '10.07.26' },
-  { id: 'd12', year: '2026', short: 'Aug 20', ru: '20.08.26' },
-  { id: 'd13', year: '2026', short: 'Sep 05', ru: '05.09.26' },
-  { id: 'd14', year: '2026', short: 'Sep 28', ru: '28.09.26' },
-  { id: 'd15', year: '2026', short: 'Oct 12', ru: '12.10.26' },
-]
-
-const CHRONO = ['d15', 'd14', 'd13', 'd12', 'd11', 'd10', 'd09', 'd08', 'd07', 'd06', 'd05', 'd04', 'd03', 'd02', 'd01']
-
-const MARKERS: Record<string, Marker> = {
-  hgb: {
-    id: 'hgb',
-    unit: 'g/dL',
-    labels: {
-      en: 'Hemoglobin',
-      ru: 'Гемоглобин',
-      de: 'Hämoglobin',
-      fr: 'Hémoglobine',
-      es: 'Hemoglobina',
-      he: 'המוגלובין',
-    },
-    values: {
-      d01: { v: '13.2' },
-      d02: { v: '13.8' },
-      d03: { v: '14.0' },
-      d04: { v: '13.6' },
-      d05: { v: '14.2' },
-      d06: { v: '14.5' },
-      d07: { v: '13.9' },
-      d08: { v: '13.8' },
-      d09: { v: '14.5' },
-      d10: { v: '14.1' },
-      d11: { v: '13.7' },
-      d12: { v: '14.0' },
-      d13: { v: '14.0' },
-      d14: { v: '14.3' },
-      d15: { v: '14.2' },
-    },
-  },
-  wbc: {
-    id: 'wbc',
-    unit: 'x10⁹/L',
-    labels: {
-      en: 'Leukocytes',
-      ru: 'Лейкоциты',
-      de: 'Leukozyten',
-      fr: 'Leucocytes',
-      es: 'Leucocitos',
-      he: 'לויקוציטים',
-    },
-    values: {
-      d01: { v: '8.20' },
-      d02: { v: '8.64' },
-      d03: { v: '8.00' },
-      d04: { v: '8.20' },
-      d05: { v: '7.60' },
-      d06: { v: '7.90' },
-      d07: { v: '8.30' },
-      d08: { v: '12.40', abnormal: true },
-      d09: { v: '24.49', abnormal: true },
-      d10: { v: '10.10', abnormal: true },
-      d11: { v: '9.50', abnormal: true },
-      d12: { v: '9.80', abnormal: true },
-      d13: { v: '9.10', abnormal: true },
-      d14: { v: '8.70' },
-      d15: { v: '8.80' },
-    },
-  },
-  lymph: {
-    id: 'lymph',
-    unit: '%',
-    labels: {
-      en: 'Lymphocytes, %',
-      ru: 'Лимфоциты, %',
-      de: 'Lymphozyten, %',
-      fr: 'Lymphocytes, %',
-      es: 'Linfocitos, %',
-      he: 'לימפוציטים, %',
-    },
-    values: {
-      d01: { v: '30.0' },
-      d02: { v: '33.0' },
-      d03: { v: '28.0' },
-      d04: { v: '38.0' },
-      d05: { v: '36.0' },
-      d06: { v: '35.0' },
-      d07: { v: '37.0' },
-      d08: { v: '40.8', abnormal: true },
-      d09: { v: '52.7', abnormal: true },
-      d10: { v: '45.2', abnormal: true },
-      d11: { v: '38.0' },
-      d12: { v: '42.0', abnormal: true },
-      d13: { v: '32.0' },
-      d14: { v: '39.0' },
-      d15: { v: '41.0', abnormal: true },
-    },
-  },
-  ferr: {
-    id: 'ferr',
-    unit: 'ng/mL',
-    labels: {
-      en: 'Ferritin',
-      ru: 'Ферритин',
-      de: 'Ferritin',
-      fr: 'Ferritine',
-      es: 'Ferritina',
-      he: 'פריטין',
-    },
-    values: {
-      d01: { v: '18.5', abnormal: true },
-      d02: { v: '16.2', abnormal: true },
-      d03: { v: '24.0', abnormal: true },
-      d04: { v: '41.5' },
-      d05: { v: '36.0' },
-      d06: { v: '50.4' },
-      d07: { v: '45.0' },
-      d08: { v: '32.0' },
-      d09: { v: '32.0' },
-      d10: { v: '35.0' },
-      d11: { v: '30.5' },
-      d12: { v: '26.0', abnormal: true },
-      d13: { v: '28.5', abnormal: true },
-      d14: { v: '24.0', abnormal: true },
-      d15: { v: '22.0', abnormal: true },
-    },
-  },
-}
-
-const CATEGORIES: PrintCategory[] = [
-  { id: 'cbc', name: 'Complete Blood Count (CBC)', markers: ['hgb', 'wbc', 'lymph'] },
-  { id: 'iron', name: 'Iron Panel', markers: ['ferr'] },
-]
-
 const TABLE_HEADINGS: Record<PrintLang, { biomarker: string; title: string; note: string }> = {
   ru: {
-    biomarker: 'Показатель',
-    title: 'Динамика по исследованию',
-    note: '* Значения вне референсного диапазона',
+    biomarker: '\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u0435\u043B\u044C',
+    title: '\u0414\u0438\u043D\u0430\u043C\u0438\u043A\u0430 \u043F\u043E \u0438\u0441\u0441\u043B\u0435\u0434\u043E\u0432\u0430\u043D\u0438\u044E',
+    note: '* \u0417\u043D\u0430\u0447\u0435\u043D\u0438\u044F \u0432\u043D\u0435 \u0440\u0435\u0444\u0435\u0440\u0435\u043D\u0441\u043D\u043E\u0433\u043E \u0434\u0438\u0430\u043F\u0430\u0437\u043E\u043D\u0430',
   },
   en: {
     biomarker: 'Biomarker',
@@ -179,13 +35,13 @@ const TABLE_HEADINGS: Record<PrintLang, { biomarker: string; title: string; note
   },
   de: {
     biomarker: 'Biomarker',
-    title: 'Längsschnitt der Laborwerte',
-    note: '* Werte außerhalb des Referenzbereichs',
+    title: 'L\u00E4ngsschnitt der Laborwerte',
+    note: '* Werte au\u00DFerhalb des Referenzbereichs',
   },
   fr: {
     biomarker: 'Biomarqueur',
-    title: 'Résultats de laboratoire longitudinaux',
-    note: '* Valeurs hors plage de référence',
+    title: 'R\u00E9sultats de laboratoire longitudinaux',
+    note: '* Valeurs hors plage de r\u00E9f\u00E9rence',
   },
   es: {
     biomarker: 'Biomarcador',
@@ -193,11 +49,16 @@ const TABLE_HEADINGS: Record<PrintLang, { biomarker: string; title: string; note
     note: '* Valores fuera del rango de referencia',
   },
   he: {
-    biomarker: 'סמן ביולוגי',
-    title: 'תוצאות מעבדה לאורך זמן',
-    note: '* ערכים מחוץ לטווח הייחוס',
+    biomarker: '\u05E1\u05DE\u05DF \u05D1\u05D9\u05D5\u05DC\u05D5\u05D2\u05D9',
+    title: '\u05EA\u05D5\u05E6\u05D0\u05D5\u05EA \u05DE\u05E2\u05D1\u05D3\u05D4 \u05DC\u05D0\u05D5\u05E8\u05DA \u05D6\u05DE\u05DF',
+    note: '* \u05E2\u05E8\u05DB\u05D9\u05DD \u05DE\u05D7\u05D5\u05E5 \u05DC\u05D8\u05D5\u05D5\u05D7 \u05D4\u05D9\u05D7\u05D9\u05E1',
   },
 }
+
+function dateId(d: DateHeader): string {
+  return d.label + (d.sub ? '--' + d.sub : '')
+}
+
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -207,68 +68,131 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   )
 }
 
+function extractYear(label: string): number {
+  const m = label.match(/, (\d{4})/)
+  if (m) return parseInt(m[1], 10)
+  return new Date().getFullYear()
+}
+
 export function PrintEditor({
+  dates,
+  matrix,
+  biomarkers = [],
   lang,
   bilingual,
   onBack,
 }: {
+  dates: DateHeader[]
+  matrix: MatrixCategory[]
+  biomarkers?: BiomarkerResult[]
   lang: PrintLang
   bilingual: boolean
   onBack: () => void
 }) {
-  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>(
-    'portrait',
-  )
-  const [fontSize, setFontSize] = useState(10)
-  const [activeDates, setActiveDates] = useState<string[]>(['d15', 'd14'])
-  const [outOfRangeOnly, setOutOfRangeOnly] = useState(false)
-  const [hidden, setHidden] = useState<string[]>([])
-  const [order, setOrder] = useState<Record<string, string[]>>(
-    Object.fromEntries(CATEGORIES.map((c) => [c.id, [...c.markers]])),
-  )
-  const [openCats, setOpenCats] = useState<string[]>(CATEGORIES.map((c) => c.id))
-  const [dragInfo, setDragInfo] = useState<{ cat: string; id: string } | null>(
-    null,
+  const {
+    layout,
+    textSize,
+    selectedDates,
+    selectedBiomarkers,
+    showOutOfRangeOnly,
+    setLayout,
+    setTextSize,
+    setSelectedDates,
+    setSelectedBiomarkers,
+    setShowOutOfRangeOnly,
+    showRanges,
+    setShowRanges,
+  } = usePrintConfig()
+
+  const [openCats, setOpenCats] = useState<string[]>(matrix.map((c) => c.category))
+  const [dragInfo, setDragInfo] = useState<{ cat: string; id: string } | null>(null)
+  const [order, setOrder] = useState<Record<string, string[]>>(() =>
+    Object.fromEntries(matrix.map((c) => [c.category, c.rows.map((r) => r.id)])),
   )
 
   const headings = TABLE_HEADINGS[lang]
   const isRtl = lang === 'he'
 
-  const visibleDates = CHRONO.filter((id) => activeDates.includes(id)).map(
-    (id) => ALL_DATES.find((d) => d.id === id)!,
-  )
+  const defMap = useMemo(() => {
+    const map = new Map<string, BiomarkerDefinition>()
+    for (const b of biomarkers) {
+      if (b.definition) map.set(b.definition.id, b.definition)
+    }
+    return map
+  }, [biomarkers])
 
-  function markerIsAbnormal(m: Marker) {
-    return visibleDates.some((d) => m.values[d.id]?.abnormal)
+  const visibleDateIndices = useMemo(
+    () => dates.map((_, i) => i).filter((i) => selectedDates.includes(dateId(dates[i]))),
+    [dates, selectedDates],
+  )
+  const visibleDates = visibleDateIndices.map((i) => dates[i])
+
+  const visibleMatrix = useMemo(() => {
+    return matrix
+      .map((cat) => {
+        const catOrder = order[cat.category] || cat.rows.map((r) => r.id)
+        const orderedRows = catOrder
+          .map((id) => cat.rows.find((r) => r.id === id)!)
+          .filter(Boolean)
+        const filtered = orderedRows.filter((row) => {
+          if (!selectedBiomarkers.includes(row.id)) return false
+          const hasData = visibleDateIndices.some((i) => {
+            const cell = row.cells[i]
+            return cell && cell.value && cell.value !== '\u2014'
+          })
+          if (!hasData) return false
+          if (showOutOfRangeOnly) {
+            const cells = visibleDateIndices.map((i) => row.cells[i]).filter(Boolean)
+            return cells.some((c) => c.status !== 'normal')
+          }
+          return true
+        })
+        return { ...cat, rows: filtered }
+      })
+      .filter((cat) => cat.rows.length > 0)
+  }, [matrix, order, selectedBiomarkers, showOutOfRangeOnly, visibleDateIndices])
+
+  function toggleDate(label: string) {
+    setSelectedDates(
+      selectedDates.includes(label)
+        ? selectedDates.filter((l) => l !== label)
+        : [...selectedDates, label],
+    )
   }
 
-  function toggleDate(id: string) {
-    setActiveDates((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+  function toggleDateId(d: DateHeader) {
+    const id = dateId(d)
+    setSelectedDates(
+      selectedDates.includes(id)
+        ? selectedDates.filter((x) => x !== id)
+        : [...selectedDates, id],
     )
   }
 
   function preset(count: number | 'all') {
-    if (count === 'all') setActiveDates([...CHRONO])
-    else setActiveDates(CHRONO.slice(0, count))
+    const ids = dates.map((d) => dateId(d))
+    if (count === 'all') setSelectedDates([...ids])
+    else setSelectedDates(ids.slice(-count))
   }
 
-  function toggleHidden(id: string) {
-    setHidden((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+  function toggleBiomarker(id: string) {
+    setSelectedBiomarkers(
+      selectedBiomarkers.includes(id)
+        ? selectedBiomarkers.filter((x) => x !== id)
+        : [...selectedBiomarkers, id],
     )
   }
 
-  function toggleCat(id: string) {
+  function toggleCat(name: string) {
     setOpenCats((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+      prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name],
     )
   }
 
   function handleDrop(cat: string, targetId: string) {
     if (!dragInfo || dragInfo.cat !== cat || dragInfo.id === targetId) return
     setOrder((prev) => {
-      const list = [...prev[cat]]
+      const list = [...(prev[cat] || [])]
       const from = list.indexOf(dragInfo.id)
       const to = list.indexOf(targetId)
       if (from === -1 || to === -1) return prev
@@ -279,36 +203,51 @@ export function PrintEditor({
     setDragInfo(null)
   }
 
-  function rowLabel(m: Marker) {
-    if (bilingual && lang !== 'ru') {
-      return `${m.labels[lang]} / ${m.labels.ru}`
+  function translatedName(row: MatrixCategory['rows'][number]): string {
+    if (lang === 'ru') return row.original || row.name
+    const fieldMap: Partial<Record<PrintLang, keyof BiomarkerDefinition>> = {
+      de: 'name_de',
+      es: 'name_es',
+      fr: 'name_fr',
+      he: 'name_he',
     }
-    return m.labels[lang]
+    const field = fieldMap[lang]
+    if (field) {
+      const def = defMap.get(row.id)
+      const val = def?.[field]
+      if (val) return val as string
+    }
+    return row.name
   }
 
-  function colLabel(d: DateCol) {
-    return lang === 'ru' ? d.ru : d.short
+  function rowLabel(row: MatrixCategory['rows'][number]) {
+    if (bilingual && lang !== 'ru') {
+      return `${translatedName(row)} / ${row.original}`
+    }
+    return translatedName(row)
   }
 
-  const previewCats = CATEGORIES.map((c) => {
-    const markers = order[c.id]
-      .map((id) => MARKERS[id])
-      .filter((m) => !hidden.includes(m.id))
-      .filter((m) => !outOfRangeOnly || markerIsAbnormal(m))
-    return { ...c, markers }
-  }).filter((c) => c.markers.length > 0)
-
-  const years = [...new Set(ALL_DATES.map((d) => d.year))].sort()
+  const years = useMemo(() => {
+    const set = new Set(dates.map((d) => extractYear(d.label)))
+    return [...set].sort((a, b) => a - b)
+  }, [dates])
 
   return (
     <div className="flex h-screen flex-col print:block print:h-auto">
+      <style>{`
+        @media print {
+          @page {
+            size: ${layout};
+          }
+        }
+      `}</style>
       <div className="flex items-center justify-between border-b border-border bg-card px-5 py-2.5 print:hidden">
         <Button
           variant="ghost"
           onClick={onBack}
           className="gap-1.5 text-muted-foreground hover:text-foreground"
         >
-          ← Back to Setup
+          {'\u2190'} Back to Setup
         </Button>
         <h1 className="text-sm font-semibold text-foreground">
           Document Editor
@@ -330,10 +269,10 @@ export function PrintEditor({
                     {(['portrait', 'landscape'] as const).map((o) => (
                       <button
                         key={o}
-                        onClick={() => setOrientation(o)}
+                        onClick={() => setLayout(o)}
                         className={cn(
                           'flex-1 px-2 py-2 text-center text-xs font-medium capitalize transition-colors',
-                          orientation === o
+                          layout === o
                             ? 'bg-primary text-primary-foreground'
                             : 'bg-card text-muted-foreground hover:bg-accent',
                         )}
@@ -349,7 +288,7 @@ export function PrintEditor({
                       Text Size
                     </span>
                     <span className="text-xs font-semibold text-foreground">
-                      {fontSize}px
+                      {textSize}px
                     </span>
                   </div>
                   <input
@@ -357,8 +296,8 @@ export function PrintEditor({
                     min={8}
                     max={14}
                     step={1}
-                    value={fontSize}
-                    onChange={(e) => setFontSize(Number(e.target.value))}
+                    value={textSize}
+                    onChange={(e) => setTextSize(Number(e.target.value))}
                     className="w-full accent-primary"
                     aria-label="Text size"
                   />
@@ -373,7 +312,7 @@ export function PrintEditor({
                   { label: 'Last 3', val: 3 },
                   { label: 'Last 5', val: 5 },
                   { label: 'Last 10', val: 10 },
-                  { label: 'All 15', val: 'all' as const },
+                  { label: 'All', val: 'all' as const },
                 ].map((p) => (
                   <button
                     key={p.label}
@@ -391,20 +330,22 @@ export function PrintEditor({
                       {year}
                     </p>
                     <div className="grid grid-cols-2 gap-1">
-                      {ALL_DATES.filter((d) => d.year === year).map((d) => (
-                        <label
-                          key={d.id}
-                          className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm text-foreground transition-colors hover:bg-accent"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={activeDates.includes(d.id)}
-                            onChange={() => toggleDate(d.id)}
-                            className="size-4 accent-primary"
-                          />
-                          {d.short}
-                        </label>
-                      ))}
+                      {dates
+                        .filter((d) => extractYear(d.label) === year)
+                        .map((d) => (
+                          <label
+                            key={dateId(d)}
+                            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm text-foreground transition-colors hover:bg-accent"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedDates.includes(dateId(d))}
+                              onChange={() => toggleDateId(d)}
+                              className="size-4 accent-primary"
+                            />
+                            {d.label}
+                          </label>
+                        ))}
                     </div>
                   </div>
                 ))}
@@ -415,10 +356,10 @@ export function PrintEditor({
               <SectionTitle>Rows (Biomarkers)</SectionTitle>
 
               <button
-                onClick={() => setOutOfRangeOnly((v) => !v)}
+                onClick={() => setShowOutOfRangeOnly(!showOutOfRangeOnly)}
                 className={cn(
                   'mb-3 flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors',
-                  outOfRangeOnly
+                  showOutOfRangeOnly
                     ? 'border-primary bg-primary/5'
                     : 'border-border hover:bg-accent',
                 )}
@@ -437,31 +378,66 @@ export function PrintEditor({
                 <span
                   className={cn(
                     'relative h-5 w-9 shrink-0 rounded-full transition-colors',
-                    outOfRangeOnly ? 'bg-primary' : 'bg-muted-foreground/30',
+                    showOutOfRangeOnly ? 'bg-primary' : 'bg-muted-foreground/30',
                   )}
                 >
                   <span
                     className={cn(
                       'absolute top-0.5 size-4 rounded-full bg-background transition-all',
-                      outOfRangeOnly ? 'left-4' : 'left-0.5',
+                      showOutOfRangeOnly ? 'left-4' : 'left-0.5',
+                    )}
+                  />
+                </span>
+              </button>
+
+              <button
+                onClick={() => setShowRanges(!showRanges)}
+                className={cn(
+                  'mb-3 flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors',
+                  showRanges
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border hover:bg-accent',
+                )}
+              >
+                <span className="flex items-center gap-2">
+                  <Filter className="size-4 text-muted-foreground" />
+                  <span>
+                    <span className="block text-sm font-medium text-foreground">
+                      Show Reference Ranges
+                    </span>
+                    <span className="block text-[11px] text-muted-foreground">
+                      Display normal range below each biomarker
+                    </span>
+                  </span>
+                </span>
+                <span
+                  className={cn(
+                    'relative h-5 w-9 shrink-0 rounded-full transition-colors',
+                    showRanges ? 'bg-primary' : 'bg-muted-foreground/30',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'absolute top-0.5 size-4 rounded-full bg-background transition-all',
+                      showRanges ? 'left-4' : 'left-0.5',
                     )}
                   />
                 </span>
               </button>
 
               <div className="space-y-2">
-                {CATEGORIES.map((cat) => {
-                  const open = openCats.includes(cat.id)
+                {matrix.map((cat) => {
+                  const open = openCats.includes(cat.category)
                   return (
                     <div
-                      key={cat.id}
+                      key={cat.category}
                       className="overflow-hidden rounded-lg border border-border"
                     >
                       <button
-                        onClick={() => toggleCat(cat.id)}
+                        onClick={() => toggleCat(cat.category)}
                         className="flex w-full items-center justify-between bg-secondary/40 px-3 py-2 text-left text-sm font-semibold text-foreground transition-colors hover:bg-secondary"
                       >
-                        {cat.name}
+                        {cat.category}
                         <ChevronDown
                           className={cn(
                             'size-4 text-muted-foreground transition-transform',
@@ -471,18 +447,19 @@ export function PrintEditor({
                       </button>
                       {open && (
                         <div className="divide-y divide-border">
-                          {order[cat.id].map((id) => {
-                            const m = MARKERS[id]
-                            const isHidden = hidden.includes(id)
+                          {(order[cat.category] || cat.rows.map((r) => r.id)).map((id) => {
+                            const row = cat.rows.find((r) => r.id === id)
+                            if (!row) return null
+                            const isHidden = !selectedBiomarkers.includes(id)
                             return (
                               <div
                                 key={id}
                                 draggable
                                 onDragStart={() =>
-                                  setDragInfo({ cat: cat.id, id })
+                                  setDragInfo({ cat: cat.category, id })
                                 }
                                 onDragOver={(e) => e.preventDefault()}
-                                onDrop={() => handleDrop(cat.id, id)}
+                                onDrop={() => handleDrop(cat.category, id)}
                                 className={cn(
                                   'flex items-center gap-2 px-2.5 py-2',
                                   isHidden && 'opacity-50',
@@ -493,9 +470,9 @@ export function PrintEditor({
                                 <input
                                   type="checkbox"
                                   checked={!isHidden}
-                                  onChange={() => toggleHidden(id)}
+                                  onChange={() => toggleBiomarker(id)}
                                   className="size-4 accent-primary"
-                                  aria-label={`Show ${m.labels.en}`}
+                                  aria-label={`Show ${row.name}`}
                                 />
                                 <span
                                   className={cn(
@@ -503,7 +480,7 @@ export function PrintEditor({
                                     isHidden && 'line-through',
                                   )}
                                 >
-                                  {m.labels.en}
+                                  {row.name}
                                 </span>
                               </div>
                             )
@@ -534,93 +511,117 @@ export function PrintEditor({
             className={cn(
               'mx-auto bg-white p-8 text-slate-900 shadow-xl',
               'print:m-0 print:max-w-none print:p-0 print:shadow-none',
-              orientation === 'portrait' ? 'max-w-3xl' : 'max-w-5xl',
+              layout === 'portrait' ? 'max-w-3xl' : 'max-w-5xl',
             )}
-            style={{ fontSize: `${fontSize}px` }}
+            style={{ fontSize: `${textSize}px`, colorScheme: 'light' as any }}
           >
             <div className="mb-3 flex items-start justify-between border-b border-gray-400 pb-2">
               <div>
                 <div className="font-semibold">
-                  {lang === 'ru' ? 'Иванов Алексей' : 'Alexey Ivanov'}
+                  {lang === 'ru' ? '\u0418\u0432\u0430\u043D\u043E\u0432 \u0410\u043B\u0435\u043A\u0441\u0435\u0439' : 'Alexey Ivanov'}
                 </div>
                 <div className="text-gray-600">
-                  {lang === 'ru' ? 'ДР: 14.03.1988 · Муж' : 'DOB: 14.03.1988 · Male'}
+                  {lang === 'ru' ? '\u0414\u0420: 14.03.1988 \u00B7 \u041C\u0443\u0436' : 'DOB: 14.03.1988 \u00B7 Male'}
                 </div>
               </div>
               <div className="text-right text-gray-600">
                 <div>
                   {lang === 'ru'
-                    ? 'Дата: 12.10.2026'
+                    ? '\u0414\u0430\u0442\u0430: 12.10.2026'
                     : 'Generated: 10/12/2026'}
                 </div>
                 <div>
-                  {lang === 'ru' ? 'Язык: Русский' : `Language: ${LANG_NAME[lang]}`}
+                  {lang === 'ru' ? '\u042F\u0437\u044B\u043A: \u0420\u0443\u0441\u0441\u043A\u0438\u0439' : `Language: ${LANG_NAME[lang]}`}
                   {bilingual ? ' + RU' : ''}
                 </div>
               </div>
             </div>
 
-            <h2 className="mb-3 text-center font-bold" style={{ fontSize: `${fontSize + 2}px` }}>
+            <h2 className="mb-3 text-center font-bold" style={{ fontSize: `${textSize + 2}px` }}>
               {bilingual && lang !== 'ru'
                 ? `${headings.title} / ${TABLE_HEADINGS.ru.title}`
                 : headings.title}
             </h2>
 
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="border border-gray-300 bg-gray-50 px-2 py-0.5 text-left font-semibold">
-                    {bilingual && lang !== 'ru'
-                      ? `${headings.biomarker} / ${TABLE_HEADINGS.ru.biomarker}`
-                      : headings.biomarker}
-                  </th>
-                  {visibleDates.map((d) => (
-                    <th
-                      key={d.id}
-                      className="border border-gray-300 bg-gray-50 px-2 py-0.5 text-center font-semibold"
-                    >
-                      {colLabel(d)}
+            {visibleDates.length === 0 || visibleMatrix.length === 0 ? (
+              <p className="py-8 text-center text-gray-500">
+                {visibleDates.length === 0
+                  ? 'Select at least one date column.'
+                  : 'No biomarkers match your filters.'}
+              </p>
+            ) : (
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <th className="border border-gray-300 bg-gray-50 px-2 py-0.5 text-left font-semibold">
+                      {bilingual && lang !== 'ru'
+                        ? `${headings.biomarker} / ${TABLE_HEADINGS.ru.biomarker}`
+                        : headings.biomarker}
                     </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {previewCats.map((cat) => (
-                  <Fragment key={cat.id}>
-                    <tr>
-                      <td
-                        colSpan={visibleDates.length + 1}
-                        className="border border-gray-300 bg-gray-100 px-2 py-0.5 font-semibold uppercase tracking-wide text-gray-700"
+                    {visibleDates.map((d) => (
+                      <th
+                        key={dateId(d)}
+                        className="border border-gray-300 bg-gray-50 px-2 py-0.5 text-center font-semibold"
                       >
-                        {cat.name}
-                      </td>
-                    </tr>
-                    {cat.markers.map((m) => (
-                      <tr key={m.id}>
-                        <td className="border border-gray-300 px-2 py-0.5">
-                          <span className="font-medium">{rowLabel(m)}</span>
-                          <span className="text-gray-500"> ({m.unit})</span>
-                        </td>
-                        {visibleDates.map((d) => {
-                          const cell = m.values[d.id]
-                          return (
-                            <td
-                              key={d.id}
-                              className={cn(
-                                'border border-gray-300 px-2 py-0.5 text-center tabular-nums',
-                                cell?.abnormal && 'font-semibold text-red-600',
-                              )}
-                            >
-                              {cell ? `${cell.v}${cell.abnormal ? ' *' : ''}` : '—'}
-                            </td>
-                          )
-                        })}
-                      </tr>
+                        {d.label}
+                        {d.sub && <span className="block text-[10px] font-normal">{d.sub}</span>}
+                      </th>
                     ))}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleMatrix.map((cat) => (
+                    <Fragment key={cat.category}>
+                      <tr>
+                        <td
+                          colSpan={visibleDates.length + 1}
+                          className="border border-gray-300 bg-gray-100 px-2 py-0.5 font-semibold uppercase tracking-wide text-gray-700"
+                        >
+                          {cat.category}
+                        </td>
+                      </tr>
+                      {cat.rows.map((row) => (
+                        <tr key={row.id}>
+                          <td className="border border-gray-300 px-2 py-0.5">
+                            <span className="font-medium">{rowLabel(row)}</span>
+                            {showRanges && row.range && (
+                              <span className="block text-[0.75em] text-gray-400 leading-tight">
+                                {row.range}
+                              </span>
+                            )}
+                          </td>
+                          {visibleDateIndices.map((di) => {
+                            const cell = row.cells[di]
+                            if (!cell || cell.value === '\u2014') {
+                              return (
+                                <td
+                                  key={row.id + '-' + di}
+                                  className="border border-gray-300 px-2 py-0.5 text-center text-gray-400"
+                                >
+                                  {'\u2014'}
+                                </td>
+                              )
+                            }
+                            return (
+                              <td
+                                key={row.id + '-' + di}
+                                className={cn(
+                                  'border border-gray-300 px-2 py-0.5 text-center tabular-nums',
+                                  cell.status !== 'normal' && 'font-semibold text-red-600',
+                                )}
+                              >
+                                {cell.value}
+                                {cell.status !== 'normal' ? ' *' : ''}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            )}
 
             <p className="mt-3 text-gray-500">
               {bilingual && lang !== 'ru'

@@ -214,3 +214,47 @@ class TestVisitData:
 
         # then
         assert resp.status_code == 404
+
+
+class TestBiomarkerDefinitions:
+    async def test_get_definitions_returns_200(self, client):
+        resp = await client.get("/api/biomarkers/definitions")
+        assert resp.status_code == 200
+
+    async def test_definitions_count(self, client):
+        resp = await client.get("/api/biomarkers/definitions")
+        data = resp.json()
+        assert len(data) == 18
+
+    async def test_definition_has_localization_fields(self, client):
+        resp = await client.get("/api/biomarkers/definitions")
+        data = resp.json()
+        for d in data:
+            assert "name_en" in d
+            assert "name_ru" in d
+            assert "name_es" in d
+            assert "name_de" in d
+
+    async def test_wbc_spanish_german_translations(self, client):
+        resp = await client.get("/api/biomarkers/definitions")
+        data = resp.json()
+        wbc = next(d for d in data if d["id"] == "wbc")
+        assert wbc["name_es"] == "Leucocitos"
+        assert wbc["name_de"] == "Leukozyten"
+
+    async def test_hemoglobin_translations(self, client):
+        resp = await client.get("/api/biomarkers/definitions")
+        data = resp.json()
+        hb = next(d for d in data if d["id"] == "hb")
+        assert hb["name_es"] == "Hemoglobina"
+        assert hb["name_de"] == "Hämoglobin"
+
+    async def test_definitions_have_correct_structure(self, client):
+        resp = await client.get("/api/biomarkers/definitions")
+        data = resp.json()
+        for d in data:
+            assert "id" in d
+            assert "category" in d
+            assert "unit" in d
+            assert "range_min" in d or d["range_min"] is None
+            assert "range_max" in d or d["range_max"] is None

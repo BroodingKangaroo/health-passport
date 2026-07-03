@@ -1,0 +1,315 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
+import { useEffect } from 'react'
+import { PrintEditor } from '@/components/health-passport/print-editor'
+import { PrintConfigProvider } from '@/providers/print-config-provider'
+import { usePrintConfig } from '@/hooks/usePrintConfig'
+import type { DateHeader, MatrixCategory, PrintLang, BiomarkerResult } from '@/lib/types'
+
+const mockDates: DateHeader[] = [
+  { label: '10.08.2024' },
+  { label: '20.09.2025' },
+  { label: '15.10.2025', sub: '09:00' },
+]
+
+const mockMatrix: MatrixCategory[] = [
+  {
+    category: 'Complete Blood Count',
+    rows: [
+      {
+        id: 'hb',
+        name: 'Hemoglobin',
+        original: 'Гемоглобин',
+        range: '12.0 – 16.0 g/dL',
+        cells: [
+          { value: '13.5', status: 'normal' },
+          { value: '14.2', status: 'normal' },
+          { value: '10.1', status: 'low' },
+        ],
+      },
+      {
+        id: 'wbc',
+        name: 'Leukocytes',
+        original: 'Лейкоциты',
+        range: '4.0 – 11.0 K/µL',
+        cells: [
+          { value: '5.2', status: 'normal' },
+          { value: '6.8', status: 'normal' },
+          { value: '15.8', status: 'high' },
+        ],
+      },
+    ],
+  },
+  {
+    category: 'Lipid Panel',
+    rows: [
+      {
+        id: 'ldl',
+        name: 'LDL Cholesterol',
+        original: 'ЛПНП холестерин',
+        range: '0 – 130 mg/dL',
+        cells: [
+          { value: '155', status: 'high' },
+          { value: '125', status: 'normal' },
+          { value: '—', status: 'normal' },
+        ],
+      },
+    ],
+  },
+]
+
+const mockBiomarkers: BiomarkerResult[] = [
+  {
+    id: 'hb-aug-10-2024',
+    definition: {
+      id: 'hb',
+      name_en: 'Hemoglobin',
+      name_ru: 'Гемоглобин',
+      name_es: 'Hemoglobina',
+      name_de: 'Hämoglobin',
+      name_fr: 'Hémoglobine',
+      name_he: 'המוגלובין',
+      unit: 'g/dL',
+      range_min: 12.0,
+      range_max: 16.0,
+      category: 'Complete Blood Count',
+    },
+    value: 13.5,
+    date: '2024-08-10',
+    status: 'normal',
+  },
+  {
+    id: 'wbc-aug-10-2024',
+    definition: {
+      id: 'wbc',
+      name_en: 'Leukocytes',
+      name_ru: 'Лейкоциты',
+      name_es: 'Leucocitos',
+      name_de: 'Leukozyten',
+      name_fr: 'Globules blancs',
+      name_he: 'תאי דם לבנים',
+      unit: 'K/µL',
+      range_min: 4.0,
+      range_max: 11.0,
+      category: 'Complete Blood Count',
+    },
+    value: 5.2,
+    date: '2024-08-10',
+    status: 'normal',
+  },
+  {
+    id: 'ldl-aug-10-2024',
+    definition: {
+      id: 'ldl',
+      name_en: 'LDL Cholesterol',
+      name_ru: 'ЛПНП холестерин',
+      name_es: 'Colesterol LDL',
+      name_de: 'LDL-Cholesterin',
+      name_fr: 'Cholestérol LDL',
+      name_he: 'כולסטרול LDL',
+      unit: 'mg/dL',
+      range_min: 0,
+      range_max: 130,
+      category: 'Lipid Panel',
+    },
+    value: 155,
+    date: '2024-08-10',
+    status: 'high',
+  },
+]
+
+function dateId(d: DateHeader): string {
+  return d.label + (d.sub ? '--' + d.sub : '')
+}
+
+function PrintEditorInit(props: {
+  dates: DateHeader[]
+  matrix: MatrixCategory[]
+  biomarkers?: BiomarkerResult[]
+  lang: PrintLang
+  bilingual: boolean
+  onBack: () => void
+}) {
+  const { initFilters } = usePrintConfig()
+  useEffect(() => {
+    const allDateLabels = props.dates.map((d) => dateId(d))
+    const allRowIds = props.matrix.flatMap((cat) => cat.rows.map((r) => r.id))
+    initFilters(allDateLabels, allRowIds)
+  }, [])
+  return <PrintEditor {...props} />
+}
+
+function renderEditor(props?: {
+  lang?: PrintLang
+  bilingual?: boolean
+  dates?: DateHeader[]
+  matrix?: MatrixCategory[]
+  biomarkers?: BiomarkerResult[]
+}) {
+  const dates = props?.dates ?? mockDates
+  const matrix = props?.matrix ?? mockMatrix
+  const biomarkers = props?.biomarkers ?? mockBiomarkers
+  return render(
+    <PrintConfigProvider>
+      <PrintEditorInit
+        dates={dates}
+        matrix={matrix}
+        biomarkers={biomarkers}
+        lang={props?.lang ?? 'en'}
+        bilingual={props?.bilingual ?? false}
+        onBack={vi.fn()}
+      />
+    </PrintConfigProvider>,
+  )
+}
+
+describe('PrintEditor', () => {
+  it('renders all date columns in the table header', () => {
+    renderEditor()
+    expect(screen.getAllByText('10.08.2024').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('20.09.2025').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('15.10.2025').length).toBeGreaterThan(0)
+  })
+
+  it('renders all categories and biomarkers', () => {
+    renderEditor()
+    expect(screen.getAllByText('Complete Blood Count').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Lipid Panel').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Hemoglobin').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Leukocytes').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('LDL Cholesterol').length).toBeGreaterThan(0)
+  })
+
+  it('renders biomarker values in table cells', () => {
+    renderEditor()
+    expect(screen.getByText('13.5')).toBeTruthy()
+    expect(screen.getByText('14.2')).toBeTruthy()
+    expect(screen.getByText('5.2')).toBeTruthy()
+    expect(screen.getByText('155', { exact: false })).toBeTruthy()
+  })
+
+  it('shows range below biomarker name when showRanges is on', () => {
+    renderEditor()
+    expect(screen.getByText('12.0 – 16.0 g/dL')).toBeTruthy()
+    expect(screen.getByText('4.0 – 11.0 K/µL')).toBeTruthy()
+    expect(screen.getByText('0 – 130 mg/dL')).toBeTruthy()
+  })
+
+  it('hides date column when its checkbox is unchecked', () => {
+    renderEditor()
+    const dateCheckboxes = screen.getAllByRole('checkbox').filter(
+      (cb) => cb.closest('section')?.querySelector('h3')?.textContent === 'Columns (Dates)',
+    )
+    expect(dateCheckboxes.length).toBeGreaterThan(0)
+  })
+
+  it('toggles out-of-range only filter', () => {
+    renderEditor()
+    const toggle = screen.getByText('Show Out-of-Range Only').closest('button')!
+    fireEvent.click(toggle)
+    expect(toggle).toHaveClass('border-primary')
+  })
+
+  it('hides low and high markers with asterisk', () => {
+    renderEditor()
+    const lowCells = screen.queryAllByText(/\*$/)
+    expect(lowCells.length).toBeGreaterThan(0)
+  })
+
+  it('shows language in the document header', () => {
+    renderEditor({ lang: 'ru' })
+    expect(screen.getByText(/Язык/)).toBeTruthy()
+  })
+
+  it('shows bilingual indicator when bilingual is true', () => {
+    renderEditor({ lang: 'de', bilingual: true })
+    expect(screen.getByText(/\+ RU/)).toBeTruthy()
+  })
+
+  it('translates biomarker names to Spanish when lang is es', () => {
+    renderEditor({ lang: 'es' })
+    const rows = screen.getAllByRole('row')
+    expect(rows.some((r) => r.textContent?.includes('Hemoglobina'))).toBe(true)
+  })
+
+  it('translates biomarker names to German when lang is de', () => {
+    renderEditor({ lang: 'de' })
+    const rows = screen.getAllByRole('row')
+    expect(rows.some((r) => r.textContent?.includes('Hämoglobin'))).toBe(true)
+  })
+
+  it('shows translated name and original in bilingual German mode', () => {
+    renderEditor({ lang: 'de', bilingual: true })
+    const rows = screen.getAllByRole('row')
+    expect(rows.some((r) => r.textContent?.includes('Hämoglobin / Гемоглобин'))).toBe(true)
+  })
+
+  it('translates biomarker names to French when lang is fr', () => {
+    renderEditor({ lang: 'fr' })
+    const rows = screen.getAllByRole('row')
+    expect(rows.some((r) => r.textContent?.includes('Hémoglobine'))).toBe(true)
+  })
+
+  it('translates biomarker names to Hebrew when lang is he', () => {
+    renderEditor({ lang: 'he' })
+    const rows = screen.getAllByRole('row')
+    expect(rows.some((r) => r.textContent?.includes('המוגלובין'))).toBe(true)
+  })
+
+  it('renders category sub-headers', () => {
+    renderEditor()
+    const headers = screen.getAllByRole('row')
+    const categoryRows = headers.filter((h) =>
+      h.textContent?.includes('Complete Blood Count') ||
+      h.textContent?.includes('Lipid Panel'),
+    )
+    expect(categoryRows.length).toBe(2)
+  })
+
+  it('shows time sub label for timed entries', () => {
+    renderEditor()
+    expect(screen.getByText('09:00')).toBeTruthy()
+  })
+
+  it('preset Last 10 selects all dates when fewer than 10 exist', () => {
+    renderEditor()
+    fireEvent.click(screen.getByText('Last 10'))
+    const checked = screen.getAllByRole('checkbox').filter(
+      (cb) => cb.closest('section')?.querySelector('h3')?.textContent === 'Columns (Dates)',
+    )
+    checked.forEach((cb) => expect(cb).toBeChecked())
+  })
+
+  it('preset All selects all dates', () => {
+    renderEditor()
+    fireEvent.click(screen.getByText('All'))
+    const checked = screen.getAllByRole('checkbox').filter(
+      (cb) => cb.closest('section')?.querySelector('h3')?.textContent === 'Columns (Dates)',
+    )
+    checked.forEach((cb) => expect(cb).toBeChecked())
+  })
+
+  it('excludes biomarker with no data for any visible date', () => {
+    const matrixWithMissing: MatrixCategory[] = [
+      ...mockMatrix,
+      {
+        category: 'Vitamins',
+        rows: [
+          {
+            id: 'vitd',
+            name: 'Vitamin D',
+            original: 'Витамин D',
+            range: '30 – 100 ng/mL',
+            cells: [null, null, null],
+          },
+        ],
+      },
+    ]
+    renderEditor({ matrix: matrixWithMissing })
+    const rows = screen.getAllByRole('row')
+    const vitDInTable = rows.some((r) => r.textContent?.includes('Vitamin D'))
+    expect(vitDInTable).toBe(false)
+    const hbInTable = rows.some((r) => r.textContent?.includes('Hemoglobin'))
+    expect(hbInTable).toBe(true)
+  })
+})

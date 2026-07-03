@@ -1,11 +1,10 @@
 'use client'
 
-import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 
 import { HeaderBar } from '@/components/health-passport/header-bar'
-import { PrintSetup, type PrintLang } from '@/components/health-passport/print-setup'
+import { PrintSetup } from '@/components/health-passport/print-setup'
 import { Button } from '@/components/ui/button'
 
 export function PrintSetupView() {
@@ -29,12 +28,7 @@ export function PrintSetupView() {
       </nav>
 
       <main className="p-5">
-        <PrintSetup
-          onGenerate={(lang, bilingual) => {
-            const params = new URLSearchParams({ lang, bilingual: String(bilingual) })
-            router.push(`/print-editor?${params}`)
-          }}
-        />
+        <PrintSetup />
       </main>
     </div>
   )

@@ -19,6 +19,10 @@ export interface BiomarkerDefinition {
   id: string
   name_en: string
   name_ru: string
+  name_es?: string
+  name_de?: string
+  name_fr?: string
+  name_he?: string
   unit: string
   range_min: number | null
   range_max: number | null
