@@ -46,7 +46,7 @@ export function ExpandedBiomarkerDetails({
 }) {
   const history = biomarker.history ?? []
   const chartData = [
-    ...history,
+    ...history.filter((h) => h.date !== biomarker.date),
     { date: biomarker.date, value: biomarker.value, status: biomarker.status },
   ]
   const allValues = chartData.map((d) => d.value)
@@ -96,9 +96,9 @@ export function ExpandedBiomarkerDetails({
             READING HISTORY
           </h4>
           <ul className="flex flex-wrap gap-2">
-            {chartData.map((reading) => (
+            {chartData.map((reading, i) => (
               <li
-                key={reading.date}
+                key={`${reading.date}-${i}`}
                 className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs"
               >
                 <span className="text-muted-foreground">{formatDate(reading.date)}</span>
