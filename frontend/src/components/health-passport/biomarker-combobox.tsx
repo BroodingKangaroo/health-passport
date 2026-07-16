@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
-import { Check, ChevronsUpDown, Plus } from 'lucide-react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { Check, ChevronsUpDown, Plus, AlertTriangle } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
@@ -24,9 +24,13 @@ import { useBiomarkerDefinitions } from '@/lib/hooks/useBiomarkerDefinitions'
 interface Props {
   value: string
   originalName?: string
+  definitionId?: string
+  scope?: string
   onNameChange: (name: string) => void
   onUnitChange: (unit: string) => void
   onRangeChange: (range: string) => void
+  onDefinitionIdChange: (id: string) => void
+  onScopeChange: (scope: string) => void
 }
 
 function formatRangeHint(def: {
@@ -34,53 +38,83 @@ function formatRangeHint(def: {
   range_min: number | null
   range_max: number | null
 }): string {
-  if (!def.range_min && !def.range_max) return `(${def.unit})`
+  if (def.range_min === null && def.range_max === null) return `(${def.unit})`
   return `(${def.unit}, range: ${def.range_min}–${def.range_max})`
 }
 
 export function BiomarkerCombobox({
   value,
   originalName,
+  definitionId,
+  scope,
   onNameChange,
   onUnitChange,
   onRangeChange,
+  onDefinitionIdChange,
+  onScopeChange,
 }: Props) {
   const { definitions, loading, error } = useBiomarkerDefinitions()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState(value)
+  const [debounced, setDebounced] = useState(search)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const filtered = definitions.filter((d) =>
-    d.name_en.toLowerCase().includes(search.toLowerCase()),
-  )
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search), 150)
+    return () => clearTimeout(t)
+  }, [search])
 
-  const selected = definitions.find((d) => d.name_en === value)
+  const MAX_RESULTS = 50
+  const filtered = useMemo(() => {
+    const q = debounced.trim().toLowerCase()
+    if (!q) return []
+    const matched = definitions.filter((d) => {
+      if (d.names.en.toLowerCase().includes(q)) return true
+      return (d.synonyms ?? []).some((s) => s.toLowerCase().includes(q))
+    })
+    return matched.slice(0, MAX_RESULTS)
+  }, [definitions, debounced])
+
+  const totalMatches = useMemo(() => {
+    const q = debounced.trim().toLowerCase()
+    if (!q) return 0
+    return definitions.filter((d) => {
+      if (d.names.en.toLowerCase().includes(q)) return true
+      return (d.synonyms ?? []).some((s) => s.toLowerCase().includes(q))
+    }).length
+  }, [definitions, debounced])
+
+  const selected = definitions.find((d) => d.names.en === value)
 
   const handleSelect = useCallback(
     (def: (typeof definitions)[number]) => {
-      onNameChange(def.name_en)
+      onNameChange(def.names.en)
       onUnitChange(def.unit)
       const rangeStr =
-        def.range_min || def.range_max
-          ? `${def.range_min}–${def.range_max}`
+        def.range_min !== null || def.range_max !== null
+          ? `${def.range_min ?? ''}–${def.range_max ?? ''}`
           : ''
       onRangeChange(rangeStr)
-      setSearch(def.name_en)
+      onDefinitionIdChange(def.id)
+      onScopeChange('global')
+      setSearch(def.names.en)
       setOpen(false)
     },
-    [onNameChange, onUnitChange, onRangeChange],
+    [onNameChange, onUnitChange, onRangeChange, onDefinitionIdChange, onScopeChange],
   )
 
   const handleAddNew = useCallback(() => {
     onNameChange(search.trim())
     onUnitChange('')
     onRangeChange('')
+    onDefinitionIdChange('')
+    onScopeChange('local')
     setOpen(false)
-  }, [search, onNameChange, onUnitChange, onRangeChange])
+  }, [search, onNameChange, onUnitChange, onRangeChange, onDefinitionIdChange, onScopeChange])
 
   const showAddNew =
     search.trim().length > 0 &&
-    !filtered.some((d) => d.name_en.toLowerCase() === search.trim().toLowerCase())
+    !filtered.some((d) => d.names.en.toLowerCase() === search.trim().toLowerCase())
 
   if (error) {
     return (
@@ -116,7 +150,12 @@ export function BiomarkerCombobox({
               !selected && 'text-muted-foreground',
             )}
           >
-            {selected ? selected.name_en : value || 'Search biomarker…'}
+            <span className="flex items-center gap-1.5 truncate">
+              {scope === 'local' && (
+                <AlertTriangle className="size-3 shrink-0 text-amber-500" />
+              )}
+              {selected ? selected.names.en : value || 'Search biomarker…'}
+            </span>
             <ChevronsUpDown className="ml-2 size-3 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
@@ -133,7 +172,12 @@ export function BiomarkerCombobox({
                   Loading definitions…
                 </div>
               )}
-              {!loading && filtered.length === 0 && !showAddNew && (
+              {!loading && debounced.trim().length === 0 && (
+                <div className="py-6 text-center text-sm text-muted-foreground">
+                  Type to search biomarkers…
+                </div>
+              )}
+              {!loading && debounced.trim().length > 0 && filtered.length === 0 && !showAddNew && (
                 <CommandEmpty>No biomarker found.</CommandEmpty>
               )}
               {filtered.length > 0 && (
@@ -141,21 +185,26 @@ export function BiomarkerCombobox({
                   {filtered.map((def) => (
                     <CommandItem
                       key={def.id}
-                      value={def.name_en}
+                      value={def.names.en}
                       onSelect={() => handleSelect(def)}
                     >
                       <Check
                         className={cn(
                           'mr-2 size-3',
-                          value === def.name_en ? 'opacity-100' : 'opacity-0',
+                          value === def.names.en ? 'opacity-100' : 'opacity-0',
                         )}
                       />
-                      <span className="flex-1 truncate">{def.name_en}</span>
+                      <span className="flex-1 truncate">{def.names.en}</span>
                       <span className="ml-2 truncate text-[11px] text-muted-foreground">
                         {formatRangeHint(def)}
                       </span>
                     </CommandItem>
                   ))}
+                  {totalMatches > filtered.length && (
+                    <div className="px-2 py-1.5 text-center text-[11px] text-muted-foreground">
+                      Showing {filtered.length} of {totalMatches} — keep typing to narrow
+                    </div>
+                  )}
                 </CommandGroup>
               )}
               {showAddNew && (
@@ -172,6 +221,12 @@ export function BiomarkerCombobox({
           </Command>
         </PopoverContent>
       </Popover>
+      {scope === 'local' && (
+        <span className="mt-0.5 flex items-center gap-1 text-[11px] text-amber-600">
+          <AlertTriangle className="size-3" />
+          Unrecognized — not in global dictionary
+        </span>
+      )}
       {originalName && (
         <span
           className="mt-1 truncate text-xs text-muted-foreground"

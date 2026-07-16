@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { SessionProvider } from 'next-auth/react'
 import { AddEntry } from '../health-passport/add-entry'
 import type { StandardizedMedicalRecord } from '@/lib/types'
 
@@ -8,12 +10,44 @@ const mockSave = vi.fn()
 const mockFetchByDate = vi.fn().mockResolvedValue({ date: '2026-10-12', count: 0 })
 const mockFetchDefinitions = vi.fn().mockResolvedValue([])
 
+// Define the mock classes via vi.hoisted so they're available to the
+// hoisted vi.mock factory — `instanceof` checks in component code resolve
+// against these definitions.
+const { ApiError, UsageLimitError } = vi.hoisted(() => {
+  class ApiError extends Error {
+    constructor(public status: number, message: string) {
+      super(message)
+      this.name = 'ApiError'
+    }
+  }
+  class UsageLimitError extends Error {
+    constructor(public status: number, message: string) {
+      super(message)
+      this.name = 'UsageLimitError'
+    }
+  }
+  return { ApiError, UsageLimitError }
+})
+
 vi.mock('@/services/api', () => ({
   extractMedicalData: (...args: any[]) => mockExtract(...args),
   saveMedicalEntry: (...args: any[]) => mockSave(...args),
   fetchEntriesByDate: (...args: any[]) => mockFetchByDate(...args),
   fetchBiomarkerDefinitions: (...args: any[]) => mockFetchDefinitions(...args),
+  ApiError,
+  UsageLimitError,
 }))
+
+function renderWithProviders(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return render(
+    <SessionProvider session={null}>
+      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+    </SessionProvider>,
+  )
+}
 
 function createFile(name = 'lab.pdf', type = 'application/pdf', content = 'fake'): File {
   return new File([content], name, { type })
@@ -30,7 +64,7 @@ beforeEach(() => {
 
 describe('AddEntry', () => {
   it('renders idle upload state', () => {
-    render(<AddEntry onSave={vi.fn()} />)
+    renderWithProviders(<AddEntry onSave={vi.fn()} />)
 
     expect(screen.getByText('Add New Medical Record')).toBeInTheDocument()
     expect(screen.getByText('Skip Upload & Enter Manually')).toBeInTheDocument()
@@ -38,7 +72,7 @@ describe('AddEntry', () => {
   })
 
   it('switches to manual entry when skip upload is clicked', async () => {
-    render(<AddEntry onSave={vi.fn()} />)
+    renderWithProviders(<AddEntry onSave={vi.fn()} />)
     fireEvent.click(screen.getByText('Skip Upload & Enter Manually'))
 
     await waitFor(() => {
@@ -52,7 +86,7 @@ describe('AddEntry', () => {
       () => new Promise(() => {}),
     )
 
-    const { container } = render(<AddEntry onSave={vi.fn()} />)
+    const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
     selectFile(container, createFile())
 
     expect(screen.getByText('Scanning document pages...')).toBeInTheDocument()
@@ -73,18 +107,21 @@ describe('AddEntry', () => {
           standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L',
           standard_range_min: 130, standard_range_max: 170,
           status: 'normal', category: 'Complete Blood Count',
+          definition_id: 'hb', scope: 'global',
         },
         {
           raw_name: 'WBC', raw_value: '7.2', raw_unit: 'K/µL', raw_range_string: '4.0-11.0',
           standard_name_en: 'WBC', standard_value: 7.2, standard_unit: 'K/µL',
           standard_range_min: 4, standard_range_max: 11,
           status: 'normal', category: 'Complete Blood Count',
+          definition_id: 'wbc', scope: 'global',
         },
         {
           raw_name: 'LDL', raw_value: '110', raw_unit: 'mg/dL', raw_range_string: '0-130',
           standard_name_en: 'LDL', standard_value: 110, standard_unit: 'mg/dL',
           standard_range_min: 0, standard_range_max: 130,
           status: 'normal', category: 'Lipid Panel',
+          definition_id: 'ldl', scope: 'global',
         },
       ],
       visit_data: null,
@@ -92,7 +129,7 @@ describe('AddEntry', () => {
     }
     mockExtract.mockResolvedValue(aiResult)
 
-    const { container } = render(<AddEntry onSave={vi.fn()} />)
+    const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
     selectFile(container, createFile())
 
     await waitFor(() => {
@@ -131,7 +168,7 @@ describe('AddEntry', () => {
     }
     mockExtract.mockResolvedValue(aiResult)
 
-    const { container } = render(<AddEntry onSave={vi.fn()} />)
+    const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
     selectFile(container, createFile())
 
     await waitFor(() => {
@@ -166,7 +203,7 @@ describe('AddEntry', () => {
     }
     mockExtract.mockResolvedValue(aiResult)
 
-    const { container } = render(<AddEntry onSave={vi.fn()} />)
+    const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
     selectFile(container, createFile())
 
     await waitFor(() => {
@@ -182,7 +219,7 @@ describe('AddEntry', () => {
   it('falls back to manual entry on API error', async () => {
     mockExtract.mockRejectedValue(new Error('API unavailable'))
 
-    const { container } = render(<AddEntry onSave={vi.fn()} />)
+    const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
     selectFile(container, createFile())
 
     await waitFor(() => {

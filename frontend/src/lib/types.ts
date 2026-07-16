@@ -17,16 +17,16 @@ export interface Patient {
 /* ----- Biomarker ----- */
 export interface BiomarkerDefinition {
   id: string
-  name_en: string
-  name_ru: string
-  name_es?: string
-  name_de?: string
-  name_fr?: string
-  name_he?: string
+  loinc_code?: string | null
+  names: Record<string, string>
+  synonyms: string[]
   unit: string
   range_min: number | null
   range_max: number | null
   category: string
+  scope: 'global' | 'local'
+  user_id?: string | null
+  range_source: 'global' | 'local' | 'pdf_extracted'
 }
 
 export interface Reading {
@@ -173,6 +173,8 @@ export interface FormBiomarkerRow {
   original_value?: string
   original_unit?: string
   original_range?: string
+  definition_id?: string
+  scope?: string
 }
 
 export interface FormCategory {
@@ -208,6 +210,8 @@ export interface StandardizedBiomarker {
   standard_range_max: number | null
   status: string
   category: string
+  definition_id: string
+  scope: string
 }
 
 export interface ExtractedPrescription {
