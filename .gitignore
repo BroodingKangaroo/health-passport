@@ -28,3 +28,8 @@ backend/app.log
 
 # TypeScript
 *.tsbuildinfo
+
+# Generated / secrets (do not commit)
+backend/data/loinc_aliases.json
+backend/.jwt_secret
+.opencode/

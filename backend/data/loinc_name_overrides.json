@@ -1,0 +1,7 @@
+{
+  "_comment": "Curated English display names for LOINC codes whose COMPONENT is misleading (property-based tests where COMPONENT names the substance, not the measurement). The heuristic-derived name and LONG_COMMON_NAME are still kept as synonyms for recall.",
+  "4537-7": "ESR",
+  "4544-3": "Hematocrit",
+  "1968-7": "Direct Bilirubin",
+  "1971-1": "Indirect Bilirubin"
+}
