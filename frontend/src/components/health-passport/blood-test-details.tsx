@@ -13,7 +13,7 @@ const DocumentViewer = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+      <div className="flex min-h-[300px] items-center justify-center text-sm text-muted-foreground">
         Loading document viewer...
       </div>
     ),
@@ -34,9 +34,14 @@ export function BloodTestDetails({
   const [activeTab, setActiveTab] = useState<'results' | 'document'>('results')
 
   const attachments = event.attachments ?? []
-  const [activeAttachmentId, setActiveAttachmentId] = useState(
-    attachments[0]?.id ?? null,
-  )
+  const [activeAttachmentId, setActiveAttachmentId] = useState<string | null>(null)
+
+  const selectedAttachment =
+    attachments.find((a) => a.id === activeAttachmentId) ??
+    attachments.find((a) => a.url) ??
+    attachments[0] ??
+    null
+  const activeId = selectedAttachment?.id ?? null
 
   const handleDownload = useCallback((name: string, url: string) => {
     const a = document.createElement('a')
@@ -88,7 +93,8 @@ export function BloodTestDetails({
           ) : (
             <div className="flex flex-col gap-3">
               {attachments.map((att) => {
-                const isActive = activeAttachmentId === att.id
+                const isActive = activeId === att.id
+                const url = att.url
                 return (
                   <div
                     key={att.id}
@@ -115,35 +121,39 @@ export function BloodTestDetails({
                       </div>
                     </div>
                     <div className="flex shrink-0 gap-2">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handlePrintDocument(att.url || '/attachment-preview.pdf') }}
-                        className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                      >
-                        <Printer className="size-4" />
-                        Print
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDownload(att.name, att.url || '/attachment-preview.pdf') }}
-                        className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                      >
-                        <Download className="size-4" />
-                        Download
-                      </button>
-                    </div>
+                       {url && (
+                       <button
+                         onClick={(e) => { e.stopPropagation(); handlePrintDocument(url) }}
+                         className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                       >
+                         <Printer className="size-4" />
+                         Print
+                       </button>
+                       )}
+                       {url && (
+                       <button
+                         onClick={(e) => { e.stopPropagation(); handleDownload(att.name, url) }}
+                         className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                       >
+                         <Download className="size-4" />
+                         Download
+                       </button>
+                       )}
+                     </div>
                   </div>
                 )
               })}
             </div>
           )}
 
-          {activeAttachmentId && (
+          {selectedAttachment && (
             <>
               <p className="mt-4 mb-2 text-xs text-muted-foreground">
                 Viewing:{' '}
-                {attachments.find((a) => a.id === activeAttachmentId)?.name}
+                {selectedAttachment.name}
               </p>
               <div className="flex-1 min-h-0 w-full overflow-hidden rounded-xl border border-border">
-                <DocumentViewer url={attachments.find((a) => a.id === activeAttachmentId)?.url || '/attachment-preview.pdf'} />
+                <DocumentViewer key={selectedAttachment.url} url={selectedAttachment.url} />
               </div>
             </>
           )}

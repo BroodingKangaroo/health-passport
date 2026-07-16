@@ -603,10 +603,10 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     <div className="mx-auto w-full max-w-[1600px] px-6 py-4">
       <div className="flex items-start gap-5">
         {/* LEFT COLUMN — Document Preview */}
-        <div className="sticky top-6 w-[45%] h-[calc(100vh-8rem)] overflow-hidden rounded-xl border bg-card">
+        <div className="sticky top-6 w-[45%] overflow-hidden rounded-xl border bg-card">
           {objectUrl ? (
             selectedFile?.type === 'application/pdf' ? (
-              <DocumentViewer url={objectUrl} />
+              <DocumentViewer key={objectUrl} url={objectUrl} />
             ) : selectedFile?.type.startsWith('image/') ? (
               <div className="flex h-full w-full items-center justify-center p-4">
                 <div className="relative h-full w-full overflow-hidden rounded-lg">
@@ -678,7 +678,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         </div>
 
         {/* RIGHT COLUMN — Form */}
-        <div className="w-[55%] flex flex-col overflow-hidden rounded-xl border bg-card h-[calc(100vh-8rem)]">
+        <div className="w-[55%] flex flex-col overflow-hidden rounded-xl border bg-card">
           <div className="flex-1 overflow-y-auto p-4">
             {aiError && (
               <div className="mb-4 flex items-start gap-3 rounded-lg border border-status-high/20 bg-status-high/5 p-3">

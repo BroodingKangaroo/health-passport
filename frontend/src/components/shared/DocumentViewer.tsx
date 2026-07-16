@@ -2,23 +2,18 @@
 
 import { useRef, useLayoutEffect, useEffect, useState, useCallback } from 'react'
 import * as pdfjs from 'pdfjs-dist'
+import { getAccessToken } from '@/lib/auth-token'
 
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 
 interface DocumentViewerProps {
-  url: string
+  url?: string
 }
 
 export function DocumentViewer({ url }: DocumentViewerProps) {
-  if (!url) {
-    return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        No document URL provided
-      </div>
-    )
-  }
-
-  const isImage = /\.(jpg|jpeg|png|gif|webp|tiff|tif|bmp)$/i.test(url)
+  const isImage =
+    typeof url === 'string' &&
+    /\.(jpg|jpeg|png|gif|webp|tiff|tif|bmp)$/i.test(url)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -36,30 +31,77 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
   const [pageNum, setPageNum] = useState(1)
   const [scale, setScale] = useState(1)
   const [loading, setLoading] = useState(true)
+  const [imgSrc, setImgSrc] = useState<string | null>(null)
+  const [fitHeight, setFitHeight] = useState(0)
 
   useEffect(() => {
-    if (isImage) {
+    if (!url) {
       setLoading(false)
       return
     }
     let cancelled = false
+    let objectUrl: string | undefined
+    setPdf(null)
+    setImgSrc(null)
+    setNumPages(0)
+    setPageNum(1)
+    setScale(1)
+    setFitHeight(0)
     setLoading(true)
-    pdfjs.getDocument({ url }).promise.then(async (doc) => {
-      if (cancelled) return
-      setPdf(doc)
-      setNumPages(doc.numPages)
-      setPageNum(1)
-      if (scrollRef.current) {
-        const page = await doc.getPage(1)
-        const { width } = page.getViewport({ scale: 1 })
-        const rect = scrollRef.current.getBoundingClientRect()
-        fitScaleRef.current = Math.max(0.5, Math.min(3, (rect.width - 32) / width))
-        setScale(fitScaleRef.current)
+
+    const token = getAccessToken()
+    const headers: Record<string, string> = token
+      ? { Authorization: `Bearer ${token}` }
+      : {}
+
+    if (isImage) {
+      fetch(url, { headers })
+        .then((res) => {
+          if (!res.ok) throw new Error(`Failed to load image: ${res.status}`)
+          return res.blob()
+        })
+        .then((blob) => {
+          if (cancelled) return
+          objectUrl = URL.createObjectURL(blob)
+          setImgSrc(objectUrl)
+          setLoading(false)
+        })
+        .catch(() => {
+          if (!cancelled) setLoading(false)
+        })
+      return () => {
+        cancelled = true
+        if (objectUrl) URL.revokeObjectURL(objectUrl)
       }
-      setLoading(false)
-    })
+    }
+
+    fetch(url, { headers })
+      .then((res) => {
+        if (!res.ok) throw new Error(`Failed to load PDF: ${res.status}`)
+        return res.arrayBuffer()
+      })
+      .then(async (buf) => {
+        if (cancelled) return
+        const doc = await pdfjs.getDocument({ data: new Uint8Array(buf) }).promise
+        if (cancelled) return
+        setPdf(doc)
+        setNumPages(doc.numPages)
+        setPageNum(1)
+        if (scrollRef.current) {
+          const page = await doc.getPage(1)
+          const { width } = page.getViewport({ scale: 1 })
+          const rect = scrollRef.current.getBoundingClientRect()
+          fitScaleRef.current = Math.max(0.5, Math.min(3, (rect.width - 32) / width))
+          setScale(fitScaleRef.current)
+          setFitHeight(page.getViewport({ scale: fitScaleRef.current }).height)
+        }
+        setLoading(false)
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false)
+      })
     return () => { cancelled = true }
-  }, [url])
+  }, [url, isImage])
 
   const renderPage = useCallback(async () => {
     if (!pdf || !canvasRef.current) return
@@ -110,15 +152,16 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
         const x = cx + el.scrollLeft
         const y = cy + el.scrollTop
         const factor = e.deltaY > 0 ? 0.98 : 1.02
-        const cur = scaleRef.current
-        const next = Math.max(0.5, Math.min(3, +(cur * factor).toFixed(2)))
-        const ratio = next / cur
-        pendingScrollRef.current = {
-          left: x * ratio - cx,
-          top: y * ratio - cy,
-        }
-        setScale(next)
-        return
+      const cur = scaleRef.current
+      const next = Math.max(0.5, Math.min(3, +(cur * factor).toFixed(2)))
+      const ratio = next / cur
+      scaleRef.current = next
+      pendingScrollRef.current = {
+        left: x * ratio - cx,
+        top: y * ratio - cy,
+      }
+      setScale(next)
+      return
       }
       if (e.deltaX !== 0) {
         const maxScroll = el.scrollWidth - el.clientWidth
@@ -182,9 +225,17 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
     }
   }, [])
 
+  if (!url) {
+    return (
+      <div className="flex min-h-[300px] items-center justify-center text-sm text-muted-foreground">
+        No document URL provided
+      </div>
+    )
+  }
+
   if (isImage) {
     return (
-      <div className="flex h-full min-w-0 flex-col bg-muted/20">
+      <div className="flex min-h-[300px] h-[80vh] min-w-0 flex-col bg-muted/20">
         <div className="flex items-center justify-between border-b border-border bg-card px-3 py-2">
           <span className="text-xs font-medium text-muted-foreground">
             Image preview
@@ -193,7 +244,7 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
         <div className="flex-1 flex items-center justify-center overflow-auto bg-muted/20 p-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={url}
+            src={imgSrc ?? ''}
             alt="Document preview"
             className="h-full w-full object-contain"
           />
@@ -203,7 +254,7 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
   }
 
   return (
-    <div className="flex h-full min-w-0 flex-col bg-muted/20">
+    <div className="flex min-w-0 flex-col bg-muted/20">
       {/* Toolbar */}
       <div className="flex items-center justify-between border-b border-border bg-card px-3 py-2">
         <div className="flex items-center gap-1">
@@ -257,8 +308,8 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
       {/* Scrollable area with grab cursor */}
       <div
         ref={scrollRef}
-        className="flex-1 flex min-w-0 flex-col overflow-auto bg-muted/20 p-4 select-none"
-        style={{ cursor: loading ? '' : 'grab' }}
+        className="flex min-h-[300px] min-w-0 flex-col overflow-auto bg-muted/20 p-4 select-none"
+        style={{ height: fitHeight ? fitHeight + 32 : undefined, cursor: loading ? '' : 'grab' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

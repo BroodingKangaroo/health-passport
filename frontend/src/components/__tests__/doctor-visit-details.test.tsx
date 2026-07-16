@@ -71,13 +71,18 @@ describe('DoctorVisitDetails', () => {
     expect(screen.getByText('Diagnostic Image · 2 MB')).toBeDefined()
   })
 
-  it('falls back to hardcoded pdf when attachment has no url', () => {
+  it('does not fall back to a hardcoded pdf when attachment has no url', () => {
     render(<DoctorVisitDetails visit={visitNoUrl} />)
 
     const documentsTab = screen.getByText('Original Document (1)')
     fireEvent.click(documentsTab)
 
     const viewer = screen.getByTestId('document-viewer')
-    expect(viewer).toHaveAttribute('data-url', '/attachment-preview.pdf')
+    expect(viewer).not.toHaveAttribute('data-url', '/attachment-preview.pdf')
+    expect(viewer).not.toHaveAttribute('data-url', expect.stringContaining('attachment-preview'))
+
+    // No real url => Print/Download actions are hidden
+    expect(screen.queryByText('Print')).toBeNull()
+    expect(screen.queryByText('Download')).toBeNull()
   })
 })
