@@ -51,7 +51,7 @@ function CustomTooltip({ active, payload, label, biomarkers }: any) {
                 className="size-3 rounded-full"
                 style={{ backgroundColor: entry.color }}
               />
-              <span>{b?.definition.name_en ?? name}:</span>
+              <span>{b?.definition.names.en ?? name}:</span>
               <span className="font-bold">{raw}</span>
             </div>
           )
@@ -83,8 +83,8 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
     if (!q) return available
     return available.filter(
       (b) =>
-        b.definition.name_en.toLowerCase().includes(q) ||
-        b.definition.name_ru.toLowerCase().includes(q),
+        b.definition.names.en.toLowerCase().includes(q) ||
+        b.definition.names.ru.toLowerCase().includes(q),
     )
   }, [query, allBiomarkers])
 
@@ -194,7 +194,7 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
                   className="accent-primary"
                 />
                 <span className="flex-1 truncate text-foreground">
-                  {b.definition.name_en}
+                  {b.definition.names.en}
                 </span>
                 {isSelected && (
                   <span

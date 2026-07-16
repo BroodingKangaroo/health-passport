@@ -3,26 +3,30 @@ import json
 import logging
 import os
 import time
+from typing import Optional, Tuple
 
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from mistralai import Mistral
 from sqlalchemy.orm import Session
 
-from app.schemas.ai import StandardizedMedicalRecord
+from app.schemas.ai import StandardizedMedicalRecord, StandardizedVisitData, RawImagingData
 from app.services import extractor, matcher
-from app.db.session import get_db
-from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
+from app.services.usage_limits import check_and_record_ai_usage
+from app.db.session import get_db, SessionLocal
+from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel, Patient
+from app.api.auth import get_current_user_or_anon
+from config import ANONYMOUS_LIMITS, REGISTERED_LIMITS
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-def _get_client() -> Mistral:
+def _get_client() -> Optional[Mistral]:
     api_key = os.getenv("MISTRAL_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=500, detail="MISTRAL_API_KEY not configured")
+        return None
     return Mistral(api_key=api_key)
 
 
@@ -32,11 +36,23 @@ def _sse(event: str, data: dict) -> str:
 
 @router.post("/api/extract")
 async def extract_medical_data(
+    request: Request,
+    response: Response,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
 ):
+    user, user_id, is_anonymous = user_data
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
+
+    # Check AI extraction limit
+    allowed, current_count, limit = check_and_record_ai_usage(db, user_id, is_anonymous)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"AI extraction limit reached ({current_count}/{limit}). Please register for higher limits."
+        )
 
     try:
         bytes_data = await file.read()
@@ -53,14 +69,23 @@ async def extract_medical_data(
             detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(sorted(extractor.ALLOWED_EXTENSIONS))}",
         )
 
-    definitions = (
-        db.query(BiomarkerDefinitionModel)
-        .order_by(BiomarkerDefinitionModel.category, BiomarkerDefinitionModel.name_en)
-        .all()
-    )
+    definitions = db.query(BiomarkerDefinitionModel).filter(
+        (BiomarkerDefinitionModel.scope == "global") | (BiomarkerDefinitionModel.user_id == user_id)
+    ).all()
+    definitions.sort(key=lambda d: (d.category or "", d.names.get("en", "") or ""))
+    # Detach definition ORM instances from the request-scoped session so their
+    # already-loaded attributes are safe to read from the worker thread below.
+    # SQLAlchemy Sessions are not thread-safe; matcher will use its own session.
+    for d in definitions:
+        db.expunge(d)
 
     client = _get_client()
-    logger.info("File: %s, size: %d bytes, type: %s", file.filename, len(bytes_data), ext)
+    if client is None:
+        async def error_stream():
+            yield _sse("error", {"message": "AI extraction unavailable: MISTRAL_API_KEY not configured. Please add the key to backend/.env or enter data manually."})
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
+    logger.info("File: %s, size: %d bytes, type: %s, user: %s", file.filename, len(bytes_data), ext, user_id)
 
     async def event_stream():
         error = None
@@ -68,29 +93,19 @@ async def extract_medical_data(
             # Stage 1: OCR
             yield _sse("progress", {"stage": "ocr_scanning"})
             t0 = time.perf_counter()
-            markdown = await asyncio.to_thread(
-                extractor.ocr_document, bytes_data, client
-            )
+            try:
+                markdown = await asyncio.to_thread(
+                    extractor.ocr_document, bytes_data, ext, client
+                )
+            except extractor.OCRProcessingError as ocr_err:
+                yield _sse("error", {"message": ocr_err.message})
+                return
             elapsed = time.perf_counter() - t0
             logger.info("OCR took %.2fs — %d chars", elapsed, len(markdown) if markdown else 0)
 
-            if markdown is None:
-                yield _sse(
-                    "result",
-                    StandardizedMedicalRecord(
-                        entry_type="unknown",
-                        notes="The uploaded document appears to contain images that cannot be processed.",
-                    ).model_dump(),
-                )
-                return
             if not markdown:
-                yield _sse(
-                    "result",
-                    StandardizedMedicalRecord(
-                        entry_type="unknown",
-                        notes="OCR returned no text content",
-                    ).model_dump(),
-                )
+                error = "The document was processed but no text content was found. It may contain only images or scanned signatures."
+                yield _sse("error", {"message": error})
                 return
 
             # Stage 2: LLM extraction
@@ -112,9 +127,9 @@ async def extract_medical_data(
                         provider=raw.provider,
                         title=raw.title,
                         notes=raw.notes,
-                        biomarkers=raw.biomarkers,
-                        visit_data=raw.visit_data,
-                        imaging_data=raw.imaging_data,
+                        biomarkers=[],
+                        visit_data=StandardizedVisitData(),
+                        imaging_data=RawImagingData(),
                     ).model_dump(),
                 )
                 return
@@ -122,9 +137,17 @@ async def extract_medical_data(
             # Stage 3: Matching
             yield _sse("progress", {"stage": "matching", "biomarker_count": bm_count})
             t0 = time.perf_counter()
-            result = await asyncio.to_thread(
-                matcher.match_and_convert, raw, definitions, client
-            )
+
+            def _match_in_thread():
+                # Use a thread-local Session — the request's `db` is bound to
+                # the event-loop thread and must not be shared.
+                thread_db = SessionLocal()
+                try:
+                    return matcher.match_and_convert(raw, definitions, thread_db, user_id, client)
+                finally:
+                    thread_db.close()
+
+            result = await asyncio.to_thread(_match_in_thread)
             elapsed = time.perf_counter() - t0
             std_count = len(result.biomarkers) if result.biomarkers else 0
             logger.info("Matching took %.2fs — biomarkers: %d", elapsed, std_count)
@@ -143,4 +166,14 @@ async def extract_medical_data(
         if error:
             yield _sse("error", {"message": error})
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            # Prevent proxies (nginx, etc.) from buffering the SSE stream so
+            # progress events reach the client incrementally instead of all at once.
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )

@@ -54,11 +54,14 @@ class TestTimeline:
             assert "date" in b
             assert "status" in b
             defn = b["definition"]
-            assert "name_en" in defn
-            assert "name_ru" in defn
+            assert "names" in defn
+            assert "en" in defn["names"]
+            assert "ru" in defn["names"]
             assert "range_min" in defn
             assert "range_max" in defn
             assert "unit" in defn
+            assert "scope" in defn
+            assert "loinc_code" in defn
 
     async def test_timeline_biomarker_latest_date(self, client):
         # when
@@ -217,44 +220,49 @@ class TestVisitData:
 
 
 class TestBiomarkerDefinitions:
-    async def test_get_definitions_returns_200(self, client):
-        resp = await client.get("/api/biomarkers/definitions")
+    async def test_get_definitions_returns_200(self, client, auth_token):
+        resp = await client.get("/api/biomarkers/definitions", headers={"Authorization": f"Bearer {auth_token}"})
         assert resp.status_code == 200
 
-    async def test_definitions_count(self, client):
-        resp = await client.get("/api/biomarkers/definitions")
+    async def test_definitions_count(self, client, auth_token):
+        resp = await client.get("/api/biomarkers/definitions", headers={"Authorization": f"Bearer {auth_token}"})
         data = resp.json()
         assert len(data) == 18
 
-    async def test_definition_has_localization_fields(self, client):
-        resp = await client.get("/api/biomarkers/definitions")
+    async def test_definition_has_localization_fields(self, client, auth_token):
+        resp = await client.get("/api/biomarkers/definitions", headers={"Authorization": f"Bearer {auth_token}"})
         data = resp.json()
         for d in data:
-            assert "name_en" in d
-            assert "name_ru" in d
-            assert "name_es" in d
-            assert "name_de" in d
+            assert "names" in d
+            assert "en" in d["names"]
+            assert "ru" in d["names"]
+            assert "es" in d["names"]
+            assert "de" in d["names"]
 
-    async def test_wbc_spanish_german_translations(self, client):
-        resp = await client.get("/api/biomarkers/definitions")
+    async def test_wbc_spanish_german_translations(self, client, auth_token):
+        resp = await client.get("/api/biomarkers/definitions", headers={"Authorization": f"Bearer {auth_token}"})
         data = resp.json()
         wbc = next(d for d in data if d["id"] == "wbc")
-        assert wbc["name_es"] == "Leucocitos"
-        assert wbc["name_de"] == "Leukozyten"
+        assert wbc["names"]["es"] == "Leucocitos"
+        assert wbc["names"]["de"] == "Leukozyten"
 
-    async def test_hemoglobin_translations(self, client):
-        resp = await client.get("/api/biomarkers/definitions")
+    async def test_hemoglobin_translations(self, client, auth_token):
+        resp = await client.get("/api/biomarkers/definitions", headers={"Authorization": f"Bearer {auth_token}"})
         data = resp.json()
         hb = next(d for d in data if d["id"] == "hb")
-        assert hb["name_es"] == "Hemoglobina"
-        assert hb["name_de"] == "Hämoglobin"
+        assert hb["names"]["es"] == "Hemoglobina"
+        assert hb["names"]["de"] == "Hämoglobin"
 
-    async def test_definitions_have_correct_structure(self, client):
-        resp = await client.get("/api/biomarkers/definitions")
+    async def test_definitions_have_correct_structure(self, client, auth_token):
+        resp = await client.get("/api/biomarkers/definitions", headers={"Authorization": f"Bearer {auth_token}"})
         data = resp.json()
         for d in data:
             assert "id" in d
+            assert "names" in d
+            assert "synonyms" in d
+            assert "loinc_code" in d
+            assert "scope" in d
             assert "category" in d
             assert "unit" in d
-            assert "range_min" in d or d["range_min"] is None
-            assert "range_max" in d or d["range_max"] is None
+            assert "range_min" in d or d.get("range_min") is None
+            assert "range_max" in d or d.get("range_max") is None

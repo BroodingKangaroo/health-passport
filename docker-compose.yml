@@ -6,7 +6,7 @@ services:
     env_file: ./backend/.env
     volumes:
       - backend_uploads:/app/static/uploads
-      - backend_db:/app
+      - backend_db:/app/health_passport.db
 
   frontend:
     build: ./frontend

@@ -1,12 +1,29 @@
 import json
 import os
 
-from app.api.entries import UPLOAD_DIR
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _upload_dir(tmp_path, monkeypatch):
+    """Redirect uploads to a temp directory that auto-cleans up."""
+    test_dir = str(tmp_path / "uploads")
+    os.makedirs(test_dir, exist_ok=True)
+    monkeypatch.setattr("app.api.entries.UPLOAD_DIR", test_dir)
+    yield
 
 
 class TestFileUpload:
+    async def _cleanup(self, url):
+        """Remove the uploaded file if it exists."""
+        from app.api.entries import UPLOAD_DIR
+        p = os.path.join(UPLOAD_DIR, os.path.basename(url))
+        if os.path.exists(p):
+            os.remove(p)
+
     async def test_upload_pdf_creates_file_on_disk(self, client):
         # given
+        from app.api.entries import UPLOAD_DIR
         content = b"%PDF-1.4 fake pdf content for testing"
         biomakers_json = json.dumps([
             {"id": "cat-1", "name": "CBC", "rows": []},
@@ -47,8 +64,6 @@ class TestFileUpload:
         with open(saved_path, "rb") as f:
             assert f.read() == content
 
-        os.remove(saved_path)
-
     async def test_uploaded_file_url_in_timeline_response(self, client):
         # given
         content = b"dummy pdf bytes"
@@ -78,10 +93,6 @@ class TestFileUpload:
         entry = next(e for e in events if e["id"] == entry_id)
         assert len(entry["attachments"]) == 1
         assert entry["attachments"][0]["url"].startswith("/static/uploads/")
-
-        saved_path = os.path.join(UPLOAD_DIR, os.path.basename(entry["attachments"][0]["url"]))
-        if os.path.exists(saved_path):
-            os.remove(saved_path)
 
     async def test_uploaded_file_url_in_visit_detail(self, client):
         # given
@@ -116,10 +127,6 @@ class TestFileUpload:
         assert len(vd["attachments"]) == 1
         assert vd["attachments"][0]["url"].startswith("/static/uploads/")
 
-        saved_path = os.path.join(UPLOAD_DIR, os.path.basename(vd["attachments"][0]["url"]))
-        if os.path.exists(saved_path):
-            os.remove(saved_path)
-
     async def test_upload_png_preserves_extension(self, client):
         # given
         content = b"fake png bytes"
@@ -147,10 +154,6 @@ class TestFileUpload:
         # then
         att = entry["attachments"][0]
         assert att["url"].endswith(".png")
-
-        saved_path = os.path.join(UPLOAD_DIR, os.path.basename(att["url"]))
-        if os.path.exists(saved_path):
-            os.remove(saved_path)
 
     async def test_upload_without_file_no_attachment(self, client):
         # given
@@ -219,8 +222,3 @@ class TestFileUpload:
         url1 = e1["attachments"][0]["url"]
         url2 = e2["attachments"][0]["url"]
         assert url1 != url2
-
-        for url in (url1, url2):
-            p = os.path.join(UPLOAD_DIR, os.path.basename(url))
-            if os.path.exists(p):
-                os.remove(p)

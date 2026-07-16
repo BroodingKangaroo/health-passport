@@ -26,7 +26,7 @@ export function PrintEditorView() {
         setError(err instanceof Error ? err.message : 'Failed to load flowsheet data')
       })
       .finally(() => setLoading(false))
-  }, [])
+  }, [initFilters])
 
   let lang: PrintLang = targetLanguage
   let bilingual = false

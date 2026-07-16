@@ -1,6 +1,6 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 
-async function uploadFile(page, name: string, type: string, content: string) {
+async function uploadFile(page: Page, name: string, type: string, content: string) {
   const input = page.locator('input[type="file"]')
   await input.waitFor({ state: 'attached', timeout: 5000 })
   await input.setInputFiles({ name, mimeType: type, buffer: Buffer.from(content) })

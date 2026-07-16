@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends
+from typing import Optional, Tuple
+from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from app.schemas import (
@@ -19,17 +20,18 @@ from app.db.models import (
     BiomarkerReading,
     VisitData as VisitDataModel,
     Attachment as AttachmentModel,
+    Patient,
 )
-from app.db.seed import DEFAULT_PATIENT_ID
+from app.api.auth import get_current_user_or_anon
 
 
 router = APIRouter()
 
 
-def _events_from_db(db: Session):
+def _events_from_db(db: Session, patient_id: str):
     entries = (
         db.query(MedicalEntryModel)
-        .filter(MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID)
+        .filter(MedicalEntryModel.patient_id == patient_id)
         .order_by(MedicalEntryModel.date)
         .all()
     )
@@ -52,12 +54,12 @@ def _events_from_db(db: Session):
     ]
 
 
-def _biomarkers_from_db(db: Session):
+def _biomarkers_from_db(db: Session, patient_id: str):
     blood_tests = (
         db.query(MedicalEntryModel)
         .filter(
             MedicalEntryModel.type == "blood_test",
-            MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID,
+            MedicalEntryModel.patient_id == patient_id,
         )
         .order_by(MedicalEntryModel.date)
         .all()
@@ -92,7 +94,7 @@ def _biomarkers_from_db(db: Session):
             .filter(
                 BiomarkerReading.biomarker_id == bid,
                 MedicalEntryModel.type == "blood_test",
-                MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID,
+                MedicalEntryModel.patient_id == patient_id,
             )
             .order_by(MedicalEntryModel.date)
             .all()
@@ -117,12 +119,16 @@ def _biomarkers_from_db(db: Session):
             id=bid,
             definition=BiomarkerDefinitionSchema(
                 id=defn.id,
-                name_en=defn.name_en,
-                name_ru=defn.name_ru,
+                loinc_code=defn.loinc_code,
+                names=defn.names,
+                synonyms=defn.synonyms or [],
                 category=defn.category,
                 range_min=defn.range_min,
                 range_max=defn.range_max,
                 unit=defn.unit,
+                scope=defn.scope,
+                user_id=defn.user_id,
+                range_source=defn.range_source,
             ),
             value=latest_reading.value,
             date=latest_date.isoformat(),
@@ -184,12 +190,12 @@ def _map_rec(r) -> dict:
     return {"original": "", "translated_en": ""}
 
 
-def _visits_from_db(db: Session):
+def _visits_from_db(db: Session, patient_id: str):
     visits: dict[str, VisitData] = {}
     visit_data_rows = (
         db.query(VisitDataModel, MedicalEntryModel)
         .join(MedicalEntryModel, VisitDataModel.entry_id == MedicalEntryModel.id)
-        .filter(MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID)
+        .filter(MedicalEntryModel.patient_id == patient_id)
         .all()
     )
     for vd, entry in visit_data_rows:
@@ -200,7 +206,7 @@ def _visits_from_db(db: Session):
         visits[entry.id] = VisitData(
             specialty=vd.specialty,
             provider=vd.provider,
-            date=vd.date,
+            date=vd.date.isoformat() if vd.date else "",
             clinic=vd.clinic,
             verdict=_ensure_tx(vd.verdict),
             notes=[_map_note(n) for n in (vd.notes or [])],
@@ -212,16 +218,29 @@ def _visits_from_db(db: Session):
 
 
 @router.get("/api/timeline", response_model=TimelineResponse)
-async def get_timeline(db: Session = Depends(get_db)):
+async def get_timeline(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon)
+):
+    user, user_id, is_anonymous = user_data
     return TimelineResponse(
-        events=_events_from_db(db),
-        biomarkers=_biomarkers_from_db(db),
-        visits=_visits_from_db(db),
+        events=_events_from_db(db, user_id),
+        biomarkers=_biomarkers_from_db(db, user_id),
+        visits=_visits_from_db(db, user_id),
     )
 
 
 @router.get("/api/biomarker/{biomarker_id}", response_model=BiomarkerResult)
-async def get_biomarker_detail(biomarker_id: str, db: Session = Depends(get_db)):
+async def get_biomarker_detail(
+    biomarker_id: str,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon)
+):
+    user, user_id, is_anonymous = user_data
     defn = (
         db.query(BiomarkerDefinitionModel)
         .filter(BiomarkerDefinitionModel.id == biomarker_id)
@@ -236,7 +255,7 @@ async def get_biomarker_detail(biomarker_id: str, db: Session = Depends(get_db))
         .filter(
             BiomarkerReading.biomarker_id == biomarker_id,
             MedicalEntryModel.type == "blood_test",
-            MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID,
+            MedicalEntryModel.patient_id == user_id,
         )
         .order_by(MedicalEntryModel.date)
         .all()
@@ -253,12 +272,16 @@ async def get_biomarker_detail(biomarker_id: str, db: Session = Depends(get_db))
         id=biomarker_id,
         definition=BiomarkerDefinitionSchema(
             id=defn.id,
-            name_en=defn.name_en,
-            name_ru=defn.name_ru,
+            loinc_code=defn.loinc_code,
+            names=defn.names,
+            synonyms=defn.synonyms or [],
             category=defn.category,
             range_min=defn.range_min,
             range_max=defn.range_max,
             unit=defn.unit,
+            scope=defn.scope,
+            user_id=defn.user_id,
+            range_source=defn.range_source,
         ),
         value=latest_reading.value,
         date=latest_date.isoformat(),
@@ -273,12 +296,19 @@ async def get_biomarker_detail(biomarker_id: str, db: Session = Depends(get_db))
 
 
 @router.get("/api/visit-data/{event_id}", response_model=VisitData)
-async def get_visit_data(event_id: str, db: Session = Depends(get_db)):
+async def get_visit_data(
+    event_id: str,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon)
+):
+    user, user_id, is_anonymous = user_data
     entry = (
         db.query(MedicalEntryModel)
         .filter(
             MedicalEntryModel.id == event_id,
-            MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID,
+            MedicalEntryModel.patient_id == user_id,
         )
         .first()
     )
@@ -298,7 +328,7 @@ async def get_visit_data(event_id: str, db: Session = Depends(get_db)):
     return VisitData(
         specialty=vd.specialty,
         provider=vd.provider,
-        date=vd.date,
+        date=vd.date.isoformat() if vd.date else "",
         clinic=vd.clinic,
         verdict=_ensure_tx(vd.verdict),
         notes=[_map_note(n) for n in (vd.notes or [])],

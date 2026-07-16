@@ -104,7 +104,7 @@ export default function BiomarkerChartInner({
                 mainLabel
               )
             }}
-            formatter={(value: number) => [`${value} ${biomarker.definition.unit}`, 'Result']}
+            formatter={(value) => [`${value ?? ''} ${biomarker.definition.unit}`, 'Result']}
           />
           <Line
             type="monotone"

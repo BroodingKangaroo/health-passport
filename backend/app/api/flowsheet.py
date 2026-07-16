@@ -1,6 +1,7 @@
 from collections import Counter
+from typing import Optional, Tuple
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from app.schemas import (
@@ -17,19 +18,20 @@ from app.db.models import (
     MedicalEntry as MedicalEntryModel,
     BiomarkerDefinition as BiomarkerDefinitionModel,
     BiomarkerReading,
+    Patient,
 )
-from app.db.seed import DEFAULT_PATIENT_ID
 from app.api._format import short_date_label, flowsheet_date_header
+from app.api.auth import get_current_user_or_anon
 
 router = APIRouter()
 
 
-def _build_flowsheet(db: Session):
+def _build_flowsheet(db: Session, patient_id: str):
     blood_tests = (
         db.query(MedicalEntryModel)
         .filter(
             MedicalEntryModel.type == "blood_test",
-            MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID,
+            MedicalEntryModel.patient_id == patient_id,
         )
         .order_by(MedicalEntryModel.date)
         .all()
@@ -50,7 +52,9 @@ def _build_flowsheet(db: Session):
                 label = f"{label} (#{seen[label]})"
         date_headers.append(DateHeader(label=label, sub=sub))
 
-    all_defns = db.query(BiomarkerDefinitionModel).all()
+    all_defns = db.query(BiomarkerDefinitionModel).filter(
+        (BiomarkerDefinitionModel.scope == "global") | (BiomarkerDefinitionModel.user_id == patient_id)
+    ).all()
     defn_map = {d.id: d for d in all_defns}
 
     biomarker_readings_map: dict[str, dict[str, BiomarkerReading]] = {}
@@ -86,12 +90,12 @@ def _build_flowsheet(db: Session):
             (bt_readings.get(def_id) for bt_readings in biomarker_readings_map.values() if def_id in bt_readings),
             None,
         )
-        original_name = first_reading.original_name if first_reading and first_reading.original_name else defn.name_ru
+        original_name = first_reading.original_name if first_reading and first_reading.original_name else defn.names.get("ru", "")
         original_range = first_reading.original_range if first_reading and first_reading.original_range else ""
         row_range = original_range or (f"{defn.range_min} – {defn.range_max} {defn.unit}" if defn.range_min is not None else "")
         cat_rows.setdefault(cat, []).append(MatrixRow(
             id=def_id,
-            name=defn.name_en,
+            name=defn.names.get("en", ""),
             original=original_name,
             range=row_range,
             cells=cells,
@@ -126,16 +130,16 @@ def _build_flowsheet(db: Session):
                 id=f"{def_id}-{label}",
                 definition=BiomarkerDefinitionSchema(
                     id=defn.id,
-                    name_en=defn.name_en,
-                    name_ru=defn.name_ru,
-                    name_es=defn.name_es,
-                    name_de=defn.name_de,
-                    name_fr=defn.name_fr,
-                    name_he=defn.name_he,
+                    loinc_code=defn.loinc_code,
+                    names=defn.names,
+                    synonyms=defn.synonyms or [],
                     category=defn.category,
                     range_min=defn.range_min,
                     range_max=defn.range_max,
                     unit=defn.unit,
+                    scope=defn.scope,
+                    user_id=defn.user_id,
+                    range_source=defn.range_source,
                 ),
                 value=reading.value,
                 date=bt.date.isoformat(),
@@ -151,6 +155,12 @@ def _build_flowsheet(db: Session):
 
 
 @router.get("/api/flowsheet", response_model=FlowsheetResponse)
-async def get_flowsheet(db: Session = Depends(get_db)):
-    dates, matrix, biomarkers = _build_flowsheet(db)
+async def get_flowsheet(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon)
+):
+    user, user_id, is_anonymous = user_data
+    dates, matrix, biomarkers = _build_flowsheet(db, user_id)
     return FlowsheetResponse(dates=dates, matrix=matrix, biomarkers=biomarkers)

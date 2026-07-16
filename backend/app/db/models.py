@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, String, Float, Integer, JSON, DateTime, ForeignKey
+from sqlalchemy import Column, String, Float, Integer, JSON, DateTime, ForeignKey, Boolean, Boolean
 from sqlalchemy.orm import relationship
 
 from app.db.session import Base
@@ -10,6 +10,8 @@ class Patient(Base):
     __tablename__ = "patients"
 
     id = Column(String, primary_key=True)
+    email = Column(String, nullable=False, unique=True, index=True)
+    hashed_password = Column(String, nullable=False)
     name = Column(String, nullable=False)
     dob = Column(String, nullable=False)
     gender = Column(String, nullable=False)
@@ -22,16 +24,19 @@ class BiomarkerDefinition(Base):
     __tablename__ = "biomarker_definitions"
 
     id = Column(String, primary_key=True)
-    name_en = Column(String, nullable=False)
-    name_ru = Column(String, nullable=False)
-    name_es = Column(String, nullable=True)
-    name_de = Column(String, nullable=True)
-    name_fr = Column(String, nullable=True)
-    name_he = Column(String, nullable=True)
+    loinc_code = Column(String, nullable=True, index=True)
+    names = Column(JSON, nullable=False)
+    synonyms = Column(JSON, nullable=True)
     category = Column(String, nullable=False)
     range_min = Column(Float, nullable=True)
     range_max = Column(Float, nullable=True)
     unit = Column(String, nullable=False)
+    scope = Column(String, nullable=False, default="global")
+    user_id = Column(String, nullable=True)
+    range_source = Column(String, nullable=False, default="global")
+    # LOINC COMMON_TEST_RANK: lower = more commonly ordered. Used to pick the
+    # canonical definition when several share a name/synonym. Null for local.
+    common_rank = Column(Integer, nullable=True)
 
     readings = relationship("BiomarkerReading", back_populates="definition")
 
@@ -93,7 +98,7 @@ class VisitData(Base):
     entry_id = Column(String, ForeignKey("medical_entries.id"), primary_key=True)
     specialty = Column(String, nullable=False)
     provider = Column(String, nullable=False)
-    date = Column(String, nullable=False)
+    date = Column(DateTime(timezone=True), nullable=False)
     clinic = Column(String, nullable=False)
     verdict = Column(JSON, nullable=False)
     notes = Column(JSON, nullable=False)
@@ -101,3 +106,15 @@ class VisitData(Base):
     recommendations = Column(JSON, nullable=False)
 
     entry = relationship("MedicalEntry", back_populates="visit_data")
+
+
+class UsageLimit(Base):
+    __tablename__ = "usage_limits"
+
+    user_id = Column(String, primary_key=True)
+    is_anonymous = Column(Boolean, default=True)
+
+    ai_extraction_count = Column(Integer, default=0)
+    total_upload_size_bytes = Column(Integer, default=0)
+    last_activity = Column(DateTime)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

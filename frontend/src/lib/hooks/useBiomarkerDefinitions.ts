@@ -1,46 +1,17 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useSession } from 'next-auth/react'
 import { fetchBiomarkerDefinitions } from '@/services/api'
-import type { BiomarkerDefinition } from '@/lib/types'
-
-let cached: BiomarkerDefinition[] | null = null
-let cachedPromise: Promise<BiomarkerDefinition[]> | null = null
 
 export function useBiomarkerDefinitions() {
-  const [definitions, setDefinitions] = useState<BiomarkerDefinition[]>(cached ?? [])
-  const [loading, setLoading] = useState(!cached)
-  const [error, setError] = useState<string | null>(null)
+  const { data: session, status } = useSession()
+  const { data: definitions = [], isLoading: loading, error } = useQuery({
+    queryKey: ['biomarker-definitions', session?.user?.id ?? 'anon'],
+    queryFn: fetchBiomarkerDefinitions,
+    staleTime: 1000 * 60 * 30,
+    enabled: status !== 'loading',
+  })
 
-  useEffect(() => {
-    if (cached) {
-      setDefinitions(cached)
-      setLoading(false)
-      return
-    }
-    if (cachedPromise) {
-      cachedPromise
-        .then((data) => {
-          cached = data
-          setDefinitions(data)
-          setLoading(false)
-        })
-        .catch(() => {})
-      return
-    }
-    cachedPromise = fetchBiomarkerDefinitions()
-    cachedPromise
-      .then((data) => {
-        cached = data
-        setDefinitions(data)
-        setLoading(false)
-      })
-      .catch((err) => {
-        cachedPromise = null
-        setError(err instanceof Error ? err.message : 'Failed to load definitions')
-        setLoading(false)
-      })
-  }, [])
-
-  return { definitions, loading, error }
+  return { definitions, loading: loading || status === 'loading', error: error instanceof Error ? error.message : null }
 }

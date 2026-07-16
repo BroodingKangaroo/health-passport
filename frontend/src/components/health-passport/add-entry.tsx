@@ -19,13 +19,15 @@ import {
 
 import { cn } from '@/lib/utils'
 import { useAutoResize } from '@/lib/hooks/useAutoResize'
+import { useQueryClient } from '@tanstack/react-query'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/shared/Field'
 import { DoctorVisitForm } from './DoctorVisitForm'
 import { LabResultForm } from './LabResultForm'
 import { ImagingForm } from './ImagingForm'
-import { saveMedicalEntry, fetchEntriesByDate, extractMedicalData } from '@/services/api'
+import { saveMedicalEntry, fetchEntriesByDate, extractMedicalData, UsageLimitError } from '@/services/api'
+import { toast } from 'sonner'
 import type {
   UploadState,
   EntryMode,
@@ -104,17 +106,21 @@ function biomarkersToCategories(biomarkers: StandardizedBiomarker[]): FormCatego
       original_value: r.raw_value,
       original_unit: r.raw_unit,
       original_range: r.raw_range_string,
+      definition_id: r.definition_id,
+      scope: r.scope,
     })),
   }))
 }
 
 export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
+  const queryClient = useQueryClient()
   const [uploadState, setUploadState] = useState<UploadState>('idle')
   const [entryMode, setEntryMode] = useState<EntryMode>('ai')
   const [categories, setCategories] = useState<FormCategory[]>(manualCategories())
   const [documentType, setDocumentType] = useState('blood_test')
   const [activeFile, setActiveFile] = useState(0)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [visitFormData, setVisitFormData] = useState<any>(null)
   const [imagingFormData, setImagingFormData] = useState<any>(null)
   const [timeValue, setTimeValue] = useState('')
@@ -175,12 +181,15 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const stageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hasLeftOcrRef = useRef(false)
   const markdownCharsRef = useRef<number | null>(null)
-  const barElRef = useRef<HTMLDivElement>(null)
-  const barStartRef = useRef(0)
-  const barStageRef = useRef<ProgressStage>('ocr_scanning')
-  const barStageEntryRef = useRef(0)
+  const extractionAbortRef = useRef<AbortController | null>(null)
 
   const runExtraction = useCallback(async (file: File) => {
+    // Cancel any in-flight extraction so its late-arriving result can't
+    // overwrite state the user has since edited.
+    extractionAbortRef.current?.abort()
+    const controller = new AbortController()
+    extractionAbortRef.current = controller
+
     setAiError(null)
     setUploadState('scanning')
     setProgressStage('ocr_scanning')
@@ -195,20 +204,16 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     stageTimeoutRef.current = null
     hasLeftOcrRef.current = false
     markdownCharsRef.current = null
-    barStartRef.current = performance.now()
-    barStageRef.current = 'ocr_scanning'
-    barStageEntryRef.current = 0
     const setStage = (stage: string) => {
-      const s = stage as ProgressStage
-      barStageRef.current = s
-      barStageEntryRef.current = (performance.now() - barStartRef.current) / 1000
-      setProgressStage(s)
+      setProgressStage(stage as ProgressStage)
     }
 
     try {
-      const result = await extractMedicalData(file, (payload) => {
-        const now = elapsedRef.current
-        if (payload.markdown_chars != null) {
+      const result = await extractMedicalData(
+        file,
+        (payload) => {
+          const now = elapsedRef.current
+          if (payload.markdown_chars != null) {
           markdownCharsRef.current = payload.markdown_chars
           setMarkdownChars(payload.markdown_chars)
           stageEntryTimeRef.current = now
@@ -234,7 +239,9 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
           }
         }
         setStage(payload.stage)
-      })
+        },
+        controller.signal,
+      )
       setEntryMode('ai')
       setDocumentType(result.entry_type)
 
@@ -271,6 +278,13 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
       await new Promise((r) => setTimeout(r, 1500))
       setUploadState('editor')
     } catch (err: any) {
+      // Ignore aborts from a superseding extraction — the new run is in charge.
+      if (err?.name === 'AbortError') return
+      if (err instanceof UsageLimitError) {
+        toast.error('AI Extraction Limit Reached', {
+          description: err.message,
+        })
+      }
       const msg = err?.message || 'AI extraction failed'
       setAiError(msg)
       setEntryMode('manual')
@@ -285,9 +299,13 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
       setTimeRequired(false)
       return
     }
+    const controller = new AbortController()
+    const requestId = Date.now()
     const t = setTimeout(async () => {
       try {
         const res = await fetchEntriesByDate(dateValue, 'blood_test')
+        // Ignore stale responses
+        if (controller.signal.aborted) return
         if (res.count > 0) {
           setDuplicateWarning(true)
           setTimeRequired(true)
@@ -299,7 +317,10 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         // ignore fetch errors
       }
     }, 300)
-    return () => clearTimeout(t)
+    return () => {
+      clearTimeout(t)
+      controller.abort()
+    }
   }, [dateValue, documentType])
 
   useEffect(() => {
@@ -310,27 +331,6 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     }
     setObjectUrl(null)
   }, [selectedFile])
-
-  useEffect(() => {
-    if (uploadState !== 'scanning') return
-    let rafId: number
-    const tick = () => {
-      const el = barElRef.current
-      if (!el) { rafId = requestAnimationFrame(tick); return }
-      const stage = barStageRef.current
-      if (stage === 'completed') { el.style.width = '100%'; return }
-      if (stage === 'ocr_scanning') { el.style.width = '2%'; rafId = requestAnimationFrame(tick); return }
-      const totalElapsed = (performance.now() - barStartRef.current) / 1000
-      const cap = stage === 'extracting' ? 90 : 95
-      const stageElapsed = Math.max(0, totalElapsed - barStageEntryRef.current)
-      const remaining = Math.max(0, stageEstimateRef.current - stageElapsed)
-      const denom = totalElapsed + remaining
-      el.style.width = `${denom > 0 ? Math.min(cap, (totalElapsed / denom) * 100) : cap}%`
-      rafId = requestAnimationFrame(tick)
-    }
-    rafId = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(rafId)
-  }, [uploadState])
 
   useEffect(() => {
     if (uploadState !== 'scanning') return
@@ -408,6 +408,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
 
   async function handleSave() {
     setSaving(true)
+    setSaveError(null)
     try {
       const fd = new FormData()
       fd.append('type', documentType)
@@ -428,10 +429,29 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         fd.append('file', fileRef.current.files[0])
       }
       const resp = await saveMedicalEntry(fd)
-      console.log('Entry saved:', resp.id)
+      if (!resp.success) {
+        setSaveError(resp.message || 'Failed to save entry')
+        return
+      }
+      // Invalidate cached server state so the new entry appears immediately.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['timeline'] }),
+        queryClient.invalidateQueries({ queryKey: ['flowsheet'] }),
+        queryClient.invalidateQueries({ queryKey: ['biomarker-definitions'] }),
+      ])
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl)
+        setObjectUrl(null)
+      }
       await onSave()
     } catch (err) {
-      console.error('Failed to save entry:', err)
+      if (err instanceof UsageLimitError) {
+        toast.error('Storage Limit Reached', {
+          description: err.message,
+        })
+      }
+      const msg = err instanceof Error ? err.message : 'Failed to save entry'
+      setSaveError(msg)
     } finally {
       setSaving(false)
     }
@@ -537,8 +557,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
               <div className="mt-1 w-full max-w-xs space-y-1.5">
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary/10">
                   <div
-                    ref={barElRef}
-                    className="h-full rounded-full bg-primary"
+                    className="h-full rounded-full bg-primary transition-[width] duration-1000 ease-linear"
                     style={{ width: `${progressWidth}%` }}
                   />
                 </div>
@@ -765,6 +784,13 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
               />
             )}
           </div>
+
+          {saveError && (
+            <div className="flex items-start gap-3 border-t border-border p-4 text-xs text-status-high">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" />
+              <span>{saveError}</span>
+            </div>
+          )}
 
           <div className="flex items-center justify-end gap-2 border-t border-border bg-card p-4">
             <input ref={fileRef} type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileRefChange} />

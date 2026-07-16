@@ -4,11 +4,11 @@ import re
 import uuid
 import hashlib
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Tuple
 
-from fastapi import APIRouter, Form, UploadFile, File, Depends, Query
+from fastapi import APIRouter, Form, UploadFile, File, Depends, Query, HTTPException, Request, Response
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import cast, func, or_, String
 
 from app.schemas import SaveEntryResponse
 from app.db.session import get_db
@@ -18,13 +18,17 @@ from app.db.models import (
     BiomarkerReading,
     Attachment as AttachmentModel,
     VisitData as VisitDataModel,
+    Patient,
 )
 from app.mock_db import _status
-from app.db.seed import DEFAULT_PATIENT_ID
 from app.api._format import to_display_datetime
+from app.api.auth import get_current_user_or_anon
+from app.services.usage_limits import check_and_record_storage_usage
+from config import ANON_STORAGE_BYTES, REGISTERED_STORAGE_BYTES
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
+MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 
 def _compute_status_from_range(value: float, range_str: str) -> str:
     rng = range_str.strip()
@@ -58,13 +62,20 @@ def _normalize_date(date_str: str, time_str: str = "") -> datetime:
 
 @router.get("/api/entries/by-date")
 async def get_entries_by_date(
+    request: Request,
+    response: Response,
     date: str = Query(...),
     type: str = Query(""),
     db: Session = Depends(get_db),
+    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
 ):
-    target = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
+    user, user_id, is_anonymous = user_data
+    try:
+        target = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid date format: '{date}'. Expected ISO format (YYYY-MM-DD).")
     q = db.query(MedicalEntryModel).filter(
-        MedicalEntryModel.patient_id == DEFAULT_PATIENT_ID,
+        MedicalEntryModel.patient_id == user_id,
         func.date(MedicalEntryModel.date) == func.date(target),
     )
     if type:
@@ -74,6 +85,8 @@ async def get_entries_by_date(
 
 @router.post("/api/entry", response_model=SaveEntryResponse)
 async def save_entry(
+    request: Request,
+    response: Response,
     type: str = Form(...),
     date: str = Form(""),
     time: str = Form(""),
@@ -85,13 +98,18 @@ async def save_entry(
     visit_data: str = Form(""),
     file: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
+    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
 ):
+    user, user_id, is_anonymous = user_data
     entry_id = uuid.uuid4().hex[:8]
-    entry_date = _normalize_date(date, time)
+    try:
+        entry_date = _normalize_date(date, time)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid date/time format: {e}")
 
     entry = MedicalEntryModel(
         id=entry_id,
-        patient_id=DEFAULT_PATIENT_ID,
+        patient_id=user_id,
         type=type,
         date=entry_date,
         title=title or f"{type.replace('_', ' ').title()} — {date}",
@@ -105,11 +123,25 @@ async def save_entry(
     db.flush()
 
     if file and file.filename:
+        content = await file.read()
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail=f"File too large ({len(content) // 1024} KB). Maximum allowed size is {MAX_FILE_SIZE // (1024 * 1024)} MB.")
+        
+        # Enforce storage quota for ALL users (anon: 50MB, registered: 200MB — see config.py).
+        allowed, current_bytes, limit_bytes, remaining = check_and_record_storage_usage(
+            db, user_id, len(content), is_anonymous
+        )
+        if not allowed:
+            tier = "Anonymous" if is_anonymous else "Registered"
+            raise HTTPException(
+                status_code=429,
+                detail=f"Storage limit reached. {tier} users can upload up to {limit_bytes // (1024*1024)}MB. Please remove old entries or contact support."
+            )
+        
         ext = os.path.splitext(file.filename)[1]
         saved_name = f"{uuid.uuid4().hex}{ext}"
         os.makedirs(UPLOAD_DIR, exist_ok=True)
         save_path = os.path.join(UPLOAD_DIR, saved_name)
-        content = await file.read()
         with open(save_path, "wb") as f:
             f.write(content)
 
@@ -125,7 +157,10 @@ async def save_entry(
         db.flush()
 
     if biomarkers and biomarkers != "[]":
-        categories_data = json.loads(biomarkers)
+        try:
+            categories_data = json.loads(biomarkers)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid biomarkers JSON format.")
         for cat in categories_data:
             for row in cat.get("rows", []):
                 name = row.get("name", "").strip()
@@ -137,26 +172,53 @@ async def save_entry(
                 except ValueError:
                     continue
 
-                defn = (
-                    db.query(BiomarkerDefinitionModel)
-                    .filter(
-                        or_(
-                            BiomarkerDefinitionModel.name_en.ilike(name),
-                            BiomarkerDefinitionModel.name_ru.ilike(name),
-                        )
-                    )
-                    .first()
-                )
+                # 1) Lookup by definition_id (from AI pipeline)
+                defn_id = row.get("definition_id")
+                defn = None
+                if defn_id:
+                    defn = db.query(BiomarkerDefinitionModel).filter(BiomarkerDefinitionModel.id == defn_id).first()
+
+                # 2) Fallback: fuzzy match by name using SQL ILIKE
                 if not defn:
-                    defn_id = f"auto-{hashlib.md5(name.lower().encode()).hexdigest()[:8]}"
+                    name_lower = name.lower()
+                    # Build OR conditions for names and synonyms
+                    defn = (
+                        db.query(BiomarkerDefinitionModel)
+                        .filter(
+                            or_(
+                                func.lower(BiomarkerDefinitionModel.names['en'].as_string()).ilike(name_lower),
+                                func.lower(BiomarkerDefinitionModel.names['ru'].as_string()).ilike(name_lower),
+                                func.lower(BiomarkerDefinitionModel.names['es'].as_string()).ilike(name_lower),
+                                func.lower(BiomarkerDefinitionModel.names['de'].as_string()).ilike(name_lower),
+                                func.lower(BiomarkerDefinitionModel.names['fr'].as_string()).ilike(name_lower),
+                                func.lower(BiomarkerDefinitionModel.names['he'].as_string()).ilike(name_lower),
+                            )
+                        )
+                        .first()
+                    )
+                    # Also check synonyms array
+                    if not defn:
+                        defn = (
+                            db.query(BiomarkerDefinitionModel)
+                            .filter(
+                                func.lower(cast(BiomarkerDefinitionModel.synonyms, String)).ilike(f'%{name_lower}%')
+                            )
+                            .first()
+                        )
+
+                # 3) No match at all — create a local entry
+                if not defn:
+                    defn_id = f"local-{hashlib.md5(name.lower().encode()).hexdigest()[:12]}"
                     defn = BiomarkerDefinitionModel(
                         id=defn_id,
-                        name_en=name,
-                        name_ru=name,
+                        names={"en": name},
+                        synonyms=[name],
                         category=cat.get("name", "General"),
                         range_min=None,
                         range_max=None,
                         unit=row.get("unit", ""),
+                        scope="local",
+                        user_id=user_id,
                     )
                     db.add(defn)
                     db.flush()
@@ -176,7 +238,12 @@ async def save_entry(
         db.flush()
 
     if visit_data and visit_data != "":
-        vd = json.loads(visit_data)
+        try:
+            vd = json.loads(visit_data)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid visit_data JSON: {e}")
+        if not isinstance(vd, dict):
+            raise HTTPException(status_code=400, detail="visit_data must be a JSON object")
 
         diagnosis = vd.get("diagnosis", {})
         chief_complaint = vd.get("chief_complaint", {})
@@ -204,7 +271,7 @@ async def save_entry(
             entry_id=entry_id,
             specialty=title or "",
             provider=provider or "",
-            date=to_display_datetime(entry_date),
+            date=entry_date,
             clinic=clinic or "",
             verdict={
                 "original": _get_tx(diagnosis, "original"),

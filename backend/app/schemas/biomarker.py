@@ -14,16 +14,16 @@ class Reading(BaseModel):
 
 class BiomarkerDefinition(BaseModel):
     id: str
-    name_en: str
-    name_ru: str
-    name_es: Optional[str] = None
-    name_de: Optional[str] = None
-    name_fr: Optional[str] = None
-    name_he: Optional[str] = None
+    loinc_code: Optional[str] = None
+    names: dict[str, str]
+    synonyms: list[str] = []
     category: str
     range_min: Optional[float] = None
     range_max: Optional[float] = None
     unit: str
+    scope: str = "global"
+    user_id: Optional[str] = None
+    range_source: str = "global"
 
 
 class BiomarkerResult(BaseModel):
@@ -42,16 +42,16 @@ class BiomarkerResult(BaseModel):
 
 class BiomarkerDefinitionResponse(BaseModel):
     id: str
-    name_en: str
-    name_ru: str
-    name_es: Optional[str] = None
-    name_de: Optional[str] = None
-    name_fr: Optional[str] = None
-    name_he: Optional[str] = None
+    loinc_code: Optional[str] = None
+    names: dict[str, str]
+    synonyms: list[str] = []
     category: str
     unit: str
     range_min: Optional[float] = None
     range_max: Optional[float] = None
+    scope: str = "global"
+    user_id: Optional[str] = None
+    range_source: str = "global"
 
 
 class MatrixCell(BaseModel):

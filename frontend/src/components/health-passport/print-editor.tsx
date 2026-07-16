@@ -205,18 +205,9 @@ export function PrintEditor({
 
   function translatedName(row: MatrixCategory['rows'][number]): string {
     if (lang === 'ru') return row.original || row.name
-    const fieldMap: Partial<Record<PrintLang, keyof BiomarkerDefinition>> = {
-      de: 'name_de',
-      es: 'name_es',
-      fr: 'name_fr',
-      he: 'name_he',
-    }
-    const field = fieldMap[lang]
-    if (field) {
-      const def = defMap.get(row.id)
-      const val = def?.[field]
-      if (val) return val as string
-    }
+    const def = defMap.get(row.id)
+    const val = def?.names?.[lang]
+    if (val) return val
     return row.name
   }
 

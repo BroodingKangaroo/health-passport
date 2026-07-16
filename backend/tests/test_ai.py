@@ -1,6 +1,7 @@
 import json
 from unittest.mock import patch
 
+from app.services.extractor import OCRProcessingError
 from app.schemas.ai import (
     RawMedicalRecord,
     RawBiomarker,
@@ -67,12 +68,14 @@ class TestExtractEndpoint:
                     standard_name_en="Hemoglobin", standard_value=142.0, standard_unit="g/L",
                     standard_range_min=130.0, standard_range_max=170.0,
                     status="normal", category="Complete Blood Count",
+                    definition_id="hb", scope="global",
                 ),
                 StandardizedBiomarker(
                     raw_name="Лейкоциты", raw_value="6.5", raw_unit="K/µL", raw_range_string="4.0-11.0",
                     standard_name_en="WBC", standard_value=6.5, standard_unit="K/µL",
                     standard_range_min=4.0, standard_range_max=11.0,
                     status="normal", category="Complete Blood Count",
+                    definition_id="wbc", scope="global",
                 ),
             ],
         )
@@ -217,7 +220,10 @@ class TestExtractEndpoint:
     @patch("app.api.ai.extractor.ocr_document")
     async def test_extract_ocr_failure(self, mock_ocr, client, monkeypatch):
         monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
-        mock_ocr.side_effect = Exception("OCR service unavailable")
+        mock_ocr.side_effect = OCRProcessingError(
+            "The uploaded document could not be processed by OCR. This file type may not be supported.",
+            kind="unknown",
+        )
 
         resp = await client.post(
             "/api/extract",
@@ -227,7 +233,49 @@ class TestExtractEndpoint:
         assert resp.status_code == 200
         for part in resp.text.split("\n\n"):
             if "event: error" in part:
-                assert "OCR service unavailable" in part
+                assert "could not be processed by OCR" in part
+                return
+        assert False, "Expected error event in SSE stream"
+
+    @patch("app.api.ai.extractor.ocr_document")
+    async def test_extract_ocr_auth_error(self, mock_ocr, client, monkeypatch):
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        mock_ocr.side_effect = OCRProcessingError(
+            "Mistral AI authentication failed (HTTP 401). The MISTRAL_API_KEY in "
+            "backend/.env is invalid or expired. Please update it and restart the backend.",
+            kind="auth",
+        )
+
+        resp = await client.post(
+            "/api/extract",
+            files={"file": ("lab.pdf", b"fake content", "application/pdf")},
+        )
+
+        assert resp.status_code == 200
+        for part in resp.text.split("\n\n"):
+            if "event: error" in part:
+                assert "authentication failed" in part
+                assert "MISTRAL_API_KEY" in part
+                return
+        assert False, "Expected error event in SSE stream"
+
+    @patch("app.api.ai.extractor.ocr_document")
+    async def test_extract_ocr_quota_error(self, mock_ocr, client, monkeypatch):
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        mock_ocr.side_effect = OCRProcessingError(
+            "Mistral OCR quota exceeded (HTTP 429). Upgrade your plan or try again later.",
+            kind="quota",
+        )
+
+        resp = await client.post(
+            "/api/extract",
+            files={"file": ("lab.pdf", b"fake content", "application/pdf")},
+        )
+
+        assert resp.status_code == 200
+        for part in resp.text.split("\n\n"):
+            if "event: error" in part:
+                assert "quota exceeded" in part
                 return
         assert False, "Expected error event in SSE stream"
 
@@ -259,9 +307,11 @@ class TestExtractEndpoint:
             files={"file": ("lab.pdf", b"fake content", "application/pdf")},
         )
 
-        assert resp.status_code == 500
-        data = resp.json()
-        assert "MISTRAL_API_KEY not configured" in data["detail"]
+        assert resp.status_code == 200
+        # Should return SSE stream with error event
+        body = resp.text
+        assert "event: error" in body
+        assert "MISTRAL_API_KEY not configured" in body
 
     @patch("app.api.ai.matcher.match_and_convert")
     @patch("app.api.ai.extractor.llm_extract")

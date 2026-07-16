@@ -1,31 +1,18 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useSession } from 'next-auth/react'
 import { fetchTimelineEvents } from '@/services/api'
 import type { TimelineResponse } from '@/lib/types'
 
-interface UseTimelineDataReturn {
-  data: TimelineResponse | null
-  isLoading: boolean
-  error: Error | null
-  refetch: () => void
-}
+export function useTimelineData() {
+  const { data: session, status } = useSession()
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['timeline', session?.user?.id ?? 'anon'],
+    queryFn: fetchTimelineEvents,
+    staleTime: 1000 * 60 * 5,
+    enabled: status !== 'loading',
+  })
 
-export function useTimelineData(): UseTimelineDataReturn {
-  const [data, setData] = useState<TimelineResponse | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
-
-  const load = useCallback(() => {
-    setIsLoading(true)
-    setError(null)
-    fetchTimelineEvents()
-      .then(setData)
-      .catch(setError)
-      .finally(() => setIsLoading(false))
-  }, [])
-
-  useEffect(() => { load() }, [load])
-
-  return { data, isLoading, error, refetch: load }
+  return { data, isLoading: isLoading || status === 'loading', error, refetch }
 }

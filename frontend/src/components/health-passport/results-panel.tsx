@@ -42,8 +42,8 @@ export function ResultsPanel({
     if (!q) return biomarkers
     return biomarkers.filter(
       (b) =>
-        b.definition.name_en.toLowerCase().includes(q) ||
-        b.definition.name_ru.toLowerCase().includes(q),
+        b.definition.names.en.toLowerCase().includes(q) ||
+        b.definition.names.ru.toLowerCase().includes(q),
     )
   }, [query, biomarkers])
 
@@ -141,10 +141,10 @@ function FlowRow({
         )}
       >
         <span className="truncate font-semibold text-foreground">
-          {biomarker.definition.name_en}
+          {biomarker.definition.names.en}
         </span>
         <span className="truncate text-xs text-muted-foreground/70">
-          {biomarker.original_name || biomarker.definition.name_ru}
+          {biomarker.original_name || biomarker.definition.names.ru}
         </span>
         <span className="font-medium text-foreground">{biomarker.value}</span>
         <span className="text-muted-foreground">{biomarker.definition.unit}</span>

@@ -2,7 +2,10 @@ import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { ThemeProvider } from '@/providers/theme-provider'
+import { QueryProvider } from '@/providers/query-provider'
 import { PrintConfigProvider } from '@/providers/print-config-provider'
+import { AuthProvider } from '@/components/providers/AuthProvider'
+import { Toaster } from 'sonner'
 import './globals.css'
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
@@ -75,7 +78,14 @@ export default function RootLayout({
         />
       </head>
       <body className="font-sans antialiased">
-        <ThemeProvider><PrintConfigProvider>{children}</PrintConfigProvider></ThemeProvider>
+        <AuthProvider>
+          <ThemeProvider>
+            <QueryProvider>
+              <PrintConfigProvider>{children}</PrintConfigProvider>
+            </QueryProvider>
+          </ThemeProvider>
+        </AuthProvider>
+        <Toaster position="bottom-right" richColors />
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

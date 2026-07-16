@@ -129,19 +129,22 @@ class TestSaveBloodTest:
         assert data["success"] is True
 
     async def test_save_blood_test_with_invalid_biomarker_json(self, client):
-        # when / then
-        with pytest.raises(Exception):
-            await client.post(
-                "/api/entry",
-                data={
-                    "type": "blood_test",
-                    "date": "2026-11-15",
-                    "clinic": "Test Lab",
-                    "provider": "Dr. Test",
-                    "title": "Bad Panel",
-                    "biomarkers": "not valid json",
-                },
-            )
+        # when
+        resp = await client.post(
+            "/api/entry",
+            data={
+                "type": "blood_test",
+                "date": "2026-11-15",
+                "clinic": "Test Lab",
+                "provider": "Dr. Test",
+                "title": "Bad Panel",
+                "biomarkers": "not valid json",
+            },
+        )
+
+        # then
+        assert resp.status_code == 400
+        assert "Invalid biomarkers JSON" in resp.json()["detail"]
 
 
 class TestSaveDoctorVisit:

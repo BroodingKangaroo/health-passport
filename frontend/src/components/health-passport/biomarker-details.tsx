@@ -2,11 +2,10 @@
 
 import { useMemo } from 'react'
 import { useSearchParams, notFound } from 'next/navigation'
-import { ArrowDown, Sparkles, BookOpen } from 'lucide-react'
+import { BookOpen } from 'lucide-react'
 
 import { cn, formatDate } from '@/lib/utils'
 import { Card } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { BiomarkerChart } from '@/components/shared/BiomarkerChart'
 import { useBiomarkerData } from '@/hooks/useBiomarkerData'
 import type { Status } from '@/lib/types'
@@ -45,8 +44,8 @@ export function BiomarkerDetails() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="leading-tight">
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            {biomarker.definition.name_en}{' '}
-            <span className="text-muted-foreground/70">/ {biomarker.definition.name_ru}</span>
+            {biomarker.definition.names.en}{' '}
+            <span className="text-muted-foreground/70">/ {biomarker.definition.names.ru}</span>
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Reference range: {biomarker.range || (biomarker.definition.range_min != null ? `${biomarker.definition.range_min} – ${biomarker.definition.range_max}` : '—')} {biomarker.definition.unit}
@@ -105,9 +104,9 @@ export function BiomarkerDetails() {
                   <span>Value</span>
                   <span>Status</span>
                 </div>
-                {chartData.map((entry) => (
+                {chartData.map((entry, idx) => (
                   <div
-                    key={entry.date}
+                    key={`${entry.date}-${idx}`}
                     className="grid grid-cols-[1fr_1fr_1fr] items-center gap-x-3 border-b border-border px-4 py-3 text-sm transition-colors last:border-0 hover:bg-muted/40"
                   >
                     <span className="text-muted-foreground">{formatDate(entry.date)}</span>
@@ -143,44 +142,13 @@ export function BiomarkerDetails() {
               </h2>
             </div>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              {biomarker.definition.name_en} ({biomarker.definition.name_ru}) is measured at{' '}
+              {biomarker.definition.names.en} ({biomarker.definition.names.ru}) is measured at{' '}
               {biomarker.value} {biomarker.definition.unit}. The standard reference range
               is {biomarker.range || (biomarker.definition.range_min != null ? `${biomarker.definition.range_min} – ${biomarker.definition.range_max}` : '—')} {biomarker.definition.unit}.
             </p>
           </Card>
 
-          {id === 'ferritin' && (
-            <Card className="border-primary/20 bg-accent p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <Sparkles className="size-4 text-primary" />
-                <h2 className="text-sm font-semibold text-accent-foreground">
-                  Clinical Notes & AI Insights
-                </h2>
-              </div>
-              <ul className="space-y-3 text-sm text-accent-foreground">
-                <li className="flex gap-2">
-                  <ArrowDown className="mt-0.5 size-4 shrink-0 text-status-low" />
-                  <span>Ferritin levels dropped by 30% since August.</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
-                  <span>
-                    Correlates with recent fatigue reported in Cardiologist visit.
-                  </span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
-                  <span>
-                    <span className="font-semibold">Action recommended:</span>{' '}
-                    Discuss IV Iron infusion or oral supplements with your physician.
-                  </span>
-                </li>
-              </ul>
-              <div className="mt-4">
-                <Badge variant="low">Requires follow-up</Badge>
-              </div>
-            </Card>
-          )}
+
         </div>
       </div>
     </div>

@@ -61,7 +61,7 @@ export function ExpandedBiomarkerDetails({
     <div className="flex flex-col gap-5 rounded-lg bg-muted/60 p-5">
       <div>
         <h3 className="text-sm font-semibold text-foreground">
-          {biomarker.definition.name_en} Dynamics
+          {biomarker.definition.names.en} Dynamics
         </h3>
         <p className="mb-2 text-xs text-muted-foreground">
           Reference: {biomarker.range || (biomarker.definition.range_min != null ? `${biomarker.definition.range_min} – ${biomarker.definition.range_max}` : '—')} {biomarker.definition.unit}

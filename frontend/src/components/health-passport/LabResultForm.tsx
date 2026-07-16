@@ -89,9 +89,13 @@ export function LabResultForm({
                     <BiomarkerCombobox
                       value={row.name}
                       originalName={row.original_name}
+                      definitionId={row.definition_id}
+                      scope={row.scope}
                       onNameChange={(name) => updateRow(cat.id, row.id, 'name', name)}
                       onUnitChange={(unit) => updateRow(cat.id, row.id, 'unit', unit)}
                       onRangeChange={(range) => updateRow(cat.id, row.id, 'range', range)}
+                      onDefinitionIdChange={(id) => updateRow(cat.id, row.id, 'definition_id', id)}
+                      onScopeChange={(s) => updateRow(cat.id, row.id, 'scope', s)}
                     />
                     <div className="relative">
                       <Input
