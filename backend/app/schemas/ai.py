@@ -18,6 +18,9 @@ class RawBiomarker(BaseModel):
     unit: str
     raw_range_string: str = ""
     category: str = ""
+    # Best-effort standard English name for the analyte, used to improve
+    # matching of localized (non-English) documents. May be empty.
+    standard_name_en: str = ""
 
 
 class RawPrescription(BaseModel):
@@ -42,15 +45,52 @@ class RawImagingData(BaseModel):
 
 class RawMedicalRecord(BaseModel):
     entry_type: Literal["blood_test", "doctor_visit", "imaging", "unknown"]
-    date: Optional[str] = None
-    time: Optional[str] = None
-    clinic: Optional[str] = None
-    provider: Optional[str] = None
-    title: Optional[str] = None
-    notes: Optional[str] = None
-    biomarkers: Optional[list[RawBiomarker]] = None
-    visit_data: Optional[RawVisitData] = None
-    imaging_data: Optional[RawImagingData] = None
+    date: str = ""
+    time: str = ""
+    clinic: str = ""
+    provider: str = ""
+    title: str = ""
+    notes: str = ""
+    biomarkers: list[RawBiomarker] = []
+    visit_data: RawVisitData = RawVisitData()
+    imaging_data: RawImagingData = RawImagingData()
+
+
+# +++++ Zero-shot LOINC guess from LLM +++++
+
+class LoincGuess(BaseModel):
+    raw_name: str
+    standard_name_en: str
+    guessed_loinc: str = ""
+
+
+class LoincGuessBatch(BaseModel):
+    guesses: list[LoincGuess]
+
+
+# +++++ LLM verification of an existing match +++++
+
+class MatchVerification(BaseModel):
+    raw_name: str
+    # True when the proposed match is the correct analyte for raw_name.
+    agree: bool = True
+    # When agree is False, the correct standard English analyte name (best guess).
+    corrected_name_en: str = ""
+    # Optional LOINC code the LLM believes is correct (validated before use).
+    corrected_loinc: str = ""
+
+
+class MatchVerificationBatch(BaseModel):
+    verifications: list[MatchVerification]
+
+
+# +++++ LLM-assisted unit conversion factor +++++
+
+class ConversionFactor(BaseModel):
+    # value_in_target = value_in_source * factor
+    factor: Optional[float] = None
+    # Set true only when the conversion is well-defined and safe to apply.
+    convertible: bool = False
 
 
 # +++++ Pass 2 — Standardized (normalized, matched, converted, translated) +++++
@@ -67,6 +107,8 @@ class StandardizedBiomarker(BaseModel):
     standard_range_max: Optional[float] = None
     status: str = ""
     category: str = ""
+    definition_id: str = ""
+    scope: str = "global"
 
 
 class StandardizedPrescription(BaseModel):
@@ -76,24 +118,24 @@ class StandardizedPrescription(BaseModel):
 
 
 class StandardizedVisitData(BaseModel):
-    diagnosis: TranslatedText
-    chief_complaint: TranslatedText
-    objective_findings: TranslatedText
+    diagnosis: TranslatedText = TranslatedText()
+    chief_complaint: TranslatedText = TranslatedText()
+    objective_findings: TranslatedText = TranslatedText()
     prescriptions: list[StandardizedPrescription] = []
     recommendations: list[TranslatedText] = []
 
 
 class StandardizedMedicalRecord(BaseModel):
     entry_type: Literal["blood_test", "doctor_visit", "imaging", "unknown"]
-    date: Optional[str] = None
-    time: Optional[str] = None
-    clinic: Optional[str] = None
-    provider: Optional[str] = None
-    title: Optional[str] = None
-    notes: Optional[str] = None
-    biomarkers: Optional[list[StandardizedBiomarker]] = None
-    visit_data: Optional[StandardizedVisitData] = None
-    imaging_data: Optional[RawImagingData] = None
+    date: str = ""
+    time: str = ""
+    clinic: str = ""
+    provider: str = ""
+    title: str = ""
+    notes: str = ""
+    biomarkers: list[StandardizedBiomarker] = []
+    visit_data: StandardizedVisitData = StandardizedVisitData()
+    imaging_data: RawImagingData = RawImagingData()
 
 
 # +++++ Legacy aliases for types shared across passes +++++
