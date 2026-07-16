@@ -61,7 +61,7 @@ MOLECULAR_WEIGHTS: dict[str, float] = {
 LOCALIZED_UNIT_SYNONYMS: dict[str, str] = {
     # molar concentrations
     "ммоль/л": "mmol/L",
-    "мкмоль/л": "umol/L",
+    "мкмоль/л": "µmol/L",
     "нмоль/л": "nmol/L",
     "пмоль/л": "pmol/L",
     "моль/л": "mol/L",
@@ -103,7 +103,7 @@ LOCALIZED_UNIT_SYNONYMS: dict[str, str] = {
     "пг": "pg",
     "фл": "fL",
     "мосм/кг": "mosm/kg",
-    "мкмоль/сут": "umol/d",
+    "мкмоль/сут": "µmol/d",
     "ммоль/сут": "mmol/d",
 }
 

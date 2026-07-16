@@ -12,6 +12,8 @@ from rapidfuzz import fuzz, process
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.db.seed_loinc import LOINC_NAME_OVERRIDES
+
 from app.services import converters
 from app.schemas.ai import (
     ConversionFactor,
@@ -467,14 +469,14 @@ def _build_standardized_from_def(
             raw_value=raw_bm.value,
             raw_unit=raw_bm.unit,
             raw_range_string=raw_bm.raw_range_string,
-            standard_name_en=defn.names.get("en", raw_bm.name),
+            standard_name_en=_prefer_comma_pct(defn.names.get("en", raw_bm.name)),
             standard_value=raw_float,
             standard_unit=doc_unit or defn.unit,
             standard_range_min=doc_min,
             standard_range_max=doc_max,
             status="",
             category=defn.category,
-            definition_id=defn.id,
+            definition_id=defn.loinc_code or defn.id,
             scope=defn.scope,
         )
 
@@ -494,14 +496,14 @@ def _build_standardized_from_def(
         raw_value=raw_bm.value,
         raw_unit=raw_bm.unit,
         raw_range_string=raw_bm.raw_range_string,
-        standard_name_en=defn.names.get("en", raw_bm.name),
+        standard_name_en=_prefer_comma_pct(defn.names.get("en", raw_bm.name)),
         standard_value=std_value,
         standard_unit=defn.unit,
         standard_range_min=defn.range_min,
         standard_range_max=defn.range_max,
         status="",
         category=defn.category,
-        definition_id=defn.id,
+        definition_id=defn.loinc_code or defn.id,
         scope=defn.scope,
     )
 
@@ -520,14 +522,14 @@ def _build_standardized_local(
         raw_value=raw_bm.value,
         raw_unit=raw_bm.unit,
         raw_range_string=raw_bm.raw_range_string,
-        standard_name_en=defn.names.get("en", raw_bm.name),
+        standard_name_en=_prefer_comma_pct(defn.names.get("en", raw_bm.name)),
         standard_value=std_value,
         standard_unit=raw_bm.unit,
         standard_range_min=defn.range_min,
         standard_range_max=defn.range_max,
         status="",
         category=defn.category or raw_bm.category or "General",
-        definition_id=defn.id,
+        definition_id=defn.loinc_code or defn.id,
         scope=defn.scope,
     )
 
@@ -548,6 +550,16 @@ def _is_ascii(text: str) -> bool:
         return True
     except (UnicodeEncodeError, AttributeError):
         return False
+
+
+def _prefer_comma_pct(name: str) -> str:
+    """Display convention: a fraction analyte reads "X, %" (comma before the
+    percent sign), not "X %". Names already following the convention are left
+    untouched. This only affects the *displayed* standardized name — the stored
+    definition name keeps "X %" so fuzzy/index matching stays stable."""
+    if name and name.endswith(" %") and not name.endswith(", %"):
+        return name[:-2].rstrip() + ", %"
+    return name
 
 
 def _translate_names_batch(
@@ -1195,6 +1207,11 @@ def _match_and_convert_impl(
     # localized names deterministically without any LLM call.
     multilang = _load_multilingual_lookup()
     aliases = _load_loinc_aliases()
+    # Biomarkers whose match came from the curated multilingual table. These are
+    # treated as high-confidence and are excluded from the (non-deterministic)
+    # LLM verification backstop so a loose LLM correction can never override a
+    # hand-verified localized mapping.
+    curated_ids: set[int] = set()
 
     # Step 1: Resolve each biomarker in strict confidence order. Curated signals
     # (the multilingual table + the raw name's own attached synonyms) are the
@@ -1210,15 +1227,20 @@ def _match_and_convert_impl(
         code = _multilingual_code(b.name, multilang)
         if code:
             # Redirect a curated code that was deduped away to its survivor.
-            code = aliases.get(code, code)
+            # Skip this when the code has an explicit display-name override —
+            # that marks it as a real, distinct analyte (e.g. 13046-8 variant
+            # lymphocytes) which must resolve to itself, not a dedupe survivor.
+            if code not in LOINC_NAME_OVERRIDES:
+                code = aliases.get(code, code)
             match = db.query(BiomarkerDefinitionModel).filter(
                 BiomarkerDefinitionModel.loinc_code == code,
-                BiomarkerDefinitionModel.scope == "global",
             ).first()
             # Promote a valid LOINC that exists in the full CSV but wasn't part
             # of the seeded subset (e.g. ESR, Hematocrit).
             if match is None:
                 match = _promote_loinc_from_csv(db, code)
+            if match is not None:
+                curated_ids.add(id(b))
 
         # 1b. Exact match on the raw name (hits its attached synonyms).
         if match is None:
@@ -1250,8 +1272,12 @@ def _match_and_convert_impl(
     # analyte) pair; accept an LLM correction only when it re-validates against a
     # real global definition (grounded), otherwise send the biomarker back to the
     # unmatched pool so it can be resolved/localized instead of shown wrong.
+    # Curated multilingual matches are trusted and skipped (see curated_ids).
     if matched_pairs and client:
-        matched_pairs, rejected = _verify_and_correct(matched_pairs, index, db, client)
+        to_verify = [(b, m) for (b, m) in matched_pairs if id(b) not in curated_ids]
+        curated_kept = [(b, m) for (b, m) in matched_pairs if id(b) in curated_ids]
+        verified, rejected = _verify_and_correct(to_verify, index, db, client)
+        matched_pairs = verified + curated_kept
         unmatched.extend(rejected)
 
     for b, match in matched_pairs:

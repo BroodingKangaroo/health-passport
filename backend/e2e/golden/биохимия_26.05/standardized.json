@@ -1,0 +1,182 @@
+{
+  "entry_type": "blood_test",
+  "date": "2026-05-26",
+  "time": "17:03",
+  "clinic": "ИООО \"Независимая лаборатория ИНВИТРО\"",
+  "provider": "Пилипчик Л.А.",
+  "title": "",
+  "notes": "Целевые значения при подагре <360 мкмоль/л. Рекомендации по интерпретации: желательный уровень холестерина <5.0 ммоль/л. В индивидуальной оценке кардиориска холестерин следует использовать в комплексе с другими факторами (см. таблицы SCORE).",
+  "biomarkers": [
+    {
+      "raw_name": "АлАТ",
+      "raw_value": "48",
+      "raw_unit": "Ед/л",
+      "raw_range_string": "< 41",
+      "standard_name_en": "Alanine aminotransferase",
+      "standard_value": 48.0,
+      "standard_unit": "U/L",
+      "standard_range_min": null,
+      "standard_range_max": 41.0,
+      "status": "high",
+      "category": "CHEM",
+      "definition_id": "1742-6",
+      "scope": "global"
+    },
+    {
+      "raw_name": "АсАТ",
+      "raw_value": "29",
+      "raw_unit": "Ед/л",
+      "raw_range_string": "< 37",
+      "standard_name_en": "Aspartate aminotransferase",
+      "standard_value": 29.0,
+      "standard_unit": "U/L",
+      "standard_range_min": null,
+      "standard_range_max": 37.0,
+      "status": "normal",
+      "category": "CHEM",
+      "definition_id": "1920-8",
+      "scope": "global"
+    },
+    {
+      "raw_name": "Билирубин общий",
+      "raw_value": "5.6",
+      "raw_unit": "мкмоль/л",
+      "raw_range_string": "3.4 - 20.5",
+      "standard_name_en": "Bilirubin",
+      "standard_value": 5.6,
+      "standard_unit": "µmol/L",
+      "standard_range_min": 3.4,
+      "standard_range_max": 20.5,
+      "status": "normal",
+      "category": "CHEM",
+      "definition_id": "1975-2",
+      "scope": "global"
+    },
+    {
+      "raw_name": "Гамма-ГТ",
+      "raw_value": "77",
+      "raw_unit": "Ед/л",
+      "raw_range_string": "< 49",
+      "standard_name_en": "Gamma glutamyl transferase",
+      "standard_value": 77.0,
+      "standard_unit": "U/L",
+      "standard_range_min": null,
+      "standard_range_max": 49.0,
+      "status": "high",
+      "category": "CHEM",
+      "definition_id": "2324-2",
+      "scope": "global"
+    },
+    {
+      "raw_name": "Глюкоза",
+      "raw_value": "5.2",
+      "raw_unit": "ммоль/л",
+      "raw_range_string": "4.1 - 6",
+      "standard_name_en": "Glucose",
+      "standard_value": 5.2,
+      "standard_unit": "mmol/L",
+      "standard_range_min": 4.1,
+      "standard_range_max": 6.0,
+      "status": "normal",
+      "category": "CHEM",
+      "definition_id": "2345-7",
+      "scope": "global"
+    },
+    {
+      "raw_name": "Креатинин",
+      "raw_value": "74",
+      "raw_unit": "мкмоль/л",
+      "raw_range_string": "64 - 104",
+      "standard_name_en": "Creatinine",
+      "standard_value": 74.0,
+      "standard_unit": "µmol/L",
+      "standard_range_min": 64.0,
+      "standard_range_max": 104.0,
+      "status": "normal",
+      "category": "CHEM",
+      "definition_id": "2160-0",
+      "scope": "global"
+    },
+    {
+      "raw_name": "Мочевая кислота",
+      "raw_value": "396",
+      "raw_unit": "мкмоль/л",
+      "raw_range_string": "210 - 420",
+      "standard_name_en": "Urate",
+      "standard_value": 396.0,
+      "standard_unit": "µmol/L",
+      "standard_range_min": 210.0,
+      "standard_range_max": 420.0,
+      "status": "normal",
+      "category": "CHEM",
+      "definition_id": "3084-1",
+      "scope": "global"
+    },
+    {
+      "raw_name": "Общий белок",
+      "raw_value": "84",
+      "raw_unit": "г/л",
+      "raw_range_string": "64 - 83",
+      "standard_name_en": "Protein",
+      "standard_value": 84.0,
+      "standard_unit": "g/L",
+      "standard_range_min": 64.0,
+      "standard_range_max": 83.0,
+      "status": "high",
+      "category": "CHEM",
+      "definition_id": "2885-2",
+      "scope": "global"
+    },
+    {
+      "raw_name": "Холестерин",
+      "raw_value": "4.93",
+      "raw_unit": "ммоль/л",
+      "raw_range_string": "< 5.0",
+      "standard_name_en": "Cholesterol",
+      "standard_value": 4.93,
+      "standard_unit": "mmol/L",
+      "standard_range_min": null,
+      "standard_range_max": 5.0,
+      "status": "normal",
+      "category": "CHEM",
+      "definition_id": "2093-3",
+      "scope": "global"
+    },
+    {
+      "raw_name": "Ig E (total)",
+      "raw_value": "105",
+      "raw_unit": "МЕ/мл",
+      "raw_range_string": "< 100",
+      "standard_name_en": "IgE",
+      "standard_value": 105.0,
+      "standard_unit": "IU/mL",
+      "standard_range_min": null,
+      "standard_range_max": 100.0,
+      "status": "high",
+      "category": "CHEM",
+      "definition_id": "19113-0",
+      "scope": "global"
+    }
+  ],
+  "visit_data": {
+    "diagnosis": {
+      "original": "",
+      "translated_en": ""
+    },
+    "chief_complaint": {
+      "original": "",
+      "translated_en": ""
+    },
+    "objective_findings": {
+      "original": "",
+      "translated_en": ""
+    },
+    "prescriptions": [],
+    "recommendations": []
+  },
+  "imaging_data": {
+    "modality": "",
+    "findings": "",
+    "conclusion": ""
+  }
+}

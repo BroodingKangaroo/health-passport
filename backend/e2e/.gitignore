@@ -1,0 +1,8 @@
+# User's private input documents (real PDFs/images) - do not commit.
+inputs/*
+
+# Auto-generated, not-yet-human-verified golden stubs.
+*.pending.json
+
+# Local result dumps (if any).
+results/
