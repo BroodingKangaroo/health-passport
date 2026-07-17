@@ -242,12 +242,18 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
           </span>
         </div>
         <div className="flex-1 flex items-center justify-center overflow-auto bg-muted/20 p-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={imgSrc ?? ''}
-            alt="Document preview"
-            className="h-full w-full object-contain"
-          />
+          {imgSrc ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={imgSrc}
+              alt="Document preview"
+              className="h-full w-full object-contain"
+            />
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              {loading ? 'Loading…' : 'Preview unavailable'}
+            </div>
+          )}
         </div>
       </div>
     )

@@ -15,7 +15,7 @@ import {
   Languages,
 } from 'lucide-react'
 
-import { cn } from '@/lib/utils'
+import { cn, fetchAuthedObjectUrl, printAuthedDocument } from '@/lib/utils'
 import type { VisitData } from '@/lib/types'
 
 const DocumentViewer = dynamic(
@@ -42,13 +42,19 @@ export function DoctorVisitDetails({ visit }: { visit: VisitData }) {
     null
   const activeId = selectedAttachment?.id ?? null
 
-  const handleDownload = useCallback((name: string, url: string) => {
-    const a = document.createElement('a')
-    a.href = url
-    a.download = name
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+  const handleDownload = useCallback(async (name: string, url: string) => {
+    try {
+      const objectUrl = await fetchAuthedObjectUrl(url)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = name
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+    } catch (e) {
+      console.error('Download failed', e)
+    }
   }, [])
 
   const verdictText = showOriginal ? visit.verdict.original : visit.verdict.translated_en
@@ -282,7 +288,7 @@ export function DoctorVisitDetails({ visit }: { visit: VisitData }) {
                   <div className="flex shrink-0 gap-2">
                       {url && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); handlePrintDocument(url) }}
+                        onClick={(e) => { e.stopPropagation(); printAuthedDocument(url) }}
                         className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                       >
                         <Printer className="size-4" />
@@ -322,16 +328,6 @@ export function DoctorVisitDetails({ visit }: { visit: VisitData }) {
   )
 }
 
-function handlePrintDocument(url: string) {
-  const iframe = document.createElement('iframe')
-  iframe.style.position = 'absolute'
-  iframe.style.width = '0'
-  iframe.style.height = '0'
-  iframe.style.border = '0'
-  document.body.appendChild(iframe)
-  iframe.onload = () => {
-    try { iframe.contentWindow?.focus() } catch {}
-    try { iframe.contentWindow?.print() } catch {}
-  }
-  iframe.src = url
+async function handlePrintDocument(url: string) {
+  printAuthedDocument(url).catch((e) => console.error('Print failed', e))
 }
