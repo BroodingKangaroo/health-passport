@@ -108,7 +108,11 @@ function biomarkersAtDate(biomarkers: BiomarkerResult[], date: string): Biomarke
         value: current.value,
         date: current.date,
         status: current.status as Status,
-        history: all.slice(0, idx),
+        // Full history of the biomarker (all readings except the one at this
+        // blood test), not just the readings that occurred before it — so the
+        // inline graph and reading list show the complete trend regardless of
+        // which blood test entry is selected.
+        history: [...all.slice(0, idx), ...all.slice(idx + 1)],
       }
     })
     .filter((b): b is BiomarkerResult => b !== null)
