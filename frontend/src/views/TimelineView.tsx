@@ -14,12 +14,16 @@ import type { MedicalEvent, BiomarkerResult, Status, Reading } from '@/lib/types
 export function TimelineView() {
   const router = useRouter()
   const { data, isLoading, error } = useTimelineData()
-  const [selectedEvent, setSelectedEvent] = useState('blood-oct')
+  const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
 
   const events: MedicalEvent[] = data?.events ?? []
   const biomarkers = data?.biomarkers ?? []
   const visits = data?.visits ?? {}
-  const selectedEventData = events.find((e) => e.id === selectedEvent)
+  // Default to the most recent event (events are date-ascending, so the last
+  // element is newest) until the user picks one; never a stale hardcoded id.
+  const effectiveSelected =
+    selectedEvent ?? events[events.length - 1]?.id ?? events[0]?.id ?? ''
+  const selectedEventData = events.find((e) => e.id === effectiveSelected)
 
   const eventBiomarkers = useMemo(
     () => biomarkersAtDate(biomarkers, selectedEventData?.date ?? ''),
@@ -59,7 +63,7 @@ export function TimelineView() {
         <aside>
           <HistoryList
             events={events}
-            selectedId={selectedEvent}
+            selectedId={effectiveSelected}
             onSelect={setSelectedEvent}
             biomarkers={biomarkers}
           />

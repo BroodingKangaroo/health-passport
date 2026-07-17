@@ -8,6 +8,13 @@ logger = logging.getLogger(__name__)
 
 _LOINC_RE = re.compile(r"^\d+-\d+(\.\d+)?$")
 
+# Flowsheet composite ids look like "{biomarker_id}-{month}-{day}" (e.g.
+# "713-8-may-26"), where the suffix is short_date_label() lowercased. Used to
+# recover the underlying definition id when resolving /api/biomarker/{id}.
+_FLOW_SHEET_LABEL_RE = re.compile(
+    r"-(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)-\d{1,2}$"
+)
+
 
 def _is_loinc(code: Optional[str]) -> bool:
     return bool(code) and bool(_LOINC_RE.match(code))
@@ -260,24 +267,10 @@ async def get_biomarker_detail(
 ):
     user, user_id, is_anonymous = user_data
 
-    # The flowsheet passes ids of the form "{biomarker_id}-{date-label}". Recover
-    # the underlying reading biomarker_id so both timeline and flowsheet callers work.
+    # The flowsheet passes composite ids of the form "{biomarker_id}-{date-label}"
+    # (e.g. "713-8-may-26", "local-774a579f1f27-may-26"). Recover the underlying
+    # definition id so flowsheet and timeline callers resolve to the same analyte.
     base_id = biomarker_id
-    exact = (
-        db.query(BiomarkerReading.biomarker_id)
-        .filter(BiomarkerReading.biomarker_id == base_id)
-        .first()
-    )
-    if not exact:
-        prefixed = (
-            db.query(BiomarkerReading.biomarker_id)
-            .filter(BiomarkerReading.biomarker_id.like(base_id + "-%"))
-            .order_by(BiomarkerReading.biomarker_id)
-            .first()
-        )
-        if prefixed:
-            base_id = prefixed[0]
-
     defn = (
         db.query(BiomarkerDefinitionModel)
         .filter(BiomarkerDefinitionModel.id == base_id)
@@ -289,6 +282,21 @@ async def get_biomarker_detail(
             .filter(BiomarkerDefinitionModel.loinc_code == base_id)
             .first()
         )
+    if not defn:
+        stripped = _FLOW_SHEET_LABEL_RE.sub("", base_id)
+        if stripped != base_id:
+            base_id = stripped
+            defn = (
+                db.query(BiomarkerDefinitionModel)
+                .filter(BiomarkerDefinitionModel.id == base_id)
+                .first()
+            )
+            if not defn and _is_loinc(base_id):
+                defn = (
+                    db.query(BiomarkerDefinitionModel)
+                    .filter(BiomarkerDefinitionModel.loinc_code == base_id)
+                    .first()
+                )
     if not defn:
         raise HTTPException(status_code=404, detail=f"Biomarker '{biomarker_id}' not found")
 
