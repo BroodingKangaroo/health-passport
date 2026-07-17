@@ -1,4 +1,3 @@
-import base64
 import io
 import json
 import logging
@@ -7,12 +6,20 @@ import re
 from typing import Optional
 
 from mistralai import Mistral
-from mistralai.models import DocumentURLChunk
+from mistralai.models import FileChunk
+from mistralai.models.file import File
 from PIL import Image
 
 from app.schemas.ai import RawMedicalRecord
 
 logger = logging.getLogger(__name__)
+
+# Per-call timeout (ms) for the Mistral Files upload + OCR requests, and how
+# many times to retry a stalling request. A single healthy request for a large
+# phone photo completes in ~15s, so 90s is generous; on a stall the call fails
+# fast and we retry rather than hanging the SSE stream indefinitely.
+OCR_CALL_TIMEOUT_MS = 90_000
+OCR_MAX_ATTEMPTS = 3
 
 
 class OCRProcessingError(Exception):
@@ -32,12 +39,41 @@ class OCRProcessingError(Exception):
 
 
 def _classify_ocr_error(exc: Exception) -> OCRProcessingError:
-    """Map a raw Mistral/OCR exception to a typed, user-facing error."""
+    """Map a raw Mistral/OCR exception to a typed, user-facing error.
+
+    Previously any non-auth/non-quota failure (including timeouts and
+    oversized uploads) collapsed into a misleading "file type may not be
+    supported" message. We now distinguish:
+      - "auth":    401/403 — API key invalid/expired (check MISTRAL_API_KEY)
+      - "quota":   429    — Mistral OCR quota exhausted
+      - "timeout": no HTTP status, connection/read timeout — the document is
+                    too large/slow to process (common for big phone photos)
+      - "invalid": 400/413/414/422 — rejected (too large or unsupported format)
+      - "server":  5xx    — Mistral OCR temporarily unavailable
+      - "unknown": anything else (network, unsupported, etc.)
+    """
     status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
     if status is None:
         m = re.search(r"Status\s+(\d{3})", str(exc))
         if m:
             status = int(m.group(1))
+
+    # Network-level stalls have no HTTP status code. These are the usual cause
+    # of very large image uploads hanging — never blame the file type for them.
+    if status is None:
+        etype = type(exc).__name__
+        if "Timeout" in etype or "Connection" in etype or "Read" in etype or "Reset" in etype:
+            return OCRProcessingError(
+                "The document took too long to process. Try a smaller or lower-resolution "
+                "image, or upload a PDF instead.",
+                kind="timeout",
+            )
+        return OCRProcessingError(
+            "The uploaded document could not be processed by OCR. The file may be "
+            "corrupted or in an unsupported format.",
+            kind="unknown",
+        )
+
     if status in (401, 403):
         return OCRProcessingError(
             "Mistral AI authentication failed (HTTP %s). The MISTRAL_API_KEY in "
@@ -49,6 +85,17 @@ def _classify_ocr_error(exc: Exception) -> OCRProcessingError:
         return OCRProcessingError(
             "Mistral OCR quota exceeded (HTTP 429). Upgrade your plan or try again later.",
             kind="quota",
+        )
+    if status in (400, 413, 414, 422):
+        return OCRProcessingError(
+            "The document could not be processed by OCR. It may be too large or in an "
+            "unsupported format. Try a smaller image or a PDF.",
+            kind="invalid",
+        )
+    if 500 <= status < 600:
+        return OCRProcessingError(
+            "The OCR service is temporarily unavailable. Please try again later.",
+            kind="server",
         )
     return OCRProcessingError(
         "The uploaded document could not be processed by OCR. This file type may not be supported.",
@@ -120,42 +167,67 @@ def _convert_to_pdf(bytes_data: bytes, ext: str) -> Optional[bytes]:
 def ocr_document(bytes_data: bytes, ext: str, client: Mistral) -> str:
     """Run OCR on the document bytes and return markdown text.
 
-    Converts images to PDF first since Mistral OCR handles PDFs more
-    reliably than raw image data URLs. Falls back to the original image
-    MIME type if PDF conversion fails.
+    Uploads the document to Mistral's Files API (``purpose="ocr"``) and runs
+    OCR by file id, instead of embedding the whole file as a base64 data URL.
+    This avoids the ~33% base64 size inflation that made large image uploads
+    slow or hang (see the doctor-visit photo regression). Images are converted
+    to PDF first since Mistral OCR handles PDFs more reliably than raw image
+    data URLs; the raw image bytes are used as a fallback if conversion fails
+    or the converted-PDF path keeps stalling.
+
+    The upload + OCR calls use a bounded per-call timeout (see ``OCR_CALL_TIMEOUT_MS``)
+    and are retried a few times, because the Mistral Files endpoint intermittently
+    stalls on large uploads — without this, a single stuck request would hang the
+    whole SSE stream. Auth/quota failures are not retried.
 
     Raises OCRProcessingError when OCR processing fails.
     """
+    # Candidate payloads to try, in order of preference.
+    candidates = []
     if ext in MIME_MAP and ext != ".pdf":
         pdf_data = _convert_to_pdf(bytes_data, ext)
         if pdf_data is not None:
-            data = pdf_data
-            mime_type = "application/pdf"
-        else:
-            data = bytes_data
-            mime_type = MIME_MAP[ext]
+            candidates.append((pdf_data, "document.pdf", "application/pdf"))
+        candidates.append((bytes_data, f"document{ext}", MIME_MAP[ext]))
     else:
-        mime_type = MIME_MAP.get(ext, "application/pdf")
-        data = bytes_data
+        candidates.append((bytes_data, "document.pdf", MIME_MAP.get(ext, "application/pdf")))
 
-    try:
-        b64 = base64.b64encode(data).decode()
-        data_url = f"data:{mime_type};base64,{b64}"
-        ocr_response = client.ocr.process(
-            model="mistral-ocr-latest",
-            document=DocumentURLChunk(document_url=data_url),
-            include_image_base64=False,
-            image_limit=0,
-        )
-        markdown = "\n\n".join(page.markdown for page in ocr_response.pages)
-    except Exception as e:
-        logger.warning("OCR failed: %s", e)
-        raise _classify_ocr_error(e)
+    last_err: Optional[Exception] = None
+    for c_bytes, c_name, c_mime in candidates:
+        for attempt in range(1, OCR_MAX_ATTEMPTS + 1):
+            try:
+                uploaded = client.files.upload(
+                    file=File(fileName=c_name, content=c_bytes, content_type=c_mime),
+                    purpose="ocr",
+                    timeout_ms=OCR_CALL_TIMEOUT_MS,
+                )
+                ocr_response = client.ocr.process(
+                    model="mistral-ocr-latest",
+                    document=FileChunk(file_id=uploaded.id),
+                    include_image_base64=False,
+                    image_limit=0,
+                    timeout_ms=OCR_CALL_TIMEOUT_MS,
+                )
+                markdown = "\n\n".join(page.markdown for page in ocr_response.pages)
+                markdown = re.sub(r'!\[.*?\]\(.*?\)', '', markdown)
+                markdown = markdown.strip()
+                logger.info(
+                    "OCR returned %d pages, %d chars (candidate=%s, attempt=%d)",
+                    len(ocr_response.pages), len(markdown), c_name, attempt,
+                )
+                return markdown
+            except Exception as e:
+                last_err = e
+                kind = _classify_ocr_error(e).kind
+                # Auth/quota will never succeed on retry — fail fast.
+                if kind in ("auth", "quota"):
+                    raise _classify_ocr_error(e)
+                logger.warning(
+                    "OCR attempt %d/%d (candidate=%s) failed: %s",
+                    attempt, OCR_MAX_ATTEMPTS, c_name, e,
+                )
 
-    markdown = re.sub(r'!\[.*?\]\(.*?\)', '', markdown)
-    markdown = markdown.strip()
-    logger.info("OCR returned %d pages, %d chars", len(ocr_response.pages), len(markdown))
-    return markdown
+    raise _classify_ocr_error(last_err)
 
 
 def _parse_llm_response(result: object, markdown: str) -> RawMedicalRecord:

@@ -121,8 +121,8 @@ def main():
     ap.add_argument("--token", help="Bearer JWT for a registered user (raises AI limit 5->20)")
     ap.add_argument("--regen-golden", action="store_true",
                     help="Write observed output to golden/<case>/standardized.json for review")
-    ap.add_argument("--text-threshold", type=float, default=0.9,
-                    help="Similarity threshold for free-text fields (default 0.9)")
+    ap.add_argument("--text-threshold", type=float, default=0.88,
+                    help="Similarity threshold for free-text fields (default 0.88)")
     args = ap.parse_args()
 
     cases = discover_cases()

@@ -1193,7 +1193,7 @@ def _fallback_standardize(raw: RawMedicalRecord) -> StandardizedMedicalRecord:
         provider=raw.provider,
         title=raw.title,
         notes=raw.notes,
-        biomarkers=biomarkers or None,
+        biomarkers=biomarkers,
         visit_data=visit_data,
         imaging_data=raw.imaging_data,
     )
@@ -1362,7 +1362,7 @@ def _match_and_convert_impl(
         provider=raw.provider,
         title=raw.title,
         notes=raw.notes,
-        biomarkers=std_biomarkers or None,
+        biomarkers=std_biomarkers,
         visit_data=visit_data,
         imaging_data=raw.imaging_data,
     )

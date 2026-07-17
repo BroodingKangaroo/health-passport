@@ -27,7 +27,11 @@ def _get_client() -> Optional[Mistral]:
     api_key = os.getenv("MISTRAL_API_KEY")
     if not api_key:
         return None
-    return Mistral(api_key=api_key)
+    # Bound the OCR/LLM requests so a slow or oversized document fails fast
+    # instead of hanging the SSE stream (and the UI's "estimating..." state)
+    # indefinitely. 300s gives the Files-API upload + OCR of a large phone
+    # photo enough headroom (normal case is ~15s) without hanging forever.
+    return Mistral(api_key=api_key, timeout_ms=300_000)
 
 
 def _sse(event: str, data: dict) -> str:
