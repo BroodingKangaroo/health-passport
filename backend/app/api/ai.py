@@ -49,10 +49,17 @@ async def extract_medical_data(
     # Check AI extraction limit
     allowed, current_count, limit = check_and_record_ai_usage(db, user_id, is_anonymous)
     if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail=f"AI extraction limit reached ({current_count}/{limit}). Please register for higher limits."
-        )
+        if is_anonymous:
+            detail = (
+                f"AI extraction limit reached ({current_count}/{limit}). "
+                "Please register for higher limits."
+            )
+        else:
+            detail = (
+                f"AI extraction limit reached ({current_count}/{limit}). "
+                "Consider upgrading your plan or contact support for a higher limit."
+            )
+        raise HTTPException(status_code=429, detail=detail)
 
     try:
         bytes_data = await file.read()

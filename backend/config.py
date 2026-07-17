@@ -9,7 +9,7 @@ ANONYMOUS_LIMITS = {
 }
 
 REGISTERED_LIMITS = {
-    "ai_extractions": 20,
+    "ai_extractions": 50,
     "storage_mb": 200,
 }
 
