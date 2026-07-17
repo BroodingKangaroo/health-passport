@@ -6,6 +6,13 @@ import hashlib
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 
+
+_LOINC_RE = re.compile(r"^\d+-\d+(\.\d+)?$")
+
+
+def _is_loinc(code: Optional[str]) -> bool:
+    return bool(code) and bool(_LOINC_RE.match(code))
+
 from fastapi import APIRouter, Form, UploadFile, File, Depends, Query, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import cast, func, or_, String
@@ -173,10 +180,16 @@ async def save_entry(
                     continue
 
                 # 1) Lookup by definition_id (from AI pipeline)
-                defn_id = row.get("definition_id")
+                row_defn_id = row.get("definition_id")
+                defn_id = row_defn_id
                 defn = None
                 if defn_id:
                     defn = db.query(BiomarkerDefinitionModel).filter(BiomarkerDefinitionModel.id == defn_id).first()
+                    # Also resolve by LOINC code (the matcher emits LOINC as definition_id)
+                    if not defn and _is_loinc(defn_id):
+                        defn = db.query(BiomarkerDefinitionModel).filter(
+                            BiomarkerDefinitionModel.loinc_code == defn_id
+                        ).first()
 
                 # 2) Fallback: fuzzy match by name using SQL ILIKE
                 if not defn:
@@ -211,6 +224,7 @@ async def save_entry(
                     defn_id = f"local-{hashlib.md5(name.lower().encode()).hexdigest()[:12]}"
                     defn = BiomarkerDefinitionModel(
                         id=defn_id,
+                        loinc_code=row_defn_id if _is_loinc(row_defn_id) else None,
                         names={"en": name},
                         synonyms=[name],
                         category=cat.get("name", "General"),

@@ -1,6 +1,16 @@
 from typing import Optional, Tuple
+import logging
+import re
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
+
+_LOINC_RE = re.compile(r"^\d+-\d+(\.\d+)?$")
+
+
+def _is_loinc(code: Optional[str]) -> bool:
+    return bool(code) and bool(_LOINC_RE.match(code))
 
 from app.schemas import (
     TimelineResponse,
@@ -78,14 +88,22 @@ def _biomarkers_from_db(db: Session, patient_id: str):
         )
         all_biomarker_ids.update(r.biomarker_id for r in readings)
 
+    referenced_defns = (
+        db.query(BiomarkerDefinitionModel)
+        .filter(
+            (BiomarkerDefinitionModel.id.in_(all_biomarker_ids))
+            | (BiomarkerDefinitionModel.loinc_code.in_(all_biomarker_ids))
+        )
+        .all()
+    )
+    defn_by_id = {d.id: d for d in referenced_defns}
+    defn_by_loinc = {d.loinc_code: d for d in referenced_defns if d.loinc_code}
+
     results = []
     for bid in sorted(all_biomarker_ids):
-        defn = (
-            db.query(BiomarkerDefinitionModel)
-            .filter(BiomarkerDefinitionModel.id == bid)
-            .first()
-        )
+        defn = defn_by_id.get(bid) or defn_by_loinc.get(bid)
         if not defn:
+            logger.warning("Skipping timeline biomarker with unresolvable id=%r", bid)
             continue
 
         readings_query = (
@@ -241,11 +259,36 @@ async def get_biomarker_detail(
     user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon)
 ):
     user, user_id, is_anonymous = user_data
-    defn = (
-        db.query(BiomarkerDefinitionModel)
-        .filter(BiomarkerDefinitionModel.id == biomarker_id)
+
+    # The flowsheet passes ids of the form "{biomarker_id}-{date-label}". Recover
+    # the underlying reading biomarker_id so both timeline and flowsheet callers work.
+    base_id = biomarker_id
+    exact = (
+        db.query(BiomarkerReading.biomarker_id)
+        .filter(BiomarkerReading.biomarker_id == base_id)
         .first()
     )
+    if not exact:
+        prefixed = (
+            db.query(BiomarkerReading.biomarker_id)
+            .filter(BiomarkerReading.biomarker_id.like(base_id + "-%"))
+            .order_by(BiomarkerReading.biomarker_id)
+            .first()
+        )
+        if prefixed:
+            base_id = prefixed[0]
+
+    defn = (
+        db.query(BiomarkerDefinitionModel)
+        .filter(BiomarkerDefinitionModel.id == base_id)
+        .first()
+    )
+    if not defn and _is_loinc(base_id):
+        defn = (
+            db.query(BiomarkerDefinitionModel)
+            .filter(BiomarkerDefinitionModel.loinc_code == base_id)
+            .first()
+        )
     if not defn:
         raise HTTPException(status_code=404, detail=f"Biomarker '{biomarker_id}' not found")
 
@@ -253,7 +296,7 @@ async def get_biomarker_detail(
         db.query(BiomarkerReading, MedicalEntryModel.date)
         .join(MedicalEntryModel, BiomarkerReading.entry_id == MedicalEntryModel.id)
         .filter(
-            BiomarkerReading.biomarker_id == biomarker_id,
+            BiomarkerReading.biomarker_id == base_id,
             MedicalEntryModel.type == "blood_test",
             MedicalEntryModel.patient_id == user_id,
         )
@@ -269,7 +312,7 @@ async def get_biomarker_detail(
         for r, date in readings_query[:-1]
     ]
     return BiomarkerResult(
-        id=biomarker_id,
+        id=base_id,
         definition=BiomarkerDefinitionSchema(
             id=defn.id,
             loinc_code=defn.loinc_code,

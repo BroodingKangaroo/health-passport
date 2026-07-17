@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
+import logging
 
 from app.schemas import (
     FlowsheetResponse,
@@ -22,6 +23,8 @@ from app.db.models import (
 )
 from app.api._format import short_date_label, flowsheet_date_header
 from app.api.auth import get_current_user_or_anon
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -55,7 +58,6 @@ def _build_flowsheet(db: Session, patient_id: str):
     all_defns = db.query(BiomarkerDefinitionModel).filter(
         (BiomarkerDefinitionModel.scope == "global") | (BiomarkerDefinitionModel.user_id == patient_id)
     ).all()
-    defn_map = {d.id: d for d in all_defns}
 
     biomarker_readings_map: dict[str, dict[str, BiomarkerReading]] = {}
     for bt in blood_tests:
@@ -66,14 +68,33 @@ def _build_flowsheet(db: Session, patient_id: str):
         )
         biomarker_readings_map[bt.id] = {r.biomarker_id: r for r in readings}
 
+    # A reading's biomarker_id may be a LOINC code (legacy ingestion) or may
+    # reference a definition owned by another user (shared local catalog entry).
+    # Resolve definitions by id AND by LOINC code, fetching any referenced
+    # definition regardless of owner so the reading is never silently dropped.
+    referenced_ids = set()
+    for readings in biomarker_readings_map.values():
+        referenced_ids.update(readings.keys())
+
+    referenced_defns = db.query(BiomarkerDefinitionModel).filter(
+        (BiomarkerDefinitionModel.id.in_(referenced_ids))
+        | (BiomarkerDefinitionModel.loinc_code.in_(referenced_ids))
+    ).all()
+
+    defn_by_id = {d.id: d for d in all_defns}
+    for d in referenced_defns:
+        defn_by_id.setdefault(d.id, d)
+    defn_by_loinc = {d.loinc_code: d for d in defn_by_id.values() if d.loinc_code}
+
     all_def_ids = set()
     for readings in biomarker_readings_map.values():
         all_def_ids.update(readings.keys())
 
     cat_rows: dict[str, list[MatrixRow]] = {}
     for def_id in all_def_ids:
-        defn = defn_map.get(def_id)
+        defn = defn_by_id.get(def_id) or defn_by_loinc.get(def_id)
         if not defn:
+            logger.warning("Skipping flowsheet reading with unresolvable biomarker_id=%r", def_id)
             continue
         cat = defn.category or "General"
         cells = []
@@ -122,8 +143,9 @@ def _build_flowsheet(db: Session, patient_id: str):
     for bt in blood_tests:
         readings = biomarker_readings_map.get(bt.id, {})
         for def_id, reading in readings.items():
-            defn = defn_map.get(def_id)
+            defn = defn_by_id.get(def_id) or defn_by_loinc.get(def_id)
             if not defn:
+                logger.warning("Skipping flowsheet reading with unresolvable biomarker_id=%r", def_id)
                 continue
             label = short_date_label(bt.date).lower().replace(" ", "-")
             biomarkers.append(BiomarkerResult(
