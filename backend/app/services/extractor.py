@@ -178,6 +178,7 @@ def llm_extract(markdown: str, client: Mistral) -> RawMedicalRecord:
     try:
         chat_response = client.chat.parse(
             model="mistral-large-latest",
+            temperature=0,
             messages=[
                 {"role": "system", "content": RAW_EXTRACTION_PROMPT},
                 {"role": "user", "content": markdown},

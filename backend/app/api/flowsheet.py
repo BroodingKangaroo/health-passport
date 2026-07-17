@@ -56,7 +56,9 @@ def _build_flowsheet(db: Session, patient_id: str):
         date_headers.append(DateHeader(label=label, sub=sub))
 
     all_defns = db.query(BiomarkerDefinitionModel).filter(
-        (BiomarkerDefinitionModel.scope == "global") | (BiomarkerDefinitionModel.user_id == patient_id)
+        (BiomarkerDefinitionModel.scope == "global")
+        | (BiomarkerDefinitionModel.user_id == patient_id)
+        | (BiomarkerDefinitionModel.user_id.is_(None))
     ).all()
 
     biomarker_readings_map: dict[str, dict[str, BiomarkerReading]] = {}

@@ -70,7 +70,12 @@ async def extract_medical_data(
         )
 
     definitions = db.query(BiomarkerDefinitionModel).filter(
-        (BiomarkerDefinitionModel.scope == "global") | (BiomarkerDefinitionModel.user_id == user_id)
+        (BiomarkerDefinitionModel.scope == "global")
+        | (BiomarkerDefinitionModel.user_id == user_id)
+        # System-shared local definitions (user_id IS NULL) such as curated
+        # local-only analytes (e.g. "Activated lymphocytes") are available to
+        # every user, including anonymous sessions, so they can be matched.
+        | (BiomarkerDefinitionModel.user_id.is_(None))
     ).all()
     definitions.sort(key=lambda d: (d.category or "", d.names.get("en", "") or ""))
     # Detach definition ORM instances from the request-scoped session so their

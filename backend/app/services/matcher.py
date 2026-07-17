@@ -228,6 +228,7 @@ def _llm_conversion_factor(
     try:
         chat_response = client.chat.parse(
             model="mistral-large-latest",
+            temperature=0,
             messages=[
                 {
                     "role": "system",
@@ -309,13 +310,22 @@ def build_name_index(
     over urine/stool/ratio variants that share generic synonyms.
     """
     index: dict[str, BiomarkerDefinitionModel] = {}
+    # Global definitions are the primary, shared dictionary. System-shared local
+    # definitions (user_id IS NULL, e.g. curated local-only analytes like
+    # "Activated lymphocytes") are also matchable so they aren't silently lost
+    # to a fuzzy global match — but global wins any name collision.
     ranked = sorted(
         (d for d in definitions if d.scope == "global"),
         key=_definition_rank,
     )
     for d in ranked:
-        if d.scope != "global":
-            continue
+        for s in list(d.names.values()) + (d.synonyms or []):
+            if not s:
+                continue
+            key = _normalize_name(s)
+            if key and key not in index:
+                index[key] = d
+    for d in (x for x in definitions if x.user_id is None and x.scope != "global"):
         for s in list(d.names.values()) + (d.synonyms or []):
             if not s:
                 continue
@@ -586,6 +596,7 @@ def _translate_names_batch(
     try:
         chat_response = client.chat.parse(
             model="mistral-large-latest",
+            temperature=0,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": "Return the JSON array now."},
@@ -644,18 +655,28 @@ def _load_loinc_aliases() -> dict[str, str]:
     return _loinc_alias_cache
 
 
+def _is_fraction_def(defn: BiomarkerDefinitionModel) -> bool:
+    """True when the definition is the percent/fraction form of an analyte."""
+    return bool((defn.names or {}).get("en", "")).endswith("%")
+
+
 def _fraction_variant(
-    match: BiomarkerDefinitionModel, index: dict[str, BiomarkerDefinitionModel]
+    match: BiomarkerDefinitionModel, definitions: list[BiomarkerDefinitionModel]
 ) -> Optional[BiomarkerDefinitionModel]:
     """If `match` is the absolute-count form, return the sibling "… %" (fraction)
-    variant so a percent document unit resolves to the fraction analyte."""
+    variant so a percent document unit resolves to the fraction analyte.
+
+    Searches across ALL definitions (global and local) rather than only the
+    global name index, so the re-route still fires when the fraction variant is
+    a locally-seeded/LOINC-promoted definition that is not yet in the index.
+    """
     name = (match.names or {}).get("en", "")
     if not name or name.endswith("%"):
         return None
-    frac_name = f"{name} %"
-    frac = index.get(frac_name.lower())
-    if frac is not None and frac.scope == "global":
-        return frac
+    frac_name = f"{name} %".lower()
+    for d in definitions:
+        if d.id != match.id and (d.names or {}).get("en", "").lower() == frac_name:
+            return d
     return None
 
 
@@ -741,6 +762,7 @@ def _verify_and_correct(
     try:
         chat_response = client.chat.parse(
             model="mistral-large-latest",
+            temperature=0,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": "Return the JSON now."},
@@ -840,6 +862,7 @@ def _llm_zero_shot_batch(
     try:
         chat_response = client.chat.parse(
             model="mistral-large-latest",
+            temperature=0,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": "Return the JSON array now."},
@@ -928,12 +951,17 @@ def verify_or_create(
         if existing is None:
             existing = _promote_loinc_from_csv(db, guessed_loinc)
         if existing is not None and _guess_is_consistent(existing, raw_biomarker):
-            syns = list(existing.synonyms or [])
-            raw_lower = raw_name.lower()
-            if raw_lower not in (s.lower() for s in syns):
-                syns.append(raw_name)
-                existing.synonyms = syns
-                db.flush()
+            # Never fold a raw name onto a percent/fraction definition as a
+            # synonym — that is how absolute ("… абс.") readings got merged into
+            # the "%" analyte. Other (non-fraction) definitions keep learning
+            # synonyms for matching recall.
+            if not _is_fraction_def(existing):
+                syns = list(existing.synonyms or [])
+                raw_lower = raw_name.lower()
+                if raw_lower not in (s.lower() for s in syns):
+                    syns.append(raw_name)
+                    existing.synonyms = syns
+                    db.flush()
             return existing
         # Not consistent or couldn't resolve — fall through to local.
 
@@ -944,19 +972,21 @@ def verify_or_create(
     ).all():
         for n in defn.names.values():
             if n and _normalize_name(n) == raw_norm:
-                syns = list(defn.synonyms or [])
-                if raw_name.lower() not in (s.lower() for s in syns):
-                    syns.append(raw_name)
-                    defn.synonyms = syns
-                    db.flush()
+                if not _is_fraction_def(defn):
+                    syns = list(defn.synonyms or [])
+                    if raw_name.lower() not in (s.lower() for s in syns):
+                        syns.append(raw_name)
+                        defn.synonyms = syns
+                        db.flush()
                 return defn
         for syn in (defn.synonyms or []):
             if syn and _normalize_name(syn) == raw_norm:
-                syns = list(defn.synonyms or [])
-                if raw_name.lower() not in (s.lower() for s in syns):
-                    syns.append(raw_name)
-                    defn.synonyms = syns
-                    db.flush()
+                if not _is_fraction_def(defn):
+                    syns = list(defn.synonyms or [])
+                    if raw_name.lower() not in (s.lower() for s in syns):
+                        syns.append(raw_name)
+                        defn.synonyms = syns
+                        db.flush()
                 return defn
 
     defn_id = f"local-{hashlib.md5(raw_name.lower().encode()).hexdigest()[:12]}"
@@ -1077,6 +1107,7 @@ def _llm_translate_visit_data(
     try:
         chat_response = client.chat.parse(
             model="mistral-large-latest",
+            temperature=0,
             messages=[
                 {"role": "system", "content": TRANSLATE_PROMPT},
                 {"role": "user", "content": str(payload)},
@@ -1234,9 +1265,13 @@ def _match_and_convert_impl(
                 code = aliases.get(code, code)
             match = db.query(BiomarkerDefinitionModel).filter(
                 BiomarkerDefinitionModel.loinc_code == code,
+                BiomarkerDefinitionModel.scope == "global",
             ).first()
             # Promote a valid LOINC that exists in the full CSV but wasn't part
-            # of the seeded subset (e.g. ESR, Hematocrit).
+            # of the seeded subset (e.g. ESR, Hematocrit). Never fall back to a
+            # local "shadow" definition that happens to carry the same LOINC —
+            # that would resolve the analyte to a user-local def and surface it
+            # as "Unrecognized" instead of the canonical global one.
             if match is None:
                 match = _promote_loinc_from_csv(db, code)
             if match is not None:
@@ -1259,7 +1294,7 @@ def _match_and_convert_impl(
         # document unit — not the LOINC property — decides, so "Эозинофилы, %"
         # (unit %) resolves to "Eosinophils %" and never to the absolute code.
         if match and _is_percent_unit(b.unit):
-            frac = _fraction_variant(match, index)
+            frac = _fraction_variant(match, definitions)
             if frac is not None:
                 match = frac
 

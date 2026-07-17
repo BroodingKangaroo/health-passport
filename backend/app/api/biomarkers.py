@@ -19,7 +19,9 @@ async def list_definitions(
 ):
     user, user_id, is_anonymous = user_data
     defs = db.query(BiomarkerDefinitionModel).filter(
-        (BiomarkerDefinitionModel.scope == "global") | (BiomarkerDefinitionModel.user_id == user_id)
+        (BiomarkerDefinitionModel.scope == "global")
+        | (BiomarkerDefinitionModel.user_id == user_id)
+        | (BiomarkerDefinitionModel.user_id.is_(None))
     ).all()
     defs.sort(key=lambda d: d.names.get("en", "") or "")
     return [
