@@ -293,21 +293,6 @@
       "scope": "global"
     },
     {
-      "raw_name": "Активированные лимфоциты",
-      "raw_value": "0",
-      "raw_unit": "%",
-      "raw_range_string": "отсутствуют",
-      "standard_name_en": "Activated lymphocytes, %",
-      "standard_value": 0.0,
-      "standard_unit": "%",
-      "standard_range_min": null,
-      "standard_range_max": null,
-      "status": "normal",
-      "category": "HEM/BC",
-      "definition_id": "local-activated-lymphocytes",
-      "scope": "local"
-    },
-    {
       "raw_name": "Атипичные мононуклеары",
       "raw_value": "0",
       "raw_unit": "%",
@@ -462,15 +447,30 @@
       "raw_value": "13.1",
       "raw_unit": "%",
       "raw_range_string": "11.6 - 14.8",
-      "standard_name_en": "RBC distribution width",
+      "standard_name_en": "RDW (шир. распред. эритр)",
       "standard_value": 13.1,
       "standard_unit": "%",
       "standard_range_min": 11.6,
       "standard_range_max": 14.8,
       "status": "normal",
-      "category": "HEM/BC",
-      "definition_id": "30366-4",
-      "scope": "global"
+      "category": "Клинический анализ крови",
+      "definition_id": "local-bab69abecb58",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Активированные лимфоциты",
+      "raw_value": "0",
+      "raw_unit": "%",
+      "raw_range_string": "отсутствуют",
+      "standard_name_en": "Активированные лимфоциты",
+      "standard_value": 0.0,
+      "standard_unit": "%",
+      "standard_range_min": null,
+      "standard_range_max": null,
+      "status": "normal",
+      "category": "Клинический анализ крови",
+      "definition_id": "local-0678b465ba33",
+      "scope": "local"
     }
   ],
   "visit_data": {

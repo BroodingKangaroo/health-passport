@@ -422,9 +422,7 @@ def main():
 
         # Apply curated reference ranges on top of the LOINC definitions.
         from app.db.import_ranges import COMMON_RANGES, merge_ranges
-        from app.db.seed import seed_db
 
-        seed_db(db)  # recreate default patient + any non-LOINC baseline defs
         up, skipped, not_found = merge_ranges(db, dict(COMMON_RANGES))
         logger.info("Applied ranges: %d updated, %d skipped, %d not found", up, skipped, not_found)
     finally:
