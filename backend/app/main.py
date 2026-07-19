@@ -74,17 +74,23 @@ async def serve_upload(
 
     # Per-user authorization: confirm the file belongs to the current user (anon or registered).
     # Attachment.file_path is stored as "/static/uploads/{saved_name}" (see entries.py).
+    # A file may be referenced by multiple attachment rows (e.g. after an anonymous
+    # entry is migrated to a registered account, both the original anon attachment
+    # and the migrated one point at the same file_path). Authorize if ANY matching
+    # attachment's entry belongs to the current user.
     stored_path = f"/static/uploads/{file_path}"
-    attachment = db.query(AttachmentModel).filter(
+    attachments = db.query(AttachmentModel).filter(
         AttachmentModel.file_path == stored_path
-    ).first()
-    if attachment is None:
+    ).all()
+    if not attachments:
         # No attachment row tracking this file — refuse to serve.
         raise HTTPException(status_code=404, detail="File not found")
-    entry = db.query(MedicalEntryModel).filter(
-        MedicalEntryModel.id == attachment.entry_id
+    entry_ids = {a.entry_id for a in attachments}
+    owned = db.query(MedicalEntryModel).filter(
+        MedicalEntryModel.id.in_(entry_ids),
+        MedicalEntryModel.patient_id == user_id,
     ).first()
-    if entry is None or entry.patient_id != user_id:
+    if owned is None:
         raise HTTPException(status_code=403, detail="Forbidden")
 
     if not os.path.isfile(requested_path):
