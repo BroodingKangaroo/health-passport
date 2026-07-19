@@ -527,12 +527,19 @@ def _build_standardized_local(
     except (ValueError, TypeError):
         std_value = 0.0
 
+    # Prefer the translated English name; fall back to the original raw name if
+    # the stored definition name is somehow still non-English (defense against
+    # an untranslated local definition leaking the source language to the UI).
+    en = defn.names.get("en") or raw_bm.standard_name_en or raw_bm.name
+    if not _is_ascii(en):
+        en = raw_bm.standard_name_en or raw_bm.name
+
     return StandardizedBiomarker(
         raw_name=raw_bm.name,
         raw_value=raw_bm.value,
         raw_unit=raw_bm.unit,
         raw_range_string=raw_bm.raw_range_string,
-        standard_name_en=_prefer_comma_pct(defn.names.get("en", raw_bm.name)),
+        standard_name_en=_prefer_comma_pct(en),
         standard_value=std_value,
         standard_unit=raw_bm.unit,
         standard_range_min=defn.range_min,
@@ -991,6 +998,20 @@ def verify_or_create(
 
     defn_id = f"local-{hashlib.md5(raw_name.lower().encode()).hexdigest()[:12]}"
 
+    # Use the translated English name as the canonical "en" name when available;
+    # keep the original source-language name as a synonym so future matching by
+    # the raw name still works. Without this, an unmatched non-English biomarker
+    # (e.g. "Мутация в гене JAK2 (12 exon)") would surface its raw name as the
+    # English display name.
+    en_name = raw_name
+    if raw_biomarker and raw_biomarker.standard_name_en and _is_ascii(
+        raw_biomarker.standard_name_en
+    ):
+        en_name = raw_biomarker.standard_name_en.strip()
+    syns = [raw_name]
+    if en_name and en_name != raw_name and en_name not in syns:
+        syns.append(en_name)
+
     # Parse range from raw biomarker if available
     range_min = None
     range_max = None
@@ -1001,8 +1022,8 @@ def verify_or_create(
 
     new_defn = BiomarkerDefinitionModel(
         id=defn_id,
-        names={"en": raw_name},
-        synonyms=[raw_name],
+        names={"en": en_name},
+        synonyms=syns,
         category=raw_biomarker.category if raw_biomarker else "General",
         range_min=range_min,
         range_max=range_max,
@@ -1050,8 +1071,17 @@ def _make_local_copy(
         unit = source.unit or ""
         category = source.category or (raw_biomarker.category or "General")
     else:
-        names = {"en": raw_biomarker.name}
+        # Prefer the translated English name as the canonical "en" name; keep
+        # the original source-language name as a synonym for future matching.
+        en_name = raw_biomarker.name
+        if raw_biomarker.standard_name_en and _is_ascii(
+            raw_biomarker.standard_name_en
+        ):
+            en_name = raw_biomarker.standard_name_en.strip()
+        names = {"en": en_name}
         synonyms = [raw_biomarker.name]
+        if en_name and en_name != raw_biomarker.name and en_name not in synonyms:
+            synonyms.append(en_name)
         unit = raw_biomarker.unit or ""
         category = raw_biomarker.category or "General"
 

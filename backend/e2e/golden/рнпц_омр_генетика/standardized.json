@@ -1,0 +1,92 @@
+{
+  "entry_type": "blood_test",
+  "date": "2026-04-10",
+  "time": "",
+  "clinic": "РНПЦ ОМР им. Н.Н. Александрова, Онкологическое отделение генетики",
+  "provider": "Бодиловская А.А., Субоч Е.И.",
+  "title": "Исследование биологического материала – определение мутаций в генах методами секвенирования и фрагментный анализ",
+  "notes": "Клинико-лабораторное заключение: В исследованных участках генов JAK2, CALR, MPL мутаций не выявлено.",
+  "biomarkers": [
+    {
+      "raw_name": "Мутация в гене JAK2 (12 exon)",
+      "raw_value": "Не выявлена",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "JAK2 gene mutation (12 exon)",
+      "standard_value": 0.0,
+      "standard_unit": "",
+      "standard_range_min": null,
+      "standard_range_max": null,
+      "status": "normal",
+      "category": "Секвенирование",
+      "definition_id": "local-85ca199571f3",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Мутация в гене JAK2 (14 exon; V617F)",
+      "raw_value": "Не выявлена",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "JAK2 gene mutation (14 exon; V617F)",
+      "standard_value": 0.0,
+      "standard_unit": "",
+      "standard_range_min": null,
+      "standard_range_max": null,
+      "status": "normal",
+      "category": "Секвенирование",
+      "definition_id": "local-81b476546563",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Мутация в гене CALR (9 exon)",
+      "raw_value": "Не выявлена",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "CALR gene mutation (9 exon)",
+      "standard_value": 0.0,
+      "standard_unit": "",
+      "standard_range_min": null,
+      "standard_range_max": null,
+      "status": "normal",
+      "category": "Секвенирование",
+      "definition_id": "local-f6bdd6163646",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Мутация в гене MPL (10 exon)",
+      "raw_value": "Не выявлена",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "MPL gene mutation (10 exon)",
+      "standard_value": 0.0,
+      "standard_unit": "",
+      "standard_range_min": null,
+      "standard_range_max": null,
+      "status": "normal",
+      "category": "Секвенирование",
+      "definition_id": "local-ce4b8cc6d2ce",
+      "scope": "local"
+    }
+  ],
+  "visit_data": {
+    "diagnosis": {
+      "original": "",
+      "translated_en": ""
+    },
+    "chief_complaint": {
+      "original": "",
+      "translated_en": ""
+    },
+    "objective_findings": {
+      "original": "",
+      "translated_en": ""
+    },
+    "prescriptions": [],
+    "recommendations": []
+  },
+  "imaging_data": {
+    "modality": "",
+    "findings": "",
+    "conclusion": ""
+  }
+}
