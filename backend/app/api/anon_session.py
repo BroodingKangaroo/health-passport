@@ -16,16 +16,21 @@ def get_or_create_anon_id(request: Request, response: Response) -> str:
     anon_id = request.cookies.get(ANONYMOUS_COOKIE_NAME)
     if not anon_id:
         anon_id = f"anon-{uuid.uuid4().hex[:12]}"
-        # Cookie must be first-party (via the Next.js /api proxy) or, when hit
-        # cross-origin, sent back on fetch with credentials. SameSite=None is
-        # required for cross-site sends and always mandates Secure.
-        # localhost / 127.0.0.1 are secure contexts (dev works); prod must use HTTPS.
+        # SameSite=None is required for cross-site sends and always mandates
+        # Secure, but on plain-HTTP origins (LAN IPs, non-TLS dev) a Secure
+        # cookie is never sent, which broke anonymous sessions. So only mark
+        # the cookie Secure (and keep SameSite=None) when the request is HTTPS;
+        # otherwise fall back to SameSite=Lax so first-party HTTP still works.
+        is_secure = (
+            request.url.scheme == "https"
+            or (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip() == "https"
+        )
         response.set_cookie(
             key=ANONYMOUS_COOKIE_NAME,
             value=anon_id,
             httponly=True,
-            samesite='none',
-            secure=True,
+            samesite="none" if is_secure else "lax",
+            secure=is_secure,
             max_age=None  # No expiration - persists until cleared
         )
     return anon_id

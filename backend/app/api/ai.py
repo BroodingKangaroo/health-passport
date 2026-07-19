@@ -8,6 +8,7 @@ from typing import Optional, Tuple
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from mistralai import Mistral
+from mistralai.utils.retries import BackoffStrategy, RetryConfig
 from sqlalchemy.orm import Session
 
 from app.schemas.ai import StandardizedMedicalRecord, StandardizedVisitData, RawImagingData
@@ -31,7 +32,23 @@ def _get_client() -> Optional[Mistral]:
     # instead of hanging the SSE stream (and the UI's "estimating..." state)
     # indefinitely. 300s gives the Files-API upload + OCR of a large phone
     # photo enough headroom (normal case is ~15s) without hanging forever.
-    return Mistral(api_key=api_key, timeout_ms=300_000)
+    # retry_config makes the SDK transparently retry transient failures
+    # (429 rate-limit, 5xx) with exponential backoff. Without it, a single
+    # rate-limited call surfaces as a failed extraction and — because the
+    # Mistral API rate-limits per account — poisons every subsequent request
+    # in the same process (the documented "contamination" bug that makes
+    # later e2e cases return 'unknown').
+    retry_config = RetryConfig(
+        strategy="backoff",
+        backoff=BackoffStrategy(
+            initial_interval=1000,
+            max_interval=15000,
+            exponent=2.0,
+            max_elapsed_time=120000,
+        ),
+        retry_connection_errors=True,
+    )
+    return Mistral(api_key=api_key, timeout_ms=300_000, retry_config=retry_config)
 
 
 def _sse(event: str, data: dict) -> str:
@@ -49,6 +66,15 @@ async def extract_medical_data(
     user, user_id, is_anonymous = user_data
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
+
+    # Resolve the client BEFORE consuming quota: if MISTRAL_API_KEY is missing
+    # the request can never succeed, so we must not burn the user's extraction
+    # count (anonymous users in particular get locked out after 5 doomed tries).
+    client = _get_client()
+    if client is None:
+        async def error_stream():
+            yield _sse("error", {"message": "AI extraction unavailable: MISTRAL_API_KEY not configured. Please add the key to backend/.env or enter data manually."})
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
 
     # Check AI extraction limit
     allowed, current_count, limit = check_and_record_ai_usage(db, user_id, is_anonymous)
@@ -94,12 +120,6 @@ async def extract_medical_data(
     # SQLAlchemy Sessions are not thread-safe; matcher will use its own session.
     for d in definitions:
         db.expunge(d)
-
-    client = _get_client()
-    if client is None:
-        async def error_stream():
-            yield _sse("error", {"message": "AI extraction unavailable: MISTRAL_API_KEY not configured. Please add the key to backend/.env or enter data manually."})
-        return StreamingResponse(error_stream(), media_type="text/event-stream")
 
     logger.info("File: %s, size: %d bytes, type: %s, user: %s", file.filename, len(bytes_data), ext, user_id)
 

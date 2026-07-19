@@ -246,3 +246,26 @@ class TestSaveDoctorVisit:
         assert len(v["prescriptions"]) == 1
         assert v["prescriptions"][0]["name"]["translated_en"] == "Cetirizine"
         assert len(v["recommendations"]) == 1
+
+
+class TestStatusFromRange:
+    """One-sided reference ranges must be evaluated, not silently 'normal'."""
+
+    def test_one_sided_lower_bound(self):
+        from app.api.entries import _compute_status_from_range
+
+        assert _compute_status_from_range(50, "> 100") == "low"
+        assert _compute_status_from_range(150, "> 100") == "normal"
+
+    def test_one_sided_upper_bound(self):
+        from app.api.entries import _compute_status_from_range
+
+        assert _compute_status_from_range(10, "< 5") == "high"
+        assert _compute_status_from_range(3, "< 5") == "normal"
+
+    def test_two_sided_range(self):
+        from app.api.entries import _compute_status_from_range
+
+        assert _compute_status_from_range(2, "4.0-11.0") == "low"
+        assert _compute_status_from_range(8, "4.0-11.0") == "normal"
+        assert _compute_status_from_range(15, "4.0-11.0") == "high"

@@ -16,6 +16,7 @@ def _is_loinc(code: Optional[str]) -> bool:
 from fastapi import APIRouter, Form, UploadFile, File, Depends, Query, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import cast, func, or_, String
+from sqlalchemy.exc import IntegrityError
 
 from app.schemas import SaveEntryResponse
 from app.db.session import get_db
@@ -108,7 +109,7 @@ async def save_entry(
     user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
 ):
     user, user_id, is_anonymous = user_data
-    entry_id = uuid.uuid4().hex[:8]
+    entry_id = uuid.uuid4().hex
     try:
         entry_date = _normalize_date(date, time)
     except ValueError as e:
@@ -135,8 +136,11 @@ async def save_entry(
             raise HTTPException(status_code=413, detail=f"File too large ({len(content) // 1024} KB). Maximum allowed size is {MAX_FILE_SIZE // (1024 * 1024)} MB.")
         
         # Enforce storage quota for ALL users (anon: 50MB, registered: 200MB — see config.py).
+        # Defer the commit: the entry is not finalized until the end of save_entry,
+        # so a later failure (e.g. bad visit_data) rolls back the upload + entry
+        # together instead of leaving an orphaned entry in the DB.
         allowed, current_bytes, limit_bytes, remaining = check_and_record_storage_usage(
-            db, user_id, len(content), is_anonymous
+            db, user_id, len(content), is_anonymous, commit=False
         )
         if not allowed:
             tier = "Anonymous" if is_anonymous else "Registered"
@@ -194,6 +198,15 @@ async def save_entry(
                 # 2) Fallback: fuzzy match by name using SQL ILIKE
                 if not defn:
                     name_lower = name.lower()
+                    # Only match definitions visible to this user: global,
+                    # system-shared (user_id IS NULL), or this user's own local
+                    # definitions. This prevents a user's reading from being
+                    # linked to another user's private local definition.
+                    ownership = or_(
+                        BiomarkerDefinitionModel.scope == "global",
+                        BiomarkerDefinitionModel.user_id.is_(None),
+                        BiomarkerDefinitionModel.user_id == user_id,
+                    )
                     # Build OR conditions for names and synonyms
                     defn = (
                         db.query(BiomarkerDefinitionModel)
@@ -205,7 +218,8 @@ async def save_entry(
                                 func.lower(BiomarkerDefinitionModel.names['de'].as_string()).ilike(name_lower),
                                 func.lower(BiomarkerDefinitionModel.names['fr'].as_string()).ilike(name_lower),
                                 func.lower(BiomarkerDefinitionModel.names['he'].as_string()).ilike(name_lower),
-                            )
+                            ),
+                            ownership,
                         )
                         .first()
                     )
@@ -214,28 +228,44 @@ async def save_entry(
                         defn = (
                             db.query(BiomarkerDefinitionModel)
                             .filter(
-                                func.lower(cast(BiomarkerDefinitionModel.synonyms, String)).ilike(f'%{name_lower}%')
+                                func.lower(cast(BiomarkerDefinitionModel.synonyms, String)).ilike(f'%{name_lower}%'),
+                                ownership,
                             )
                             .first()
                         )
 
                 # 3) No match at all — create a local entry
                 if not defn:
-                    defn_id = f"local-{hashlib.md5(name.lower().encode()).hexdigest()[:12]}"
-                    defn = BiomarkerDefinitionModel(
-                        id=defn_id,
-                        loinc_code=row_defn_id if _is_loinc(row_defn_id) else None,
-                        names={"en": name},
-                        synonyms=[name],
-                        category=cat.get("name", "General"),
-                        range_min=None,
-                        range_max=None,
-                        unit=row.get("unit", ""),
-                        scope="local",
-                        user_id=user_id,
-                    )
-                    db.add(defn)
-                    db.flush()
+                    # Per-user id so two users entering the same novel analyte
+                    # get isolated local definitions (and never collide on a
+                    # shared primary key, which would raise an unhandled 500).
+                    defn_id = f"local-{user_id}-{hashlib.md5(name.lower().encode()).hexdigest()[:12]}"
+                    existing = db.query(BiomarkerDefinitionModel).filter(
+                        BiomarkerDefinitionModel.id == defn_id
+                    ).first()
+                    if existing:
+                        defn = existing
+                    else:
+                        defn = BiomarkerDefinitionModel(
+                            id=defn_id,
+                            loinc_code=row_defn_id if _is_loinc(row_defn_id) else None,
+                            names={"en": name},
+                            synonyms=[name],
+                            category=cat.get("name", "General"),
+                            range_min=None,
+                            range_max=None,
+                            unit=row.get("unit", ""),
+                            scope="local",
+                            user_id=user_id,
+                        )
+                        db.add(defn)
+                        try:
+                            db.flush()
+                        except IntegrityError:
+                            db.rollback()
+                            defn = db.query(BiomarkerDefinitionModel).filter(
+                                BiomarkerDefinitionModel.id == defn_id
+                            ).first()
 
                 derived_status = _compute_status_from_range(float_value, row.get("range", ""))
 

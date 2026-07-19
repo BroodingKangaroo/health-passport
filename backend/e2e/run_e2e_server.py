@@ -61,6 +61,7 @@ def main():
                     help="Forwarded to run_e2e.py (regenerate golden)")
     ap.add_argument("--text-threshold", type=float, default=0.88)
     ap.add_argument("--token", help="Bearer JWT (generated if omitted)")
+    ap.add_argument("--dump-observed", help="Forwarded to run_e2e.py (write observed JSON)")
     args = ap.parse_args()
 
     if args.port == 8000:
@@ -110,6 +111,8 @@ def main():
             cmd += ["--case", args.case]
         if args.regen_golden:
             cmd.append("--regen-golden")
+        if args.dump_observed:
+            cmd += ["--dump-observed", args.dump_observed]
         rc = subprocess.run(cmd, cwd=HERE).returncode
         return rc
     finally:

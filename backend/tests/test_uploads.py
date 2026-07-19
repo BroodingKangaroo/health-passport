@@ -64,6 +64,38 @@ class TestFileUpload:
         with open(saved_path, "rb") as f:
             assert f.read() == content
 
+    async def test_upload_with_invalid_visit_data_rolls_back_entry(self, client, db_session):
+        """Regression: storage quota used to commit inside save_entry, leaving
+        a committed-but-incomplete entry when a later step (invalid visit_data)
+        failed. The whole save must roll back together."""
+        from app.db.models import MedicalEntry
+
+        content = b"%PDF-1.4 fake pdf content"
+        biomarkers_json = json.dumps([{"id": "cat-1", "name": "CBC", "rows": []}])
+
+        before = db_session.query(MedicalEntry).count()
+
+        resp = await client.post(
+            "/api/entry",
+            data={
+                "type": "blood_test",
+                "date": "2026-12-15",
+                "title": "Upload Test",
+                "biomarkers": biomarkers_json,
+                # Deliberately malformed visit_data JSON -> 400 further down.
+                "visit_data": "{not valid json",
+            },
+            files={"file": ("report.pdf", content, "application/pdf")},
+        )
+
+        assert resp.status_code == 400
+        # The entry must never have been *committed*. In a real request the
+        # request-scoped session closes and rolls back the pending flush; the
+        # test shares that session, so roll it back to mimic connection close
+        # and confirm nothing durable was written.
+        db_session.rollback()
+        assert db_session.query(MedicalEntry).count() == before
+
     async def test_uploaded_file_url_in_timeline_response(self, client):
         # given
         content = b"dummy pdf bytes"

@@ -2,9 +2,9 @@
 Authentication utilities: password hashing, JWT tokens, user management.
 """
 
-import hashlib
 import os
 import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -62,10 +62,17 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 def decode_token(token: str) -> Optional[dict]:
-    """Decode and validate a JWT token."""
+    """Decode and validate a JWT token.
+
+    Expired tokens raise ``jwt.ExpiredSignatureError`` so callers can force a
+    re-auth instead of silently treating the user as anonymous. Any other
+    validation error (bad signature, malformed) returns ``None``.
+    """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
+    except jwt.ExpiredSignatureError:
+        raise
     except jwt.PyJWTError:
         return None
 
@@ -92,7 +99,7 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[models
 
 def create_user(db: Session, email: str, password: str, name: str, dob: str, gender: str) -> models.Patient:
     """Create a new user."""
-    user_id = hashlib.md5(email.encode()).hexdigest()[:12]
+    user_id = uuid.uuid4().hex
     hashed_password = get_password_hash(password)
     external_id = f"HP-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{secrets.randbelow(10000):04d}"
     

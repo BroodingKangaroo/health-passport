@@ -45,8 +45,12 @@ export function ExpandedBiomarkerDetails({
   onViewDetails?: () => void
 }) {
   const history = biomarker.history ?? []
+  // The backend `history` already excludes the latest reading, so the full
+  // series is history + the current reading. Do NOT filter by date here: that
+  // would silently drop an older reading that happens to share the latest day
+  // (e.g. two panels on the same date) and diverge from biomarker-details.tsx.
   const chartData = [
-    ...history.filter((h) => h.date !== biomarker.date),
+    ...history,
     { date: biomarker.date, value: biomarker.value, status: biomarker.status },
   ]
   const allValues = chartData.map((d) => d.value)

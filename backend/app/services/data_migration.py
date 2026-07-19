@@ -164,5 +164,27 @@ def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str) -> dict:
         db.add(new_reading)
         summary["readings_copied"] += 1
 
+    # Copy the anonymous usage record so the new registered user inherits the
+    # consumption they already earned as an anonymous visitor (otherwise the
+    # anon usage lingers and the registered user incorrectly appears at zero).
+    anon_usage = db.query(UsageLimit).filter(
+        UsageLimit.user_id == anon_id,
+        UsageLimit.is_anonymous == True,
+    ).first()
+    if anon_usage:
+        registered_usage = db.query(UsageLimit).filter(
+            UsageLimit.user_id == new_user_id,
+            UsageLimit.is_anonymous == False,
+        ).first()
+        if registered_usage is None:
+            db.add(UsageLimit(
+                user_id=new_user_id,
+                is_anonymous=False,
+                ai_extraction_count=anon_usage.ai_extraction_count,
+                total_upload_size_bytes=anon_usage.total_upload_size_bytes,
+                last_activity=anon_usage.last_activity,
+            ))
+            db.flush()
+
     db.commit()
     return summary

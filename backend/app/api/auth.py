@@ -8,6 +8,7 @@ from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jwt import ExpiredSignatureError
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
@@ -60,7 +61,16 @@ async def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Se
             detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    payload = decode_token(token)
+    try:
+        payload = decode_token(token)
+    except ExpiredSignatureError:
+        # Surface expiry distinctly so the frontend can prompt a re-login
+        # rather than silently falling back to an empty anonymous session.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -109,8 +119,8 @@ async def get_current_user_or_anon(
         user = await get_current_user(token, db)
         return (user, user.id, False)
     except HTTPException as e:
-        if e.status_code == status.HTTP_401_UNAUTHORIZED:
-            # No valid token, use anonymous session
+        if e.status_code == status.HTTP_401_UNAUTHORIZED and e.detail != "Token expired":
+            # No valid token (missing/invalid), use anonymous session
             from app.api.anon_session import get_or_create_anon_id
             anon_id = get_or_create_anon_id(request, response)
             return (None, anon_id, True)

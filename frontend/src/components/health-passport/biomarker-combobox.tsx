@@ -39,7 +39,10 @@ function formatRangeHint(def: {
   range_max: number | null
 }): string {
   if (def.range_min === null && def.range_max === null) return `(${def.unit})`
-  return `(${def.unit}, range: ${def.range_min}–${def.range_max})`
+  if (def.range_min !== null && def.range_max !== null)
+    return `(${def.unit}, range: ${def.range_min}–${def.range_max})`
+  if (def.range_min !== null) return `(${def.unit}, range: ≥ ${def.range_min})`
+  return `(${def.unit}, range: ≤ ${def.range_max})`
 }
 
 export function BiomarkerCombobox({
@@ -90,10 +93,18 @@ export function BiomarkerCombobox({
     (def: (typeof definitions)[number]) => {
       onNameChange(def.names.en)
       onUnitChange(def.unit)
+      // Emit a range string the backend's _compute_status_from_range can parse:
+      // a two-sided interval, or a one-sided "> min" / "< max" bound. Never emit
+      // a dangling "100–" / "–5", which the backend fails to parse and then
+      // silently reports as "Normal" regardless of the actual value.
       const rangeStr =
-        def.range_min !== null || def.range_max !== null
-          ? `${def.range_min ?? ''}–${def.range_max ?? ''}`
-          : ''
+        def.range_min !== null && def.range_max !== null
+          ? `${def.range_min}–${def.range_max}`
+          : def.range_min !== null
+            ? `> ${def.range_min}`
+            : def.range_max !== null
+              ? `< ${def.range_max}`
+              : ''
       onRangeChange(rangeStr)
       onDefinitionIdChange(def.id)
       onScopeChange('global')

@@ -1,84 +1,47 @@
 # Known Issues
 
-Golden mismatches that were surfaced by the e2e harness and have since been
-**fixed** in the matcher / data layer. Recorded here for traceability.
+Golden mismatches surfaced by the e2e harness and **fixed** in the matcher /
+data layer, kept for traceability.
 
-All reviewed mismatches are resolved; both seeded cases
-(`биохимия_26.05`, `оак_26.05`) now PASS end-to-end against the live server.
+**Status:** all four seeded cases
+(`биохимия_26.05`, `оак_26.05`, `гастроэнтеролог_ргц_29.06`,
+`рнпц_омр_генетика`) PASS against the live server.
 
-## Scope note: local vs global
+## Local vs global scope
 
-- **Активированные лимфоциты** is intentionally `scope=local`. There is no
-  standard LOINC for "Activated lymphocytes", so it stays a user/local definition
-  (the app UI labels any `scope=local` analyte as "Unrecognized — not in global
-  dictionary"). This is correct and expected; the standardized `standard_name_en`
-  ("Activated lymphocytes, %") and stable `definition_id`
-  (`local-activated-lymphocytes`) are still emitted.
-- **RDW** is a real global analyte and is now matched to LOINC **30366-4**
-  (`RBC distribution width`, %). It was previously a local stub only because the
-  shipped `Loinc.csv` lacks the RDW-CV code; it is now seeded as a global
-  definition (see below).
+- **`Активированные лимфоциты`** is intentionally `scope=local` (per-user). There
+  is no LOINC for "Activated lymphocytes", so it resolves to a per-user local
+  definition (UI labels `scope=local` as "Unrecognized"). Its curated synonym
+  points at the sentinel `local-activated-lymphocytes`; the matcher treats that
+  as a local-only signal and never merges it into `Lymphocytes` (26474-7).
+- **RDW** is a real global analyte. The RDW-CV code in the shipped `Loinc.csv` is
+  **`788-0`** (`RBC distribution width`, %). `30366-4` is NOT in the dictionary
+  (it was an artifact of the unused `app/mock_db.py`).
 
-## Fixes applied
+## Fixes
 
-1. **µmol/L micro sign** (`Билирубин общий`, `Креатинин`, `Мочевая кислота`)
-   - `app/services/converters.py`: mapped `мкмоль/л` → `µmol/L` (micro sign) and
-     `мкмоль/сут` → `µmol/d` instead of the ASCII `u`.
+1. **Matcher crash → empty `definition_id`** (root cause of the `оак_26.05`
+   77-diff failure). `_is_fraction_def()` did
+   `bool((defn.names or {}).get("en","")).endswith("%")` — `bool(...)` returns a
+   `bool`, so `.endswith` raised `AttributeError`, `match_and_convert` fell back
+   to `_fallback_standardize`, and every biomarker lost its `definition_id`.
+   Fixed to `isinstance(en, str) and en.endswith("%")`. Only surfaced when a
+   biomarker is unmatched (Step 2) while LLM translation fails.
 
-2. **Comma before `%` for differential fraction analytes** (`Lymphocytes, %`,
-   `Monocytes, %`, `Variant lymphocytes, %`, …)
-   - `app/services/matcher.py` `_prefer_comma_pct()`: the comma is applied at
-     *output* time (display convention only). The stored definition name keeps
-     `X %` so fuzzy matching and the `%`→fraction re-route (`_fraction_variant`)
-     stay stable.
+2. **Curated `local-` synonyms are honored.** A curated code starting with
+   `local-` (e.g. `Активированные лимфоциты`) is excluded from global LOINC
+   lookup and from the LLM zero-shot guess, so it can never be promoted to a
+   global LOINC. See `app/services/matcher.py` Step 1a / Step 2.
 
-3. **Атипичные мононуклеары → Variant lymphocytes (13046-8)**
-   - `data/multilingual_synonyms.json`: added `"Атипичные мононуклеары": "13046-8"`.
-   - `data/loinc_name_overrides.json`: `"13046-8": "Variant lymphocytes, %"`
-     (display name). Removed the `13046-8 -> 735-1` redirect from
-     `data/loinc_aliases.json` so the curated code resolves to itself.
+3. **RDW → `788-0`** (`RBC distribution width`). `data/multilingual_synonyms.json`
+   points `RDW` / `RDW (шир. распред. эритр)` / `Ширина распределения эритроцитов`
+   to `788-0`; `data/loinc_name_overrides.json` sets its display name.
 
-4. **Активированные лимфоциты → local `Activated lymphocytes, %`**
-   - `app/mock_db.py`: added a local (non-LOINC) definition
-     `local-activated-lymphocytes` (stable id, scope `local`).
-   - `data/multilingual_synonyms.json`: `"Активированные лимфоциты":
-     "local-activated-lymphocytes"`.
-   - `app/services/matcher.py`: curated multilingual matches are now excluded
-     from the non-deterministic LLM verification backstop, so this high-confidence
-     mapping can never be overridden by a loose LLM correction.
+## Notes
 
-5. **Missing curated synonyms** (immature-cell differentials, ALT/AST/GGT/IgE,
-   absolute-count variants) — added to `data/multilingual_synonyms.json` so every
-   raw name on the two documents resolves deterministically at step 1a, e.g.
-   `АлАТ`/`АсАТ`/`Гамма-ГТ`/`Ig E (total)`/`Миелоциты`/`Бласты`/… and the
-   `…, абс.` absolute forms.
-
-6. **RDW → global `RBC distribution width` (30366-4)**
-   - `app/mock_db.py`: added a global definition for RDW-CV (`loinc_code`
-     `30366-4`, name `RBC distribution width`, unit `%`). The shipped `Loinc.csv`
-     only contains the SD form (21000-5 / fL), so this CV code is seeded directly.
-   - `data/multilingual_synonyms.json`: `"RDW": "30366-4"`,
-     `"RDW (шир. распред. эритр)": "30366-4"`,
-     `"Ширина распределения эритроцитов": "30366-4"`.
-   - `e2e/golden/оак_26.05/standardized.json`: RDW entry updated from the local
-     stub to the global match (`definition_id` `30366-4`, `scope` `global`).
-
-## Supporting changes
-
-- `app/services/matcher.py`: `definition_id` in the standardized output is now
-  `defn.loinc_code or defn.id` (previously `defn.id`), aligning the emitted id
-  with the LOINC code used by the golden for global definitions.
-- `app/mock_db.py`: baseline `wbc`/`rbc` display names changed from `WBC`/`RBC`
-  to `Leukocytes`/`Erythrocytes` (abbreviations retained as synonyms) so the
-  standardized English name matches the golden.
-
-## Notes / non-determinism
-
-- The live extraction (`/api/extract`) relies on the Mistral LLM for OCR and
-  structured extraction; `provider`/`notes` text can vary between runs. Both
-  cases passed on a representative run. `e2e/validate_offline.py` exercises the
-  deterministic matcher path (no live LLM) and is useful for matcher-only
-  regression checks.
-- The matcher promotes LOINC definitions from `data/Loinc.csv` on first demand and
-  persists them; after seeding/resetting the DB the first live run re-promotes
-  them. This is expected.
+- Live extraction depends on the Mistral LLM; free-text (`provider` / `notes` /
+  `recommendations`) can vary run-to-run (similarity-thresholded). Rerun
+  `run_e2e_server.py` if a transient degraded extraction occurs.
+- LOINC defs are promoted from `data/Loinc.csv` on first demand and persisted.
+- `app/mock_db.py` is **not** part of the server data path — the server seeds
+  from `Loinc.csv` via `seed_loinc`. Edits there have no effect.

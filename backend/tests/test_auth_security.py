@@ -150,19 +150,20 @@ class TestPathTraversal:
         """Test that path traversal attempts are blocked."""
         from app.main import app
         from fastapi.testclient import TestClient
-        from app.api.auth import get_current_user
+        from app.api.auth import get_current_user_or_anon
         from tests.seed_data import TEST_USER_ID, TEST_USER_EMAIL
         from app.db.models import Patient
-        
+
         # Create a test client
         test_client = TestClient(app)
-        
-        async def override_get_user():
-            return Patient(id=TEST_USER_ID, email=TEST_USER_EMAIL)
-        
-        original_dep = app.dependency_overrides.get(get_current_user)
-        app.dependency_overrides[get_current_user] = override_get_user
-        
+
+        async def override_get_user_or_anon():
+            # Must override the dependency serve_upload actually uses.
+            return (Patient(id=TEST_USER_ID, email=TEST_USER_EMAIL), TEST_USER_ID, False)
+
+        original_dep = app.dependency_overrides.get(get_current_user_or_anon)
+        app.dependency_overrides[get_current_user_or_anon] = override_get_user_or_anon
+
         try:
             # Test that paths starting with / are blocked
             resp = test_client.get("/static/uploads//etc/passwd")
@@ -178,32 +179,32 @@ class TestPathTraversal:
             assert resp.status_code in [403, 404], f"Path with .. not properly handled, got {resp.status_code}"
         finally:
             if original_dep:
-                app.dependency_overrides[get_current_user] = original_dep
+                app.dependency_overrides[get_current_user_or_anon] = original_dep
             else:
-                app.dependency_overrides.pop(get_current_user, None)
+                app.dependency_overrides.pop(get_current_user_or_anon, None)
 
     async def test_valid_path_returns_404(self, client, db_session):
         """Test that valid paths return 404 (file not found) not 403."""
         from app.main import app
         from fastapi.testclient import TestClient
-        from app.api.auth import get_current_user
+        from app.api.auth import get_current_user_or_anon
         from tests.seed_data import TEST_USER_ID, TEST_USER_EMAIL
         from app.db.models import Patient
-        
+
         test_client = TestClient(app)
-        
-        async def override_get_user():
-            return Patient(id=TEST_USER_ID, email=TEST_USER_EMAIL)
-        
-        original_dep = app.dependency_overrides.get(get_current_user)
-        app.dependency_overrides[get_current_user] = override_get_user
-        
+
+        async def override_get_user_or_anon():
+            return (Patient(id=TEST_USER_ID, email=TEST_USER_EMAIL), TEST_USER_ID, False)
+
+        original_dep = app.dependency_overrides.get(get_current_user_or_anon)
+        app.dependency_overrides[get_current_user_or_anon] = override_get_user_or_anon
+
         try:
             # Valid path should return 404 (file not found) not 403
             resp = test_client.get("/static/uploads/valid-file.txt")
             assert resp.status_code == 404  # File doesn't exist, but path is valid
         finally:
             if original_dep:
-                app.dependency_overrides[get_current_user] = original_dep
+                app.dependency_overrides[get_current_user_or_anon] = original_dep
             else:
-                app.dependency_overrides.pop(get_current_user, None)
+                app.dependency_overrides.pop(get_current_user_or_anon, None)

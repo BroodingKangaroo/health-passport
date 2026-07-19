@@ -15,7 +15,7 @@ function parseRefRange(range: string): { refMin?: number; refMax?: number } {
   if (lt) return { refMax: Number.parseFloat(lt[1]) }
   const gt = range.match(/>\s*([\d.]+)/)
   if (gt) return { refMin: Number.parseFloat(gt[1]) }
-  const m = range.match(/([\d.]+)\s*[-–]?\s*([\d.]+)/)
+  const m = range.match(/([\d.]+)\s*[-–]\s*([\d.]+)/)
   if (m) return { refMin: Number.parseFloat(m[1]), refMax: Number.parseFloat(m[2]) }
   return {}
 }

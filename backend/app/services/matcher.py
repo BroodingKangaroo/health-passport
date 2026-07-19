@@ -664,7 +664,8 @@ def _load_loinc_aliases() -> dict[str, str]:
 
 def _is_fraction_def(defn: BiomarkerDefinitionModel) -> bool:
     """True when the definition is the percent/fraction form of an analyte."""
-    return bool((defn.names or {}).get("en", "")).endswith("%")
+    en = (defn.names or {}).get("en", "")
+    return isinstance(en, str) and en.endswith("%")
 
 
 def _fraction_variant(
@@ -1273,6 +1274,10 @@ def _match_and_convert_impl(
     # LLM verification backstop so a loose LLM correction can never override a
     # hand-verified localized mapping.
     curated_ids: set[int] = set()
+    # Biomarkers whose curated synonym marks them as local-only (no LOINC) and
+    # which must therefore resolve to a per-user local definition, never to a
+    # global LOINC guessed by the LLM zero-shot step.
+    curated_local_ids: set[int] = set()
 
     # Step 1: Resolve each biomarker in strict confidence order. Curated signals
     # (the multilingual table + the raw name's own attached synonyms) are the
@@ -1287,6 +1292,17 @@ def _match_and_convert_impl(
         match = None
         code = _multilingual_code(b.name, multilang)
         if code:
+            # A curated "local-" code marks an analyte that has NO standard
+            # LOINC (e.g. "Activated lymphocytes") and is intentionally kept as
+            # a per-user local definition. Skip any global LOINC lookup so it
+            # can never be merged into a related global analyte (e.g. total
+            # Lymphocytes), and let it resolve to a per-user local definition
+            # in Step 2. Exclude it from the LLM verification backstop too.
+            if code.startswith("local-"):
+                unmatched.append(b)
+                curated_ids.add(id(b))
+                curated_local_ids.add(id(b))
+                continue
             # Redirect a curated code that was deduped away to its survivor.
             # Skip this when the code has an explicit display-name override —
             # that marks it as a real, distinct analyte (e.g. 13046-8 variant
@@ -1360,6 +1376,13 @@ def _match_and_convert_impl(
         for b in unmatched:
             guess = raw_to_guess.get(b.name)
             guessed_loinc = guess.guessed_loinc if guess else None
+
+            # A curated local-only analyte (e.g. "Activated lymphocytes") must
+            # never be promoted to a global LOINC the LLM happens to guess, even
+            # if the guess looks grounded. Force it to a per-user local def.
+            if id(b) in curated_local_ids:
+                guessed_loinc = None
+                grounded = False
 
             # Was this guess grounded in a real (close) candidate? If not, keep
             # any promotion local so a blind guess can't corrupt global defs.

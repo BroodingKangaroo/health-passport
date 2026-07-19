@@ -301,7 +301,10 @@ class TestExtractEndpoint:
         assert data["entry_type"] == "unknown"
         assert "Raw OCR text" in data["notes"]
 
-    async def test_extract_no_api_key(self, client):
+    async def test_extract_no_api_key(self, client, db_session):
+        from app.db.models import UsageLimit
+        from tests.seed_data import TEST_USER_ID
+
         resp = await client.post(
             "/api/extract",
             files={"file": ("lab.pdf", b"fake content", "application/pdf")},
@@ -312,6 +315,13 @@ class TestExtractEndpoint:
         body = resp.text
         assert "event: error" in body
         assert "MISTRAL_API_KEY not configured" in body
+
+        # The quota check must run AFTER the API-key check, so a request that
+        # can never succeed must not burn the user's AI extraction count.
+        usage = db_session.query(UsageLimit).filter(
+            UsageLimit.user_id == TEST_USER_ID
+        ).first()
+        assert usage is None or usage.ai_extraction_count == 0
 
     @patch("app.api.ai.matcher.match_and_convert")
     @patch("app.api.ai.extractor.llm_extract")

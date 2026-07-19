@@ -123,6 +123,7 @@ def main():
                     help="Write observed output to golden/<case>/standardized.json for review")
     ap.add_argument("--text-threshold", type=float, default=0.88,
                     help="Similarity threshold for free-text fields (default 0.88)")
+    ap.add_argument("--dump-observed", help="Write observed output JSON to this path")
     args = ap.parse_args()
 
     cases = discover_cases()
@@ -157,6 +158,11 @@ def main():
             print(f"  ENDPOINT ERROR: {err}")
             failed += 1
             continue
+
+        if args.dump_observed:
+            with open(args.dump_observed, "w", encoding="utf-8") as fh:
+                json.dump(observed, fh, indent=2, ensure_ascii=False)
+            print(f"  wrote observed -> {args.dump_observed}")
 
         golden_path = os.path.join(GOLDEN_DIR, name, "standardized.json")
         pending_path = os.path.join(GOLDEN_DIR, name, "standardized.pending.json")

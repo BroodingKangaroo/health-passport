@@ -68,6 +68,21 @@
       "scope": "global"
     },
     {
+      "raw_name": "RDW (шир. распред. эритр)",
+      "raw_value": "13.1",
+      "raw_unit": "%",
+      "raw_range_string": "11.6 - 14.8",
+      "standard_name_en": "RBC distribution width",
+      "standard_value": 13.1,
+      "standard_unit": "%",
+      "standard_range_min": 11.6,
+      "standard_range_max": 14.8,
+      "status": "normal",
+      "category": "HEM/BC",
+      "definition_id": "788-0",
+      "scope": "global"
+    },
+    {
       "raw_name": "MCH (ср. содер. Hb в эр.)",
       "raw_value": "30.8",
       "raw_unit": "пг",
@@ -443,26 +458,11 @@
       "scope": "global"
     },
     {
-      "raw_name": "RDW (шир. распред. эритр)",
-      "raw_value": "13.1",
-      "raw_unit": "%",
-      "raw_range_string": "11.6 - 14.8",
-      "standard_name_en": "RDW (шир. распред. эритр)",
-      "standard_value": 13.1,
-      "standard_unit": "%",
-      "standard_range_min": 11.6,
-      "standard_range_max": 14.8,
-      "status": "normal",
-      "category": "Клинический анализ крови",
-      "definition_id": "local-bab69abecb58",
-      "scope": "local"
-    },
-    {
       "raw_name": "Активированные лимфоциты",
       "raw_value": "0",
       "raw_unit": "%",
       "raw_range_string": "отсутствуют",
-      "standard_name_en": "Активированные лимфоциты",
+      "standard_name_en": "Activated Lymphocytes",
       "standard_value": 0.0,
       "standard_unit": "%",
       "standard_range_min": null,

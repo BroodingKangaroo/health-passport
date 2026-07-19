@@ -26,8 +26,11 @@ function parseType(value: string): {
 function formatChange(type: RangeType, lo: string, hi: string): string {
   switch (type) {
     case 'range':
-      if (!lo && !hi) return ''
-      return `${lo || '0'}–${hi || '0'}`
+      // A two-sided range needs BOTH bounds. If only one is filled, emit
+      // nothing rather than a broken "5–0" that would flag every value
+      // as abnormal. (Use the < / > types for single-bound ranges.)
+      if (!lo || !hi) return ''
+      return `${lo}–${hi}`
     case 'lt':
       return hi ? `< ${hi}` : ''
     case 'gt':

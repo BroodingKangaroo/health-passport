@@ -31,7 +31,11 @@ export default function BiomarkerChartInner({
   const values = data.map((d) => d.value)
   const rm = biomarker.definition.range_max
   const dataMax = rm != null ? Math.max(...values, rm) : (values.length > 0 ? Math.max(...values) : 0)
-  const yMax = rm != null ? Math.min(dataMax, rm * 1.4) : dataMax * 1.2
+  // Never cap the Y-axis below the largest data point — otherwise a genuinely
+  // high result (e.g. glucose 15 vs range 3.9–6.1) plots off-chart and appears
+  // missing while the green band implies "normal". Keep the band plus headroom,
+  // but always include the real data maximum.
+  const yMax = rm != null ? Math.max(dataMax, rm * 1.2) : dataMax * 1.2
 
   return (
     <div className="w-full" style={{ height }}>

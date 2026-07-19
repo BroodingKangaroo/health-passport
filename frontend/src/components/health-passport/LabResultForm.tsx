@@ -15,7 +15,7 @@ function parseRange(range: string): { lo?: number; hi?: number } {
   if (lt) return { hi: Number.parseFloat(lt[1]) }
   const gt = range.match(/>\s*([\d.]+)/)
   if (gt) return { lo: Number.parseFloat(gt[1]) }
-  const m = range.match(/(-?\d+(?:\.\d+)?)\s*[-–]?\s*(-?\d+(?:\.\d+)?)/)
+  const m = range.match(/(-?\d+(?:\.\d+)?)\s*[-–]\s*(-?\d+(?:\.\d+)?)/)
   if (m) return { lo: Number.parseFloat(m[1]), hi: Number.parseFloat(m[2]) }
   return {}
 }

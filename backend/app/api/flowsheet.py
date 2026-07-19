@@ -21,7 +21,7 @@ from app.db.models import (
     BiomarkerReading,
     Patient,
 )
-from app.api._format import short_date_label, flowsheet_date_header
+from app.api._format import short_date_label, flowsheet_date_header, format_biomarker_range
 from app.api.auth import get_current_user_or_anon
 
 logger = logging.getLogger(__name__)
@@ -115,7 +115,9 @@ def _build_flowsheet(db: Session, patient_id: str):
         )
         original_name = first_reading.original_name if first_reading and first_reading.original_name else defn.names.get("ru", "")
         original_range = first_reading.original_range if first_reading and first_reading.original_range else ""
-        row_range = original_range or (f"{defn.range_min} – {defn.range_max} {defn.unit}" if defn.range_min is not None else "")
+        row_range = original_range or (
+            f"{format_biomarker_range(defn.range_min, defn.range_max)}{(' ' + defn.unit) if defn.unit else ''}"
+        )
         cat_rows.setdefault(cat, []).append(MatrixRow(
             id=def_id,
             name=defn.names.get("en", ""),
