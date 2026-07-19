@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useSession, signIn, signOut } from "next-auth/react"
+import { signIn, signOut } from "next-auth/react"
+import { useAuthStatus } from '@/components/providers/AuthStatusProvider'
 import {
   HeartPulse,
   ChevronDown,
@@ -29,7 +30,7 @@ const addOptions = [
 
 export function HeaderBar() {
   const router = useRouter()
-  const { data: session, status } = useSession()
+  const { status, user } = useAuthStatus()
   const [open, setOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [lang, setLang] = useState<'RU' | 'EN'>('EN')
@@ -63,7 +64,7 @@ export function HeaderBar() {
         <div className="leading-tight">
           <p className="text-sm font-bold text-foreground">HealthPassport</p>
           <p className="text-xs text-muted-foreground">
-            <span className="font-semibold text-foreground">{session?.user?.name ?? 'Alexey Ivanov'}</span>
+            <span className="font-semibold text-foreground">{user?.name ?? 'Alexey Ivanov'}</span>
             {' | DOB 14 Mar 1988 • Male • ID HP-2026-04417'}
           </p>
         </div>
@@ -145,16 +146,16 @@ export function HeaderBar() {
           Print
         </Button>
 
-        {/* Auth section */}
+        {/* Auth section — driven by backend-verified auth status */}
         {status === 'loading' ? (
           <div className="flex items-center gap-2">
             <div className="w-20 h-8 animate-pulse bg-muted rounded" />
           </div>
-        ) : session ? (
+        ) : user ? (
           <div className="relative" ref={userMenuRef}>
             <Button variant="outline" size="sm" onClick={() => setUserMenuOpen((v) => !v)} className="gap-1">
               <User className="size-3.5" />
-              <span className="hidden sm:inline">{session.user?.name?.split(' ')[0] || session.user?.email}</span>
+              <span className="hidden sm:inline">{user.name?.split(' ')[0] || user.email}</span>
               <ChevronDown className="size-3.5 opacity-80" />
             </Button>
             {userMenuOpen && (

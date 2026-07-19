@@ -16,7 +16,25 @@ from app.db import models
 from app.db.session import SessionLocal
 
 # JWT settings
-SECRET_KEY = os.environ.get("SECRET_KEY") or secrets.token_urlsafe(32)
+def _get_secret_key() -> str:
+    """Resolve a stable JWT secret.
+
+    Prefer an explicit env var, then the committed dev secret file, and only
+    fall back to a random value as a last resort. Previously this read
+    ``SECRET_KEY`` while ``.env`` defined ``JWT_SECRET_KEY``, so a fresh random
+    secret was generated on every restart and all issued tokens became invalid.
+    """
+    env = os.environ.get("SECRET_KEY") or os.environ.get("JWT_SECRET_KEY")
+    if env:
+        return env
+    jwt_secret_file = os.path.join(os.path.dirname(__file__), "..", ".jwt_secret")
+    if os.path.exists(jwt_secret_file):
+        with open(jwt_secret_file) as f:
+            return f.read().strip()
+    return secrets.token_urlsafe(32)
+
+
+SECRET_KEY = _get_secret_key()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 

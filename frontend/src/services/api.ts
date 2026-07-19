@@ -221,3 +221,28 @@ export interface UsageLimits {
 export async function fetchUsageLimits(): Promise<UsageLimits> {
   return apiGet<UsageLimits>('/usage/limits')
 }
+
+/* ----- Current User (backend-verified auth state) ----- */
+export interface CurrentUser {
+  id: string
+  email: string
+  name: string
+  external_id: string
+}
+
+/**
+ * Verify the backend access token by calling /api/auth/me.
+ * Returns the user when the token is valid, or null when it is missing/invalid
+ * (401). This is the source of truth for "actually logged in" — independent of
+ * NextAuth's local session cookie, which can outlive an invalidated backend token.
+ */
+export async function fetchCurrentUser(token: string | null | undefined): Promise<CurrentUser | null> {
+  if (!token) return null
+  const res = await fetch(`${API_BASE}/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+    credentials: 'include',
+  })
+  if (res.status === 401) return null
+  if (!res.ok) throw new ApiError(res.status, 'GET /auth/me failed')
+  return res.json()
+}
