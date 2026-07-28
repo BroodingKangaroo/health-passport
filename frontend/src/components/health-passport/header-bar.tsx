@@ -28,9 +28,17 @@ const addOptions = [
   { label: 'Upload MRI Scan', icon: ScanLine },
 ]
 
+function formatDob(dob: string | undefined): string {
+  if (!dob) return ''
+  const d = new Date(dob)
+  if (isNaN(d.getTime())) return dob
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  return `${d.getUTCDate()} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`
+}
+
 export function HeaderBar() {
   const router = useRouter()
-  const { status, user } = useAuthStatus()
+  const { status, user, anonId } = useAuthStatus()
   const [open, setOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [lang, setLang] = useState<'RU' | 'EN'>('EN')
@@ -64,8 +72,26 @@ export function HeaderBar() {
         <div className="leading-tight">
           <p className="text-sm font-bold text-foreground">HealthPassport</p>
           <p className="text-xs text-muted-foreground">
-            <span className="font-semibold text-foreground">{user?.name ?? 'Alexey Ivanov'}</span>
-            {' | DOB 14 Mar 1988 • Male • ID HP-2026-04417'}
+            {user ? (
+              <>
+                <span className="font-semibold text-foreground">{user.name}</span>
+                {(() => {
+                  const dob = formatDob(user.dob)
+                  const gender = user.gender?.trim()
+                  const ext = user.external_id
+                  const parts: string[] = []
+                  if (dob) parts.push(`DOB ${dob}`)
+                  if (gender) parts.push(gender)
+                  if (ext) parts.push(`ID ${ext}`)
+                  return parts.length ? ` | ${parts.join(' • ')}` : ''
+                })()}
+              </>
+            ) : (
+              <span className="text-muted-foreground/80">
+                Anonymous session
+                {anonId ? <span className="font-mono text-foreground/70"> · {anonId}</span> : null}
+              </span>
+            )}
           </p>
         </div>
       </div>

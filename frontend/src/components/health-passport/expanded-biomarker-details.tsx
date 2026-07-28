@@ -106,7 +106,7 @@ export function ExpandedBiomarkerDetails({
             READING HISTORY
           </h4>
           <ul className="flex flex-wrap gap-2">
-            {chartData.map((reading, i) => (
+            {[...chartData].reverse().map((reading, i) => (
               <li
                 key={`${reading.date}-${i}`}
                 className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs"

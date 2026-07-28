@@ -227,6 +227,8 @@ export interface CurrentUser {
   id: string
   email: string
   name: string
+  dob: string
+  gender: string
   external_id: string
 }
 
@@ -245,4 +247,16 @@ export async function fetchCurrentUser(token: string | null | undefined): Promis
   if (res.status === 401) return null
   if (!res.ok) throw new ApiError(res.status, 'GET /auth/me failed')
   return res.json()
+}
+
+/** Fetch the anonymous session id (creates one server-side on first call). */
+export async function fetchAnonId(): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/anon-id`, { credentials: 'include' })
+    if (!res.ok) return null
+    const data = (await res.json()) as { anon_id: string }
+    return data.anon_id || null
+  } catch {
+    return null
+  }
 }

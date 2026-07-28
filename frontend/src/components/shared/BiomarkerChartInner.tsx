@@ -50,6 +50,20 @@ export default function BiomarkerChartInner({
   const dataMax = rm != null ? Math.max(...numericValues, rm) : (numericValues.length > 0 ? Math.max(...numericValues) : 0)
   const yMax = rm != null ? Math.max(dataMax, rm * 1.2) : (numericValues.length > 0 ? dataMax * 1.2 : 1)
 
+  // Reference band: anchored to the visible plot area so partial references
+  // (e.g. upper-only "≤ 0.7" or lower-only "≥ 4") still show the normal zone.
+  // Qualitative refs are excluded.
+  const bandY1 = !qual && bounds?.low != null ? bounds.low : null
+  const bandY2 = !qual && bounds?.high != null ? bounds.high : null
+  const bandY1Final = bandY1 != null ? bandY1 : 0
+  const bandY2Final =
+    bandY2 != null
+      ? bandY2
+      : bandY1 != null
+        ? Math.ceil(yMax)
+        : null
+  const hasBand = !qual && bandY2Final != null && bandY1Final !== bandY2Final
+
   if (numericValues.length === 0) {
     return (
       <div className="flex w-full items-center justify-center text-xs text-muted-foreground" style={{ height }}>
@@ -70,10 +84,10 @@ export default function BiomarkerChartInner({
             stroke="#d4d4d8"
             vertical={false}
           />
-          {bounds?.low != null && bounds?.high != null && (
+          {hasBand && (
             <ReferenceArea
-              y1={bounds.low}
-              y2={bounds.high}
+              y1={bandY1Final}
+              y2={bandY2Final}
               fill="#22c55e"
               fillOpacity={0.06}
             />

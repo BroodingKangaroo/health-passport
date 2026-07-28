@@ -8,13 +8,15 @@ import {
   type ReactNode,
 } from 'react'
 import { useSession, signOut } from 'next-auth/react'
-import { fetchCurrentUser, type CurrentUser } from '@/services/api'
+import { fetchCurrentUser, fetchAnonId, type CurrentUser } from '@/services/api'
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
 
 interface AuthStatusContextValue {
   status: AuthStatus
   user: CurrentUser | null
+  /** Anonymous session id when not authenticated. */
+  anonId: string | null
   /** Re-check the backend token (e.g. after a login completes). */
   refresh: () => void
 }
@@ -25,6 +27,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const { data: session, status: sessionStatus } = useSession()
   const [status, setStatus] = useState<AuthStatus>('loading')
   const [user, setUser] = useState<CurrentUser | null>(null)
+  const [anonId, setAnonId] = useState<string | null>(null)
   const [nonce, setNonce] = useState(0)
 
   const token = session?.accessToken
@@ -41,9 +44,17 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     if (!token) {
       setStatus('unauthenticated')
       setUser(null)
+      fetchAnonId()
+        .then((id) => {
+          if (!cancelled) setAnonId(id)
+        })
+        .catch(() => {
+          if (!cancelled) setAnonId(null)
+        })
       return
     }
 
+    setAnonId(null)
     setStatus('loading')
     fetchCurrentUser(token)
       .then((me) => {
@@ -74,7 +85,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const refresh = () => setNonce((n) => n + 1)
 
   return (
-    <AuthStatusContext.Provider value={{ status, user, refresh }}>
+    <AuthStatusContext.Provider value={{ status, user, anonId, refresh }}>
       {children}
     </AuthStatusContext.Provider>
   )

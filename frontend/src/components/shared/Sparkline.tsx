@@ -30,13 +30,21 @@ export function Sparkline({ id, history, refMin, refMax }: SparklineProps) {
   const lowerOffset = hasLow
     ? Math.max(0, Math.min(1, (dataMax - safeRefMin) / range))
     : 1
+  // The line is in-range only between upperOffset and lowerOffset in the
+  // gradient's vertical space. If that region has zero width (i.e. every
+  // reading is above the upper bound or below the lower bound), there is no
+  // "normal" segment to paint blue — render a single solid red line.
+  const hasNormalRange = upperOffset < lowerOffset
+  const isCompletelyAbnormal =
+    hasRef && !isCompletelyNormal && !hasNormalRange
+  const useGradient = hasRef && !isCompletelyNormal && hasNormalRange
 
   return (
     <div className="h-[30px] w-full max-w-[100px]">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={numeric} margin={{ top: 4, bottom: 4, left: 4, right: 4 }}>
           {hasRef && <YAxis domain={['dataMin', 'dataMax']} hide />}
-          {hasRef && !isCompletelyNormal && (
+          {useGradient && (
             <defs>
               <linearGradient
                 id={`sparkline-grad-${id}`}
@@ -45,7 +53,7 @@ export function Sparkline({ id, history, refMin, refMax }: SparklineProps) {
                 x2="0"
                 y2="1"
               >
-                {hasHigh && (
+                {hasHigh && upperOffset > 0 && (
                   <>
                     <stop offset="0%" stopColor="#ef4444" />
                     <stop offset={`${upperOffset * 100}%`} stopColor="#ef4444" />
@@ -53,7 +61,7 @@ export function Sparkline({ id, history, refMin, refMax }: SparklineProps) {
                 )}
                 <stop offset={`${upperOffset * 100}%`} stopColor="#3b82f6" />
                 <stop offset={`${lowerOffset * 100}%`} stopColor="#3b82f6" />
-                {hasLow && (
+                {hasLow && lowerOffset < 1 && (
                   <>
                     <stop offset={`${lowerOffset * 100}%`} stopColor="#ef4444" />
                     <stop offset="100%" stopColor="#ef4444" />
@@ -65,7 +73,13 @@ export function Sparkline({ id, history, refMin, refMax }: SparklineProps) {
           <Line
             type="monotone"
             dataKey="value"
-            stroke={isCompletelyNormal || !hasRef ? '#3b82f6' : `url(#sparkline-grad-${id})`}
+            stroke={
+              isCompletelyAbnormal
+                ? '#ef4444'
+                : isCompletelyNormal || !hasRef
+                  ? '#3b82f6'
+                  : `url(#sparkline-grad-${id})`
+            }
             strokeWidth={2}
             strokeLinecap="round"
             isAnimationActive={false}

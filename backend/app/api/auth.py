@@ -42,6 +42,8 @@ class UserResponse(BaseModel):
     id: str
     email: str
     name: str
+    dob: str = ""
+    gender: str = ""
     external_id: str
 
     class Config:
@@ -171,6 +173,8 @@ def register(
         id=user.id,
         email=user.email,
         name=user.name,
+        dob=user.dob or "",
+        gender=user.gender or "",
         external_id=user.external_id,
     )
 
@@ -201,5 +205,21 @@ def read_users_me(current_user: models.Patient = Depends(get_current_user)):
         id=current_user.id,
         email=current_user.email,
         name=current_user.name,
+        dob=current_user.dob or "",
+        gender=current_user.gender or "",
         external_id=current_user.external_id,
     )
+
+
+class AnonIdResponse(BaseModel):
+    anon_id: str
+
+
+@router.get("/anon-id", response_model=AnonIdResponse)
+def read_anon_id(
+    request: Request,
+    response: Response,
+):
+    """Return the current anonymous session id (creating one if needed)."""
+    from app.api.anon_session import get_or_create_anon_id
+    return AnonIdResponse(anon_id=get_or_create_anon_id(request, response))

@@ -113,7 +113,7 @@ export function BiomarkerDetails() {
                   <span>Value</span>
                   <span>Status</span>
                 </div>
-                {chartData.map((entry, idx) => (
+                {[...chartData].reverse().map((entry, idx) => (
                   <div
                     key={`${entry.date}-${idx}`}
                     className="grid grid-cols-[1fr_1fr_1fr] items-center gap-x-3 border-b border-border px-4 py-3 text-sm transition-colors last:border-0 hover:bg-muted/40"
@@ -151,7 +151,7 @@ export function BiomarkerDetails() {
               </h2>
             </div>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              {biomarker.definition.names.en} ({biomarker.definition.names.ru}) is measured at{' '}
+              {biomarker.definition.names.en} is measured at{' '}
               {biomarker.value ?? '—'} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}. The standard reference range
               is {refText(biomarker)}.
             </p>

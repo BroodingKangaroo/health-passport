@@ -1,6 +1,6 @@
 'use client'
 
-import { Plus, X } from 'lucide-react'
+import { Plus, X, ChevronDown } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
@@ -53,7 +53,7 @@ export function LabResultForm({
               className="mb-1.5 w-full bg-transparent text-[11px] font-semibold uppercase tracking-wide text-muted-foreground outline-none focus:text-foreground"
             />
             <div className="overflow-hidden rounded-lg border border-border">
-              <div className="grid grid-cols-[minmax(220px,3fr)_100px_120px_minmax(200px,2fr)_auto] items-center gap-x-2 border-b border-border bg-muted/50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <div className="grid grid-cols-[minmax(220px,3fr)_minmax(150px,1.2fr)_120px_minmax(200px,2fr)_auto] items-center gap-x-2 border-b border-border bg-muted/50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 <span>Biomarker</span>
                 <span>Value</span>
                 <span>Unit</span>
@@ -67,7 +67,7 @@ export function LabResultForm({
                 return (
                   <div
                     key={row.id}
-                    className="grid grid-cols-[minmax(220px,3fr)_100px_120px_minmax(200px,2fr)_auto] items-start gap-x-2 border-b border-border px-3 py-2 last:border-b-0"
+                    className="grid grid-cols-[minmax(220px,3fr)_minmax(150px,1.2fr)_120px_minmax(200px,2fr)_auto] items-start gap-x-2 border-b border-border px-3 py-2 last:border-b-0"
                   >
                     <BiomarkerCombobox
                       value={row.name}
@@ -80,15 +80,16 @@ export function LabResultForm({
                       onDefinitionIdChange={(id) => updateRow(cat.id, row.id, 'definition_id', id)}
                       onScopeChange={(s) => updateRow(cat.id, row.id, 'scope', s)}
                     />
-                    <div className="relative">
+                    <div className="relative min-w-0">
                       {qualitative ? (
                         <>
                           <select
                             value={row.value}
                             onChange={(e) => updateRow(cat.id, row.id, 'value', e.target.value)}
+                            title={row.value || ''}
                             className={cn(
-                              'h-8 w-full rounded-lg border border-input bg-background px-2 text-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30',
-                              out && 'pr-6',
+                              'h-8 w-full min-w-0 appearance-none rounded-lg border border-input bg-background pl-2 text-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30',
+                              out ? 'pr-10' : 'pr-7',
                             )}
                           >
                             <option value="">—</option>
@@ -100,16 +101,20 @@ export function LabResultForm({
                             <span
                               aria-label="Outside reference range"
                               title="Outside reference range"
-                              className="absolute right-2 top-1/2 size-2 -translate-y-1/2 rounded-full bg-status-high"
+                              className="pointer-events-none absolute right-6 top-1/2 size-2 -translate-y-1/2 rounded-full bg-status-high"
                             />
                           )}
+                          <ChevronDown
+                            aria-hidden
+                            className="pointer-events-none absolute right-1.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+                          />
                         </>
                       ) : (
                         <>
                           <Input
                             value={row.value}
                             placeholder="—"
-                            className={cn(out && 'pr-6')}
+                            className={cn(out && 'pr-7')}
                             onChange={(e) =>
                               updateRow(cat.id, row.id, 'value', e.target.value)
                             }
@@ -118,7 +123,7 @@ export function LabResultForm({
                             <span
                               aria-label="Outside reference range"
                               title="Outside reference range"
-                              className="absolute right-2 top-1/2 size-2 -translate-y-1/2 rounded-full bg-status-high"
+                              className="pointer-events-none absolute right-2 top-1/2 size-2 -translate-y-1/2 rounded-full bg-status-high"
                             />
                           )}
                         </>
