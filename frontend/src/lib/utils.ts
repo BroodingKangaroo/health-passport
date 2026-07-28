@@ -88,6 +88,57 @@ export function formatDate(iso: string): string {
   return base
 }
 
+const COMPACT_UNITS = [
+  { value: 1e12, suffix: 'T' },
+  { value: 1e9, suffix: 'B' },
+  { value: 1e6, suffix: 'M' },
+  { value: 1e3, suffix: 'K' },
+] as const
+
+/**
+ * Format a number using compact notation when it's large, so e.g.
+ * `1_000_000_000` renders as `"1B"` instead of `"1000000000"` and fits in a
+ * narrow flowsheet / Latest column. Small values (< 1000 in magnitude) and
+ * qualitative / non-numeric strings are returned unchanged so the original
+ * text (e.g. `"Not detected"`, `"—"`, `8.75`) is preserved.
+ *
+ *   0             -> "0"
+ *   8.75          -> "8.75"
+ *   123           -> "123"
+ *   1234          -> "1.23K"
+ *   90000000      -> "90M"
+ *   1000000000    -> "1B"
+ *   10000000000   -> "10B"
+ *   "Not detected"-> "Not detected"
+ *   null / ""     -> ""
+ */
+export function formatNumber(
+  value: number | string | null | undefined,
+): string {
+  if (value == null || value === '') return ''
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return String(value)
+  if (n === 0) return '0'
+  const abs = Math.abs(n)
+  if (abs < 1000) {
+    return _stripTrailingZeros(n.toString())
+  }
+  for (const { value: unit, suffix } of COMPACT_UNITS) {
+    if (abs >= unit) {
+      const scaled = n / unit
+      // Pick decimals by magnitude so 1B → "1B" and 1.23B → "1.23B".
+      const decimals = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2
+      return _stripTrailingZeros(scaled.toFixed(decimals)) + suffix
+    }
+  }
+  return _stripTrailingZeros(n.toString())
+}
+
+function _stripTrailingZeros(s: string): string {
+  if (!s.includes('.')) return s
+  return s.replace(/\.?0+$/, '')
+}
+
 export function splitDateLabel(dateStr: string): { label: string; sub?: string } {
   const d = new Date(dateStr)
   if (!isNaN(d.getTime())) {

@@ -7,7 +7,7 @@ import {
   ChevronUp,
 } from 'lucide-react'
 
-import { cn, formatDate } from '@/lib/utils'
+import { cn, formatDate, formatNumber } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { StatusBadge } from '@/components/shared/StatusBadge'
@@ -148,7 +148,7 @@ function FlowRow({
         <span className="truncate text-xs text-muted-foreground/70">
           {biomarker.original_name || biomarker.definition.names.ru}
         </span>
-        <span className="font-medium text-foreground">{biomarker.value ?? '—'}</span>
+        <span className="font-medium text-foreground">{formatNumber(biomarker.value) || '—'}</span>
         <span className="text-muted-foreground">{unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}</span>
         <span className="text-muted-foreground">
           {formatReference(biomarker.reference ?? biomarker.definition.reference)}

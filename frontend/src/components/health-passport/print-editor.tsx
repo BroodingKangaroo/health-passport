@@ -8,7 +8,7 @@ import {
   Filter,
 } from 'lucide-react'
 
-import { cn } from '@/lib/utils'
+import { cn, formatNumber } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
 import { formatReference } from '@/lib/reference'
@@ -602,7 +602,7 @@ export function PrintEditor({
                                   cell.status !== 'normal' && 'font-semibold text-red-600',
                                 )}
                               >
-                                {cell.value}
+                                {formatNumber(cell.value)}
                                 {cell.status !== 'normal' ? ' *' : ''}
                               </td>
                             )

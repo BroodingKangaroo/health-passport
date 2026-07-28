@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { useSearchParams, notFound } from 'next/navigation'
 import { BookOpen } from 'lucide-react'
 
-import { cn, formatDate } from '@/lib/utils'
+import { cn, formatDate, formatNumber } from '@/lib/utils'
 import { Card } from '@/components/ui/card'
 import { BiomarkerChart } from '@/components/shared/BiomarkerChart'
 import { useBiomarkerData } from '@/hooks/useBiomarkerData'
@@ -80,7 +80,7 @@ export function BiomarkerDetails() {
             Current
           </p>
           <p className={cn('text-lg font-bold', statusText[biomarker.status])}>
-            {biomarker.value ?? '—'} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}{' '}
+            {formatNumber(biomarker.value) || '—'} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}{' '}
             <span className="text-sm font-semibold capitalize">
               ({biomarker.status})
             </span>
@@ -125,7 +125,7 @@ export function BiomarkerDetails() {
                         statusText[entry.status],
                       )}
                     >
-                      {entry.value} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}
+                      {formatNumber(entry.value)} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}
                     </span>
                     <span
                       className={cn(
@@ -152,7 +152,7 @@ export function BiomarkerDetails() {
             </div>
             <p className="text-sm leading-relaxed text-muted-foreground">
               {biomarker.definition.names.en} is measured at{' '}
-              {biomarker.value ?? '—'} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}. The standard reference range
+              {formatNumber(biomarker.value) || '—'} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}. The standard reference range
               is {refText(biomarker)}.
             </p>
           </Card>

@@ -2,7 +2,7 @@
 
 import { ArrowRight } from 'lucide-react'
 
-import { cn, formatDate } from '@/lib/utils'
+import { cn, formatDate, formatNumber } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { BiomarkerChart } from '@/components/shared/BiomarkerChart'
 import { formatReference, unitLabel, isQualitative } from '@/lib/reference'
@@ -82,19 +82,19 @@ export function ExpandedBiomarkerDetails({
       <div className="flex gap-3">
         <MetricCard
           label="LATEST"
-          value={biomarker.value == null ? '—' : `${biomarker.value}`}
+          value={biomarker.value == null ? '—' : formatNumber(biomarker.value)}
           unit={unitDisplay}
           highlight={statusText[biomarker.status]}
         />
         <MetricCard
           label="PEAK"
-          value={peak == null ? '—' : `${peak}`}
+          value={peak == null ? '—' : formatNumber(peak)}
           unit={unitDisplay}
           highlight={statusText[peakStatus]}
         />
         <MetricCard
           label="TROUGH"
-          value={trough == null ? '—' : `${trough}`}
+          value={trough == null ? '—' : formatNumber(trough)}
           unit={unitDisplay}
           highlight={statusText[troughStatus]}
         />
@@ -113,7 +113,7 @@ export function ExpandedBiomarkerDetails({
               >
                 <span className="text-muted-foreground">{formatDate(reading.date)}</span>
                 <span className="font-semibold text-foreground">
-                  {reading.value} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}
+                  {formatNumber(reading.value)} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}
                 </span>
                 <span
                   className={cn(

@@ -1,4 +1,5 @@
 import type { Reference, ReferenceInterval, ReferenceQualitative } from './types'
+import { formatNumber } from './utils'
 
 /** Canonical qualitative values matching the backend's normalisation enum. */
 export const QUALITATIVE_VALUES = [
@@ -15,9 +16,12 @@ export const QUALITATIVE_VALUES = [
 /**
  * Format a structured reference for display. Numeric results carry an optional
  * unit suffix; qualitative references render their expected text (or '—').
+ * Large interval bounds (>= 1000) are rendered in compact form
+ * (e.g. `1.5B` instead of `1500000000`) so the value column doesn't overflow.
  *
  *   {kind:'interval', low:4, high:11}        -> '4 – 11'
- *   {kind:'interval', low:null, high:5}      -> '≤ 5'
+ *   {kind:'interval', low:1e9, high:1e10}    -> '1B – 10B'
+ *   {kind:'interval', low:null, high:1e11}   -> '≤ 100B'
  *   {kind:'interval', low:4, high:11}, 'mg'  -> '4 – 11 mg'
  *   {kind:'qualitative', expected:'Negative'} -> 'Negative'
  *   {kind:'qualitative', expected:'отсутствуют'} -> 'отсутствуют'
@@ -39,11 +43,11 @@ function formatInterval(ref: ReferenceInterval, unit?: string | null): string {
   const { low, high } = ref
   let body: string
   if (low != null && high != null) {
-    body = `${low} – ${high}`
+    body = `${formatNumber(low)} – ${formatNumber(high)}`
   } else if (low != null) {
-    body = `≥ ${low}`
+    body = `≥ ${formatNumber(low)}`
   } else if (high != null) {
-    body = `≤ ${high}`
+    body = `≤ ${formatNumber(high)}`
   } else {
     body = '—'
   }

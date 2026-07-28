@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, ChevronRight, ArrowDown, ArrowUp } from 'lucide-react'
 
-import { cn } from '@/lib/utils'
+import { cn, formatNumber } from '@/lib/utils'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Sparkline } from '@/components/shared/Sparkline'
@@ -27,7 +27,7 @@ function Cell({ cell }: { cell: MatrixCell }) {
         isOut ? cn('font-bold', statusText[cell.status]) : 'text-foreground',
       )}
     >
-      {cell.value}
+      {formatNumber(cell.value)}
       {cell.status === 'low' && <ArrowDown className="size-3.5" />}
       {cell.status === 'high' && <ArrowUp className="size-3.5" />}
     </span>
