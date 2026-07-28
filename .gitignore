@@ -23,8 +23,11 @@ __pycache__/
 *.pyo
 backend/health_passport.db
 backend/e2e_test.db
+backend/e2e/e2e_run.db
+health_passport.db
 backend/static/uploads/*
 backend/app.log
+app.log
 
 # TypeScript
 *.tsbuildinfo
