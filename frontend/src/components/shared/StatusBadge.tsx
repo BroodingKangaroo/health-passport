@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, ArrowDown, ArrowUp } from 'lucide-react'
+import { Check, ArrowDown, ArrowUp, AlertTriangle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import type { Status } from '@/lib/types'
 
@@ -21,10 +21,18 @@ export function StatusBadge({ status }: { status: Status }) {
       </Badge>
     )
   }
+  if (status === 'high') {
+    return (
+      <Badge variant="high">
+        <ArrowUp className="size-3" />
+        High
+      </Badge>
+    )
+  }
   return (
-    <Badge variant="high">
-      <ArrowUp className="size-3" />
-      High
+    <Badge variant="abnormal">
+      <AlertTriangle className="size-3" />
+      Abnormal
     </Badge>
   )
 }

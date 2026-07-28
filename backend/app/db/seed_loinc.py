@@ -236,12 +236,11 @@ def row_to_definition(row: dict) -> dict:
         "names": {"en": display_name},
         "synonyms": list(dict.fromkeys(synonyms)),
         "category": _sanitize((row.get("CLASS") or "General").strip()),
-        "range_min": None,
-        "range_max": None,
+        "reference": None,
         "unit": _sanitize((row.get("EXAMPLE_UCUM_UNITS") or "").strip()),
         "scope": "global",
         "user_id": None,
-        "range_source": "global",
+        "reference_source": "global",
         "common_rank": common_rank,
     }
 

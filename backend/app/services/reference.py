@@ -1,0 +1,270 @@
+"""Single home for reference parsing, value parsing, and status computation.
+
+Replaces the previous fragmented model (``range_min``/``range_max`` columns +
+a ``status`` string computed in three different places) with one structured
+``reference`` object whose ``kind`` field is the sole discriminator between a
+numeric (interval) result and a qualitative (text) result.
+
+Qualitative text values are normalised to canonical English enum values so that
+comparisons are deterministic and the UI never leaks raw Russian/foreign text.
+"""
+
+import re
+from typing import Any, Optional, Union
+
+Number = Union[int, float]
+
+_NUM_RE = re.compile(r"-?\d+(?:\.\d+)?")
+_LT_RE = re.compile(r"<\s*([\d.]+)")
+_GT_RE = re.compile(r">\s*([\d.]+)")
+_RANGE_RE = re.compile(r"([\d.]+)\s*[\u2013-]\s*([\d.]+)")
+
+# ---------------------------------------------------------------------------
+# Qualitative value normalisation ─ maps raw (Russian/English) text to a
+# canonical English enum value that is displayed in the UI and used for
+# comparison.  Terms that do not appear below are returned verbatim.
+# ---------------------------------------------------------------------------
+
+_QUAL_MAP: dict[str, str] = {t.lower().strip(): c for t, c in (
+    ("absent",             "Absent"),
+    ("not detected",       "Not detected"),
+    ("negative",           "Negative"),
+    ("normal",             "Normal"),
+    ("present",            "Present"),
+    ("detected",           "Detected"),
+    ("positive",           "Positive"),
+    ("abnormal",           "Abnormal"),
+    # Russian
+    ("отсутствуют",        "Absent"),
+    ("отсутствует",        "Absent"),
+    ("не выявлена",        "Not detected"),
+    ("не выявлено",        "Not detected"),
+    ("не обнаружена",      "Not detected"),
+    ("не обнаружено",      "Not detected"),
+    ("отрицательно",       "Negative"),
+    ("отрицательный",      "Negative"),
+    ("присутствуют",       "Present"),
+    ("обнаружена",         "Detected"),
+    ("обнаружено",         "Detected"),
+    ("выявлена",           "Detected"),
+    ("выявлено",           "Detected"),
+    ("положительно",       "Positive"),
+    ("положительный",      "Positive"),
+    ("нет",                "Absent"),
+    ("да",                 "Present"),
+    # Legacy numeric-only artefacts that labs sometimes print as a "range"
+    ("0",                  "Absent"),
+)}
+"""
+Map lowercase normalised raw text → canonical English qualitative value.
+Qualitative values are an enum from the canonical set:
+
+    Absent, Not detected, Negative, Normal, Present, Detected, Positive, Abnormal
+"""
+
+# Categorisation of canonical values for numeric-to-qualitative bridging:
+_ABSENT_CANONICAL = frozenset({"Absent", "Not detected", "Negative", "Normal"})
+_PRESENT_CANONICAL = frozenset({"Present", "Detected", "Positive", "Abnormal"})
+_ABSENT_CANONICAL_LOWER = frozenset(v.lower() for v in _ABSENT_CANONICAL)
+_PRESENT_CANONICAL_LOWER = frozenset(v.lower() for v in _PRESENT_CANONICAL)
+
+# List of canonical qualitative values; exposed for code that builds dropdowns.
+QUALITATIVE_VALUES = [
+    "Negative", "Positive", "Detected", "Not detected",
+    "Absent", "Present", "Normal", "Abnormal",
+]
+
+
+def normalize_qual(text: Any) -> Optional[str]:
+    """Convert a raw qualitative result / reference text to its canonical English
+    enum value.  Returns ``None`` for empty input.  Numeric values are
+    converted: 0 → Absent, anything else → Present."""
+    if text is None:
+        return None
+    # Numeric ─ bridge via the presence / absence category.
+    if isinstance(text, (int, float)) and not isinstance(text, bool):
+        val = float(text)
+        if val == 0:
+            return "Absent"
+        return "Present" if val > 0 else None
+    s = str(text).strip()
+    if not s:
+        return None
+    return _QUAL_MAP.get(s.lower(), s)
+
+
+def parse_reference(text: Optional[str]) -> Optional[dict]:
+    """Parse a free-text reference string (as printed by a lab) into a
+    structured reference dict, or ``None`` when empty.
+
+    Qualitative expected text is normalised to canonical English so the UI
+    never leaks raw Russian / foreign labels.
+    """
+    if not text:
+        return None
+    s = text.strip()
+    if not s:
+        return None
+
+    lt = _LT_RE.match(s)
+    if lt:
+        return {"kind": "interval", "low": None, "high": float(lt.group(1))}
+    gt = _GT_RE.match(s)
+    if gt:
+        return {"kind": "interval", "low": float(gt.group(1)), "high": None}
+    rng = _RANGE_RE.match(s)
+    if rng:
+        return {"kind": "interval", "low": float(rng.group(1)), "high": float(rng.group(2))}
+
+    return {"kind": "qualitative", "expected": normalize_qual(s)}
+
+
+def parse_value(text: Any) -> Union[float, str, None]:
+    """Parse a raw result string into a numeric value or a qualitative string.
+
+    The caller is responsible for normalising qualitative strings via
+    ``normalize_qual`` before storage.
+    """
+    if text is None:
+        return None
+    s = str(text).strip()
+    if not s:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        pass
+    m = _NUM_RE.search(s)
+    if m:
+        return float(m.group(0))
+    return s
+
+
+def _qual_expected_to_interval(expected: Optional[str]) -> Optional[dict]:
+    """Convert a qualitative expected text to an interval when it maps to a
+    known absence/presence term.  ``None`` when unrecognised."""
+    if not expected:
+        return None
+    key = expected.lower().strip()
+    if key in _ABSENT_CANONICAL_LOWER:
+        return {"kind": "interval", "low": None, "high": 0}
+    if key in _PRESENT_CANONICAL_LOWER:
+        return {"kind": "interval", "low": 0, "high": None}
+    return None
+
+
+def merge_reference(
+    doc_reference: Optional[dict], defn_reference: Optional[dict], value: Any
+) -> Optional[dict]:
+    """Compose the *effective* reference for a reading.
+
+    Document-first: when the lab printed its own reference range we trust it.
+    Otherwise a qualitative (string) value forces a qualitative reference.
+
+    A numeric value paired with a qualitative reference (e.g. Absent) is
+    bridged to an interval ({low:null, high:0}) so the biomarker stays
+    quantitative.
+    """
+    if doc_reference is not None:
+        return _bridge_qual_ref(doc_reference, value)
+    if isinstance(value, str):
+        return {"kind": "qualitative"}
+    ref = _copy_reference(defn_reference)
+    return _bridge_qual_ref(ref, value) if ref else None
+
+
+def _bridge_qual_ref(ref: dict, value: Any) -> dict:
+    """When `value` is numeric and `ref` is qualitative with a known
+    expected term, convert to an interval.  Otherwise return `ref` unchanged."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return ref
+    if isinstance(ref, dict) and ref.get("kind") == "qualitative":
+        expected = ref.get("expected")
+        if expected:
+            interval = _qual_expected_to_interval(expected)
+            if interval is not None:
+                return interval
+    return ref
+
+
+def _copy_reference(ref: Optional[dict]) -> Optional[dict]:
+    if ref is None:
+        return None
+    if isinstance(ref, dict) and "kind" in ref:
+        return dict(ref)
+    return ref
+
+
+def _qual_status(value: Any, expected: str) -> str:
+    """Normal / abnormal for a qualitative reference.
+
+    1. Normalise the value string to canonical English (if textual).
+    2. Compare with the already-normalised expected.
+    3. For numeric values bridge via presence / absence category.
+    """
+    if value is None:
+        return "abnormal"
+
+    # (1) textual value ─ normalise both and compare.
+    if isinstance(value, str):
+        v_norm = normalize_qual(value)
+        if v_norm is not None and v_norm == expected:
+            return "normal"
+        return "abnormal"
+
+    # (2) numeric value ─ bridge via category.
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        num = float(value)
+        if num == 0:
+            return "normal" if expected in _ABSENT_CANONICAL else "abnormal"
+        else:
+            return "normal" if expected in _PRESENT_CANONICAL else "abnormal"
+
+    return "abnormal"
+
+
+def compute_status(value: Any, reference: Any) -> str:
+    """Compute the lab status against a structured reference.
+
+    Returns ``"low" | "normal" | "high" | "abnormal"``.
+    """
+    kind = _get(reference, "kind")
+    if kind is None:
+        return "normal"
+
+    if kind == "interval":
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return "normal"
+        low = _get(reference, "low")
+        high = _get(reference, "high")
+        if low is not None and value < low:
+            return "low"
+        if high is not None and value > high:
+            return "high"
+        return "normal"
+
+    if kind == "qualitative":
+        expected = _get(reference, "expected")
+        if not expected:
+            return "normal"
+        return _qual_status(value, expected)
+
+    return "normal"
+
+
+def _get(ref: Any, key: str, default: Any = None) -> Any:
+    if ref is None:
+        return default
+    if isinstance(ref, dict):
+        return ref.get(key, default)
+    return getattr(ref, key, default)
+
+
+def reference_interval(low: Optional[float], high: Optional[float]) -> Optional[dict]:
+    if low is None and high is None:
+        return None
+    return {"kind": "interval", "low": low, "high": high}
+
+
+def reference_qualitative(expected: Optional[str] = None) -> dict:
+    return {"kind": "qualitative", "expected": expected}

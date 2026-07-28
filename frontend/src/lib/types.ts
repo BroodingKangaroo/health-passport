@@ -3,7 +3,24 @@ export interface TranslatedText {
   translated_en: string
 }
 
-export type Status = 'normal' | 'low' | 'high'
+/* ----- Reference ----- */
+// A single structured reference. Its `kind` IS the result type — there is no
+// separate result_type: an interval reference means a numeric result, a
+// qualitative reference means a text result.
+export interface ReferenceInterval {
+  kind: 'interval'
+  low: number | null
+  high: number | null
+}
+
+export interface ReferenceQualitative {
+  kind: 'qualitative'
+  expected?: string | null
+}
+
+export type Reference = ReferenceInterval | ReferenceQualitative
+
+export type Status = 'normal' | 'low' | 'high' | 'abnormal'
 
 /* ----- Patient ----- */
 export interface Patient {
@@ -21,18 +38,18 @@ export interface BiomarkerDefinition {
   names: Record<string, string>
   synonyms: string[]
   unit: string
-  range_min: number | null
-  range_max: number | null
+  reference: Reference | null
   category: string
   scope: 'global' | 'local'
   user_id?: string | null
-  range_source: 'global' | 'local' | 'pdf_extracted'
+  reference_source: 'global' | 'local' | 'pdf_extracted'
 }
 
 export interface Reading {
   date: string
-  value: number
+  value: number | string | null
   status: Status
+  reference?: Reference | null
   original_name?: string
   original_value?: string
   original_unit?: string
@@ -42,11 +59,11 @@ export interface Reading {
 export interface BiomarkerResult {
   id: string
   definition: BiomarkerDefinition
-  value: number
+  value: number | string | null
   date: string
   status: Status
   history?: Reading[]
-  range?: string
+  reference?: Reference | null
   original_name?: string
   original_value?: string
   original_unit?: string
@@ -121,7 +138,8 @@ export interface MatrixRow {
   id: string
   name: string
   original: string
-  range: string
+  unit: string
+  reference: Reference | null
   cells: MatrixCell[]
 }
 
@@ -168,7 +186,7 @@ export interface FormBiomarkerRow {
   name: string
   value: string
   unit: string
-  range: string
+  reference: Reference | null
   original_name?: string
   original_value?: string
   original_unit?: string
@@ -204,10 +222,9 @@ export interface StandardizedBiomarker {
   raw_unit: string
   raw_range_string: string
   standard_name_en: string
-  standard_value: number
+  standard_value: number | string | null
   standard_unit: string
-  standard_range_min: number | null
-  standard_range_max: number | null
+  reference: Reference | null
   status: string
   category: string
   definition_id: string

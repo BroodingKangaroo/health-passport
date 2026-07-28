@@ -1,11 +1,14 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Union
+
+from app.schemas.reference import Reference
 
 
 class Reading(BaseModel):
     date: str
-    value: float
+    value: Union[float, str, None] = None
     status: str
+    reference: Optional[Reference] = None
     original_name: Optional[str] = None
     original_value: Optional[str] = None
     original_unit: Optional[str] = None
@@ -18,22 +21,21 @@ class BiomarkerDefinition(BaseModel):
     names: dict[str, str]
     synonyms: list[str] = []
     category: str
-    range_min: Optional[float] = None
-    range_max: Optional[float] = None
+    reference: Optional[Reference] = None
     unit: str
     scope: str = "global"
     user_id: Optional[str] = None
-    range_source: str = "global"
+    reference_source: str = "global"
 
 
 class BiomarkerResult(BaseModel):
     id: str
     definition: BiomarkerDefinition
-    value: float
+    value: Union[float, str, None] = None
     date: str
     status: str
     history: list[Reading] = []
-    range: str = ""
+    reference: Optional[Reference] = None
     original_name: Optional[str] = None
     original_value: Optional[str] = None
     original_unit: Optional[str] = None
@@ -47,11 +49,10 @@ class BiomarkerDefinitionResponse(BaseModel):
     synonyms: list[str] = []
     category: str
     unit: str
-    range_min: Optional[float] = None
-    range_max: Optional[float] = None
+    reference: Optional[Reference] = None
     scope: str = "global"
     user_id: Optional[str] = None
-    range_source: str = "global"
+    reference_source: str = "global"
 
 
 class MatrixCell(BaseModel):
@@ -63,7 +64,8 @@ class MatrixRow(BaseModel):
     id: str
     name: str
     original: str
-    range: str
+    unit: str
+    reference: Optional[Reference] = None
     cells: list[MatrixCell]
 
 

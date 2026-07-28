@@ -5,7 +5,7 @@ import os
 import re
 import unicodedata
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 from mistralai import Mistral
 from rapidfuzz import fuzz, process
@@ -15,6 +15,13 @@ from sqlalchemy.orm import Session
 from app.db.seed_loinc import LOINC_NAME_OVERRIDES
 
 from app.services import converters
+from app.services.reference import (
+    compute_status,
+    merge_reference,
+    normalize_qual,
+    parse_reference,
+    parse_value,
+)
 from app.schemas.ai import (
     ConversionFactor,
     LoincGuess,
@@ -155,14 +162,6 @@ Translation rules:
 Return ONLY valid JSON matching the provided schema. Do not include any text outside the JSON."""
 
 
-def calculate_biomarker_status(value: float, min_val: Optional[float], max_val: Optional[float]) -> str:
-    if min_val is not None and value < min_val:
-        return "low"
-    if max_val is not None and value > max_val:
-        return "high"
-    return "normal"
-
-
 def _normalize_date(raw_date: str) -> str:
     if not raw_date:
         return datetime.now().strftime("%Y-%m-%d")
@@ -193,9 +192,7 @@ def _apply_status(result: StandardizedMedicalRecord) -> None:
     if not result.biomarkers:
         return
     for b in result.biomarkers:
-        b.status = calculate_biomarker_status(
-            b.standard_value, b.standard_range_min, b.standard_range_max
-        )
+        b.status = compute_status(b.standard_value, b.reference)
 
 
 # Cache of LLM-supplied conversion factors keyed by (analyte, from_unit, to_unit).
@@ -456,51 +453,59 @@ def _build_standardized_from_def(
     user_id: Optional[str] = None,
     client: Optional[Mistral] = None,
 ) -> StandardizedBiomarker:
-    try:
-        raw_float = float(re.sub(r"[^\d\.]", "", raw_bm.value))
-    except (ValueError, TypeError):
-        raw_float = 0.0
+    parsed_value = parse_value(raw_bm.value)
 
     # Canonicalize the document's own unit (e.g. Cyrillic "ммоль/л" -> "mmol/L").
     doc_unit = converters.normalize_unit(raw_bm.unit)
-    doc_min, doc_max = _parse_range_string(raw_bm.raw_range_string)
+    doc_reference = parse_reference(raw_bm.raw_range_string)
 
     # Document-first: when the lab printed its own reference range, trust it and
     # keep the value in the document's own (normalized) unit. This avoids lossy
     # unit conversion and compares like-for-like, preventing false out-of-range
     # flags (e.g. a glucose of 5.5 ммоль/л against the lab's own 3.9-6.1 range).
-    if doc_min is not None or doc_max is not None:
+    if doc_reference is not None:
         # Keep the matched (global) definition and its identity. The document
         # range is carried on the reading itself; `scope` reflects dictionary
-        # membership, NOT range provenance, so a recognized analyte must stay
+        # membership, NOT reference provenance, so a recognized analyte must stay
         # "global" even when we display the lab's own range.
+        ref = merge_reference(doc_reference, defn.reference, parsed_value)
+        if isinstance(ref, dict) and ref.get("kind") == "qualitative":
+            parsed_value = normalize_qual(parsed_value)
         return StandardizedBiomarker(
             raw_name=raw_bm.name,
             raw_value=raw_bm.value,
             raw_unit=raw_bm.unit,
             raw_range_string=raw_bm.raw_range_string,
             standard_name_en=_prefer_comma_pct(defn.names.get("en", raw_bm.name)),
-            standard_value=raw_float,
+            standard_value=parsed_value,
             standard_unit=doc_unit or defn.unit,
-            standard_range_min=doc_min,
-            standard_range_max=doc_max,
+            reference=ref,
             status="",
             category=defn.category,
             definition_id=defn.loinc_code or defn.id,
             scope=defn.scope,
         )
 
-    # No document range: fall back to the curated global range, converting the
-    # value into the definition's canonical unit so the comparison is valid.
-    std_value = convert_units(
-        raw_float,
-        raw_bm.unit,
-        defn.unit,
-        analyte_name=defn.names.get("en", raw_bm.name),
-        loinc=defn.loinc_code,
-        client=client,
-    )
+    # No document range: fall back to the curated global reference, converting a
+    # numeric value into the definition's canonical unit so the comparison is
+    # valid. Qualitative values carry no unit so nothing to convert.
+    if isinstance(parsed_value, (int, float)) and not isinstance(parsed_value, bool):
+        std_value: Union[float, str, None] = convert_units(
+            parsed_value,
+            raw_bm.unit,
+            defn.unit,
+            analyte_name=defn.names.get("en", raw_bm.name),
+            loinc=defn.loinc_code,
+            client=client,
+        )
+        std_unit = defn.unit
+    else:
+        std_value = parsed_value
+        std_unit = doc_unit or defn.unit
 
+    ref = merge_reference(None, defn.reference, std_value)
+    if isinstance(ref, dict) and ref.get("kind") == "qualitative":
+        std_value = normalize_qual(std_value)
     return StandardizedBiomarker(
         raw_name=raw_bm.name,
         raw_value=raw_bm.value,
@@ -508,9 +513,8 @@ def _build_standardized_from_def(
         raw_range_string=raw_bm.raw_range_string,
         standard_name_en=_prefer_comma_pct(defn.names.get("en", raw_bm.name)),
         standard_value=std_value,
-        standard_unit=defn.unit,
-        standard_range_min=defn.range_min,
-        standard_range_max=defn.range_max,
+        standard_unit=std_unit,
+        reference=ref,
         status="",
         category=defn.category,
         definition_id=defn.loinc_code or defn.id,
@@ -522,10 +526,7 @@ def _build_standardized_local(
     raw_bm: RawBiomarker,
     defn: BiomarkerDefinitionModel,
 ) -> StandardizedBiomarker:
-    try:
-        std_value = float(re.sub(r"[^\d\.]", "", raw_bm.value))
-    except (ValueError, TypeError):
-        std_value = 0.0
+    std_value = normalize_qual(parse_value(raw_bm.value))
 
     # Prefer the translated English name; fall back to the original raw name if
     # the stored definition name is somehow still non-English (defense against
@@ -534,6 +535,7 @@ def _build_standardized_local(
     if not _is_ascii(en):
         en = raw_bm.standard_name_en or raw_bm.name
 
+    ref = merge_reference(parse_reference(raw_bm.raw_range_string), defn.reference, std_value)
     return StandardizedBiomarker(
         raw_name=raw_bm.name,
         raw_value=raw_bm.value,
@@ -542,8 +544,7 @@ def _build_standardized_local(
         standard_name_en=_prefer_comma_pct(en),
         standard_value=std_value,
         standard_unit=raw_bm.unit,
-        standard_range_min=defn.range_min,
-        standard_range_max=defn.range_max,
+        reference=ref,
         status="",
         category=defn.category or raw_bm.category or "General",
         definition_id=defn.loinc_code or defn.id,
@@ -897,25 +898,6 @@ def _llm_zero_shot_batch(
     return batch.guesses
 
 
-def _parse_range_string(range_str: str) -> tuple[Optional[float], Optional[float]]:
-    """Parse a range string like '4.0-11.0', '< 5.0', '> 100', 'Negative' into (min, max)."""
-    if not range_str:
-        return None, None
-    s = range_str.strip()
-    # Single bound: < X or > X
-    lt = re.match(r"<\s*([\d.]+)", s)
-    if lt:
-        return None, float(lt.group(1))
-    gt = re.match(r">\s*([\d.]+)", s)
-    if gt:
-        return float(gt.group(1)), None
-    # Range: X-Y or X – Y
-    m = re.match(r"([\d.]+)\s*[–-]\s*([\d.]+)", s)
-    if m:
-        return float(m.group(1)), float(m.group(2))
-    return None, None
-
-
 def _guess_is_consistent(
     defn: BiomarkerDefinitionModel,
     raw_biomarker: Optional[RawBiomarker],
@@ -1013,12 +995,14 @@ def verify_or_create(
     if en_name and en_name != raw_name and en_name not in syns:
         syns.append(en_name)
 
-    # Parse range from raw biomarker if available
-    range_min = None
-    range_max = None
+    # Parse reference from raw biomarker if available; a non-numeric value forces
+    # a qualitative reference.
+    reference = None
     unit = ""
     if raw_biomarker:
-        range_min, range_max = _parse_range_string(raw_biomarker.raw_range_string)
+        doc_ref = parse_reference(raw_biomarker.raw_range_string)
+        parsed_val = parse_value(raw_biomarker.value)
+        reference = merge_reference(doc_ref, None, parsed_val)
         unit = raw_biomarker.unit
 
     new_defn = BiomarkerDefinitionModel(
@@ -1026,12 +1010,11 @@ def verify_or_create(
         names={"en": en_name},
         synonyms=syns,
         category=raw_biomarker.category if raw_biomarker else "General",
-        range_min=range_min,
-        range_max=range_max,
+        reference=reference,
         unit=unit,
         scope="local",
         user_id=user_id,
-        range_source="pdf_extracted",
+        reference_source="pdf_extracted",
     )
     db.add(new_defn)
     try:
@@ -1089,22 +1072,21 @@ def _make_local_copy(
     if raw_biomarker.name not in synonyms:
         synonyms.append(raw_biomarker.name)
 
-    range_min, range_max = _parse_range_string(raw_biomarker.raw_range_string)
-    if range_min is None and range_max is None:
-        if source is not None:
-            range_min, range_max = source.range_min, source.range_max
+    doc_ref = parse_reference(raw_biomarker.raw_range_string)
+    parsed_val = parse_value(raw_biomarker.value)
+    source_ref = source.reference if source is not None else None
+    reference = merge_reference(doc_ref, source_ref, parsed_val)
 
     local = BiomarkerDefinitionModel(
         id=defn_id,
         names=names,
         synonyms=synonyms,
         category=category,
-        range_min=range_min,
-        range_max=range_max,
+        reference=reference,
         unit=unit,
         scope="local",
         user_id=user_id,
-        range_source=source.range_source if source is not None else "pdf_extracted",
+        reference_source=source.reference_source if source is not None else "pdf_extracted",
     )
     db.add(local)
     try:
@@ -1184,11 +1166,8 @@ def _fallback_standardize(raw: RawMedicalRecord) -> StandardizedMedicalRecord:
     biomarkers: list[StandardizedBiomarker] = []
     if raw.biomarkers:
         for b in raw.biomarkers:
-            try:
-                std_value = float(b.value)
-            except (ValueError, TypeError):
-                std_value = 0.0
-
+            std_value = normalize_qual(parse_value(b.value))
+            ref = merge_reference(parse_reference(b.raw_range_string), None, std_value)
             biomarkers.append(StandardizedBiomarker(
                 raw_name=b.name,
                 raw_value=b.value,
@@ -1197,8 +1176,7 @@ def _fallback_standardize(raw: RawMedicalRecord) -> StandardizedMedicalRecord:
                 standard_name_en=b.name,
                 standard_value=std_value,
                 standard_unit=b.unit,
-                standard_range_min=None,
-                standard_range_max=None,
+                reference=ref,
                 status="",
                 category=b.category or "General",
             ))

@@ -1,6 +1,8 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Union
 from typing_extensions import Literal
+
+from app.schemas.reference import Reference
 
 
 # +++++ Reusable dual-language text container +++++
@@ -101,10 +103,9 @@ class StandardizedBiomarker(BaseModel):
     raw_unit: str
     raw_range_string: str = ""
     standard_name_en: str
-    standard_value: float
+    standard_value: Union[float, str, None] = None
     standard_unit: str
-    standard_range_min: Optional[float] = None
-    standard_range_max: Optional[float] = None
+    reference: Optional[Reference] = None
     status: str = ""
     category: str = ""
     definition_id: str = ""

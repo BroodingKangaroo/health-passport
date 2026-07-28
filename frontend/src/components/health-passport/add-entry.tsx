@@ -33,6 +33,7 @@ import type {
   EntryMode,
   FormCategory,
   FormBiomarkerRow,
+  Reference,
   StandardizedMedicalRecord,
   StandardizedBiomarker,
   ProgressStage,
@@ -72,7 +73,7 @@ function newRow(): FormBiomarkerRow {
     name: '',
     value: '',
     unit: '',
-    range: '',
+    reference: null,
   }
 }
 
@@ -93,15 +94,9 @@ function biomarkersToCategories(biomarkers: StandardizedBiomarker[]): FormCatego
     rows: rows.map((r) => ({
       id: `ai-bm-${r.standard_name_en.toLowerCase().replace(/\s+/g, '-')}-${Math.random().toString(36).slice(2, 4)}`,
       name: r.standard_name_en,
-      value: String(r.standard_value),
-      unit: r.standard_unit,
-      range: r.standard_range_min != null && r.standard_range_max != null
-        ? `${r.standard_range_min}-${r.standard_range_max}`
-        : r.standard_range_min != null
-          ? `> ${r.standard_range_min}`
-          : r.standard_range_max != null
-            ? `< ${r.standard_range_max}`
-            : '',
+      value: r.standard_value == null ? '' : String(r.standard_value),
+      unit: r.reference?.kind === 'qualitative' ? 'Qualitative' : r.standard_unit,
+      reference: r.reference ?? null,
       original_name: r.raw_name,
       original_value: r.raw_value,
       original_unit: r.raw_unit,
@@ -371,7 +366,12 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     if (file) setSelectedFile(file)
   }
 
-  function updateRow(catId: string, rowId: string, key: keyof FormBiomarkerRow, val: string) {
+  function updateRow(
+    catId: string,
+    rowId: string,
+    key: keyof FormBiomarkerRow,
+    val: string | Reference | null,
+  ) {
     setCategories((prev) =>
       prev.map((c) =>
         c.id === catId

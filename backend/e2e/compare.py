@@ -50,7 +50,7 @@ def _cmp_tx(observed, golden, path, diffs, thr):
         )
 
 
-def _cmp_biomarkers(observed_list, golden_list, diffs, tol=VALUE_TOLERANCE):
+def _cmp_biomarkers(observed_list, golden_list, diffs, tol=VALUE_TOLERANCE, thr=DEFAULT_TEXT_THRESHOLD):
     def group(lst):
         m = defaultdict(list)
         for i, b in enumerate(lst or []):
@@ -78,20 +78,67 @@ def _cmp_biomarkers(observed_list, golden_list, diffs, tol=VALUE_TOLERANCE):
                     diffs.append(
                         f"biomarker {name!r}[{i}] {f}: expected {gb.get(f)!r}, got {ob.get(f)!r}"
                     )
-            # standard_value: float tolerance; status is recomputed (ignored).
+            # standard_value: numeric float tolerance; qualitative (string) values
+            # are OCR-extracted, so compare via text similarity (skip when either
+            # side is empty — the comparator never penalises a missing value).
+            _cmp_value(ob.get("standard_value"), gb.get("standard_value"),
+                       f"biomarker {name!r}[{i}] standard_value", diffs, tol, thr)
+            # reference: kind must match; interval bounds compared with float
+            # tolerance; qualitative expected compared via text similarity.
+            _cmp_reference(ob.get("reference"), gb.get("reference"),
+                           f"biomarker {name!r}[{i}] reference", diffs, tol, thr)
+
+
+def _cmp_value(ov, gv, path, diffs, tol, thr):
+    try:
+        ovf = float(ov)
+        gvf = float(gv)
+        if abs(ovf - gvf) > tol:
+            diffs.append(f"{path}: expected {gv!r}, got {ov!r}")
+        return
+    except (TypeError, ValueError):
+        pass
+    # At least one side is a non-numeric string.
+    os_ = "" if ov is None else str(ov)
+    gs_ = "" if gv is None else str(gv)
+    if not _norm(gs_) and not _norm(os_):
+        return
+    if _norm(gs_):
+        if _sim(os_, gs_) < thr:
+            diffs.append(
+                f"{path}: similarity {_sim(os_, gs_):.2f} < {thr} "
+                f"(expected {gv!r}, got {ov!r})"
+            )
+    elif os_ != gs_:
+        diffs.append(f"{path}: expected {gv!r}, got {ov!r}")
+
+
+def _cmp_reference(oref, gref, path, diffs, tol, thr):
+    gk = gref.get("kind") if isinstance(gref, dict) else None
+    ok = oref.get("kind") if isinstance(oref, dict) else None
+    if gk != ok:
+        diffs.append(f"{path}.kind: expected {gk!r}, got {ok!r}")
+        return
+    if gk == "interval":
+        gf = (gref.get("low"), gref.get("high"))
+        of = (oref.get("low"), oref.get("high"))
+        for j, (g, o) in enumerate(zip(gf, of)):
             try:
-                ov = float(ob.get("standard_value"))
-                gv = float(gb.get("standard_value"))
-                if abs(ov - gv) > tol:
-                    diffs.append(
-                        f"biomarker {name!r}[{i}] standard_value: expected {gv!r}, got {ov!r}"
-                    )
+                if abs(float(o) - float(g)) > tol:
+                    diffs.append(f"{path}.{'low' if j == 0 else 'high'}: expected {g!r}, got {o!r}")
             except (TypeError, ValueError):
-                if ob.get("standard_value") != gb.get("standard_value"):
-                    diffs.append(
-                        f"biomarker {name!r}[{i}] standard_value: expected "
-                        f"{gb.get('standard_value')!r}, got {ob.get('standard_value')!r}"
-                    )
+                if o != g:
+                    diffs.append(f"{path}.{'low' if j == 0 else 'high'}: expected {g!r}, got {o!r}")
+    elif gk == "qualitative":
+        gexp = gref.get("expected") or ""
+        oexp = oref.get("expected") or ""
+        # expected is OCR/text-derived; compare via similarity, skip if golden
+        # has no expected text (qualitative-without-expected).
+        if _norm(gexp) and _sim(oexp, gexp) < thr:
+            diffs.append(
+                f"{path}.expected: similarity {_sim(oexp, gexp):.2f} < {thr} "
+                f"(expected {gexp!r}, got {oexp!r})"
+            )
 
 
 def _cmp_visit(gv, ov, diffs, thr):
@@ -160,7 +207,7 @@ def compare_standardized(observed, golden, text_threshold=DEFAULT_TEXT_THRESHOLD
             diffs.append(f"{f}: similarity {_sim(o, g):.2f} < {text_threshold} "
                          f"(expected {g!r}, got {o!r})")
 
-    _cmp_biomarkers(observed.get("biomarkers"), golden.get("biomarkers"), diffs)
+    _cmp_biomarkers(observed.get("biomarkers"), golden.get("biomarkers"), diffs, thr=text_threshold)
     _cmp_visit(golden.get("visit_data"), observed.get("visit_data"), diffs, text_threshold)
     _cmp_imaging(golden.get("imaging_data"), observed.get("imaging_data"), diffs, text_threshold)
 

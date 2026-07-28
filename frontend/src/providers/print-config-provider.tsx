@@ -12,8 +12,8 @@ interface PrintConfigState {
   textSize: number
   selectedDates: string[]
   selectedBiomarkers: string[]
-  showOutOfRangeOnly: boolean
-  showRanges: boolean
+  showAbnormalOnly: boolean
+  showReferences: boolean
 }
 
 interface PrintConfigContextValue extends PrintConfigState {
@@ -23,8 +23,8 @@ interface PrintConfigContextValue extends PrintConfigState {
   setTextSize: (size: number) => void
   setSelectedDates: (dates: string[]) => void
   setSelectedBiomarkers: (biomarkers: string[]) => void
-  setShowOutOfRangeOnly: (v: boolean) => void
-  setShowRanges: (v: boolean) => void
+  setShowAbnormalOnly: (v: boolean) => void
+  setShowReferences: (v: boolean) => void
   initFilters: (dates: string[], biomarkers: string[]) => void
 }
 
@@ -37,8 +37,8 @@ export function PrintConfigProvider({ children }: { children: ReactNode }) {
   const [textSize, setTextSize] = useState(10)
   const [selectedDates, setSelectedDates] = useState<string[]>([])
   const [selectedBiomarkers, setSelectedBiomarkers] = useState<string[]>([])
-  const [showOutOfRangeOnly, setShowOutOfRangeOnly] = useState(false)
-  const [showRanges, setShowRanges] = useState(true)
+  const [showAbnormalOnly, setShowAbnormalOnly] = useState(false)
+  const [showReferences, setShowReferences] = useState(true)
 
   const initFilters = useCallback((dates: string[], biomarkers: string[]) => {
     setSelectedDates(dates)
@@ -54,16 +54,16 @@ export function PrintConfigProvider({ children }: { children: ReactNode }) {
         textSize,
         selectedDates,
         selectedBiomarkers,
-        showOutOfRangeOnly,
-        showRanges,
+        showAbnormalOnly,
+        showReferences,
         setMode,
         setTargetLanguage,
         setLayout,
         setTextSize,
         setSelectedDates,
         setSelectedBiomarkers,
-        setShowOutOfRangeOnly,
-        setShowRanges,
+        setShowAbnormalOnly,
+        setShowReferences,
         initFilters,
       }}
     >

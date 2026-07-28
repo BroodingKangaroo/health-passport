@@ -20,33 +20,30 @@ TEST_USER_PASSWORD = "testpassword123"
 TEST_ANON_ID = "anon-testuser"
 
 
-def _status(value: float, rmin: float, rmax: float) -> str:
-    if value < rmin:
-        return "low"
-    if value > rmax:
-        return "high"
-    return "normal"
+def _status(value: float, reference: dict) -> str:
+    from app.services.reference import compute_status
+    return compute_status(value, reference)
 
 
 BIOMARKER_DEFINITIONS: dict[str, dict] = {
-    "wbc": {"id": "wbc", "loinc_code": "6690-2", "names": {"en": "WBC", "ru": "Лейкоциты", "es": "Leucocitos", "de": "Leukozyten", "fr": "Globules blancs", "he": "תאי דם לבנים"}, "synonyms": ["white blood cells", "leukocytes", "leucocytes"], "category": "Complete Blood Count", "range_min": 4.0, "range_max": 11.0, "unit": "K/µL", "scope": "global", "user_id": None},
-    "rbc": {"id": "rbc", "loinc_code": "789-8", "names": {"en": "RBC", "ru": "Эритроциты", "es": "Eritrocitos", "de": "Erythrozyten", "fr": "Globules rouges", "he": "תאי דם אדומים"}, "synonyms": ["red blood cells", "erythrocytes"], "category": "Complete Blood Count", "range_min": 4.2, "range_max": 5.8, "unit": "M/µL", "scope": "global", "user_id": None},
-    "hb": {"id": "hb", "loinc_code": "718-7", "names": {"en": "Hemoglobin", "ru": "Гемоглобин", "es": "Hemoglobina", "de": "Hämoglobin", "fr": "Hémoglobine", "he": "המוגלובין"}, "synonyms": ["haemoglobin", "hgb", "hgb"], "category": "Complete Blood Count", "range_min": 12.0, "range_max": 16.0, "unit": "g/dL", "scope": "global", "user_id": None},
-    "hct": {"id": "hct", "loinc_code": "4544-3", "names": {"en": "Hematocrit", "ru": "Гематокрит", "es": "Hematocrito", "de": "Hämatokrit", "fr": "Hématocrite", "he": "המטוקריט"}, "synonyms": ["haematocrit", "hct", "packed cell volume", "pcv"], "category": "Complete Blood Count", "range_min": 36.0, "range_max": 48.0, "unit": "%", "scope": "global", "user_id": None},
-    "plt": {"id": "plt", "loinc_code": "777-3", "names": {"en": "Platelets", "ru": "Тромбоциты", "es": "Plaquetas", "de": "Thrombozyten", "fr": "Plaquettes", "he": "טסיות"}, "synonyms": ["platelet count", "thrombocytes", "plt count"], "category": "Complete Blood Count", "range_min": 150, "range_max": 450, "unit": "K/µL", "scope": "global", "user_id": None},
-    "glu": {"id": "glu", "loinc_code": "2345-7", "names": {"en": "Glucose", "ru": "Глюкоза", "es": "Glucosa", "de": "Glukose", "fr": "Glucose", "he": "גלוקוז"}, "synonyms": ["blood sugar", "fasting glucose", "glu"], "category": "Comprehensive Metabolic Panel", "range_min": 65, "range_max": 100, "unit": "mg/dL", "scope": "global", "user_id": None},
-    "bun": {"id": "bun", "loinc_code": "3094-0", "names": {"en": "BUN", "ru": "Мочевина", "es": "BUN", "de": "Harnstoff", "fr": "Urée", "he": "אוריאה"}, "synonyms": ["blood urea nitrogen", "urea nitrogen", "urea"], "category": "Comprehensive Metabolic Panel", "range_min": 7, "range_max": 25, "unit": "mg/dL", "scope": "global", "user_id": None},
-    "cre": {"id": "cre", "loinc_code": "2160-0", "names": {"en": "Creatinine", "ru": "Креатинин", "es": "Creatinina", "de": "Kreatinin", "fr": "Créatinine", "he": "קריאטינין"}, "synonyms": ["creat", "serum creatinine"], "category": "Comprehensive Metabolic Panel", "range_min": 0.6, "range_max": 1.2, "unit": "mg/dL", "scope": "global", "user_id": None},
-    "ldl": {"id": "ldl", "loinc_code": "2089-1", "names": {"en": "LDL Cholesterol", "ru": "ЛПНП холестерин", "es": "Colesterol LDL", "de": "LDL-Cholesterin", "fr": "Cholestérol LDL", "he": "כולסטרול LDL"}, "synonyms": ["ldl-c", "low-density lipoprotein", "bad cholesterol"], "category": "Lipid Panel", "range_min": 0, "range_max": 130, "unit": "mg/dL", "scope": "global", "user_id": None},
-    "hdl": {"id": "hdl", "loinc_code": "2085-9", "names": {"en": "HDL Cholesterol", "ru": "ЛПВП холестерин", "es": "Colesterol HDL", "de": "HDL-Cholesterin", "fr": "Cholestérol HDL", "he": "כולסטרול HDL"}, "synonyms": ["hdl-c", "high-density lipoprotein", "good cholesterol"], "category": "Lipid Panel", "range_min": 40, "range_max": 999, "unit": "mg/dL", "scope": "global", "user_id": None},
-    "trig": {"id": "trig", "loinc_code": "2571-8", "names": {"en": "Triglycerides", "ru": "Триглицериды", "es": "Triglicéridos", "de": "Triglyceride", "fr": "Triglycérides", "he": "טריגליצרידים"}, "synonyms": ["trig", "tg", "triacylglycerol"], "category": "Lipid Panel", "range_min": 0, "range_max": 150, "unit": "mg/dL", "scope": "global", "user_id": None},
-    "iron": {"id": "iron", "loinc_code": "2498-4", "names": {"en": "Iron", "ru": "Железо", "es": "Hierro", "de": "Eisen", "fr": "Fer", "he": "ברזל"}, "synonyms": ["serum iron", "fe", "iron panel"], "category": "Iron Panel", "range_min": 60, "range_max": 170, "unit": "µg/dL", "scope": "global", "user_id": None},
-    "ferritin": {"id": "ferritin", "loinc_code": "2276-4", "names": {"en": "Ferritin", "ru": "Ферритин", "es": "Ferritina", "de": "Ferritin", "fr": "Ferritine", "he": "פריטין"}, "synonyms": ["serum ferritin", "ferritin level"], "category": "Iron Panel", "range_min": 30, "range_max": 400, "unit": "ng/mL", "scope": "global", "user_id": None},
-    "tibc": {"id": "tibc", "loinc_code": "35234-4", "names": {"en": "TIBC", "ru": "ОЖСС", "es": "TIBC", "de": "TIBC", "fr": "CTLF", "he": "TIBC"}, "synonyms": ["total iron binding capacity", "iron binding capacity"], "category": "Iron Panel", "range_min": 250, "range_max": 450, "unit": "µg/dL", "scope": "global", "user_id": None},
-    "tsh": {"id": "tsh", "loinc_code": "3016-3", "names": {"en": "TSH", "ru": "ТТГ", "es": "TSH", "de": "TSH", "fr": "TSH", "he": "TSH"}, "synonyms": ["thyroid stimulating hormone", "thyrotropin", "sTSH"], "category": "Thyroid Panel", "range_min": 0.4, "range_max": 4.0, "unit": "mIU/L", "scope": "global", "user_id": None},
-    "t4": {"id": "t4", "loinc_code": "30252-6", "names": {"en": "Free T4", "ru": "Т4 свободный", "es": "T4 libre", "de": "Freies T4", "fr": "T4 libre", "he": "T4 חופשי"}, "synonyms": ["free thyroxine", "fT4", "thyroxine free"], "category": "Thyroid Panel", "range_min": 0.8, "range_max": 1.8, "unit": "ng/dL", "scope": "global", "user_id": None},
-    "b12": {"id": "b12", "loinc_code": "2132-9", "names": {"en": "Vitamin B12", "ru": "Витамин B12", "es": "Vitamina B12", "de": "Vitamin B12", "fr": "Vitamine B12", "he": "ויטמין B12"}, "synonyms": ["cobalamin", "b12", "cyanocobalamin"], "category": "Vitamins", "range_min": 200, "range_max": 900, "unit": "pg/mL", "scope": "global", "user_id": None},
-    "d": {"id": "d", "loinc_code": "39492-1", "names": {"en": "Vitamin D", "ru": "Витамин D", "es": "Vitamina D", "de": "Vitamin D", "fr": "Vitamine D", "he": "ויטמין D"}, "synonyms": ["25-hydroxyvitamin D", "25(OH)D", "calcidiol", "vitamin D total"], "category": "Vitamins", "range_min": 30, "range_max": 100, "unit": "ng/mL", "scope": "global", "user_id": None},
+    "wbc": {"id": "wbc", "loinc_code": "6690-2", "names": {"en": "WBC", "ru": "Лейкоциты", "es": "Leucocitos", "de": "Leukozyten", "fr": "Globules blancs", "he": "תאי דם לבנים"}, "synonyms": ["white blood cells", "leukocytes", "leucocytes"], "category": "Complete Blood Count", "reference": {"kind": "interval", "low": 4.0, "high": 11.0}, "unit": "K/µL", "scope": "global", "user_id": None},
+    "rbc": {"id": "rbc", "loinc_code": "789-8", "names": {"en": "RBC", "ru": "Эритроциты", "es": "Eritrocitos", "de": "Erythrozyten", "fr": "Globules rouges", "he": "תאי דם אדומים"}, "synonyms": ["red blood cells", "erythrocytes"], "category": "Complete Blood Count", "reference": {"kind": "interval", "low": 4.2, "high": 5.8}, "unit": "M/µL", "scope": "global", "user_id": None},
+    "hb": {"id": "hb", "loinc_code": "718-7", "names": {"en": "Hemoglobin", "ru": "Гемоглобин", "es": "Hemoglobina", "de": "Hämoglobin", "fr": "Hémoglobine", "he": "המוגלובין"}, "synonyms": ["haemoglobin", "hgb", "hgb"], "category": "Complete Blood Count", "reference": {"kind": "interval", "low": 12.0, "high": 16.0}, "unit": "g/dL", "scope": "global", "user_id": None},
+    "hct": {"id": "hct", "loinc_code": "4544-3", "names": {"en": "Hematocrit", "ru": "Гематокрит", "es": "Hematocrito", "de": "Hämatokrit", "fr": "Hématocrite", "he": "המטוקריט"}, "synonyms": ["haematocrit", "hct", "packed cell volume", "pcv"], "category": "Complete Blood Count", "reference": {"kind": "interval", "low": 36.0, "high": 48.0}, "unit": "%", "scope": "global", "user_id": None},
+    "plt": {"id": "plt", "loinc_code": "777-3", "names": {"en": "Platelets", "ru": "Тромбоциты", "es": "Plaquetas", "de": "Thrombozyten", "fr": "Plaquettes", "he": "טסיות"}, "synonyms": ["platelet count", "thrombocytes", "plt count"], "category": "Complete Blood Count", "reference": {"kind": "interval", "low": 150, "high": 450}, "unit": "K/µL", "scope": "global", "user_id": None},
+    "glu": {"id": "glu", "loinc_code": "2345-7", "names": {"en": "Glucose", "ru": "Глюкоза", "es": "Glucosa", "de": "Glukose", "fr": "Glucose", "he": "גלוקוז"}, "synonyms": ["blood sugar", "fasting glucose", "glu"], "category": "Comprehensive Metabolic Panel", "reference": {"kind": "interval", "low": 65, "high": 100}, "unit": "mg/dL", "scope": "global", "user_id": None},
+    "bun": {"id": "bun", "loinc_code": "3094-0", "names": {"en": "BUN", "ru": "Мочевина", "es": "BUN", "de": "Harnstoff", "fr": "Urée", "he": "אוריאה"}, "synonyms": ["blood urea nitrogen", "urea nitrogen", "urea"], "category": "Comprehensive Metabolic Panel", "reference": {"kind": "interval", "low": 7, "high": 25}, "unit": "mg/dL", "scope": "global", "user_id": None},
+    "cre": {"id": "cre", "loinc_code": "2160-0", "names": {"en": "Creatinine", "ru": "Креатинин", "es": "Creatinina", "de": "Kreatinin", "fr": "Créatinine", "he": "קריאטינין"}, "synonyms": ["creat", "serum creatinine"], "category": "Comprehensive Metabolic Panel", "reference": {"kind": "interval", "low": 0.6, "high": 1.2}, "unit": "mg/dL", "scope": "global", "user_id": None},
+    "ldl": {"id": "ldl", "loinc_code": "2089-1", "names": {"en": "LDL Cholesterol", "ru": "ЛПНП холестерин", "es": "Colesterol LDL", "de": "LDL-Cholesterin", "fr": "Cholestérol LDL", "he": "כולסטרול LDL"}, "synonyms": ["ldl-c", "low-density lipoprotein", "bad cholesterol"], "category": "Lipid Panel", "reference": {"kind": "interval", "low": 0, "high": 130}, "unit": "mg/dL", "scope": "global", "user_id": None},
+    "hdl": {"id": "hdl", "loinc_code": "2085-9", "names": {"en": "HDL Cholesterol", "ru": "ЛПВП холестерин", "es": "Colesterol HDL", "de": "HDL-Cholesterin", "fr": "Cholestérol HDL", "he": "כולסטרול HDL"}, "synonyms": ["hdl-c", "high-density lipoprotein", "good cholesterol"], "category": "Lipid Panel", "reference": {"kind": "interval", "low": 40, "high": 999}, "unit": "mg/dL", "scope": "global", "user_id": None},
+    "trig": {"id": "trig", "loinc_code": "2571-8", "names": {"en": "Triglycerides", "ru": "Триглицериды", "es": "Triglicéridos", "de": "Triglyceride", "fr": "Triglycérides", "he": "טריגליצרידים"}, "synonyms": ["trig", "tg", "triacylglycerol"], "category": "Lipid Panel", "reference": {"kind": "interval", "low": 0, "high": 150}, "unit": "mg/dL", "scope": "global", "user_id": None},
+    "iron": {"id": "iron", "loinc_code": "2498-4", "names": {"en": "Iron", "ru": "Железо", "es": "Hierro", "de": "Eisen", "fr": "Fer", "he": "ברזל"}, "synonyms": ["serum iron", "fe", "iron panel"], "category": "Iron Panel", "reference": {"kind": "interval", "low": 60, "high": 170}, "unit": "µg/dL", "scope": "global", "user_id": None},
+    "ferritin": {"id": "ferritin", "loinc_code": "2276-4", "names": {"en": "Ferritin", "ru": "Ферритин", "es": "Ferritina", "de": "Ferritin", "fr": "Ferritine", "he": "פריטין"}, "synonyms": ["serum ferritin", "ferritin level"], "category": "Iron Panel", "reference": {"kind": "interval", "low": 30, "high": 400}, "unit": "ng/mL", "scope": "global", "user_id": None},
+    "tibc": {"id": "tibc", "loinc_code": "35234-4", "names": {"en": "TIBC", "ru": "ОЖСС", "es": "TIBC", "de": "TIBC", "fr": "CTLF", "he": "TIBC"}, "synonyms": ["total iron binding capacity", "iron binding capacity"], "category": "Iron Panel", "reference": {"kind": "interval", "low": 250, "high": 450}, "unit": "µg/dL", "scope": "global", "user_id": None},
+    "tsh": {"id": "tsh", "loinc_code": "3016-3", "names": {"en": "TSH", "ru": "ТТГ", "es": "TSH", "de": "TSH", "fr": "TSH", "he": "TSH"}, "synonyms": ["thyroid stimulating hormone", "thyrotropin", "sTSH"], "category": "Thyroid Panel", "reference": {"kind": "interval", "low": 0.4, "high": 4.0}, "unit": "mIU/L", "scope": "global", "user_id": None},
+    "t4": {"id": "t4", "loinc_code": "30252-6", "names": {"en": "Free T4", "ru": "Т4 свободный", "es": "T4 libre", "de": "Freies T4", "fr": "T4 libre", "he": "T4 חופשי"}, "synonyms": ["free thyroxine", "fT4", "thyroxine free"], "category": "Thyroid Panel", "reference": {"kind": "interval", "low": 0.8, "high": 1.8}, "unit": "ng/dL", "scope": "global", "user_id": None},
+    "b12": {"id": "b12", "loinc_code": "2132-9", "names": {"en": "Vitamin B12", "ru": "Витамин B12", "es": "Vitamina B12", "de": "Vitamin B12", "fr": "Vitamine B12", "he": "ויטמין B12"}, "synonyms": ["cobalamin", "b12", "cyanocobalamin"], "category": "Vitamins", "reference": {"kind": "interval", "low": 200, "high": 900}, "unit": "pg/mL", "scope": "global", "user_id": None},
+    "d": {"id": "d", "loinc_code": "39492-1", "names": {"en": "Vitamin D", "ru": "Витамин D", "es": "Vitamina D", "de": "Vitamin D", "fr": "Vitamine D", "he": "ויטמין D"}, "synonyms": ["25-hydroxyvitamin D", "25(OH)D", "calcidiol", "vitamin D total"], "category": "Vitamins", "reference": {"kind": "interval", "low": 30, "high": 100}, "unit": "ng/mL", "scope": "global", "user_id": None},
 }
 
 CATEGORY_GROUPING: dict[str, list[str]] = {
@@ -120,7 +117,7 @@ def _build_biomarkers_for_date(date_idx: int) -> dict[str, dict]:
         defn = BIOMARKER_DEFINITIONS[bid]
         result[bid] = {
             "value": v,
-            "status": _status(v, defn["range_min"], defn["range_max"]),
+            "status": _status(v, defn["reference"]),
         }
     return result
 
@@ -272,11 +269,11 @@ def seed_test_db(db) -> None:
                 names=defn["names"],
                 synonyms=defn.get("synonyms"),
                 category=defn["category"],
-                range_min=defn["range_min"],
-                range_max=defn["range_max"],
+                reference=defn["reference"],
                 unit=defn["unit"],
                 scope=defn.get("scope", "global"),
                 user_id=defn.get("user_id"),
+                reference_source="global",
             ))
     db.flush()
 
@@ -312,6 +309,7 @@ def seed_test_db(db) -> None:
                 entry_id=eid,
                 biomarker_id=bid,
                 value=bdata["value"],
+                reference=BIOMARKER_DEFINITIONS[bid]["reference"],
                 status=bdata["status"],
             ))
         for att in BLOOD_ATTACHMENTS.get(eid, []):

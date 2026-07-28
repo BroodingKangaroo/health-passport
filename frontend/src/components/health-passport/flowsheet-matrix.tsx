@@ -8,22 +8,14 @@ import { cn } from '@/lib/utils'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Sparkline } from '@/components/shared/Sparkline'
+import { formatReference, intervalBounds, qualitativeToNumber, isQualitative } from '@/lib/reference'
 import type { DateHeader, MatrixCategory, MatrixCell, BiomarkerResult, Status } from '@/lib/types'
-
-function parseRefRange(range: string): { refMin?: number; refMax?: number } {
-  const lt = range.match(/<\s*([\d.]+)/)
-  if (lt) return { refMax: Number.parseFloat(lt[1]) }
-  const gt = range.match(/>\s*([\d.]+)/)
-  if (gt) return { refMin: Number.parseFloat(gt[1]) }
-  const m = range.match(/([\d.]+)\s*[-–]\s*([\d.]+)/)
-  if (m) return { refMin: Number.parseFloat(m[1]), refMax: Number.parseFloat(m[2]) }
-  return {}
-}
 
 const statusText: Record<Status, string> = {
   normal: 'text-foreground',
   low: 'text-status-low',
   high: 'text-status-high',
+  abnormal: 'text-status-high',
 }
 
 function Cell({ cell }: { cell: MatrixCell }) {
@@ -103,7 +95,7 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
             )}
             style={{ gridTemplateColumns: gridTemplateCols }}
           >
-            <span>Biomarker / Range</span>
+            <span>Biomarker / Reference range</span>
             <span className="text-left">TREND</span>
             {dates.map((date, i) => (
               <span key={`${date.label}-${i}`} className="text-right leading-tight">
@@ -128,8 +120,16 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
               </div>
               {cat.rows.map((row) => {
                 const bioResults = biomarkers.filter((b) => b.definition.id === row.id)
-                const history = bioResults.map((b) => ({ value: b.value, status: b.status }))
+                const history = bioResults
+                  .map((b) => {
+                    if (typeof b.value === 'number' && Number.isFinite(b.value)) return { value: b.value as number, status: b.status }
+                    const qn = qualitativeToNumber(b.value)
+                    if (qn != null) return { value: qn, status: b.status }
+                    return null
+                  })
+                  .filter((h) => h != null) as { value: number; status: string }[]
                 const hasBio = bioResults.length > 0
+                const bounds = isQualitative(row.reference) ? { low: 0, high: 1 } : intervalBounds(row.reference)
                 return (
                   <div
                     key={row.id}
@@ -151,13 +151,14 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
                         {row.name}
                       </p>
                       <p className="truncate text-xs text-muted-foreground/70">
-                        {row.original} · {row.range}
+                        {row.original} · {formatReference(row.reference, row.unit)}
                       </p>
                     </div>
                     <Sparkline
                       id={row.id}
                       history={history}
-                      {...parseRefRange(row.range)}
+                      refMin={bounds?.low ?? undefined}
+                      refMax={bounds?.high ?? undefined}
                     />
                     {row.cells.map((cell, i) => (
                       <Cell key={i} cell={cell} />

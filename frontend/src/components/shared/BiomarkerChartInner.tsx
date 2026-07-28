@@ -13,6 +13,7 @@ import {
 
 import type { BiomarkerResult, Reading } from '@/lib/types'
 import { splitDateLabel } from '@/lib/utils'
+import { intervalBounds, isQualitative, qualitativeToNumber } from '@/lib/reference'
 
 interface BiomarkerChartProps {
   biomarker: BiomarkerResult
@@ -27,15 +28,35 @@ export default function BiomarkerChartInner({
   height = 250,
   compact = false,
 }: BiomarkerChartProps) {
-  const data = dataProp ?? biomarker.history ?? []
-  const values = data.map((d) => d.value)
-  const rm = biomarker.definition.range_max
-  const dataMax = rm != null ? Math.max(...values, rm) : (values.length > 0 ? Math.max(...values) : 0)
-  // Never cap the Y-axis below the largest data point — otherwise a genuinely
-  // high result (e.g. glucose 15 vs range 3.9–6.1) plots off-chart and appears
-  // missing while the green band implies "normal". Keep the band plus headroom,
-  // but always include the real data maximum.
-  const yMax = rm != null ? Math.max(dataMax, rm * 1.2) : dataMax * 1.2
+  const rawData = dataProp ?? [
+    ...(biomarker.history ?? []),
+    { date: biomarker.date, value: biomarker.value, status: biomarker.status },
+  ]
+  const effRef = biomarker.reference ?? biomarker.definition.reference
+  const qual = isQualitative(effRef)
+  const data = rawData
+    .map((d) => {
+      if (typeof d.value === 'number' && Number.isFinite(d.value)) return { ...d, value: d.value as number }
+      if (qual) {
+        const qn = qualitativeToNumber(d.value)
+        if (qn != null) return { ...d, value: qn }
+      }
+      return null
+    })
+    .filter((d) => d != null) as { date: string; value: number; status: string }[]
+  const numericValues = data.map((d) => d.value)
+  const bounds = qual ? { low: 0, high: 1 } : intervalBounds(biomarker.definition.reference)
+  const rm = bounds?.high ?? null
+  const dataMax = rm != null ? Math.max(...numericValues, rm) : (numericValues.length > 0 ? Math.max(...numericValues) : 0)
+  const yMax = rm != null ? Math.max(dataMax, rm * 1.2) : (numericValues.length > 0 ? dataMax * 1.2 : 1)
+
+  if (numericValues.length === 0) {
+    return (
+      <div className="flex w-full items-center justify-center text-xs text-muted-foreground" style={{ height }}>
+        {qual ? 'No qualitative readings to chart' : 'No numeric readings to chart'}
+      </div>
+    )
+  }
 
   return (
     <div className="w-full" style={{ height }}>
@@ -49,10 +70,10 @@ export default function BiomarkerChartInner({
             stroke="#d4d4d8"
             vertical={false}
           />
-          {biomarker.definition.range_min != null && biomarker.definition.range_max != null && (
+          {bounds?.low != null && bounds?.high != null && (
             <ReferenceArea
-              y1={biomarker.definition.range_min}
-              y2={biomarker.definition.range_max}
+              y1={bounds.low}
+              y2={bounds.high}
               fill="#22c55e"
               fillOpacity={0.06}
             />
@@ -115,13 +136,25 @@ export default function BiomarkerChartInner({
             dataKey="value"
             stroke="#3b82f6"
             strokeWidth={compact ? 2 : 2.5}
-            dot={{
-              r: compact ? 3 : 4,
-              fill: '#fff',
-              stroke: '#3b82f6',
-              strokeWidth: compact ? 1.5 : 2,
+            dot={(props: { cx?: number; cy?: number; payload: { status?: string } }) => {
+              if (props.cx == null || props.cy == null) return null
+              const abnormal = props.payload.status && props.payload.status !== 'normal'
+              const color = abnormal ? '#ef4444' : '#3b82f6'
+              const r = compact ? 3 : 4
+              return (
+                <circle key={`dot-${props.cx}-${props.cy}`} cx={props.cx} cy={props.cy} r={r}
+                  fill="#fff" stroke={color} strokeWidth={compact ? 1.5 : 2} />
+              )
             }}
-            activeDot={{ r: compact ? 5 : 6, fill: '#3b82f6' }}
+            activeDot={(props: { cx?: number; cy?: number; payload: { status?: string } }) => {
+              if (props.cx == null || props.cy == null) return null
+              const abnormal = props.payload.status && props.payload.status !== 'normal'
+              const color = abnormal ? '#ef4444' : '#3b82f6'
+              return (
+                <circle key={`active-${props.cx}-${props.cy}`} cx={props.cx} cy={props.cy}
+                  r={compact ? 5 : 6} fill={color} stroke="none" />
+              )
+            }}
           />
         </LineChart>
       </ResponsiveContainer>

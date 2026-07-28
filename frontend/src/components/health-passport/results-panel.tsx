@@ -11,6 +11,7 @@ import { cn, formatDate } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { StatusBadge } from '@/components/shared/StatusBadge'
+import { formatReference, unitLabel } from '@/lib/reference'
 import { ExpandedBiomarkerDetails } from './expanded-biomarker-details'
 import type { BiomarkerResult, Status } from '@/lib/types'
 
@@ -21,6 +22,7 @@ const statusText: Record<Status, string> = {
   normal: 'text-status-normal',
   low: 'text-status-low',
   high: 'text-status-high',
+  abnormal: 'text-status-high',
 }
 
 export function ResultsPanel({
@@ -81,7 +83,7 @@ export function ResultsPanel({
             <span>Original Name</span>
             <span>Latest</span>
             <span>Unit</span>
-            <span>Range</span>
+            <span>Reference range</span>
             <span>Status</span>
             <span aria-hidden />
           </div>
@@ -146,10 +148,10 @@ function FlowRow({
         <span className="truncate text-xs text-muted-foreground/70">
           {biomarker.original_name || biomarker.definition.names.ru}
         </span>
-        <span className="font-medium text-foreground">{biomarker.value}</span>
-        <span className="text-muted-foreground">{biomarker.definition.unit}</span>
+        <span className="font-medium text-foreground">{biomarker.value ?? '—'}</span>
+        <span className="text-muted-foreground">{unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}</span>
         <span className="text-muted-foreground">
-          {biomarker.range || (biomarker.definition.range_min != null ? `${biomarker.definition.range_min} – ${biomarker.definition.range_max}` : '—')}
+          {formatReference(biomarker.reference ?? biomarker.definition.reference)}
         </span>
         <span>
           <StatusBadge status={biomarker.status} />

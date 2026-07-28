@@ -1,3 +1,4 @@
+from .reference import Reference, ReferenceInterval, ReferenceQualitative
 from .ai import (
     RawMedicalRecord, RawBiomarker, RawVisitData, RawPrescription, RawImagingData,
     StandardizedMedicalRecord, StandardizedBiomarker, StandardizedVisitData,

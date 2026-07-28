@@ -57,8 +57,7 @@ class TestTimeline:
             assert "names" in defn
             assert "en" in defn["names"]
             assert "ru" in defn["names"]
-            assert "range_min" in defn
-            assert "range_max" in defn
+            assert "reference" in defn
             assert "unit" in defn
             assert "scope" in defn
             assert "loinc_code" in defn
@@ -264,5 +263,4 @@ class TestBiomarkerDefinitions:
             assert "scope" in d
             assert "category" in d
             assert "unit" in d
-            assert "range_min" in d or d.get("range_min") is None
-            assert "range_max" in d or d.get("range_max") is None
+            assert "reference" in d

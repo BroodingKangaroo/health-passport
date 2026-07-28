@@ -66,14 +66,14 @@ class TestExtractEndpoint:
                 StandardizedBiomarker(
                     raw_name="Гемоглобин", raw_value="142", raw_unit="г/л", raw_range_string="130-170",
                     standard_name_en="Hemoglobin", standard_value=142.0, standard_unit="g/L",
-                    standard_range_min=130.0, standard_range_max=170.0,
+                    reference={"kind": "interval", "low": 130.0, "high": 170.0},
                     status="normal", category="Complete Blood Count",
                     definition_id="hb", scope="global",
                 ),
                 StandardizedBiomarker(
                     raw_name="Лейкоциты", raw_value="6.5", raw_unit="K/µL", raw_range_string="4.0-11.0",
                     standard_name_en="WBC", standard_value=6.5, standard_unit="K/µL",
-                    standard_range_min=4.0, standard_range_max=11.0,
+                    reference={"kind": "interval", "low": 4.0, "high": 11.0},
                     status="normal", category="Complete Blood Count",
                     definition_id="wbc", scope="global",
                 ),
@@ -95,8 +95,9 @@ class TestExtractEndpoint:
         assert data["biomarkers"][0]["standard_name_en"] == "Hemoglobin"
         assert data["biomarkers"][0]["standard_value"] == 142.0
         assert data["biomarkers"][0]["raw_name"] == "Гемоглобин"
-        assert data["biomarkers"][0]["standard_range_min"] == 130.0
-        assert data["biomarkers"][0]["standard_range_max"] == 170.0
+        assert data["biomarkers"][0]["reference"]["kind"] == "interval"
+        assert data["biomarkers"][0]["reference"]["low"] == 130.0
+        assert data["biomarkers"][0]["reference"]["high"] == 170.0
         assert data["biomarkers"][0]["status"] == "normal"
         assert data["biomarkers"][1]["standard_name_en"] == "WBC"
         assert data["biomarkers"][1]["standard_value"] == 6.5

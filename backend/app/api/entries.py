@@ -4,7 +4,7 @@ import re
 import uuid
 import hashlib
 from datetime import datetime, timezone
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 
 _LOINC_RE = re.compile(r"^\d+-\d+(\.\d+)?$")
@@ -28,31 +28,15 @@ from app.db.models import (
     VisitData as VisitDataModel,
     Patient,
 )
-from app.mock_db import _status
-from app.api._format import to_display_datetime
+from app.api._format import to_display_datetime, effective_reference
 from app.api.auth import get_current_user_or_anon
+from app.services.reference import compute_status, merge_reference, parse_value, normalize_qual
 from app.services.usage_limits import check_and_record_storage_usage
 from config import ANON_STORAGE_BYTES, REGISTERED_STORAGE_BYTES
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
-
-def _compute_status_from_range(value: float, range_str: str) -> str:
-    rng = range_str.strip()
-    if not rng:
-        return "normal"
-    lt = re.match(r"<\s*([\d.]+)", rng)
-    if lt:
-        return "normal" if value <= float(lt.group(1)) else "high"
-    gt = re.match(r">\s*([\d.]+)", rng)
-    if gt:
-        return "normal" if value >= float(gt.group(1)) else "low"
-    m = re.match(r"([\d.]+)\s*[–-]?\s*([\d.]+)", rng)
-    if m:
-        lo, hi = float(m.group(1)), float(m.group(2))
-        return _status(value, lo, hi)
-    return "normal"
 
 
 router = APIRouter()
@@ -178,10 +162,19 @@ async def save_entry(
                 raw_value = row.get("value", "").strip()
                 if not name or not raw_value:
                     continue
-                try:
-                    float_value = float(raw_value)
-                except ValueError:
+                parsed = parse_value(raw_value)
+                if parsed is None:
                     continue
+                if isinstance(parsed, (int, float)) and not isinstance(parsed, bool):
+                    value_col: Optional[float] = parsed
+                    value_text: Optional[str] = None
+                    result_value: Union[float, str, None] = parsed
+                else:
+                    # Qualitative result — keep the text; previously these were
+                    # silently dropped because `value` was Float-only.
+                    value_col = None
+                    value_text = normalize_qual(parsed)
+                    result_value = value_text
 
                 # 1) Lookup by definition_id (from AI pipeline)
                 row_defn_id = row.get("definition_id")
@@ -252,8 +245,7 @@ async def save_entry(
                             names={"en": name},
                             synonyms=[name],
                             category=cat.get("name", "General"),
-                            range_min=None,
-                            range_max=None,
+                            reference=None,
                             unit=row.get("unit", ""),
                             scope="local",
                             user_id=user_id,
@@ -267,12 +259,18 @@ async def save_entry(
                                 BiomarkerDefinitionModel.id == defn_id
                             ).first()
 
-                derived_status = _compute_status_from_range(float_value, row.get("range", ""))
+                # Compose the effective reference: an explicit per-row reference
+                # wins (document-first), a qualitative value forces qualitative,
+                # otherwise fall back to the definition's reference.
+                eff_ref = merge_reference(row.get("reference"), defn.reference, result_value)
+                derived_status = compute_status(result_value, eff_ref)
 
                 db.add(BiomarkerReading(
                     entry_id=entry_id,
                     biomarker_id=defn.id,
-                    value=float_value,
+                    value=value_col,
+                    value_text=value_text,
+                    reference=eff_ref,
                     status=derived_status,
                     original_name=row.get("original_name"),
                     original_value=row.get("original_value"),

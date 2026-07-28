@@ -20,6 +20,8 @@ import {
   CommandItem,
 } from '@/components/ui/command'
 import { useBiomarkerDefinitions } from '@/lib/hooks/useBiomarkerDefinitions'
+import { formatReference } from '@/lib/reference'
+import type { Reference } from '@/lib/types'
 
 interface Props {
   value: string
@@ -28,21 +30,14 @@ interface Props {
   scope?: string
   onNameChange: (name: string) => void
   onUnitChange: (unit: string) => void
-  onRangeChange: (range: string) => void
+  onReferenceChange: (reference: Reference | null) => void
   onDefinitionIdChange: (id: string) => void
   onScopeChange: (scope: string) => void
 }
 
-function formatRangeHint(def: {
-  unit: string
-  range_min: number | null
-  range_max: number | null
-}): string {
-  if (def.range_min === null && def.range_max === null) return `(${def.unit})`
-  if (def.range_min !== null && def.range_max !== null)
-    return `(${def.unit}, range: ${def.range_min}–${def.range_max})`
-  if (def.range_min !== null) return `(${def.unit}, range: ≥ ${def.range_min})`
-  return `(${def.unit}, range: ≤ ${def.range_max})`
+function formatRangeHint(def: { unit: string; reference: Reference | null }): string {
+  const ref = formatReference(def.reference)
+  return ref === '—' ? `(${def.unit})` : `(${def.unit}, ref: ${ref})`
 }
 
 export function BiomarkerCombobox({
@@ -52,7 +47,7 @@ export function BiomarkerCombobox({
   scope,
   onNameChange,
   onUnitChange,
-  onRangeChange,
+  onReferenceChange,
   onDefinitionIdChange,
   onScopeChange,
 }: Props) {
@@ -92,36 +87,26 @@ export function BiomarkerCombobox({
   const handleSelect = useCallback(
     (def: (typeof definitions)[number]) => {
       onNameChange(def.names.en)
-      onUnitChange(def.unit)
-      // Emit a range string the backend's _compute_status_from_range can parse:
-      // a two-sided interval, or a one-sided "> min" / "< max" bound. Never emit
-      // a dangling "100–" / "–5", which the backend fails to parse and then
-      // silently reports as "Normal" regardless of the actual value.
-      const rangeStr =
-        def.range_min !== null && def.range_max !== null
-          ? `${def.range_min}–${def.range_max}`
-          : def.range_min !== null
-            ? `> ${def.range_min}`
-            : def.range_max !== null
-              ? `< ${def.range_max}`
-              : ''
-      onRangeChange(rangeStr)
+      onUnitChange(def.reference?.kind === 'qualitative' ? 'Qualitative' : def.unit)
+      // Emit the definition's structured reference straight through; the
+      // backend consumes the {kind, low/high | expected} object directly.
+      onReferenceChange(def.reference)
       onDefinitionIdChange(def.id)
       onScopeChange('global')
       setSearch(def.names.en)
       setOpen(false)
     },
-    [onNameChange, onUnitChange, onRangeChange, onDefinitionIdChange, onScopeChange],
+    [onNameChange, onUnitChange, onReferenceChange, onDefinitionIdChange, onScopeChange],
   )
 
   const handleAddNew = useCallback(() => {
     onNameChange(search.trim())
     onUnitChange('')
-    onRangeChange('')
+    onReferenceChange(null)
     onDefinitionIdChange('')
     onScopeChange('local')
     setOpen(false)
-  }, [search, onNameChange, onUnitChange, onRangeChange, onDefinitionIdChange, onScopeChange])
+  }, [search, onNameChange, onUnitChange, onReferenceChange, onDefinitionIdChange, onScopeChange])
 
   const showAddNew =
     search.trim().length > 0 &&

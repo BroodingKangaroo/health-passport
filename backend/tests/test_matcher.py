@@ -168,7 +168,7 @@ def test_multilingual_table_resolves_wbc_and_esr():
         assert by_name["СОЭ"].scope == "global"
         # Unit is "%" -> the fraction variant is selected (not plain "Eosinophils",
         # and certainly not "Erythrocytes").
-        assert by_name["Эозинофилы"].standard_name_en == "Eosinophils %"
+        assert by_name["Эозинофилы"].standard_name_en == "Eosinophils, %"
     finally:
         db.rollback()
         db.close()
@@ -197,8 +197,8 @@ def test_neutrophil_subtypes_stay_distinct():
         by_name = {b.raw_name: b for b in res.biomarkers}
         band = by_name["Палочкоядерные нейтрофилы"]
         seg = by_name["Сегментоядерные нейтрофилы"]
-        assert band.standard_name_en == "Band Neutrophils %"
-        assert seg.standard_name_en == "Segmented Neutrophils %"
+        assert band.standard_name_en == "Band Neutrophils, %"
+        assert seg.standard_name_en == "Segmented Neutrophils, %"
         assert band.definition_id != seg.definition_id
     finally:
         db.rollback()
@@ -243,8 +243,9 @@ def test_document_range_first_keeps_doc_units():
         b = res.biomarkers[0]
         assert b.standard_value == 5.5
         assert b.standard_unit == "mmol/L"  # normalized, not converted to mg/dL
-        assert b.standard_range_min == 3.9
-        assert b.standard_range_max == 6.1
+        assert b.reference.kind == "interval"
+        assert b.reference.low == 3.9
+        assert b.reference.high == 6.1
         assert b.status == "normal"
         # A recognized analyte stays global even when we display the lab's range.
         assert b.scope == "global"
@@ -271,7 +272,7 @@ def test_normoblasts_distinct_from_erythrocytes():
         assert by_name["Эритроциты"].standard_name_en == "Erythrocytes"
         nb = by_name["Нормобласты"]
         # Unit is "%" -> fraction variant; still distinct from plain Erythrocytes.
-        assert nb.standard_name_en == "Nucleated Erythrocytes %"
+        assert nb.standard_name_en == "Nucleated Erythrocytes, %"
         assert nb.definition_id != by_name["Эритроциты"].definition_id
     finally:
         db.rollback()
@@ -309,10 +310,10 @@ def test_percent_unit_routes_to_fraction_variant():
         defs = _global_defs(db)
         cases = [
             # (raw_name, unit, expected_name, expected_loinc)
-            ("Эозинофилы, %", "%", "Eosinophils %", "713-8"),
+            ("Эозинофилы, %", "%", "Eosinophils, %", "713-8"),
             ("Эозинофилы, абс.", "10*9/л", "Eosinophils", "711-2"),
             ("Эозинофилы", "10*9/л", "Eosinophils", "711-2"),
-            ("Нейтрофилы, %", "%", "Neutrophils %", "770-8"),
+            ("Нейтрофилы, %", "%", "Neutrophils, %", "770-8"),
             ("Нейтрофилы", "10*9/л", "Neutrophils", "751-8"),
         ]
         for raw_name, unit, exp_name, exp_loinc in cases:

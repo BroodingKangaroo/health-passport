@@ -32,11 +32,10 @@ async def list_definitions(
             synonyms=d.synonyms or [],
             category=d.category,
             unit=d.unit,
-            range_min=d.range_min,
-            range_max=d.range_max,
+            reference=d.reference,
             scope=d.scope,
             user_id=d.user_id,
-            range_source=d.range_source,
+            reference_source=d.reference_source,
         )
         for d in defs
     ]

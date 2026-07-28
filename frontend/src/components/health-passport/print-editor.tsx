@@ -11,6 +11,7 @@ import {
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
+import { formatReference } from '@/lib/reference'
 import type { PrintLang, DateHeader, MatrixCategory, BiomarkerResult, BiomarkerDefinition } from '@/lib/types'
 
 const LANG_NAME: Record<PrintLang, string> = {
@@ -94,14 +95,14 @@ export function PrintEditor({
     textSize,
     selectedDates,
     selectedBiomarkers,
-    showOutOfRangeOnly,
+    showAbnormalOnly,
     setLayout,
     setTextSize,
     setSelectedDates,
     setSelectedBiomarkers,
-    setShowOutOfRangeOnly,
-    showRanges,
-    setShowRanges,
+    setShowAbnormalOnly,
+    showReferences,
+    setShowReferences,
   } = usePrintConfig()
 
   const [openCats, setOpenCats] = useState<string[]>(matrix.map((c) => c.category))
@@ -141,7 +142,7 @@ export function PrintEditor({
             return cell && cell.value && cell.value !== '\u2014'
           })
           if (!hasData) return false
-          if (showOutOfRangeOnly) {
+          if (showAbnormalOnly) {
             const cells = visibleDateIndices.map((i) => row.cells[i]).filter(Boolean)
             return cells.some((c) => c.status !== 'normal')
           }
@@ -150,7 +151,7 @@ export function PrintEditor({
         return { ...cat, rows: filtered }
       })
       .filter((cat) => cat.rows.length > 0)
-  }, [matrix, order, selectedBiomarkers, showOutOfRangeOnly, visibleDateIndices])
+  }, [matrix, order, selectedBiomarkers, showAbnormalOnly, visibleDateIndices])
 
   function toggleDate(label: string) {
     setSelectedDates(
@@ -347,10 +348,10 @@ export function PrintEditor({
               <SectionTitle>Rows (Biomarkers)</SectionTitle>
 
               <button
-                onClick={() => setShowOutOfRangeOnly(!showOutOfRangeOnly)}
+                onClick={() => setShowAbnormalOnly(!showAbnormalOnly)}
                 className={cn(
                   'mb-3 flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors',
-                  showOutOfRangeOnly
+                  showAbnormalOnly
                     ? 'border-primary bg-primary/5'
                     : 'border-border hover:bg-accent',
                 )}
@@ -359,7 +360,7 @@ export function PrintEditor({
                   <Filter className="size-4 text-muted-foreground" />
                   <span>
                     <span className="block text-sm font-medium text-foreground">
-                      Show Out-of-Range Only
+                      Show Abnormal Only
                     </span>
                     <span className="block text-[11px] text-muted-foreground">
                       Hides all normal results
@@ -369,23 +370,23 @@ export function PrintEditor({
                 <span
                   className={cn(
                     'relative h-5 w-9 shrink-0 rounded-full transition-colors',
-                    showOutOfRangeOnly ? 'bg-primary' : 'bg-muted-foreground/30',
+                    showAbnormalOnly ? 'bg-primary' : 'bg-muted-foreground/30',
                   )}
                 >
                   <span
                     className={cn(
                       'absolute top-0.5 size-4 rounded-full bg-background transition-all',
-                      showOutOfRangeOnly ? 'left-4' : 'left-0.5',
+                      showAbnormalOnly ? 'left-4' : 'left-0.5',
                     )}
                   />
                 </span>
               </button>
 
               <button
-                onClick={() => setShowRanges(!showRanges)}
+                onClick={() => setShowReferences(!showReferences)}
                 className={cn(
                   'mb-3 flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors',
-                  showRanges
+                  showReferences
                     ? 'border-primary bg-primary/5'
                     : 'border-border hover:bg-accent',
                 )}
@@ -397,20 +398,20 @@ export function PrintEditor({
                       Show Reference Ranges
                     </span>
                     <span className="block text-[11px] text-muted-foreground">
-                      Display normal range below each biomarker
+                      Display reference range below each biomarker
                     </span>
                   </span>
                 </span>
                 <span
                   className={cn(
                     'relative h-5 w-9 shrink-0 rounded-full transition-colors',
-                    showRanges ? 'bg-primary' : 'bg-muted-foreground/30',
+                    showReferences ? 'bg-primary' : 'bg-muted-foreground/30',
                   )}
                 >
                   <span
                     className={cn(
                       'absolute top-0.5 size-4 rounded-full bg-background transition-all',
-                      showRanges ? 'left-4' : 'left-0.5',
+                      showReferences ? 'left-4' : 'left-0.5',
                     )}
                   />
                 </span>
@@ -575,9 +576,9 @@ export function PrintEditor({
                         <tr key={row.id}>
                           <td className="border border-gray-300 px-2 py-0.5">
                             <span className="font-medium">{rowLabel(row)}</span>
-                            {showRanges && row.range && (
+                            {showReferences && row.reference && (
                               <span className="block text-[0.75em] text-gray-400 leading-tight">
-                                {row.range}
+                                {formatReference(row.reference, row.unit)}
                               </span>
                             )}
                           </td>

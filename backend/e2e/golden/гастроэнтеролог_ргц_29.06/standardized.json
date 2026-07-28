@@ -24,7 +24,7 @@
     "recommendations": [
       {
         "original": "Рациональное питание, исключение продуктов по непереносимости",
-        "translated_en": "Rational nutrition, exclusion of foods based on intolerance"
+        "translated_en": "Balanced nutrition, exclusion of foods based on intolerance"
       },
       {
         "original": "Лабораторная и инструментальная диагностика: Общий анализ крови; Биохимический анализ крови: общий белок, альбумин, протеинограмма, общий билирубин, фракции билирубина, АСТ, АЛТ, ГГТП, щелочная фосфатаза, мочевина, креатинин, СРБ, глюкоза, амилаза, сывороточное железо, ферритин",
@@ -32,15 +32,15 @@
       },
       {
         "original": "Экспертный пересмотр гистологических препаратов в консультативном центре «Профессор» (кафедра патологической анатомии БГМУ): 3-я городская детская клиническая больница, ул. Кижеватова, 60, к. 1, лаборант Ивинская Наталья Валерьевна, тел. 641 97 26 (А1) patanat@bsmu.by. С собой иметь направление, гистологические блоки и стекла, протокол исследования, биопсийную карту",
-        "translated_en": "Expert review of histological specimens at the Consultative Center «Professor» (Department of Pathological Anatomy, Belarusian State Medical University): 3rd City Children's Clinical Hospital, 60 Kizhevatova St., Room 1, laboratory technician Ivinskaya Natalya Valerievna, tel. 641 97 26 (A1) patanat@bsmu.by. Bring the referral, histological blocks and slides, study protocol, and biopsy card"
+        "translated_en": "Expert review of histological specimens at the Consultative Center «Professor» (Department of Pathological Anatomy, Belarusian State Medical University): 3rd City Children's Clinical Hospital, 60 Kizhevatova St., Bldg. 1, laboratory technician Ivinskaya Natalya Valerievna, tel. 641 97 26 (A1) patanat@bsmu.by. Bring referral, histological blocks and slides, study protocol, and biopsy card"
       },
       {
         "original": "Повторный осмотр с результатами дообследований на базе РЦГ",
-        "translated_en": "Follow-up examination with the results of additional investigations at the Republican Clinical Hospital"
+        "translated_en": "Follow-up examination with results of additional investigations at the Republican Clinical Hospital"
       }
     ]
   },
-    "imaging_data": {
+  "imaging_data": {
     "modality": "",
     "findings": "",
     "conclusion": ""

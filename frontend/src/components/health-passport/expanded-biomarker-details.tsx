@@ -5,12 +5,14 @@ import { ArrowRight } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { BiomarkerChart } from '@/components/shared/BiomarkerChart'
+import { formatReference, unitLabel, isQualitative } from '@/lib/reference'
 import type { BiomarkerResult, Status } from '@/lib/types'
 
 const statusText: Record<Status, string> = {
   normal: 'text-status-normal',
   low: 'text-status-low',
   high: 'text-status-high',
+  abnormal: 'text-status-high',
 }
 
 function MetricCard({
@@ -53,13 +55,17 @@ export function ExpandedBiomarkerDetails({
     ...history,
     { date: biomarker.date, value: biomarker.value, status: biomarker.status },
   ]
-  const allValues = chartData.map((d) => d.value)
-  const peak = Math.max(...allValues)
-  const trough = Math.min(...allValues)
-  const peakReading = chartData.find((d) => d.value === peak)
-  const peakStatus = peakReading?.status ?? 'normal'
-  const troughReading = chartData.find((d) => d.value === trough)
-  const troughStatus = troughReading?.status ?? 'normal'
+  const effRef = biomarker.reference ?? biomarker.definition.reference
+  const unitDisplay = unitLabel(biomarker.definition.unit, effRef)
+  const numericValues = chartData
+    .map((d) => d.value)
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
+  const peak = numericValues.length ? Math.max(...numericValues) : null
+  const trough = numericValues.length ? Math.min(...numericValues) : null
+  const peakReading = peak != null ? chartData.find((d) => d.value === peak) : undefined
+  const peakStatus: Status = (peakReading?.status as Status) ?? 'normal'
+  const troughReading = trough != null ? chartData.find((d) => d.value === trough) : undefined
+  const troughStatus: Status = (troughReading?.status as Status) ?? 'normal'
 
   return (
     <div className="flex flex-col gap-5 rounded-lg bg-muted/60 p-5">
@@ -68,7 +74,7 @@ export function ExpandedBiomarkerDetails({
           {biomarker.definition.names.en} Dynamics
         </h3>
         <p className="mb-2 text-xs text-muted-foreground">
-          Reference: {biomarker.range || (biomarker.definition.range_min != null ? `${biomarker.definition.range_min} – ${biomarker.definition.range_max}` : '—')} {biomarker.definition.unit}
+          Reference: {formatReference(biomarker.reference ?? biomarker.definition.reference)}
         </p>
         <BiomarkerChart biomarker={biomarker} data={chartData} height={250} />
       </div>
@@ -76,20 +82,20 @@ export function ExpandedBiomarkerDetails({
       <div className="flex gap-3">
         <MetricCard
           label="LATEST"
-          value={`${biomarker.value}`}
-          unit={biomarker.definition.unit}
+          value={biomarker.value == null ? '—' : `${biomarker.value}`}
+          unit={unitDisplay}
           highlight={statusText[biomarker.status]}
         />
         <MetricCard
           label="PEAK"
-          value={`${peak}`}
-          unit={biomarker.definition.unit}
+          value={peak == null ? '—' : `${peak}`}
+          unit={unitDisplay}
           highlight={statusText[peakStatus]}
         />
         <MetricCard
           label="TROUGH"
-          value={`${trough}`}
-          unit={biomarker.definition.unit}
+          value={trough == null ? '—' : `${trough}`}
+          unit={unitDisplay}
           highlight={statusText[troughStatus]}
         />
       </div>
@@ -107,7 +113,7 @@ export function ExpandedBiomarkerDetails({
               >
                 <span className="text-muted-foreground">{formatDate(reading.date)}</span>
                 <span className="font-semibold text-foreground">
-                  {reading.value} {biomarker.definition.unit}
+                  {reading.value} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}
                 </span>
                 <span
                   className={cn(

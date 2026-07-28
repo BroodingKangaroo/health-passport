@@ -10,9 +10,10 @@ interface SparklineProps {
 }
 
 export function Sparkline({ id, history, refMin, refMax }: SparklineProps) {
-  if (history.length === 0) return null
+  const numeric = history.filter((d) => typeof d.value === 'number' && Number.isFinite(d.value))
+  if (numeric.length === 0) return null
 
-  const values = history.map((d) => d.value)
+  const values = numeric.map((d) => d.value as number)
   const dataMax = Math.max(...values)
   const dataMin = Math.min(...values)
   const range = dataMax - dataMin || 1
@@ -33,7 +34,7 @@ export function Sparkline({ id, history, refMin, refMax }: SparklineProps) {
   return (
     <div className="h-[30px] w-full max-w-[100px]">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={history} margin={{ top: 4, bottom: 4, left: 4, right: 4 }}>
+        <LineChart data={numeric} margin={{ top: 4, bottom: 4, left: 4, right: 4 }}>
           {hasRef && <YAxis domain={['dataMin', 'dataMax']} hide />}
           {hasRef && !isCompletelyNormal && (
             <defs>
@@ -72,17 +73,16 @@ export function Sparkline({ id, history, refMin, refMax }: SparklineProps) {
               hasRef
                 ? (props: { cx?: number; cy?: number; payload: { value: number; status?: string } }) => {
                     if (props.cx == null || props.cy == null) return null
-                    const isAbnormal = props.payload.status === 'high' || props.payload.status === 'low'
-                    const color = isAbnormal ? '#ef4444' : '#3b82f6'
+                    const abnormal = props.payload.status === 'high' || props.payload.status === 'low' || props.payload.status === 'abnormal'
                     return (
                       <circle
                         key={`dot-${props.cx}-${props.cy}`}
                         cx={props.cx}
                         cy={props.cy}
-                        r={3}
-                        fill="#fff"
-                        stroke={color}
-                        strokeWidth={2}
+                        r={abnormal ? 3.5 : 2.5}
+                        fill={abnormal ? '#ef4444' : '#3b82f6'}
+                        stroke={abnormal ? '#ef4444' : '#3b82f6'}
+                        strokeWidth={1.5}
                       />
                     )
                   }
@@ -92,15 +92,14 @@ export function Sparkline({ id, history, refMin, refMax }: SparklineProps) {
               hasRef
                 ? (props: { cx?: number; cy?: number; payload: { value: number; status?: string } }) => {
                     if (props.cx == null || props.cy == null) return null
-                    const isAbnormal = props.payload.status === 'high' || props.payload.status === 'low'
-                    const color = isAbnormal ? '#ef4444' : '#3b82f6'
+                    const abnormal = props.payload.status === 'high' || props.payload.status === 'low' || props.payload.status === 'abnormal'
                     return (
                       <circle
                         key={`active-${props.cx}-${props.cy}`}
                         cx={props.cx}
                         cy={props.cy}
                         r={4}
-                        fill={color}
+                        fill={abnormal ? '#ef4444' : '#3b82f6'}
                         stroke="none"
                       />
                     )

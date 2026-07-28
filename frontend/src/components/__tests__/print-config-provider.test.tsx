@@ -14,14 +14,14 @@ function TestConsumer() {
       <div data-testid="textSize">{ctx.textSize}</div>
       <div data-testid="selectedDates">{ctx.selectedDates.join(',')}</div>
       <div data-testid="selectedBiomarkers">{ctx.selectedBiomarkers.join(',')}</div>
-      <div data-testid="showOutOfRangeOnly">{String(ctx.showOutOfRangeOnly)}</div>
-      <div data-testid="showRanges">{String(ctx.showRanges)}</div>
+      <div data-testid="showAbnormalOnly">{String(ctx.showAbnormalOnly)}</div>
+      <div data-testid="showReferences">{String(ctx.showReferences)}</div>
       <button data-testid="setTranslate" onClick={() => ctx.setMode('translate')} />
       <button data-testid="setTarget" onClick={() => ctx.setTargetLanguage('de')} />
       <button data-testid="setLandscape" onClick={() => ctx.setLayout('landscape')} />
       <button data-testid="setTextSize14" onClick={() => ctx.setTextSize(14)} />
-      <button data-testid="toggleOutOfRange" onClick={() => ctx.setShowOutOfRangeOnly(!ctx.showOutOfRangeOnly)} />
-      <button data-testid="toggleRanges" onClick={() => ctx.setShowRanges(!ctx.showRanges)} />
+      <button data-testid="toggleAbnormal" onClick={() => ctx.setShowAbnormalOnly(!ctx.showAbnormalOnly)} />
+      <button data-testid="toggleReferences" onClick={() => ctx.setShowReferences(!ctx.showReferences)} />
       <button data-testid="initFilters" onClick={() => ctx.initFilters(['a', 'b'], ['x', 'y'])} />
     </div>
   )
@@ -44,8 +44,8 @@ describe('PrintConfigProvider', () => {
     expect(screen.getByTestId('textSize').textContent).toBe('10')
     expect(screen.getByTestId('selectedDates').textContent).toBe('')
     expect(screen.getByTestId('selectedBiomarkers').textContent).toBe('')
-    expect(screen.getByTestId('showOutOfRangeOnly').textContent).toBe('false')
-    expect(screen.getByTestId('showRanges').textContent).toBe('true')
+    expect(screen.getByTestId('showAbnormalOnly').textContent).toBe('false')
+    expect(screen.getByTestId('showReferences').textContent).toBe('true')
   })
 
   it('updates mode via setMode', () => {
@@ -72,17 +72,17 @@ describe('PrintConfigProvider', () => {
     expect(screen.getByTestId('textSize').textContent).toBe('14')
   })
 
-  it('toggles showOutOfRangeOnly', () => {
+  it('toggles showAbnormalOnly', () => {
     renderWithProvider()
-    fireEvent.click(screen.getByTestId('toggleOutOfRange'))
-    expect(screen.getByTestId('showOutOfRangeOnly').textContent).toBe('true')
+    fireEvent.click(screen.getByTestId('toggleAbnormal'))
+    expect(screen.getByTestId('showAbnormalOnly').textContent).toBe('true')
   })
 
-  it('toggles showRanges', () => {
+  it('toggles showReferences', () => {
     renderWithProvider()
-    expect(screen.getByTestId('showRanges').textContent).toBe('true')
-    fireEvent.click(screen.getByTestId('toggleRanges'))
-    expect(screen.getByTestId('showRanges').textContent).toBe('false')
+    expect(screen.getByTestId('showReferences').textContent).toBe('true')
+    fireEvent.click(screen.getByTestId('toggleReferences'))
+    expect(screen.getByTestId('showReferences').textContent).toBe('false')
   })
 
   it('initFilters populates selectedDates and selectedBiomarkers', () => {

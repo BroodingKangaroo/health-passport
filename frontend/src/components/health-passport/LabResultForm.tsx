@@ -6,28 +6,10 @@ import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { BiomarkerCombobox } from './biomarker-combobox'
-import { RangeInput } from './range-input'
+import { ReferenceInput } from './reference-input'
 import { UnitCombobox } from './unit-combobox'
-import type { FormCategory, FormBiomarkerRow } from '@/lib/types'
-
-function parseRange(range: string): { lo?: number; hi?: number } {
-  const lt = range.match(/<\s*([\d.]+)/)
-  if (lt) return { hi: Number.parseFloat(lt[1]) }
-  const gt = range.match(/>\s*([\d.]+)/)
-  if (gt) return { lo: Number.parseFloat(gt[1]) }
-  const m = range.match(/(-?\d+(?:\.\d+)?)\s*[-–]\s*(-?\d+(?:\.\d+)?)/)
-  if (m) return { lo: Number.parseFloat(m[1]), hi: Number.parseFloat(m[2]) }
-  return {}
-}
-
-function isOutOfRange(value: string, range: string) {
-  const v = Number.parseFloat(value)
-  if (Number.isNaN(v)) return false
-  const { lo, hi } = parseRange(range)
-  if (lo !== undefined && v < lo) return true
-  if (hi !== undefined && v > hi) return true
-  return false
-}
+import { isOutsideReference, QUALITATIVE_VALUES } from '@/lib/reference'
+import type { FormCategory, FormBiomarkerRow, Reference } from '@/lib/types'
 
 export function LabResultForm({
   categories,
@@ -40,7 +22,7 @@ export function LabResultForm({
   categories: FormCategory[]
   addCategory: () => void
   updateCategoryName: (catId: string, name: string) => void
-  updateRow: (catId: string, rowId: string, key: keyof FormBiomarkerRow, val: string) => void
+  updateRow: (catId: string, rowId: string, key: keyof FormBiomarkerRow, val: string | Reference | null) => void
   removeRow: (catId: string, rowId: string) => void
   addRow: (catId: string) => void
 }) {
@@ -75,12 +57,13 @@ export function LabResultForm({
                 <span>Biomarker</span>
                 <span>Value</span>
                 <span>Unit</span>
-                <span>Range</span>
+                <span>Reference range</span>
                 <span aria-hidden />
               </div>
 
               {cat.rows.map((row) => {
-                const out = isOutOfRange(row.value, row.range)
+                const qualitative = row.unit === 'Qualitative' || row.reference?.kind === 'qualitative'
+                const out = isOutsideReference(row.value, row.reference)
                 return (
                   <div
                     key={row.id}
@@ -93,36 +76,88 @@ export function LabResultForm({
                       scope={row.scope}
                       onNameChange={(name) => updateRow(cat.id, row.id, 'name', name)}
                       onUnitChange={(unit) => updateRow(cat.id, row.id, 'unit', unit)}
-                      onRangeChange={(range) => updateRow(cat.id, row.id, 'range', range)}
+                      onReferenceChange={(reference) => updateRow(cat.id, row.id, 'reference', reference)}
                       onDefinitionIdChange={(id) => updateRow(cat.id, row.id, 'definition_id', id)}
                       onScopeChange={(s) => updateRow(cat.id, row.id, 'scope', s)}
                     />
                     <div className="relative">
-                      <Input
-                        value={row.value}
-                        placeholder="—"
-                        className={cn(out && 'pr-6')}
-                        onChange={(e) =>
-                          updateRow(cat.id, row.id, 'value', e.target.value)
-                        }
-                      />
-                      {out && (
-                        <span
-                          aria-label="Out of range"
-                          title="Out of range"
-                          className="absolute right-2 top-1/2 size-2 -translate-y-1/2 rounded-full bg-status-high"
-                        />
+                      {qualitative ? (
+                        <>
+                          <select
+                            value={row.value}
+                            onChange={(e) => updateRow(cat.id, row.id, 'value', e.target.value)}
+                            className={cn(
+                              'h-8 w-full rounded-lg border border-input bg-background px-2 text-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30',
+                              out && 'pr-6',
+                            )}
+                          >
+                            <option value="">—</option>
+                            {QUALITATIVE_VALUES.map((v) => (
+                              <option key={v} value={v}>{v}</option>
+                            ))}
+                          </select>
+                          {out && (
+                            <span
+                              aria-label="Outside reference range"
+                              title="Outside reference range"
+                              className="absolute right-2 top-1/2 size-2 -translate-y-1/2 rounded-full bg-status-high"
+                            />
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <Input
+                            value={row.value}
+                            placeholder="—"
+                            className={cn(out && 'pr-6')}
+                            onChange={(e) =>
+                              updateRow(cat.id, row.id, 'value', e.target.value)
+                            }
+                          />
+                          {out && (
+                            <span
+                              aria-label="Outside reference range"
+                              title="Outside reference range"
+                              className="absolute right-2 top-1/2 size-2 -translate-y-1/2 rounded-full bg-status-high"
+                            />
+                          )}
+                        </>
                       )}
                     </div>
                     <UnitCombobox
                       value={row.unit}
                       placeholder="—"
-                      onChange={(unit) => updateRow(cat.id, row.id, 'unit', unit)}
+                      onChange={(unit) => {
+                        updateRow(cat.id, row.id, 'unit', unit)
+                        if (unit === 'Qualitative') {
+                          updateRow(cat.id, row.id, 'reference', { kind: 'qualitative', expected: null })
+                          updateRow(cat.id, row.id, 'value', '')
+                        } else if (row.reference?.kind === 'qualitative') {
+                          updateRow(cat.id, row.id, 'reference', null)
+                          updateRow(cat.id, row.id, 'value', '')
+                        }
+                      }}
                     />
-                    <RangeInput
-                      value={row.range}
-                      onChange={(v) => updateRow(cat.id, row.id, 'range', v)}
-                    />
+                    {qualitative ? (
+                      <select
+                        value={(row.reference as { expected?: string | null } | null)?.expected ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          updateRow(cat.id, row.id, 'reference', v ? { kind: 'qualitative', expected: v } : null)
+                        }}
+                        className="h-8 w-full rounded-lg border border-input bg-background px-2 text-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+                      >
+                        <option value="">—</option>
+                        {QUALITATIVE_VALUES.map((v) => (
+                          <option key={v} value={v}>{v}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <ReferenceInput
+                        value={row.reference}
+                        onChange={(ref) => updateRow(cat.id, row.id, 'reference', ref)}
+                      />
+                    )}
                     <button
                       aria-label={`Remove ${row.name || 'biomarker'}`}
                       onClick={() => removeRow(cat.id, row.id)}

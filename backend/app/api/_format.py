@@ -1,26 +1,28 @@
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional, Union
+
+from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
+from app.db.models import BiomarkerReading
 
 
 def _current_year() -> int:
     return datetime.now(timezone.utc).year
 
 
-def format_biomarker_range(
-    range_min: Optional[float], range_max: Optional[float], unit: str = ""
-) -> str:
-    """Format a reference range without leaking ``None`` into the output.
+def reading_value(reading: BiomarkerReading) -> Union[float, str, None]:
+    """Merge a reading's numeric and text columns into the single union value
+    exposed on the wire. Numeric wins; qualitative results fall back to text."""
+    if reading.value is not None:
+        return reading.value
+    return reading.value_text
 
-    One-sided ranges render as a lower/upper bound (``>= min`` / ``<= max``)
-    instead of the previous ``"100-None"`` / ``"None-5"`` junk string.
-    """
-    if range_min is not None and range_max is not None:
-        return f"{range_min}–{range_max}"
-    if range_min is not None:
-        return f">= {range_min}"
-    if range_max is not None:
-        return f"<= {range_max}"
-    return ""
+
+def effective_reference(reading: Optional[BiomarkerReading], defn: BiomarkerDefinitionModel) -> Any:
+    """The reference used to interpret a reading: the reading's own snapshot
+    (document's own if the lab printed one) else the definition's reference."""
+    if reading is not None and reading.reference is not None:
+        return reading.reference
+    return defn.reference
 
 
 def to_display_datetime(dt: datetime) -> str:

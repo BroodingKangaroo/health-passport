@@ -20,6 +20,9 @@ import {
 } from '@/components/ui/command'
 import { useBiomarkerDefinitions } from '@/lib/hooks/useBiomarkerDefinitions'
 
+const QUALITATIVE_UNIT = 'Qualitative'
+const ALWAYS_SHOWN = [QUALITATIVE_UNIT]
+
 interface UnitComboboxProps {
   value: string
   onChange: (unit: string) => void
@@ -35,7 +38,7 @@ export function UnitCombobox({
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState(value)
 
-  const units = [...new Set(definitions.map((d) => d.unit).filter(Boolean))]
+  const units = [...new Set([...ALWAYS_SHOWN, ...definitions.map((d) => d.unit).filter(Boolean)])]
 
   const filtered = units.filter((u) =>
     u.toLowerCase().includes(search.toLowerCase()),

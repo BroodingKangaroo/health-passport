@@ -15,6 +15,7 @@ import {
 import { cn, splitDateLabel } from '@/lib/utils'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { intervalBounds, qualitativeToNumber } from '@/lib/reference'
 import type { BiomarkerResult } from '@/lib/types'
 
 const CLINICAL_PALETTE = [
@@ -116,28 +117,25 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
           b.history!.find((r) => r.date === date) ??
           (b.date === date ? { date: b.date, value: b.value, status: b.status } : undefined)
         if (reading) {
-          // Require a literal hyphen/en-dash between the two bounds. Without it,
-          // strings like "120/80" parsed as (lo=120, hi=80) and produced a
-          // negative range, flipping the normal/abnormal band. If the range
-          // can't be parsed but the definition has bounds, fall back to those;
-          // if there is no usable range at all, do NOT fabricate a scale
-          // (E5) — leave the normalized point null so the line simply isn't
-          // plotted for that biomarker instead of blowing up off-chart.
-          const parsed = (b.range || '').match(/([\d.]+)\s*[-–]\s*([\d.]+)/)
-          const defMin = b.definition.range_min
-          const defMax = b.definition.range_max
-          if (parsed) {
-            const refMin = Number.parseFloat(parsed[1])
-            const refMax = Number.parseFloat(parsed[2])
-            const range = refMax - refMin || 1
-            entry[`norm_${b.id}`] = ((reading.value - refMin) / range) * 100
-          } else if (defMin != null && defMax != null) {
-            const range = (defMax - defMin) || 1
-            entry[`norm_${b.id}`] = ((reading.value - defMin) / range) * 100
+          const numericVal =
+            typeof reading.value === 'number' && Number.isFinite(reading.value)
+              ? reading.value
+              : qualitativeToNumber(reading.value)
+          const bounds = intervalBounds(b.reference ?? b.definition.reference)
+            ?? (numericVal != null ? { low: 0, high: 1 } : null)
+          if (
+            numericVal != null
+            && bounds
+            && bounds.low != null
+            && bounds.high != null
+            && (bounds.high - bounds.low) !== 0
+          ) {
+            const range = (bounds.high - bounds.low) || 1
+            entry[`norm_${b.id}`] = ((numericVal - bounds.low) / range) * 100
           } else {
             entry[`norm_${b.id}`] = null
           }
-          entry[`raw_${b.id}`] = reading.value
+          entry[`raw_${b.id}`] = reading.value ?? null
         } else {
           entry[`norm_${b.id}`] = null
           entry[`raw_${b.id}`] = null

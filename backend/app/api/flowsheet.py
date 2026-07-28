@@ -21,7 +21,7 @@ from app.db.models import (
     BiomarkerReading,
     Patient,
 )
-from app.api._format import short_date_label, flowsheet_date_header, format_biomarker_range
+from app.api._format import short_date_label, flowsheet_date_header, reading_value, effective_reference
 from app.api.auth import get_current_user_or_anon
 
 logger = logging.getLogger(__name__)
@@ -103,8 +103,9 @@ def _build_flowsheet(db: Session, patient_id: str):
         for bt in blood_tests:
             reading = biomarker_readings_map.get(bt.id, {}).get(def_id)
             if reading is not None:
+                rv = reading_value(reading)
                 cells.append(MatrixCell(
-                    value=str(reading.value),
+                    value=str(rv) if rv is not None else "—",
                     status=reading.status,
                 ))
             else:
@@ -114,15 +115,13 @@ def _build_flowsheet(db: Session, patient_id: str):
             None,
         )
         original_name = first_reading.original_name if first_reading and first_reading.original_name else defn.names.get("ru", "")
-        original_range = first_reading.original_range if first_reading and first_reading.original_range else ""
-        row_range = original_range or (
-            f"{format_biomarker_range(defn.range_min, defn.range_max)}{(' ' + defn.unit) if defn.unit else ''}"
-        )
+        first_ref = effective_reference(first_reading, defn)
         cat_rows.setdefault(cat, []).append(MatrixRow(
             id=def_id,
             name=defn.names.get("en", ""),
             original=original_name,
-            range=row_range,
+            unit=defn.unit,
+            reference=first_ref,
             cells=cells,
         ))
 
@@ -160,17 +159,16 @@ def _build_flowsheet(db: Session, patient_id: str):
                     names=defn.names,
                     synonyms=defn.synonyms or [],
                     category=defn.category,
-                    range_min=defn.range_min,
-                    range_max=defn.range_max,
+                    reference=defn.reference,
                     unit=defn.unit,
                     scope=defn.scope,
                     user_id=defn.user_id,
-                    range_source=defn.range_source,
+                    reference_source=defn.reference_source,
                 ),
-                value=reading.value,
+                value=reading_value(reading),
                 date=bt.date.isoformat(),
                 status=reading.status,
-                range=reading.original_range or (f"{defn.range_min}-{defn.range_max}" if defn.range_min is not None else ""),
+                reference=effective_reference(reading, defn),
                 original_name=reading.original_name or "",
                 original_value=reading.original_value or "",
                 original_unit=reading.original_unit or "",

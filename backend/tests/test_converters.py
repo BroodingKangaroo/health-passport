@@ -5,7 +5,7 @@ from app.services import converters
 
 def test_normalize_localized_units():
     assert converters.normalize_unit("ммоль/л") == "mmol/L"
-    assert converters.normalize_unit("мкмоль/л") == "umol/L"
+    assert converters.normalize_unit("мкмоль/л") == "\u00b5mol/L"
     assert converters.normalize_unit("г/л") == "g/L"
     assert converters.normalize_unit("МЕ/л") == "IU/L"
     assert converters.normalize_unit("Ед/л") == "U/L"

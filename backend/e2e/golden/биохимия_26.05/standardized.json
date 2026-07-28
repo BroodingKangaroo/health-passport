@@ -15,8 +15,11 @@
       "standard_name_en": "Alanine aminotransferase",
       "standard_value": 48.0,
       "standard_unit": "U/L",
-      "standard_range_min": null,
-      "standard_range_max": 41.0,
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 41.0
+      },
       "status": "high",
       "category": "CHEM",
       "definition_id": "1742-6",
@@ -30,8 +33,11 @@
       "standard_name_en": "Aspartate aminotransferase",
       "standard_value": 29.0,
       "standard_unit": "U/L",
-      "standard_range_min": null,
-      "standard_range_max": 37.0,
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 37.0
+      },
       "status": "normal",
       "category": "CHEM",
       "definition_id": "1920-8",
@@ -45,8 +51,11 @@
       "standard_name_en": "Bilirubin",
       "standard_value": 5.6,
       "standard_unit": "µmol/L",
-      "standard_range_min": 3.4,
-      "standard_range_max": 20.5,
+      "reference": {
+        "kind": "interval",
+        "low": 3.4,
+        "high": 20.5
+      },
       "status": "normal",
       "category": "CHEM",
       "definition_id": "1975-2",
@@ -60,8 +69,11 @@
       "standard_name_en": "Gamma glutamyl transferase",
       "standard_value": 77.0,
       "standard_unit": "U/L",
-      "standard_range_min": null,
-      "standard_range_max": 49.0,
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 49.0
+      },
       "status": "high",
       "category": "CHEM",
       "definition_id": "2324-2",
@@ -75,8 +87,11 @@
       "standard_name_en": "Glucose",
       "standard_value": 5.2,
       "standard_unit": "mmol/L",
-      "standard_range_min": 4.1,
-      "standard_range_max": 6.0,
+      "reference": {
+        "kind": "interval",
+        "low": 4.1,
+        "high": 6.0
+      },
       "status": "normal",
       "category": "CHEM",
       "definition_id": "2345-7",
@@ -90,8 +105,11 @@
       "standard_name_en": "Creatinine",
       "standard_value": 74.0,
       "standard_unit": "µmol/L",
-      "standard_range_min": 64.0,
-      "standard_range_max": 104.0,
+      "reference": {
+        "kind": "interval",
+        "low": 64.0,
+        "high": 104.0
+      },
       "status": "normal",
       "category": "CHEM",
       "definition_id": "2160-0",
@@ -105,8 +123,11 @@
       "standard_name_en": "Urate",
       "standard_value": 396.0,
       "standard_unit": "µmol/L",
-      "standard_range_min": 210.0,
-      "standard_range_max": 420.0,
+      "reference": {
+        "kind": "interval",
+        "low": 210.0,
+        "high": 420.0
+      },
       "status": "normal",
       "category": "CHEM",
       "definition_id": "3084-1",
@@ -120,8 +141,11 @@
       "standard_name_en": "Protein",
       "standard_value": 84.0,
       "standard_unit": "g/L",
-      "standard_range_min": 64.0,
-      "standard_range_max": 83.0,
+      "reference": {
+        "kind": "interval",
+        "low": 64.0,
+        "high": 83.0
+      },
       "status": "high",
       "category": "CHEM",
       "definition_id": "2885-2",
@@ -135,8 +159,11 @@
       "standard_name_en": "Cholesterol",
       "standard_value": 4.93,
       "standard_unit": "mmol/L",
-      "standard_range_min": null,
-      "standard_range_max": 5.0,
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 5.0
+      },
       "status": "normal",
       "category": "CHEM",
       "definition_id": "2093-3",
@@ -150,8 +177,11 @@
       "standard_name_en": "IgE",
       "standard_value": 105.0,
       "standard_unit": "IU/mL",
-      "standard_range_min": null,
-      "standard_range_max": 100.0,
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 100.0
+      },
       "status": "high",
       "category": "CHEM",
       "definition_id": "19113-0",

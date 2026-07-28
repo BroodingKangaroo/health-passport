@@ -248,24 +248,51 @@ class TestSaveDoctorVisit:
         assert len(v["recommendations"]) == 1
 
 
-class TestStatusFromRange:
-    """One-sided reference ranges must be evaluated, not silently 'normal'."""
+class TestStatusFromReference:
+    """Status computation against the structured reference model."""
 
     def test_one_sided_lower_bound(self):
-        from app.api.entries import _compute_status_from_range
+        from app.services.reference import compute_status
 
-        assert _compute_status_from_range(50, "> 100") == "low"
-        assert _compute_status_from_range(150, "> 100") == "normal"
+        ref = {"kind": "interval", "low": 100.0, "high": None}
+        assert compute_status(50, ref) == "low"
+        assert compute_status(150, ref) == "normal"
 
     def test_one_sided_upper_bound(self):
-        from app.api.entries import _compute_status_from_range
+        from app.services.reference import compute_status
 
-        assert _compute_status_from_range(10, "< 5") == "high"
-        assert _compute_status_from_range(3, "< 5") == "normal"
+        ref = {"kind": "interval", "low": None, "high": 5.0}
+        assert compute_status(10, ref) == "high"
+        assert compute_status(3, ref) == "normal"
 
-    def test_two_sided_range(self):
-        from app.api.entries import _compute_status_from_range
+    def test_two_sided_interval(self):
+        from app.services.reference import compute_status
 
-        assert _compute_status_from_range(2, "4.0-11.0") == "low"
-        assert _compute_status_from_range(8, "4.0-11.0") == "normal"
-        assert _compute_status_from_range(15, "4.0-11.0") == "high"
+        ref = {"kind": "interval", "low": 4.0, "high": 11.0}
+        assert compute_status(2, ref) == "low"
+        assert compute_status(8, ref) == "normal"
+        assert compute_status(15, ref) == "high"
+
+    def test_qualitative_match_is_normal(self):
+        from app.services.reference import compute_status
+
+        ref = {"kind": "qualitative", "expected": "Negative"}
+        assert compute_status("Negative", ref) == "normal"
+        assert compute_status("negative", ref) == "normal"
+
+    def test_qualitative_mismatch_is_abnormal(self):
+        from app.services.reference import compute_status
+
+        ref = {"kind": "qualitative", "expected": "Negative"}
+        assert compute_status("Positive", ref) == "abnormal"
+
+    def test_no_reference_is_normal(self):
+        from app.services.reference import compute_status
+
+        assert compute_status(5.0, None) == "normal"
+
+    def test_interval_with_string_value_is_normal(self):
+        from app.services.reference import compute_status
+
+        ref = {"kind": "interval", "low": 4.0, "high": 11.0}
+        assert compute_status("Not detected", ref) == "normal"

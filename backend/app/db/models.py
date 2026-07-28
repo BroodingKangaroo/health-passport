@@ -28,12 +28,14 @@ class BiomarkerDefinition(Base):
     names = Column(JSON, nullable=False)
     synonyms = Column(JSON, nullable=True)
     category = Column(String, nullable=False)
-    range_min = Column(Float, nullable=True)
-    range_max = Column(Float, nullable=True)
+    # Single structured reference: {"kind":"interval","low":..,"high":..} or
+    # {"kind":"qualitative","expected":..} ; null = no reference known. The
+    # `kind` is the sole discriminator of the result type.
+    reference = Column(JSON, nullable=True)
     unit = Column(String, nullable=False)
     scope = Column(String, nullable=False, default="global")
     user_id = Column(String, nullable=True)
-    range_source = Column(String, nullable=False, default="global")
+    reference_source = Column(String, nullable=False, default="global")
     # LOINC COMMON_TEST_RANK: lower = more commonly ordered. Used to pick the
     # canonical definition when several share a name/synonym. Null for local.
     common_rank = Column(Integer, nullable=True)
@@ -68,7 +70,14 @@ class BiomarkerReading(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     entry_id = Column(String, ForeignKey("medical_entries.id"), nullable=False)
     biomarker_id = Column(String, ForeignKey("biomarker_definitions.id"), nullable=False)
-    value = Column(Float, nullable=False)
+    # Numeric results land in `value` (now nullable); qualitative results land
+    # in `value_text`. On the wire the two are merged into a single union field
+    # interpreted via the reference's `kind`.
+    value = Column(Float, nullable=True)
+    value_text = Column(String, nullable=True)
+    # Effective structured reference snapshot at the time of the reading
+    # (document's own if printed, else the definition's).
+    reference = Column(JSON, nullable=True)
     status = Column(String, nullable=False)
     original_name = Column(String, nullable=True)
     original_value = Column(String, nullable=True)

@@ -2,47 +2,50 @@
 
 import { useEffect, useState } from 'react'
 
-type RangeType = 'range' | 'lt' | 'gt' | 'none'
+import { intervalReference } from '@/lib/reference'
+import type { Reference } from '@/lib/types'
+
+// Editor for an interval reference. The four modes map to the structured
+// reference: a two-sided interval, a one-sided upper (≤ high), a one-sided
+// lower (≥ low), or no reference at all. Qualitative references are not
+// authored here — they arise from non-numeric values during extraction/entry.
+type RefType = 'interval' | 'lt' | 'gt' | 'none'
 
 interface Props {
-  value: string
-  onChange: (val: string) => void
+  value: Reference | null
+  onChange: (ref: Reference | null) => void
 }
 
-function parseType(value: string): {
-  type: RangeType
-  lo: string
-  hi: string
-} {
-  const lt = value.match(/<\s*([\d.]+)/)
-  if (lt) return { type: 'lt', lo: '', hi: lt[1] }
-  const gt = value.match(/>\s*([\d.]+)/)
-  if (gt) return { type: 'gt', lo: gt[1], hi: '' }
-  const m = value.match(/([\d.]+)\s*[-–]?\s*([\d.]+)/)
-  if (m) return { type: 'range', lo: m[1], hi: m[2] }
+function parseType(ref: Reference | null): { type: RefType; lo: string; hi: string } {
+  if (!ref || ref.kind !== 'interval') return { type: 'none', lo: '', hi: '' }
+  const lo = ref.low != null ? String(ref.low) : ''
+  const hi = ref.high != null ? String(ref.high) : ''
+  if (lo !== '' && hi !== '') return { type: 'interval', lo, hi }
+  if (hi !== '') return { type: 'lt', lo: '', hi }
+  if (lo !== '') return { type: 'gt', lo, hi: '' }
   return { type: 'none', lo: '', hi: '' }
 }
 
-function formatChange(type: RangeType, lo: string, hi: string): string {
+function buildReference(type: RefType, lo: string, hi: string): Reference | null {
   switch (type) {
-    case 'range':
-      // A two-sided range needs BOTH bounds. If only one is filled, emit
-      // nothing rather than a broken "5–0" that would flag every value
-      // as abnormal. (Use the < / > types for single-bound ranges.)
-      if (!lo || !hi) return ''
-      return `${lo}–${hi}`
+    case 'interval':
+      // A two-sided interval needs BOTH bounds. If only one is filled, emit
+      // nothing rather than a broken "5–0" that would flag every value as
+      // abnormal. (Use the < / > types for single-bound references.)
+      if (!lo || !hi) return null
+      return intervalReference(Number.parseFloat(lo), Number.parseFloat(hi))
     case 'lt':
-      return hi ? `< ${hi}` : ''
+      return hi ? intervalReference(null, Number.parseFloat(hi)) : null
     case 'gt':
-      return lo ? `> ${lo}` : ''
+      return lo ? intervalReference(Number.parseFloat(lo), null) : null
     case 'none':
-      return ''
+      return null
   }
 }
 
-export function RangeInput({ value, onChange }: Props) {
+export function ReferenceInput({ value, onChange }: Props) {
   const [initialized, setInitialized] = useState(false)
-  const [type, setType] = useState<RangeType>('none')
+  const [type, setType] = useState<RefType>('none')
   const [loVal, setLoVal] = useState('')
   const [hiVal, setHiVal] = useState('')
 
@@ -55,11 +58,11 @@ export function RangeInput({ value, onChange }: Props) {
     setInitialized(true)
   }, [value, initialized])
 
-  const emit = (t: RangeType, lo: string, hi: string) => {
-    onChange(formatChange(t, lo, hi))
+  const emit = (t: RefType, lo: string, hi: string) => {
+    onChange(buildReference(t, lo, hi))
   }
 
-  const handleTypeChange = (t: RangeType) => {
+  const handleTypeChange = (t: RefType) => {
     setType(t)
     emit(t, loVal, hiVal)
   }
@@ -78,15 +81,15 @@ export function RangeInput({ value, onChange }: Props) {
     <div className="flex items-center gap-1">
       <select
         value={type}
-        onChange={(e) => handleTypeChange(e.target.value as RangeType)}
+        onChange={(e) => handleTypeChange(e.target.value as RefType)}
         className="h-8 w-[88px] shrink-0 rounded-lg border border-input bg-background px-1.5 text-[11px] outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
       >
-        <option value="range">Range</option>
+        <option value="interval">Interval</option>
         <option value="lt">&lt;</option>
         <option value="gt">&gt;</option>
         <option value="none">None</option>
       </select>
-      {type === 'range' && (
+      {type === 'interval' && (
         <div className="flex items-center gap-0.5">
           <input
             value={loVal}

@@ -123,7 +123,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
             { date: b.date, value: b.value, status: b.status },
           ]
           const match = all.find((r) => r.date === e.date)
-          return match && (match.status === 'high' || match.status === 'low')
+          return match && (match.status === 'high' || match.status === 'low' || match.status === 'abnormal')
         })
       })
     }

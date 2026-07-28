@@ -27,8 +27,8 @@ test.describe('AddEntry - AI Extraction', () => {
           title: 'E2E AI Blood Test',
           notes: 'E2E AI extraction notes',
           biomarkers: [
-            { raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170', standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L', standard_range_min: 130, standard_range_max: 170, status: '', category: 'Complete Blood Count' },
-            { raw_name: 'WBC', raw_value: '7.2', raw_unit: 'K/µL', raw_range_string: '4.0-11.0', standard_name_en: 'WBC', standard_value: 7.2, standard_unit: 'K/µL', standard_range_min: 4.0, standard_range_max: 11.0, status: '', category: 'Complete Blood Count' },
+            { raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170', standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L', reference: { kind: 'interval', low: 130, high: 170 }, status: '', category: 'Complete Blood Count' },
+            { raw_name: 'WBC', raw_value: '7.2', raw_unit: 'K/µL', raw_range_string: '4.0-11.0', standard_name_en: 'WBC', standard_value: 7.2, standard_unit: 'K/µL', reference: { kind: 'interval', low: 4.0, high: 11.0 }, status: '', category: 'Complete Blood Count' },
           ],
           visit_data: null,
           imaging_data: null,

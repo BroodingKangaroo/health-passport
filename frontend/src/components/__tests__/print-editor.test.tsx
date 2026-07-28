@@ -20,7 +20,8 @@ const mockMatrix: MatrixCategory[] = [
         id: 'hb',
         name: 'Hemoglobin',
         original: 'Гемоглобин',
-        range: '12.0 – 16.0 g/dL',
+        unit: 'g/dL',
+        reference: { kind: 'interval', low: 12.0, high: 16.0 },
         cells: [
           { value: '13.5', status: 'normal' },
           { value: '14.2', status: 'normal' },
@@ -31,7 +32,8 @@ const mockMatrix: MatrixCategory[] = [
         id: 'wbc',
         name: 'Leukocytes',
         original: 'Лейкоциты',
-        range: '4.0 – 11.0 K/µL',
+        unit: 'K/µL',
+        reference: { kind: 'interval', low: 4.0, high: 11.0 },
         cells: [
           { value: '5.2', status: 'normal' },
           { value: '6.8', status: 'normal' },
@@ -47,7 +49,8 @@ const mockMatrix: MatrixCategory[] = [
         id: 'ldl',
         name: 'LDL Cholesterol',
         original: 'ЛПНП холестерин',
-        range: '0 – 130 mg/dL',
+        unit: 'mg/dL',
+        reference: { kind: 'interval', low: 0, high: 130 },
         cells: [
           { value: '155', status: 'high' },
           { value: '125', status: 'normal' },
@@ -66,11 +69,10 @@ const mockBiomarkers: BiomarkerResult[] = [
       names: { en: 'Hemoglobin', ru: 'Гемоглобин', es: 'Hemoglobina', de: 'Hämoglobin', fr: 'Hémoglobine', he: 'המוגלובין' },
       synonyms: [],
       unit: 'g/dL',
-      range_min: 12.0,
-      range_max: 16.0,
+      reference: { kind: 'interval', low: 12.0, high: 16.0 },
       category: 'Complete Blood Count',
       scope: 'global',
-      range_source: 'global',
+      reference_source: 'global',
     },
     value: 13.5,
     date: '2024-08-10',
@@ -83,11 +85,10 @@ const mockBiomarkers: BiomarkerResult[] = [
       names: { en: 'Leukocytes', ru: 'Лейкоциты', es: 'Leucocitos', de: 'Leukozyten', fr: 'Globules blancs', he: 'תאי דם לבנים' },
       synonyms: [],
       unit: 'K/µL',
-      range_min: 4.0,
-      range_max: 11.0,
+      reference: { kind: 'interval', low: 4.0, high: 11.0 },
       category: 'Complete Blood Count',
       scope: 'global',
-      range_source: 'global',
+      reference_source: 'global',
     },
     value: 5.2,
     date: '2024-08-10',
@@ -100,11 +101,10 @@ const mockBiomarkers: BiomarkerResult[] = [
       names: { en: 'LDL Cholesterol', ru: 'ЛПНП холестерин', es: 'Colesterol LDL', de: 'LDL-Cholesterin', fr: 'Cholestérol LDL', he: 'כולסטרול LDL' },
       synonyms: [],
       unit: 'mg/dL',
-      range_min: 0,
-      range_max: 130,
+      reference: { kind: 'interval', low: 0, high: 130 },
       category: 'Lipid Panel',
       scope: 'global',
-      range_source: 'global',
+      reference_source: 'global',
     },
     value: 155,
     date: '2024-08-10',
@@ -184,8 +184,8 @@ describe('PrintEditor', () => {
 
   it('shows range below biomarker name when showRanges is on', () => {
     renderEditor()
-    expect(screen.getByText('12.0 – 16.0 g/dL')).toBeTruthy()
-    expect(screen.getByText('4.0 – 11.0 K/µL')).toBeTruthy()
+    expect(screen.getByText('12 – 16 g/dL')).toBeTruthy()
+    expect(screen.getByText('4 – 11 K/µL')).toBeTruthy()
     expect(screen.getByText('0 – 130 mg/dL')).toBeTruthy()
   })
 
@@ -199,7 +199,7 @@ describe('PrintEditor', () => {
 
   it('toggles out-of-range only filter', () => {
     renderEditor()
-    const toggle = screen.getByText('Show Out-of-Range Only').closest('button')!
+    const toggle = screen.getByText('Show Abnormal Only').closest('button')!
     fireEvent.click(toggle)
     expect(toggle).toHaveClass('border-primary')
   })
@@ -293,7 +293,8 @@ describe('PrintEditor', () => {
             id: 'vitd',
             name: 'Vitamin D',
             original: 'Витамин D',
-            range: '30 – 100 ng/mL',
+            unit: 'ng/mL',
+            reference: { kind: 'interval', low: 30, high: 100 },
             cells: [{ value: '\u2014', status: 'normal' }, { value: '\u2014', status: 'normal' }, { value: '\u2014', status: 'normal' }],
           },
         ],

@@ -13,6 +13,7 @@ const badgeVariants = cva(
         normal: 'border-transparent bg-status-normal-bg text-status-normal',
         low: 'border-transparent bg-status-low-bg text-status-low',
         high: 'border-transparent bg-status-high-bg text-status-high',
+        abnormal: 'border-transparent bg-status-high-bg text-status-high',
       },
     },
     defaultVariants: {

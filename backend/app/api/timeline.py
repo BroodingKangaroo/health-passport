@@ -4,7 +4,7 @@ import re
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from sqlalchemy.orm import Session
 
-from app.api._format import format_biomarker_range
+from app.api._format import reading_value, effective_reference
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +133,8 @@ def _biomarkers_from_db(db: Session, patient_id: str):
         latest_reading, latest_date = readings_query[-1]
         history = [
             Reading(
-                date=date.isoformat(), value=r.value, status=r.status,
+                date=date.isoformat(), value=reading_value(r), status=r.status,
+                reference=effective_reference(r, defn),
                 original_name=r.original_name or "",
                 original_value=r.original_value or "",
                 original_unit=r.original_unit or "",
@@ -150,18 +151,17 @@ def _biomarkers_from_db(db: Session, patient_id: str):
                 names=defn.names,
                 synonyms=defn.synonyms or [],
                 category=defn.category,
-                range_min=defn.range_min,
-                range_max=defn.range_max,
+                reference=defn.reference,
                 unit=defn.unit,
                 scope=defn.scope,
                 user_id=defn.user_id,
-                range_source=defn.range_source,
+                reference_source=defn.reference_source,
             ),
-            value=latest_reading.value,
+            value=reading_value(latest_reading),
             date=latest_date.isoformat(),
             status=latest_reading.status,
             history=history,
-            range=latest_reading.original_range or format_biomarker_range(defn.range_min, defn.range_max),
+            reference=effective_reference(latest_reading, defn),
             original_name=latest_reading.original_name or "",
             original_value=latest_reading.original_value or "",
             original_unit=latest_reading.original_unit or "",
@@ -318,7 +318,7 @@ async def get_biomarker_detail(
 
     latest_reading, latest_date = readings_query[-1]
     history = [
-        Reading(date=date.isoformat(), value=r.value, status=r.status)
+        Reading(date=date.isoformat(), value=reading_value(r), status=r.status, reference=effective_reference(r, defn))
         for r, date in readings_query[:-1]
     ]
     return BiomarkerResult(
@@ -329,18 +329,17 @@ async def get_biomarker_detail(
             names=defn.names,
             synonyms=defn.synonyms or [],
             category=defn.category,
-            range_min=defn.range_min,
-            range_max=defn.range_max,
+            reference=defn.reference,
             unit=defn.unit,
             scope=defn.scope,
             user_id=defn.user_id,
-            range_source=defn.range_source,
+            reference_source=defn.reference_source,
         ),
-        value=latest_reading.value,
+        value=reading_value(latest_reading),
         date=latest_date.isoformat(),
         status=latest_reading.status,
         history=history,
-        range=latest_reading.original_range or (f"{defn.range_min}-{defn.range_max}" if defn.range_min is not None else ""),
+        reference=effective_reference(latest_reading, defn),
         original_name=latest_reading.original_name or "",
         original_value=latest_reading.original_value or "",
         original_unit=latest_reading.original_unit or "",

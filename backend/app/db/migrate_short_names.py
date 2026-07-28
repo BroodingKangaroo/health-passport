@@ -73,7 +73,7 @@ def migrate(dry_run: bool = False) -> tuple[int, int]:
             defn.names = new["names"]
             defn.synonyms = new["synonyms"]
             defn.common_rank = new["common_rank"]
-            # Deliberately do NOT touch range_min/range_max/unit/range_source
+            # Deliberately do NOT touch reference/unit/reference_source
             # to preserve curated values.
             updated += 1
 

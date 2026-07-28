@@ -8,12 +8,19 @@ import { cn, formatDate } from '@/lib/utils'
 import { Card } from '@/components/ui/card'
 import { BiomarkerChart } from '@/components/shared/BiomarkerChart'
 import { useBiomarkerData } from '@/hooks/useBiomarkerData'
-import type { Status } from '@/lib/types'
+import { formatReference, unitLabel, isQualitative } from '@/lib/reference'
+import type { Status, BiomarkerResult } from '@/lib/types'
 
 const statusText: Record<Status, string> = {
   normal: 'text-status-normal',
   low: 'text-status-low',
   high: 'text-status-high',
+  abnormal: 'text-status-high',
+}
+
+function refText(b: Pick<BiomarkerResult, 'reference' | 'definition'>): string {
+  const ref = b.reference ?? b.definition.reference
+  return isQualitative(ref) ? formatReference(ref) : formatReference(ref, b.definition.unit)
 }
 
 export function BiomarkerDetails() {
@@ -48,7 +55,7 @@ export function BiomarkerDetails() {
             <span className="text-muted-foreground/70">/ {biomarker.definition.names.ru}</span>
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Reference range: {biomarker.range || (biomarker.definition.range_min != null ? `${biomarker.definition.range_min} – ${biomarker.definition.range_max}` : '—')} {biomarker.definition.unit}
+            Reference range: {refText(biomarker)}
           </p>
         </div>
         <div
@@ -57,6 +64,8 @@ export function BiomarkerDetails() {
             biomarker.status === 'low' &&
               'border-status-low/30 bg-status-low-bg',
             biomarker.status === 'high' &&
+              'border-status-high/30 bg-status-high-bg',
+            biomarker.status === 'abnormal' &&
               'border-status-high/30 bg-status-high-bg',
             biomarker.status === 'normal' &&
               'border-status-normal/30 bg-status-normal-bg',
@@ -71,7 +80,7 @@ export function BiomarkerDetails() {
             Current
           </p>
           <p className={cn('text-lg font-bold', statusText[biomarker.status])}>
-            {biomarker.value} {biomarker.definition.unit}{' '}
+            {biomarker.value ?? '—'} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}{' '}
             <span className="text-sm font-semibold capitalize">
               ({biomarker.status})
             </span>
@@ -86,7 +95,7 @@ export function BiomarkerDetails() {
               All-Time Dynamics
             </h2>
             <p className="mb-3 text-xs text-muted-foreground">
-              Historical trend · reference band {biomarker.range || (biomarker.definition.range_min != null ? `${biomarker.definition.range_min} – ${biomarker.definition.range_max}` : '—')} {biomarker.definition.unit}
+              Historical trend · reference band {refText(biomarker)}
             </p>
             <BiomarkerChart biomarker={biomarker} data={chartData} height={350} />
           </Card>
@@ -116,7 +125,7 @@ export function BiomarkerDetails() {
                         statusText[entry.status],
                       )}
                     >
-                      {entry.value} {biomarker.definition.unit}
+                      {entry.value} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}
                     </span>
                     <span
                       className={cn(
@@ -143,8 +152,8 @@ export function BiomarkerDetails() {
             </div>
             <p className="text-sm leading-relaxed text-muted-foreground">
               {biomarker.definition.names.en} ({biomarker.definition.names.ru}) is measured at{' '}
-              {biomarker.value} {biomarker.definition.unit}. The standard reference range
-              is {biomarker.range || (biomarker.definition.range_min != null ? `${biomarker.definition.range_min} – ${biomarker.definition.range_max}` : '—')} {biomarker.definition.unit}.
+              {biomarker.value ?? '—'} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}. The standard reference range
+              is {refText(biomarker)}.
             </p>
           </Card>
 
