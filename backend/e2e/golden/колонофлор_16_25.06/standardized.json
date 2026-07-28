@@ -1,0 +1,458 @@
+{
+  "entry_type": "blood_test",
+  "date": "2026-06-29",
+  "time": "01:15",
+  "clinic": "ООО «Международная лаборатория Хеликс»",
+  "provider": "Лукьянёнок Д.М.",
+  "title": "КОЛОНОФЛОР-16 [реал-тайм ПЦР]",
+  "notes": "Снижение количества лактобацилл. Снижение количества бифидобактерий. Состав микробиоты толстого кишечника указывает на наличие дисбиотических нарушений и повышенный риск воспалительных заболеваний кишечника. Рекомендована консультация гастроэнтеролога.",
+  "biomarkers": [
+    {
+      "raw_name": "Общая бактериальная масса",
+      "raw_value": "10^10",
+      "raw_unit": "",
+      "raw_range_string": "10^11-10^13",
+      "standard_name_en": "Total bacterial mass",
+      "standard_value": 10000000000.0,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": 100000000000.0,
+        "high": 10000000000000.0
+      },
+      "status": "low",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-dedc70f59b04",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Lactobacillus spp",
+      "raw_value": "менее 10^5",
+      "raw_unit": "",
+      "raw_range_string": "10^7-10^8",
+      "standard_name_en": "Lactobacillus spp",
+      "standard_value": 100000.0,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": 10000000.0,
+        "high": 100000000.0
+      },
+      "status": "low",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-8c86cf258a11",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Bifidobacterium spp",
+      "raw_value": "9*10^7",
+      "raw_unit": "",
+      "raw_range_string": "10^9-10^10",
+      "standard_name_en": "Bifidobacterium spp",
+      "standard_value": 90000000.0,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": 1000000000.0,
+        "high": 10000000000.0
+      },
+      "status": "low",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-16cf0b0fd973",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Escherichia coli",
+      "raw_value": "6*10^7",
+      "raw_unit": "",
+      "raw_range_string": "10^6-10^8",
+      "standard_name_en": "Escherichia coli",
+      "standard_value": 60000000.0,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": 1000000.0,
+        "high": 100000000.0
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-52c34f913a7c",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Bacteroides spp",
+      "raw_value": "7*10^9",
+      "raw_unit": "",
+      "raw_range_string": "10^9-10^12",
+      "standard_name_en": "Bacteroides spp",
+      "standard_value": 7000000000.0,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": 1000000000.0,
+        "high": 1000000000000.0
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-d9f6ee1a7921",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Faecalibacterium prausnitzii",
+      "raw_value": "8*10^8",
+      "raw_unit": "",
+      "raw_range_string": "10^8-10^11",
+      "standard_name_en": "Faecalibacterium prausnitzii",
+      "standard_value": 800000000.0,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": 100000000.0,
+        "high": 100000000000.0
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-2988f1cd6b9e",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Bacteroides thetaomicron",
+      "raw_value": "10^7",
+      "raw_unit": "",
+      "raw_range_string": "допустимо любое количество",
+      "standard_name_en": "Bacteroides thetaomicron",
+      "standard_value": 10000000.0,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": null
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-50924c95bf5e",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Akkermansia muciniphila",
+      "raw_value": "не обнаружено",
+      "raw_unit": "",
+      "raw_range_string": "не более 10^11",
+      "standard_name_en": "Akkermansia muciniphila",
+      "standard_value": 0.0,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 100000000000.0
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-3134fc747022",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Enterococcus spp",
+      "raw_value": "2*10^5",
+      "raw_unit": "",
+      "raw_range_string": "не более 10^8",
+      "standard_name_en": "Enterococcus spp",
+      "standard_value": 200000.0,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 100000000.0
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-d3de7234bfe1",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Escherichia coli enteropathogenic",
+      "raw_value": "не обнаружено",
+      "raw_unit": "",
+      "raw_range_string": "не более 10^4",
+      "standard_name_en": "Enteropathogenic Escherichia coli",
+      "standard_value": 0.0,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 10000.0
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-89c27419b864",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Klebsiella pneumoniae",
+      "raw_value": "не обнаружено",
+      "raw_unit": "",
+      "raw_range_string": "не более 10^4",
+      "standard_name_en": "Klebsiella pneumoniae",
+      "standard_value": 0.0,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 10000.0
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-7291df8e0881",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Klebsiella oxytoca",
+      "raw_value": "не обнаружено",
+      "raw_unit": "",
+      "raw_range_string": "не более 10^4",
+      "standard_name_en": "Klebsiella oxytoca",
+      "standard_value": 0.0,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 10000.0
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-d58b5529c818",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Candida spp",
+      "raw_value": "не обнаружено",
+      "raw_unit": "",
+      "raw_range_string": "не более 10^4",
+      "standard_name_en": "Candida spp",
+      "standard_value": 0.0,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 10000.0
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-531c1dd5fbba",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Staphylococcus aureus",
+      "raw_value": "не обнаружено",
+      "raw_unit": "",
+      "raw_range_string": "не более 10^4",
+      "standard_name_en": "Staphylococcus aureus",
+      "standard_value": 0.0,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 10000.0
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-6248ed0a1c72",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Clostridium difficile",
+      "raw_value": "не обнаружено",
+      "raw_unit": "",
+      "raw_range_string": "не обнаружено",
+      "standard_name_en": "Clostridium difficile",
+      "standard_value": "Not detected",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": "Not detected"
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-71fba6245da9",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Clostridium perfringens",
+      "raw_value": "не обнаружено",
+      "raw_unit": "",
+      "raw_range_string": "не обнаружено",
+      "standard_name_en": "Clostridium perfringens",
+      "standard_value": "Not detected",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": "Not detected"
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-85791070732d",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Proteus vulgaris/mirabilis",
+      "raw_value": "не обнаружено",
+      "raw_unit": "",
+      "raw_range_string": "не более 10^4",
+      "standard_name_en": "Proteus vulgaris/mirabilis",
+      "standard_value": 0.0,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 10000.0
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-bdb93f91d1a9",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Citrobacter spp",
+      "raw_value": "не обнаружено",
+      "raw_unit": "",
+      "raw_range_string": "не более 10^4",
+      "standard_name_en": "Citrobacter spp",
+      "standard_value": 0.0,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 10000.0
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-908fd2df1a95",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Enterobacter spp",
+      "raw_value": "не обнаружено",
+      "raw_unit": "",
+      "raw_range_string": "не более 10^4",
+      "standard_name_en": "Enterobacter spp",
+      "standard_value": 0.0,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 10000.0
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-650ca81cfac9",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Fusobacterium nucleatum",
+      "raw_value": "не обнаружено",
+      "raw_unit": "",
+      "raw_range_string": "не обнаружено",
+      "standard_name_en": "Fusobacterium nucleatum",
+      "standard_value": "Not detected",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": "Not detected"
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-f0d7389b7fa0",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Parvimonas micra",
+      "raw_value": "не обнаружено",
+      "raw_unit": "",
+      "raw_range_string": "не обнаружено",
+      "standard_name_en": "Parvimonas micra",
+      "standard_value": "Not detected",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": "Not detected"
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-3687c25eeb93",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Salmonella spp",
+      "raw_value": "не обнаружено",
+      "raw_unit": "",
+      "raw_range_string": "не обнаружено",
+      "standard_name_en": "Salmonella spp",
+      "standard_value": "Not detected",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": "Not detected"
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-fafbbc7bfac2",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Shigella spp",
+      "raw_value": "не обнаружено",
+      "raw_unit": "",
+      "raw_range_string": "не обнаружено",
+      "standard_name_en": "Shigella spp",
+      "standard_value": "Not detected",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": "Not detected"
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-44e1fbccaab1",
+      "scope": "local"
+    },
+    {
+      "raw_name": "Отношение Bacteroides spp и Faecalibacterium prausnitzii",
+      "raw_value": "8,75",
+      "raw_unit": "",
+      "raw_range_string": "0,01-100",
+      "standard_name_en": "Bacteroides spp to Faecalibacterium prausnitzii ratio",
+      "standard_value": 8.75,
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": 0.01,
+        "high": 100.0
+      },
+      "status": "normal",
+      "category": "Исследование состава микробиоты толстого кишечника",
+      "definition_id": "local-aaddae1b1c91",
+      "scope": "local"
+    }
+  ],
+  "visit_data": {
+    "diagnosis": {
+      "original": "",
+      "translated_en": ""
+    },
+    "chief_complaint": {
+      "original": "",
+      "translated_en": ""
+    },
+    "objective_findings": {
+      "original": "",
+      "translated_en": ""
+    },
+    "prescriptions": [],
+    "recommendations": []
+  },
+  "imaging_data": {
+    "modality": "",
+    "findings": "",
+    "conclusion": ""
+  }
+}

@@ -16,6 +16,7 @@ from app.db.seed_loinc import LOINC_NAME_OVERRIDES
 
 from app.services import converters
 from app.services.reference import (
+    _ABSENT_CANONICAL,
     compute_status,
     merge_reference,
     normalize_qual,
@@ -469,8 +470,17 @@ def _build_standardized_from_def(
         # membership, NOT reference provenance, so a recognized analyte must stay
         # "global" even when we display the lab's own range.
         ref = merge_reference(doc_reference, defn.reference, parsed_value)
-        if isinstance(ref, dict) and ref.get("kind") == "qualitative":
-            parsed_value = normalize_qual(parsed_value)
+        # Keep the value type aligned with the ref kind. For an interval ref
+        # the value must be numeric, so a canonical "absent" result
+        # ("не обнаружено" / "Negative" / "Absent" / "Normal") collapses to
+        # 0.0 — the test was run and the result is below the detection limit.
+        # For a qualitative ref, the canonical English term is the right shape.
+        if isinstance(parsed_value, str):
+            canonical = normalize_qual(parsed_value)
+            if ref.get("kind") == "interval" and canonical in _ABSENT_CANONICAL:
+                parsed_value = 0.0
+            else:
+                parsed_value = canonical
         return StandardizedBiomarker(
             raw_name=raw_bm.name,
             raw_value=raw_bm.value,
@@ -526,7 +536,23 @@ def _build_standardized_local(
     raw_bm: RawBiomarker,
     defn: BiomarkerDefinitionModel,
 ) -> StandardizedBiomarker:
-    std_value = normalize_qual(parse_value(raw_bm.value))
+    parsed_value = parse_value(raw_bm.value)
+    parsed_ref = parse_reference(raw_bm.raw_range_string)
+    # A parsed interval ref means the document reported a numeric range, so
+    # the biomarker is Quantitative. Keep the value type aligned with the ref:
+    # numeric values stay as numbers, and a canonical "absent" result
+    # ("не обнаружено" / "Negative" / "Absent" / "Normal") collapses to 0.0 so
+    # it composes with the interval bounds in `compute_status`. Present results
+    # against an interval ref have no known count and are kept as the raw
+    # canonical string.
+    if isinstance(parsed_ref, dict) and parsed_ref.get("kind") == "interval":
+        if isinstance(parsed_value, str):
+            canonical = normalize_qual(parsed_value)
+            std_value = 0.0 if canonical in _ABSENT_CANONICAL else canonical
+        else:
+            std_value = parsed_value
+    else:
+        std_value = normalize_qual(parsed_value)
 
     # Prefer the translated English name; fall back to the original raw name if
     # the stored definition name is somehow still non-English (defense against
@@ -535,7 +561,7 @@ def _build_standardized_local(
     if not _is_ascii(en):
         en = raw_bm.standard_name_en or raw_bm.name
 
-    ref = merge_reference(parse_reference(raw_bm.raw_range_string), defn.reference, std_value)
+    ref = merge_reference(parsed_ref, defn.reference, std_value)
     return StandardizedBiomarker(
         raw_name=raw_bm.name,
         raw_value=raw_bm.value,
@@ -1166,8 +1192,21 @@ def _fallback_standardize(raw: RawMedicalRecord) -> StandardizedMedicalRecord:
     biomarkers: list[StandardizedBiomarker] = []
     if raw.biomarkers:
         for b in raw.biomarkers:
-            std_value = normalize_qual(parse_value(b.value))
-            ref = merge_reference(parse_reference(b.raw_range_string), None, std_value)
+            parsed_value = parse_value(b.value)
+            parsed_ref = parse_reference(b.raw_range_string)
+            # Same Quantitative/Qualitative split as _build_standardized_local:
+            # interval ref -> numeric value (canonical "absent" strings
+            # collapse to 0.0 so value type matches the ref), qualitative ref
+            # -> canonical string.
+            if isinstance(parsed_ref, dict) and parsed_ref.get("kind") == "interval":
+                if isinstance(parsed_value, str):
+                    canonical = normalize_qual(parsed_value)
+                    std_value = 0.0 if canonical in _ABSENT_CANONICAL else canonical
+                else:
+                    std_value = parsed_value
+            else:
+                std_value = normalize_qual(parsed_value)
+            ref = merge_reference(parsed_ref, None, std_value)
             biomarkers.append(StandardizedBiomarker(
                 raw_name=b.name,
                 raw_value=b.value,

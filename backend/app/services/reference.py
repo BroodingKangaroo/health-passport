@@ -14,10 +14,42 @@ from typing import Any, Optional, Union
 
 Number = Union[int, float]
 
-_NUM_RE = re.compile(r"-?\d+(?:\.\d+)?")
+_NUM_RE = re.compile(r"-?\d+(?:[.,]\d+)?")
 _LT_RE = re.compile(r"<\s*([\d.]+)")
 _GT_RE = re.compile(r">\s*([\d.]+)")
-_RANGE_RE = re.compile(r"([\d.]+)\s*[\u2013-]\s*([\d.]+)")
+_R_RANGE_RE = re.compile(r"([\d.]+)\s*[\u2013-]\s*([\d.]+)")
+# A single numeric token may be:
+#   - ``N*10^K``  (e.g. ``9*10^7`` → 9e7)   — scientific notation
+#   - ``N×10^K`` / ``N·10^K`` / ``Nx10^K``   — same, with different multipliers
+#   - ``N^K``     (e.g. ``10^10`` → 1e10)  — mathematical exponentiation
+#   - ``N,M``     (e.g. ``8,75``  → 8.75)  — Russian decimal comma
+#   - ``N``       (plain number, plain ``,`` or ``.`` decimal)
+# We try these in priority order in ``_parse_sci_value``; the regexes below
+# are the building blocks.
+_SCI_MULT_RE = re.compile(
+    r"^\s*(\d+(?:[.,]\d+)?)\s*[*×·x]\s*10\s*\^?\s*(\d+)\s*$"
+)
+_POW_RE = re.compile(
+    r"^\s*(\d+(?:[.,]\d+)?)\s*\^\s*(\d+)\s*$"
+)
+_COMMA_RE = re.compile(r"^\s*(\d+),(\d+)\s*$")
+# "less than" / "more than" prefix: "менее N", "более N", "не более N",
+# "не менее N", "< N", "> N", "<= N", ">= N", "≤ N", "≥ N". The numeric
+# payload may itself be in any of the scientific/power/comma/plain forms.
+_PREFIX_NUM_RE = re.compile(
+    r"^\s*(?:менее|более|не\s+более|не\s+менее|<\s*=|>\s*=|<\s*|>\s*|≤|≥)\s*(.+?)\s*$",
+    re.IGNORECASE,
+)
+# Range form: splits on en/em/hyphen dash and parses each side as a numeric
+# token. Surrounding spaces are tolerated. Groups: (low, high).
+_SCI_RANGE_RE = re.compile(
+    r"^\s*(.+?)\s*[\u2013\u2014\-]\s*(.+?)\s*$"
+)
+# "допустимо любое количество" / "любое количество" — no-bound interval
+# (any value is acceptable for this analyte).
+_ANY_AMOUNT_RE = re.compile(
+    r"^\s*(?:допустимо\s+)?любое\s+количество\s*$", re.IGNORECASE
+)
 
 # ---------------------------------------------------------------------------
 # Qualitative value normalisation ─ maps raw (Russian/English) text to a
@@ -93,12 +125,60 @@ def normalize_qual(text: Any) -> Optional[str]:
     return _QUAL_MAP.get(s.lower(), s)
 
 
+def _parse_numeric_token(text: str) -> Optional[float]:
+    """Parse a single numeric token (one side of a range, or a bare value)
+    into a float. Accepts plain numbers, Russian comma decimals, scientific
+    notation (``9*10^7``, ``9×10^7``, ``9·10^7``, ``9x10^3``), and
+    mathematical exponentiation (``10^10`` → 1e10). Returns ``None`` when
+    the input cannot be turned into a finite number.
+    """
+    if text is None:
+        return None
+    s = str(text).strip()
+    if not s:
+        return None
+    # Scientific notation: N × 10^K → N * 10^K
+    m = _SCI_MULT_RE.match(s)
+    if m:
+        try:
+            return float(m.group(1).replace(',', '.')) * (10 ** int(m.group(2)))
+        except (TypeError, ValueError):
+            return None
+    # Mathematical exponentiation: N^K → N ** K (so "10^10" = 1e10)
+    m = _POW_RE.match(s)
+    if m:
+        try:
+            return float(m.group(1).replace(',', '.')) ** int(m.group(2))
+        except (TypeError, ValueError):
+            return None
+    # Russian decimal comma: "8,75"
+    m = _COMMA_RE.match(s)
+    if m:
+        try:
+            return float(f"{m.group(1)}.{m.group(2)}")
+        except (TypeError, ValueError):
+            return None
+    # Plain number (allows "," decimal as a courtesy fallback)
+    try:
+        return float(s.replace(',', '.'))
+    except ValueError:
+        return None
+
+
 def parse_reference(text: Optional[str]) -> Optional[dict]:
     """Parse a free-text reference string (as printed by a lab) into a
     structured reference dict, or ``None`` when empty.
 
-    Qualitative expected text is normalised to canonical English so the UI
-    never leaks raw Russian / foreign labels.
+    Returns a dict whose ``kind`` is either ``"interval"`` (numeric range,
+    with optional one-sided bound or no bounds) or ``"qualitative"`` (text
+    expected value, normalised to canonical English so the UI never leaks
+    raw Russian / foreign labels).
+
+    Recognised interval forms (in priority order):
+      - ``< N`` / ``> N`` (and ``<= N`` / ``>= N`` / ``≤ N`` / ``≥ N``)
+      - ``менее N`` / ``более N`` / ``не более N`` / ``не менее N``
+      - ``N1 - N2`` (also ``N1^N2 - N3^N4``, ``N1,N2 - N3,N4``, en/em dash)
+      - ``допустимо любое количество`` / ``любое количество`` → unbounded
     """
     if not text:
         return None
@@ -108,13 +188,38 @@ def parse_reference(text: Optional[str]) -> Optional[dict]:
 
     lt = _LT_RE.match(s)
     if lt:
-        return {"kind": "interval", "low": None, "high": float(lt.group(1))}
+        try:
+            return {"kind": "interval", "low": None, "high": float(lt.group(1))}
+        except ValueError:
+            pass
     gt = _GT_RE.match(s)
     if gt:
-        return {"kind": "interval", "low": float(gt.group(1)), "high": None}
-    rng = _RANGE_RE.match(s)
+        try:
+            return {"kind": "interval", "low": float(gt.group(1)), "high": None}
+        except ValueError:
+            pass
+
+    # Russian "не более N" / "не менее N" / "менее N" / "более N" → interval.
+    pm = _PREFIX_NUM_RE.match(s)
+    if pm:
+        val = _parse_numeric_token(pm.group(1))
+        if val is not None:
+            op = s.lower()
+            if op.startswith(("менее", "не более")) or op.lstrip().startswith("<") or op.lstrip().startswith("≤"):
+                return {"kind": "interval", "low": None, "high": val}
+            return {"kind": "interval", "low": val, "high": None}
+
+    # "допустимо любое количество" → any value is acceptable (no bounds).
+    if _ANY_AMOUNT_RE.match(s):
+        return {"kind": "interval", "low": None, "high": None}
+
+    # Numeric range (possibly with scientific notation / Russian comma).
+    rng = _SCI_RANGE_RE.match(s)
     if rng:
-        return {"kind": "interval", "low": float(rng.group(1)), "high": float(rng.group(2))}
+        low = _parse_numeric_token(rng.group(1))
+        high = _parse_numeric_token(rng.group(2))
+        if low is not None and high is not None:
+            return {"kind": "interval", "low": low, "high": high}
 
     return {"kind": "qualitative", "expected": normalize_qual(s)}
 
@@ -130,13 +235,47 @@ def parse_value(text: Any) -> Union[float, str, None]:
     s = str(text).strip()
     if not s:
         return None
+    # 1. Plain float (handles "5.5", "11.10", "1.0", "1", "0.7" etc.)
     try:
         return float(s)
     except ValueError:
         pass
+    # 2. Scientific notation: "9*10^7", "9×10^7", "9·10^7", "9x10^3" → N*10^K
+    m = _SCI_MULT_RE.match(s)
+    if m:
+        v = _parse_numeric_token(s)
+        if v is not None:
+            return v
+    # 3. Mathematical exponentiation: "10^10" → 10^10 = 1e10
+    m = _POW_RE.match(s)
+    if m:
+        v = _parse_numeric_token(s)
+        if v is not None:
+            return v
+    # 4. Russian decimal comma: "8,75"
+    m = _COMMA_RE.match(s)
+    if m:
+        try:
+            return float(f"{m.group(1)}.{m.group(2)}")
+        except ValueError:
+            pass
+    # 5. "less than N" / "more than N" → threshold (caller treats the value
+    #    as the boundary; the "less than" semantic is carried by the raw
+    #    string and the upper-bound reference interval).
+    m = _PREFIX_NUM_RE.match(s)
+    if m:
+        v = _parse_numeric_token(m.group(1))
+        if v is not None:
+            return v
+    # 6. Extract the first number from the string (fallback for any other
+    #    noisy numeric form, e.g. "11.10 мг/дл" → 11.1). Comma is also
+    #    accepted as a decimal separator here.
     m = _NUM_RE.search(s)
     if m:
-        return float(m.group(0))
+        try:
+            return float(m.group(0).replace(',', '.'))
+        except ValueError:
+            pass
     return s
 
 
