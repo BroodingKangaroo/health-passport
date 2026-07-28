@@ -13,7 +13,7 @@ import type { MedicalEvent, BiomarkerResult, Status, Reading } from '@/lib/types
 
 export function TimelineView() {
   const router = useRouter()
-  const { data, isLoading, error } = useTimelineData()
+  const { data, isLoading, error, refetch } = useTimelineData()
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
 
   const events: MedicalEvent[] = data?.events ?? []
@@ -70,7 +70,13 @@ export function TimelineView() {
         </aside>
         <section className="min-w-0 overflow-x-hidden">
           {selectedEventData?.type === 'doctor_visit' && visits[selectedEventData.id] ? (
-            <DoctorVisitDetails visit={visits[selectedEventData.id]} />
+            <DoctorVisitDetails
+              visit={visits[selectedEventData.id]}
+              onDeleted={() => {
+                setSelectedEvent(null)
+                refetch()
+              }}
+            />
           ) : selectedEventData?.type === 'doctor_visit' ? (
             <div className="flex h-full min-h-[300px] items-center justify-center text-sm text-muted-foreground">
               <p>Visit details not yet available.</p>
@@ -80,6 +86,10 @@ export function TimelineView() {
               event={selectedEventData}
               biomarkers={eventBiomarkers}
               onViewDetails={(id) => router.push('/details?id=' + id + '&from=timeline')}
+              onDeleted={() => {
+                setSelectedEvent(null)
+                refetch()
+              }}
             />
           ) : selectedEventData ? (
             <div className="flex h-full min-h-[300px] items-center justify-center text-sm text-muted-foreground">

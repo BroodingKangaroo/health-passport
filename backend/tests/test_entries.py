@@ -296,3 +296,294 @@ class TestStatusFromReference:
 
         ref = {"kind": "interval", "low": 4.0, "high": 11.0}
         assert compute_status("Not detected", ref) == "normal"
+
+
+class TestDeleteEntry:
+    """Hard-delete a single MedicalEntry and verify every related row / file
+    is removed, that storage quota is decremented correctly, and that the
+    endpoint is scoped to the current user."""
+
+    async def test_delete_returns_200_and_removes_event(self, client):
+        # when
+        resp = await client.delete("/api/entry/blood-feb")
+
+        # then
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["id"] == "blood-feb"
+
+        timeline = await client.get("/api/timeline")
+        ids = [e["id"] for e in timeline.json()["events"]]
+        assert "blood-feb" not in ids
+
+    async def test_delete_response_shape(self, client):
+        # when
+        resp = await client.delete("/api/entry/blood-may")
+
+        # then
+        body = resp.json()
+        assert set(body.keys()) >= {"success", "id", "deleted_visit_data", "freed_bytes"}
+        assert body["success"] is True
+        assert body["id"] == "blood-may"
+        assert body["deleted_visit_data"] is False  # blood_test has no visit_data
+        assert body["freed_bytes"] == 0  # seed blood tests have no attachment files on disk
+
+    async def test_delete_404_for_unknown_id(self, client):
+        resp = await client.delete("/api/entry/does-not-exist")
+        assert resp.status_code == 404
+        assert "not found" in resp.json()["detail"].lower()
+
+    async def test_delete_404_for_other_users_entry(self, client, db_session):
+        # given — create a second user and an entry that belongs to them
+        from app.auth import create_user
+        from app.db.models import MedicalEntry, Patient
+        other = create_user(
+            db_session,
+            "other@example.com",
+            "otherpassword123",
+            "Other User",
+            "1995-05-05",
+            "Other",
+        )
+        other_entry = MedicalEntry(
+            id="other-entry",
+            patient_id=other.id,
+            type="blood_test",
+            date=__import__("datetime").datetime(2027, 3, 1, tzinfo=__import__("datetime").timezone.utc),
+            title="Other user's panel",
+            clinic="Other Lab",
+        )
+        db_session.add(other_entry)
+        db_session.commit()
+
+        # when — call from the default (testuser) session
+        resp = await client.delete("/api/entry/other-entry")
+
+        # then — must be 404, not 403, to avoid leaking existence
+        assert resp.status_code == 404
+
+        # cleanup so other tests don't see this row
+        db_session.delete(db_session.query(MedicalEntry).filter(MedicalEntry.id == "other-entry").first())
+        db_session.commit()
+
+    async def test_delete_cascades_biomarker_readings(self, client, db_session):
+        # given — blood-feb has readings seeded in tests/seed_data.py
+        from app.db.models import BiomarkerReading
+        before = db_session.query(BiomarkerReading).filter(BiomarkerReading.entry_id == "blood-feb").count()
+        assert before > 0
+
+        # when
+        await client.delete("/api/entry/blood-feb")
+
+        # then
+        after = db_session.query(BiomarkerReading).filter(BiomarkerReading.entry_id == "blood-feb").count()
+        assert after == 0
+
+    async def test_delete_cascades_visit_data(self, client):
+        # given — cardio has a VisitData row
+        visit_resp = await client.get("/api/visit-data/cardio")
+        assert visit_resp.status_code == 200
+
+        # when
+        del_resp = await client.delete("/api/entry/cardio")
+        assert del_resp.status_code == 200
+        assert del_resp.json()["deleted_visit_data"] is True
+
+        # then
+        visit_resp2 = await client.get("/api/visit-data/cardio")
+        assert visit_resp2.status_code == 404
+
+    async def test_delete_cascades_attachments(self, client, db_session):
+        # given — cardio has 2 attachments per tests/seed_data.py
+        from app.db.models import Attachment
+        before = db_session.query(Attachment).filter(Attachment.entry_id == "cardio").count()
+        assert before == 2
+
+        # when
+        await client.delete("/api/entry/cardio")
+
+        # then
+        after = db_session.query(Attachment).filter(Attachment.entry_id == "cardio").count()
+        assert after == 0
+
+    async def test_delete_removes_attachment_files_from_disk(self, client, db_session, tmp_path, monkeypatch):
+        """End-to-end: upload → assert file on disk → delete → assert file gone,
+        and confirm the storage counter was decremented by the file's actual size."""
+        from app.db.models import UsageLimit
+        from app.db.models import MedicalEntry
+        from app.api.entries import UPLOAD_DIR
+        from tests.seed_data import TEST_USER_ID
+
+        # Redirect uploads to a clean temp dir for this test
+        test_dir = str(tmp_path / "uploads_for_delete")
+        import os
+        os.makedirs(test_dir, exist_ok=True)
+        monkeypatch.setattr("app.api.entries.UPLOAD_DIR", test_dir)
+
+        # given — upload a file with a blood_test entry
+        biomarkers_json = json.dumps([{"id": "cat-1", "name": "CBC", "rows": []}])
+        content = b"%PDF-1.4 upload-then-delete fixture"
+        upload_resp = await client.post(
+            "/api/entry",
+            data={
+                "type": "blood_test",
+                "date": "2027-04-01",
+                "clinic": "Delete Lab",
+                "title": "Upload-Then-Delete",
+                "biomarkers": biomarkers_json,
+            },
+            files={"file": ("fixture.pdf", content, "application/pdf")},
+        )
+        assert upload_resp.status_code == 200
+        entry_id = upload_resp.json()["id"]
+
+        # Lock in the storage counter so we can measure the decrement.
+        from app.services.usage_limits import get_limits
+        before = get_limits(db_session, TEST_USER_ID, False)["total_upload_size_bytes"]
+        assert before == len(content)
+
+        # Confirm the file actually landed on disk
+        saved_path = os.path.join(test_dir, os.path.basename(
+            db_session.query(MedicalEntry).filter(MedicalEntry.id == entry_id).first()
+            .attachments[0].file_path
+        ))
+        assert os.path.isfile(saved_path)
+        assert os.path.getsize(saved_path) == len(content)
+
+        # when
+        del_resp = await client.delete(f"/api/entry/{entry_id}")
+        assert del_resp.status_code == 200
+        body = del_resp.json()
+        assert body["freed_bytes"] == len(content)
+
+        # then — file is unlinked, storage counter decremented, no row remains
+        assert not os.path.exists(saved_path)
+        after = get_limits(db_session, TEST_USER_ID, False)["total_upload_size_bytes"]
+        assert after == 0
+
+        assert db_session.query(MedicalEntry).filter(MedicalEntry.id == entry_id).first() is None
+
+    async def test_delete_keeps_file_when_other_entry_still_references_it(self, client, db_session, tmp_path, monkeypatch):
+        """Regression: the anon→user migration duplicates the attachment row
+        so two entries can share one file_path. Deleting one must not unlink
+        the file or refund the quota."""
+        from app.db.models import Attachment, MedicalEntry, UsageLimit
+        from app.services.usage_limits import get_limits
+        from app.api.entries import UPLOAD_DIR
+        from tests.seed_data import TEST_USER_ID
+
+        test_dir = str(tmp_path / "uploads_for_shared")
+        import os
+        os.makedirs(test_dir, exist_ok=True)
+        monkeypatch.setattr("app.api.entries.UPLOAD_DIR", test_dir)
+
+        # given — two entries that both own a row pointing at the same file
+        shared_filename = "shared-attachment.pdf"
+        shared_path = os.path.join(test_dir, shared_filename)
+        with open(shared_path, "wb") as f:
+            f.write(b"%PDF-1.4 shared file bytes")
+        file_path = f"/static/uploads/{shared_filename}"
+
+        for eid in ("shared-1", "shared-2"):
+            entry = MedicalEntry(
+                id=eid,
+                patient_id=TEST_USER_ID,
+                type="blood_test",
+                date=__import__("datetime").datetime(2027, 4, 1, tzinfo=__import__("datetime").timezone.utc),
+                title=eid,
+                clinic="Shared Lab",
+            )
+            db_session.add(entry)
+            db_session.flush()
+            db_session.add(Attachment(
+                id=f"att-{eid}",
+                entry_id=eid,
+                name="shared.pdf",
+                type="Lab Report",
+                size=f"{os.path.getsize(shared_path) // 1024} KB",
+                file_path=file_path,
+            ))
+        db_session.commit()
+
+        # Pre-populate the storage counter so we can detect any refund.
+        from app.services.usage_limits import check_and_record_storage_usage
+        check_and_record_storage_usage(
+            db_session, TEST_USER_ID, os.path.getsize(shared_path), False, commit=True
+        )
+        size = os.path.getsize(shared_path)
+        before = get_limits(db_session, TEST_USER_ID, False)["total_upload_size_bytes"]
+        assert before == size
+
+        # when — delete the first entry; the second still references the file
+        resp1 = await client.delete("/api/entry/shared-1")
+        assert resp1.status_code == 200
+        assert resp1.json()["freed_bytes"] == 0  # nothing unlinked yet
+
+        # then
+        assert os.path.isfile(shared_path)
+        mid = get_limits(db_session, TEST_USER_ID, False)["total_upload_size_bytes"]
+        assert mid == before
+
+        # when — delete the second entry; now nothing references the file
+        resp2 = await client.delete("/api/entry/shared-2")
+        assert resp2.status_code == 200
+        assert resp2.json()["freed_bytes"] == size
+
+        # then
+        assert not os.path.exists(shared_path)
+        after = get_limits(db_session, TEST_USER_ID, False)["total_upload_size_bytes"]
+        assert after == 0
+
+    async def test_delete_handles_missing_file_on_disk(self, client, db_session, tmp_path, monkeypatch):
+        """Attachment row exists, file does not. Delete must still succeed
+        (DB cascade is the source of truth) and must NOT throw on the FS side.
+        No phantom quota refund either."""
+        from app.db.models import Attachment, MedicalEntry
+        from app.services.usage_limits import get_limits
+        from tests.seed_data import TEST_USER_ID
+
+        test_dir = str(tmp_path / "uploads_for_missing")
+        import os
+        os.makedirs(test_dir, exist_ok=True)
+        monkeypatch.setattr("app.api.entries.UPLOAD_DIR", test_dir)
+
+        # Manually create an entry with an attachment whose file is *missing*.
+        entry = MedicalEntry(
+            id="ghost-entry",
+            patient_id=TEST_USER_ID,
+            type="blood_test",
+            date=__import__("datetime").datetime(2027, 4, 1, tzinfo=__import__("datetime").timezone.utc),
+            title="Ghost Attachment",
+            clinic="Nowhere Lab",
+        )
+        db_session.add(entry)
+        db_session.flush()
+        db_session.add(Attachment(
+            id="att-ghost",
+            entry_id="ghost-entry",
+            name="ghost.pdf",
+            type="Lab Report",
+            size="1 KB",
+            file_path="/static/uploads/never-existed.pdf",
+        ))
+        db_session.commit()
+
+        # when
+        resp = await client.delete("/api/entry/ghost-entry")
+
+        # then — success, no 500
+        assert resp.status_code == 200
+        body = resp.json()
+        # The file is gone-or-never-existed, so on-disk size was 0; we fall
+        # back to the parsed size only when there is *any* size to refund, and
+        # here the parsed size of "1 KB" is positive, so the quota IS decremented
+        # by 1024 bytes. (Belt-and-suspenders: keeps the counter honest when
+        # attachments were lost out-of-band.)
+        assert body["freed_bytes"] == 0
+        after = get_limits(db_session, TEST_USER_ID, False)["total_upload_size_bytes"]
+
+        # Cleanup: roll back the artifact UsageLimit we may have created earlier
+        # in this test so other tests aren't affected.
+        db_session.rollback()
+

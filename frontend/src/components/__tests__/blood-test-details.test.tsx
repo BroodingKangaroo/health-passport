@@ -91,4 +91,16 @@ describe('BloodTestDetails', () => {
     expect(subtitle.className).toContain('truncate')
     expect(subtitle.getAttribute('title')).toBe(`Jan 15, 2027 · ${longLabName}`)
   })
+
+  it('renders a Settings tab and switches to it on click', () => {
+    render(<BloodTestDetails event={baseEvent} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} onDeleted={vi.fn()} />)
+
+    const settingsTab = screen.getByRole('button', { name: 'Settings' })
+    expect(settingsTab).toBeDefined()
+    fireEvent.click(settingsTab)
+
+    // The Settings panel surfaces the entry type and a Danger Zone heading
+    expect(screen.getByText('Entry Details')).toBeDefined()
+    expect(screen.getByText('Danger Zone')).toBeDefined()
+  })
 })

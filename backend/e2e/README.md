@@ -16,7 +16,9 @@ an analyte, the produced JSON differs from golden → the case fails.
 backend/e2e/
   run_e2e.py            # harness: POST file -> /api/extract -> diff vs golden
   run_e2e_server.py     # boots an ISOLATED server on :8099 (+ own DB) and runs the harness
+  run_delete_e2e.py     # boots an ISOLATED server and runs a full HTTP round-trip test of DELETE /api/entry/{id}
   compare.py            # tolerant comparison rules
+  validate_offline.py   # deterministic matcher-only validation (skips OCR+LLM)
   README.md
   inputs/<case>/<file>  # drop a real PDF/image here (one doc per case)
   golden/<case>/standardized.json   # hand-verified acceptance JSON
@@ -36,6 +38,33 @@ dev server. First run seeds the LOINC dictionary into its DB.
 python backend/e2e/run_e2e_server.py                 # all cases
 python backend/e2e/run_e2e_server.py --case оак_26.05  # one case
 ```
+
+## Delete endpoint e2e
+
+`run_delete_e2e.py` is a separate, smaller e2e for the `DELETE /api/entry/{id}`
+CRUD path (the golden harness above only covers the AI extraction pipeline).
+It boots its own isolated uvicorn on port 8098 with a temp sqlite DB, registers
+a fresh user, uploads a real file via `POST /api/entry`, then DELETEs the entry
+and asserts the full round trip:
+
+- file lands on disk under `static/uploads/<name>` with the expected byte size
+- `GET /api/usage/limits` shows the storage counter increased by exactly the file size
+- `GET /api/timeline` contains the new entry
+- `DELETE /api/entry/{id}` returns 200 with `freed_bytes` matching the file size
+- the file is unlinked from disk
+- the entry is gone from `GET /api/timeline`
+- the storage counter is back to its baseline
+- a second DELETE returns 404
+
+```bash
+python backend/e2e/run_delete_e2e.py                # default port 8098
+python backend/e2e/run_delete_e2e.py --port 8124   # pick a free port
+python backend/e2e/run_delete_e2e.py --keep-artifacts  # keep temp DB+files for debugging
+```
+
+The server is always torn down by PID (never a blanket pkill) and the temp
+DB is removed on success. Unlike the golden harness, this test does **not**
+need `MISTRAL_API_KEY` — it exercises CRUD only.
 
 ## Run it (manual server)
 

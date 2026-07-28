@@ -3,8 +3,12 @@ import os
 import re
 import uuid
 import hashlib
+import logging
 from datetime import datetime, timezone
 from typing import Optional, Tuple, Union
+
+
+logger = logging.getLogger(__name__)
 
 
 _LOINC_RE = re.compile(r"^\d+-\d+(\.\d+)?$")
@@ -15,10 +19,10 @@ def _is_loinc(code: Optional[str]) -> bool:
 
 from fastapi import APIRouter, Form, UploadFile, File, Depends, Query, HTTPException, Request, Response
 from sqlalchemy.orm import Session
-from sqlalchemy import cast, func, or_, String
+from sqlalchemy import cast, func, or_, String, update
 from sqlalchemy.exc import IntegrityError
 
-from app.schemas import SaveEntryResponse
+from app.schemas import SaveEntryResponse, DeleteEntryResponse
 from app.db.session import get_db
 from app.db.models import (
     MedicalEntry as MedicalEntryModel,
@@ -350,3 +354,136 @@ async def save_entry(
 
     db.commit()
     return SaveEntryResponse(success=True, message="Entry saved", id=entry_id)
+
+
+def _parse_size_to_bytes(size_str: str) -> int:
+    """Parse the human-readable `Attachment.size` string (e.g. "312 KB", "2.1 MB")
+    into bytes. Returns 0 when the value is missing or unparseable — callers
+    treat that as "no quota to refund" rather than failing the delete."""
+    if not size_str:
+        return 0
+    s = size_str.strip().upper().replace(",", ".")
+    m = re.match(r"^([\d.]+)\s*(B|KB|MB|GB)?$", s)
+    if not m:
+        return 0
+    value = float(m.group(1))
+    unit = m.group(2) or "B"
+    if unit == "KB":
+        return int(value * 1024)
+    if unit == "MB":
+        return int(value * 1024 * 1024)
+    if unit == "GB":
+        return int(value * 1024 * 1024 * 1024)
+    return int(value)
+
+
+def _decrement_storage_quota(db: Session, user_id: str, is_anonymous: bool, freed_bytes: int) -> None:
+    """Decrement the user's tracked storage usage by `freed_bytes` (clamped at
+    zero) using a single conditional UPDATE so concurrent deletes don't drive
+    the counter negative. Missing rows are silently skipped — there's nothing
+    to refund against."""
+    from app.db.models import UsageLimit
+    if freed_bytes <= 0:
+        return
+    db.execute(
+        update(UsageLimit)
+        .where(
+            UsageLimit.user_id == user_id,
+            UsageLimit.is_anonymous == is_anonymous,
+            UsageLimit.total_upload_size_bytes >= freed_bytes,
+        )
+        .values(
+            total_upload_size_bytes=UsageLimit.total_upload_size_bytes - freed_bytes,
+            last_activity=datetime.now(timezone.utc),
+        )
+    )
+
+
+@router.delete("/api/entry/{entry_id}", response_model=DeleteEntryResponse)
+async def delete_entry(
+    entry_id: str,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+):
+    """Hard-delete a single entry and its cascade-owned rows (readings, visit
+    data, attachments). Attached files on disk are removed only when no other
+    entry still references them, so the anon→user migration case (which
+    duplicates the attachment row) is safe. Storage quota is decremented by the
+    freed bytes of files that are actually unlinked."""
+    user, user_id, is_anonymous = user_data
+    entry = (
+        db.query(MedicalEntryModel)
+        .filter(
+            MedicalEntryModel.id == entry_id,
+            MedicalEntryModel.patient_id == user_id,
+        )
+        .first()
+    )
+    if not entry:
+        raise HTTPException(status_code=404, detail=f"Entry '{entry_id}' not found")
+
+    # Snapshot attachment file_paths BEFORE the cascade deletes the rows, so we
+    # can re-query "are there any remaining references?" after the delete.
+    attachment_paths: list[str] = [
+        a.file_path for a in entry.attachments if a.file_path
+    ]
+    attachment_size_bytes = sum(
+        _parse_size_to_bytes(a.size or "") for a in entry.attachments
+    )
+
+    # Capture visit id BEFORE delete so we can confirm cascade below.
+    visit_id = entry.id if entry.visit_data is not None else None
+
+    db.delete(entry)
+    db.flush()  # surface cascade + unlink before we touch the filesystem
+
+    freed_bytes = 0
+    for file_path in attachment_paths:
+        # Path stored as "/static/uploads/{name}" (entries.py:149). Skip
+        # anything outside our uploads directory defensively.
+        if not file_path.startswith("/static/uploads/"):
+            continue
+        filename = file_path[len("/static/uploads/"):]
+        if not filename or ".." in filename or filename.startswith("/"):
+            continue
+
+        still_referenced = (
+            db.query(AttachmentModel)
+            .filter(AttachmentModel.file_path == file_path)
+            .first()
+        )
+        if still_referenced is not None:
+            # Another entry (e.g. the migrated-anon copy) still owns a row that
+            # points at the same file. Do not unlink, do not refund.
+            continue
+
+        full_path = os.path.join(UPLOAD_DIR, filename)
+        try:
+            if os.path.isfile(full_path):
+                freed_bytes += os.path.getsize(full_path)
+                os.remove(full_path)
+        except OSError as e:
+            # The DB rows are already gone; don't let a stray FS error reverse
+            # the cascade. Log and continue.
+            logger.warning("Failed to remove uploaded file %s: %s", full_path, e)
+
+    if freed_bytes > 0:
+        # Prefer the on-disk size (truth) over the parsed human string
+        # (fuzzy) when we have it. Fall back to the parsed sum only when the
+        # file was already missing.
+        _decrement_storage_quota(db, user_id, is_anonymous, freed_bytes)
+    elif attachment_size_bytes > 0:
+        # All attachment files were missing; refund the size we knew about
+        # so the counter doesn't overstate storage in use.
+        _decrement_storage_quota(db, user_id, is_anonymous, attachment_size_bytes)
+
+    db.commit()
+
+    return {
+        "success": True,
+        "id": entry_id,
+        "deleted_visit_data": visit_id is not None,
+        "freed_bytes": freed_bytes,
+    }

@@ -85,4 +85,15 @@ describe('DoctorVisitDetails', () => {
     expect(screen.queryByText('Print')).toBeNull()
     expect(screen.queryByText('Download')).toBeNull()
   })
+
+  it('renders a Settings tab and switches to it on click', () => {
+    render(<DoctorVisitDetails visit={baseVisit} onDeleted={vi.fn()} />)
+
+    const settingsTab = screen.getByRole('button', { name: 'Settings' })
+    expect(settingsTab).toBeDefined()
+    fireEvent.click(settingsTab)
+
+    expect(screen.getByText('Entry Details')).toBeDefined()
+    expect(screen.getByText('Danger Zone')).toBeDefined()
+  })
 })

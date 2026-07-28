@@ -2,10 +2,11 @@
 
 import { useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
-import { FileText, Download, Printer, FlaskConical, Paperclip } from 'lucide-react'
+import { FileText, Download, Printer, FlaskConical, Paperclip, Settings } from 'lucide-react'
 
 import { cn, fetchAuthedObjectUrl, printAuthedDocument } from '@/lib/utils'
 import { ResultsPanel } from './results-panel'
+import { EntrySettings } from './entry-settings'
 import type { MedicalEvent, BiomarkerResult } from '@/lib/types'
 
 const DocumentViewer = dynamic(
@@ -24,14 +25,16 @@ interface BloodTestDetailsProps {
   event: MedicalEvent
   biomarkers: BiomarkerResult[]
   onViewDetails: (id: string) => void
+  onDeleted?: () => void
 }
 
 export function BloodTestDetails({
   event,
   biomarkers,
   onViewDetails,
+  onDeleted,
 }: BloodTestDetailsProps) {
-  const [activeTab, setActiveTab] = useState<'results' | 'document'>('results')
+  const [activeTab, setActiveTab] = useState<'results' | 'document' | 'settings'>('results')
 
   const attachments = event.attachments ?? []
   const [activeAttachmentId, setActiveAttachmentId] = useState<string | null>(null)
@@ -60,7 +63,7 @@ export function BloodTestDetails({
 
   return (
     <div className="flex h-full w-full flex-col bg-background px-6 pb-6">
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <button
           onClick={() => setActiveTab('results')}
           className={
@@ -84,13 +87,25 @@ export function BloodTestDetails({
           <Paperclip className="size-4" />
           Documents ({attachments.length})
         </button>
+        <span className="text-sm text-muted-foreground/20">|</span>
+        <button
+          onClick={() => setActiveTab('settings')}
+          className={
+            activeTab === 'settings'
+              ? 'inline-flex items-center gap-1.5 text-sm font-semibold text-foreground'
+              : 'inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
+          }
+        >
+          <Settings className="size-4" />
+          Settings
+        </button>
       </div>
 
       {activeTab === 'results' ? (
         <div className="mt-5 flex-1 overflow-y-auto">
           <ResultsPanel date={event.date} labName={event.clinic} biomarkers={biomarkers} onViewDetails={onViewDetails} />
         </div>
-      ) : (
+      ) : activeTab === 'document' ? (
         <div className="mt-5 flex w-full min-w-0 flex-1 flex-col min-h-0">
           {attachments.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
@@ -163,6 +178,14 @@ export function BloodTestDetails({
               </div>
             </>
           )}
+        </div>
+      ) : (
+        <div className="mt-5 flex-1 min-h-0">
+          <EntrySettings
+            event={event}
+            biomarkers={biomarkers}
+            onDeleted={onDeleted ?? (() => {})}
+          />
         </div>
       )}
     </div>

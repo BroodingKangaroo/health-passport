@@ -13,9 +13,11 @@ import {
   Printer,
   Paperclip,
   Languages,
+  Settings,
 } from 'lucide-react'
 
 import { cn, fetchAuthedObjectUrl, printAuthedDocument } from '@/lib/utils'
+import { EntrySettings } from './entry-settings'
 import type { VisitData } from '@/lib/types'
 
 const DocumentViewer = dynamic(
@@ -30,8 +32,8 @@ const DocumentViewer = dynamic(
   },
 )
 
-export function DoctorVisitDetails({ visit }: { visit: VisitData }) {
-  const [activeTab, setActiveTab] = useState<'summary' | 'document'>('summary')
+export function DoctorVisitDetails({ visit, onDeleted }: { visit: VisitData; onDeleted?: () => void }) {
+  const [activeTab, setActiveTab] = useState<'summary' | 'document' | 'settings'>('summary')
   const [showOriginal, setShowOriginal] = useState(false)
   const [activeAttachmentId, setActiveAttachmentId] = useState<string | null>(null)
 
@@ -60,10 +62,19 @@ export function DoctorVisitDetails({ visit }: { visit: VisitData }) {
   const verdictText = showOriginal ? visit.verdict.original : visit.verdict.translated_en
   const verdictLabel = showOriginal ? 'Original' : 'Translated'
 
+  const eventForSettings = {
+    id: visit.date ? `${visit.clinic}-${visit.date}` : visit.clinic,
+    date: visit.date,
+    type: 'doctor_visit' as const,
+    title: visit.specialty,
+    clinic: visit.clinic,
+    attachments: visit.attachments,
+  }
+
   return (
     <div className="flex h-full w-full flex-col bg-background px-6 pb-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <button
             onClick={() => setActiveTab('summary')}
             className={
@@ -86,6 +97,18 @@ export function DoctorVisitDetails({ visit }: { visit: VisitData }) {
           >
             <Paperclip className="size-4" />
             Original Document ({visit.attachments.length})
+          </button>
+          <span className="text-sm text-muted-foreground/20">|</span>
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={
+              activeTab === 'settings'
+                ? 'inline-flex items-center gap-1.5 text-sm font-semibold text-foreground'
+                : 'inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
+            }
+          >
+            <Settings className="size-4" />
+            Settings
           </button>
         </div>
 
@@ -250,7 +273,7 @@ export function DoctorVisitDetails({ visit }: { visit: VisitData }) {
             )}
           </div>
         </div>
-      ) : (
+      ) : activeTab === 'document' ? (
         <div className="mt-5 flex w-full min-w-0 flex-1 flex-col min-h-0">
           {visit.attachments.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
@@ -322,6 +345,14 @@ export function DoctorVisitDetails({ visit }: { visit: VisitData }) {
               </div>
             </>
           )}
+        </div>
+      ) : (
+        <div className="mt-5 flex-1 min-h-0">
+          <EntrySettings
+            event={eventForSettings}
+            visit={visit}
+            onDeleted={onDeleted ?? (() => {})}
+          />
         </div>
       )}
     </div>

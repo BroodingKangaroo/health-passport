@@ -209,6 +209,27 @@ export async function saveMedicalEntry(formData: FormData): Promise<SaveEntryRes
   return res.json()
 }
 
+/* ----- Delete Entry ----- */
+export interface DeleteEntryResponse {
+  success: boolean
+  id: string
+  deleted_visit_data: boolean
+  freed_bytes: number
+}
+
+export async function deleteEntry(id: string): Promise<DeleteEntryResponse> {
+  const res = await fetch(`${API_BASE}/entry/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({ detail: 'Delete failed' }))
+    throw new ApiError(res.status, detail.detail || 'DELETE /entry failed')
+  }
+  return res.json() as Promise<DeleteEntryResponse>
+}
+
 /* ----- Usage Limits ----- */
 export interface UsageLimits {
   is_anonymous: boolean

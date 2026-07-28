@@ -33,5 +33,12 @@ class SaveEntryResponse(BaseModel):
     id: str = ""
 
 
+class DeleteEntryResponse(BaseModel):
+    success: bool
+    id: str
+    deleted_visit_data: bool = False
+    freed_bytes: int = 0
+
+
 class ApiError(BaseModel):
     detail: str
