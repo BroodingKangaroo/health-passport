@@ -23,7 +23,9 @@
       "status": "low",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-dedc70f59b04",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Lactobacillus spp",
@@ -41,7 +43,9 @@
       "status": "low",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-8c86cf258a11",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Bifidobacterium spp",
@@ -59,7 +63,9 @@
       "status": "low",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-16cf0b0fd973",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Escherichia coli",
@@ -77,7 +83,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-52c34f913a7c",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Bacteroides spp",
@@ -95,7 +103,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-d9f6ee1a7921",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Faecalibacterium prausnitzii",
@@ -113,7 +123,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-2988f1cd6b9e",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Bacteroides thetaomicron",
@@ -131,7 +143,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-50924c95bf5e",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Akkermansia muciniphila",
@@ -149,7 +163,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-3134fc747022",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Enterococcus spp",
@@ -167,7 +183,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-d3de7234bfe1",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Escherichia coli enteropathogenic",
@@ -185,7 +203,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-89c27419b864",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Klebsiella pneumoniae",
@@ -203,7 +223,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-7291df8e0881",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Klebsiella oxytoca",
@@ -221,7 +243,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-d58b5529c818",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Candida spp",
@@ -239,7 +263,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-531c1dd5fbba",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Staphylococcus aureus",
@@ -257,7 +283,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-6248ed0a1c72",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Clostridium difficile",
@@ -274,7 +302,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-71fba6245da9",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Clostridium perfringens",
@@ -291,7 +321,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-85791070732d",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Proteus vulgaris/mirabilis",
@@ -309,7 +341,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-bdb93f91d1a9",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Citrobacter spp",
@@ -327,7 +361,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-908fd2df1a95",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Enterobacter spp",
@@ -345,7 +381,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-650ca81cfac9",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Fusobacterium nucleatum",
@@ -362,7 +400,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-f0d7389b7fa0",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Parvimonas micra",
@@ -379,7 +419,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-3687c25eeb93",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Salmonella spp",
@@ -396,7 +438,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-fafbbc7bfac2",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Shigella spp",
@@ -413,7 +457,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-44e1fbccaab1",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Отношение Bacteroides spp и Faecalibacterium prausnitzii",
@@ -431,7 +477,9 @@
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
       "definition_id": "local-aaddae1b1c91",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     }
   ],
   "visit_data": {

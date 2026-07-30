@@ -8,8 +8,9 @@ import { cn, formatNumber } from '@/lib/utils'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Sparkline } from '@/components/shared/Sparkline'
+import { ScaleNote, InferredUnitNote } from '@/components/shared/ScaleNote'
 import { formatReference, intervalBounds, qualitativeToNumber, isQualitative } from '@/lib/reference'
-import type { DateHeader, MatrixCategory, MatrixCell, BiomarkerResult, Status } from '@/lib/types'
+import type { DateHeader, MatrixCategory, MatrixCell, BiomarkerResult, Status, MatrixRow } from '@/lib/types'
 
 const statusText: Record<Status, string> = {
   normal: 'text-foreground',
@@ -28,6 +29,11 @@ function Cell({ cell }: { cell: MatrixCell }) {
       )}
     >
       {formatNumber(cell.value)}
+      <ScaleNote
+        className="ml-0.5"
+        scaleFunction={cell.scale_function}
+        needsReview={cell.needs_review}
+      />
       {cell.status === 'low' && <ArrowDown className="size-3.5" />}
       {cell.status === 'high' && <ArrowUp className="size-3.5" />}
     </span>
@@ -152,6 +158,9 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
                       </p>
                       <p className="truncate text-xs text-muted-foreground/70">
                         {row.original} · {formatReference(row.reference, row.unit)}
+                        {row.canonical_unit_inferred && (
+                          <InferredUnitNote className="ml-1 align-text-bottom" />
+                        )}
                       </p>
                     </div>
                     <Sparkline

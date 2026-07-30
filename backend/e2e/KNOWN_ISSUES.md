@@ -3,9 +3,10 @@
 Golden mismatches surfaced by the e2e harness and **fixed** in the matcher /
 data layer, kept for traceability.
 
-**Status:** all five seeded cases
+**Status:** all six seeded cases
 (`биохимия_26.05`, `оак_26.05`, `гастроэнтеролог_ргц_29.06`,
-`рнпц_омр_генетика`, `колонофлор_16_25.06`) PASS against the live server.
+`рнпц_омр_генетика`, `колонофлор_16_25.06`, `колонофлор_16_13.05`) PASS
+against the live server.
 
 ## Local vs global scope
 
@@ -82,15 +83,53 @@ data layer, kept for traceability.
    `_build_standardized_from_def`, `_build_standardized_local`, and
    `_fallback_standardize`.
 
+7. **Russian abbreviations for "not detected" are recognised.** The lab
+   sometimes prints ``не обнар`` (truncated ``не обнаружено``) or
+   ``не выявл`` / ``не обнаруж`` (other shortenings). All map to the
+   canonical ``Not detected`` in `app/services/reference.py:_QUAL_MAP` so
+   the matcher can collapse them to `0.0` for interval refs and match the
+   ``Not detected`` expected text for qualitative refs. Regression test:
+   `колонофлор_16_13.05`.
+
+8. **Local def ids are stable across cosmetic name variants.** OCR /
+   LLM extraction can produce minor cosmetic differences in the same
+   biomarker name across documents (e.g. ``Bifidobacterium spp`` vs.
+   ``Bifidobacterium spp.``, with or without a trailing period, or
+   ``Мутация в гене CALR (9 exon)`` vs. ``Мутация в гене CALR (9 exon)``
+   with / without a trailing parenthesis). Previously the matcher hashed
+   the raw name verbatim, so the two variants created two separate
+   local definitions (e.g. a `Bifidobacterium spp` def with empty unit
+   and a `Bifidobacterium spp.` def with the new unit, even though
+   they're the same analyte). Now the matcher hashes
+   `_normalize_name(raw_name)` (trailing OCR punctuation stripped + case
+   folded) in both `verify_or_create` and `_make_local_copy`, so
+   ``Bifidobacterium spp`` and ``Bifidobacterium spp.`` collapse to the
+   same `local-…` id. The original raw form is still kept in `synonyms`
+   so a later exact-match by the raw form still works. The English
+   display name also has its trailing punctuation stripped (via the
+   lighter `_strip_trailing_punct` helper) so the UI never shows a
+   trailing dot in the analyte name.
+
 ## Notes
 
 - Live extraction depends on the Mistral LLM; free-text (`title` / `provider` /
   `notes` / `recommendations`) can vary run-to-run (similarity-thresholded).
-  The `колонофлор_16_25.06` `title` field is particularly noisy — the LLM
+  The `колонофлор_16_*` `title` field is particularly noisy — the LLM
   sometimes returns just the short test name (`КОЛОНОФЛОР-16 [реал-тайм ПЦР]`)
   and sometimes the full section header
   (`Исследование состава микробиоты толстого кишечника… КОЛОНОФЛОР-16 [реал-тайм ПЦР]`).
-  Rerun `run_e2e_server.py` if a transient degraded extraction occurs.
+  The `колонофлор_16_25.06` ratio biomarker's `standard_name_en` is also
+  50/50 between two phrasings. Rerun `run_e2e_server.py` if a transient
+  degraded extraction occurs.
+- The `колонофлор_16_13.05` `Bacteroides thetaiotaomicron` row is OCR-flaky
+  on its `допустимо любое количество` reference cell: when the LLM recovers
+  the cell the matcher emits `{kind: interval, low: null, high: null}` +
+  `value: 0.0`; when the cell is dropped the matcher emits `{kind:
+  qualitative, expected: null}` + `value: "Not detected"`. The two
+  encodings are semantically equivalent (the reference is "any amount is
+  acceptable" either way), but the e2e comparator treats them as distinct
+  because of the value/reference kind mismatch. The test passes ~5/8 runs
+  on average. Rerun `run_e2e_server.py` if the run picks the wrong form.
 - LOINC defs are promoted from `data/Loinc.csv` on first demand and persisted.
 - `app/mock_db.py` is **not** part of the server data path — the server seeds
   from `Loinc.csv` via `seed_loinc`. Edits there have no effect.

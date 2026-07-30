@@ -12,7 +12,7 @@
       "raw_value": "Не выявлена",
       "raw_unit": "",
       "raw_range_string": "",
-      "standard_name_en": "JAK2 gene mutation (12 exon)",
+      "standard_name_en": "JAK2 gene mutation (12 exon",
       "standard_value": "Not detected",
       "standard_unit": "",
       "reference": {
@@ -21,7 +21,7 @@
       },
       "status": "normal",
       "category": "Секвенирование",
-      "definition_id": "local-85ca199571f3",
+      "definition_id": "local-68f924535f3a",
       "scope": "local"
     },
     {
@@ -29,7 +29,7 @@
       "raw_value": "Не выявлена",
       "raw_unit": "",
       "raw_range_string": "",
-      "standard_name_en": "JAK2 gene mutation (14 exon; V617F)",
+      "standard_name_en": "JAK2 gene mutation (14 exon; V617F",
       "standard_value": "Not detected",
       "standard_unit": "",
       "reference": {
@@ -38,7 +38,7 @@
       },
       "status": "normal",
       "category": "Секвенирование",
-      "definition_id": "local-81b476546563",
+      "definition_id": "local-853903da0fb6",
       "scope": "local"
     },
     {
@@ -46,7 +46,7 @@
       "raw_value": "Не выявлена",
       "raw_unit": "",
       "raw_range_string": "",
-      "standard_name_en": "CALR gene mutation (9 exon)",
+      "standard_name_en": "CALR gene mutation (9 exon",
       "standard_value": "Not detected",
       "standard_unit": "",
       "reference": {
@@ -55,7 +55,7 @@
       },
       "status": "normal",
       "category": "Секвенирование",
-      "definition_id": "local-f6bdd6163646",
+      "definition_id": "local-f64d7bb07ae0",
       "scope": "local"
     },
     {
@@ -63,7 +63,7 @@
       "raw_value": "Не выявлена",
       "raw_unit": "",
       "raw_range_string": "",
-      "standard_name_en": "MPL gene mutation (10 exon)",
+      "standard_name_en": "MPL gene mutation (10 exon",
       "standard_value": "Not detected",
       "standard_unit": "",
       "reference": {
@@ -72,7 +72,7 @@
       },
       "status": "normal",
       "category": "Секвенирование",
-      "definition_id": "local-ce4b8cc6d2ce",
+      "definition_id": "local-6817c636cee1",
       "scope": "local"
     }
   ],

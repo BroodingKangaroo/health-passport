@@ -13,6 +13,10 @@ class Reading(BaseModel):
     original_value: Optional[str] = None
     original_unit: Optional[str] = None
     original_range: Optional[str] = None
+    # Scale conversion applied: "10^x" / "log10" / "factor:1.5" / null.
+    scale_function: Optional[str] = None
+    # True when the LLM couldn't determine a cross-scale conversion.
+    needs_review: bool = False
 
 
 class BiomarkerDefinition(BaseModel):
@@ -26,6 +30,10 @@ class BiomarkerDefinition(BaseModel):
     scope: str = "global"
     user_id: Optional[str] = None
     reference_source: str = "global"
+    # Canonical (English) unit + scale kind for cross-document comparison.
+    canonical_unit: Optional[str] = None
+    canonical_kind: Optional[str] = None
+    canonical_unit_inferred: bool = False
 
 
 class BiomarkerResult(BaseModel):
@@ -53,11 +61,20 @@ class BiomarkerDefinitionResponse(BaseModel):
     scope: str = "global"
     user_id: Optional[str] = None
     reference_source: str = "global"
+    canonical_unit: Optional[str] = None
+    canonical_kind: Optional[str] = None
+    canonical_unit_inferred: bool = False
 
 
 class MatrixCell(BaseModel):
     value: str
     status: str
+    # "10^x" / "log10" / "factor:1.5" / null. The flowsheet surfaces this so the
+    # UI can show the original in a footnote next to the converted value.
+    scale_function: Optional[str] = None
+    # True when the LLM couldn't determine a cross-scale conversion. The
+    # flowsheet cell still renders the raw value; the UI shows a warning.
+    needs_review: bool = False
 
 
 class MatrixRow(BaseModel):

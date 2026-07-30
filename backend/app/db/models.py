@@ -39,6 +39,19 @@ class BiomarkerDefinition(Base):
     # LOINC COMMON_TEST_RANK: lower = more commonly ordered. Used to pick the
     # canonical definition when several share a name/synonym. Null for local.
     common_rank = Column(Integer, nullable=True)
+    # Canonical unit (always English) for cross-document comparison. Set on
+    # the first reading that creates the def; subsequent readings with a
+    # different unit are converted to this one. NULL on legacy defs.
+    canonical_unit = Column(String, nullable=True)
+    # "linear" (default) or "log10" — tells the matcher whether the canonical
+    # unit is in raw or log10-of-the-raw form. Used to pick 10^x vs log10(x)
+    # when scaling a value across scales.
+    canonical_kind = Column(String, nullable=True)
+    # True when the canonical unit was LLM-invented (the source PDF had no unit
+    # cell and the matcher asked the LLM to pick a sensible one based on the
+    # analyte / category). Surfaced in the UI so the user can verify it
+    # matches their lab's convention.
+    canonical_unit_inferred = Column(Boolean, nullable=False, default=False)
 
     readings = relationship("BiomarkerReading", back_populates="definition")
 
@@ -83,6 +96,14 @@ class BiomarkerReading(Base):
     original_value = Column(String, nullable=True)
     original_unit = Column(String, nullable=True)
     original_range = Column(String, nullable=True)
+    # Scale conversion applied to land `value` in the definition's
+    # canonical unit. NULL = no conversion (the reading was already in the
+    # canonical scale). Examples: "10^x" (log→linear), "log10" (linear→log),
+    # "factor:1.5" (linear unit conversion).
+    scale_function = Column(String, nullable=True)
+    # True when the LLM couldn't determine a cross-scale conversion. The
+    # reading is kept raw (not converted) and the UI surfaces a warning.
+    needs_review = Column(Boolean, nullable=False, default=False)
 
     entry = relationship("MedicalEntry", back_populates="biomarker_readings")
     definition = relationship("BiomarkerDefinition", back_populates="readings")

@@ -95,6 +95,33 @@ class ConversionFactor(BaseModel):
     convertible: bool = False
 
 
+# +++++ LLM-assisted unit translation (raw -> English canonical) +++++
+
+class UnitTranslation(BaseModel):
+    # The standard English form of the unit (e.g. "copies/mL", "mg/dL",
+    # "lg copies/mL"). Empty when the LLM couldn't decide.
+    unit: str = ""
+    # "linear" (default) or "log10". Used to pick 10^x vs log10(x) when
+    # scaling across scales.
+    kind: str = "linear"
+    # True when the canonical unit was invented by the LLM (the source PDF
+    # had no unit cell) rather than translated from an existing unit.
+    inferred: bool = False
+
+
+class UnitTranslationBatch(BaseModel):
+    translations: list[UnitTranslation]
+
+
+# +++++ LLM-assisted scale conversion (log10 <-> linear, units within scale) +++++
+
+class ScaleFunction(BaseModel):
+    # "10^x" / "log10" / "exp(x)" for non-linear cross-scale conversions,
+    # or "factor:<float>" for a linear multiplicative conversion. Empty when
+    # the LLM can't decide.
+    function: str = ""
+
+
 # +++++ Pass 2 — Standardized (normalized, matched, converted, translated) +++++
 
 class StandardizedBiomarker(BaseModel):
@@ -110,6 +137,12 @@ class StandardizedBiomarker(BaseModel):
     category: str = ""
     definition_id: str = ""
     scope: str = "global"
+    # Scale conversion applied to land `standard_value` in the def's
+    # canonical unit. "10^x" / "log10" / "factor:1.5" / null.
+    scale_function: Optional[str] = None
+    # True when the LLM couldn't determine a cross-scale conversion; the
+    # reading is kept raw and the UI surfaces a warning.
+    needs_review: bool = False
 
 
 class StandardizedPrescription(BaseModel):

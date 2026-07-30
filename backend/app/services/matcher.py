@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import unicodedata
@@ -32,11 +33,14 @@ from app.schemas.ai import (
     RawBiomarker,
     RawMedicalRecord,
     RawVisitData,
+    ScaleFunction,
     StandardizedMedicalRecord,
     StandardizedBiomarker,
     StandardizedVisitData,
     StandardizedPrescription,
     TranslatedText,
+    UnitTranslation,
+    UnitTranslationBatch,
 )
 from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
 
@@ -285,11 +289,15 @@ def convert_units(
 # Punctuation commonly attached to biomarker names by OCR
 _PUNCT_RE = re.compile(r'[,:;.()\[\]{}"\'\-–—/\\|#@!?]\s*$')
 
-def _normalize_name(name: str) -> str:
-    """Normalize a biomarker name by stripping punctuation and normalizing unicode."""
+def _strip_trailing_punct(name: str) -> str:
+    """Strip OCR-attached trailing punctuation and normalise unicode. Case is preserved."""
     name = unicodedata.normalize('NFKC', name)
-    name = _PUNCT_RE.sub('', name.strip())
-    return name.lower()
+    return _PUNCT_RE.sub('', name.strip())
+
+def _normalize_name(name: str) -> str:
+    """Normalize a biomarker name by stripping punctuation, normalising unicode,
+    and lowercasing. Used for case-insensitive matching / hashing / lookup."""
+    return _strip_trailing_punct(name).lower()
 
 
 def _definition_rank(defn: BiomarkerDefinitionModel) -> int:
@@ -447,6 +455,72 @@ def _candidates_for(
     return ranked[:limit]
 
 
+def _convert_to_canonical(
+    value: Union[float, str, None],
+    raw_bm: RawBiomarker,
+    defn: BiomarkerDefinitionModel,
+    client: Optional[Mistral],
+) -> tuple[Union[float, str, None], str, Optional[str], bool]:
+    """Land `value` in the definition's canonical unit, if any.
+
+    Returns ``(std_value, std_unit, scale_function, needs_review)``. When
+    the defn has no canonical unit (legacy / global LOINC), the function is
+    a no-op that returns the original value and unit and ``scale_function=None``.
+    When the raw unit is missing, the value is non-numeric, or the LLM
+    can't decide the conversion, the function returns the original value
+    and sets ``needs_review=True`` so the UI can flag it.
+    """
+    canon_unit = getattr(defn, "canonical_unit", None) or None
+    canon_kind = getattr(defn, "canonical_kind", None) or "linear"
+    raw_translation = _translated_unit(raw_bm.unit)
+    raw_unit_en = raw_translation["unit"]
+    raw_kind = raw_translation["kind"]
+
+    # No canonical set yet → no conversion needed (the def is either a
+    # legacy LOINC def or a fresh local def whose canonical is about to
+    # be populated by ``verify_or_create`` / ``_make_local_copy``).
+    if not canon_unit:
+        return value, raw_unit_en, None, False
+
+    # If the raw unit is already in the canonical form, no conversion.
+    if _units_match(raw_unit_en, canon_unit):
+        return value, canon_unit, None, False
+
+    # String values ("Not detected", "не обнар", …) aren't convertible.
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        # Keep the raw value but flag the unit mismatch for the UI.
+        return value, canon_unit, None, True
+
+    fn = _llm_scale_function(
+        analyte=defn.names.get("en") or raw_bm.standard_name_en or raw_bm.name,
+        from_unit=raw_unit_en or "(empty)",
+        to_unit=canon_unit,
+        from_kind=raw_kind,
+        to_kind=canon_kind,
+        client=client,
+    )
+    if not fn:
+        # LLM couldn't decide — keep raw, flag for review.
+        return value, canon_unit, None, True
+    converted = _apply_scale_function(float(value), fn)
+    if converted is None:
+        return value, canon_unit, None, True
+    return converted, canon_unit, fn, False
+
+
+def _units_match(a: str, b: str) -> bool:
+    """Loose comparison: case-insensitive + whitespace-tolerant.
+
+    For our purposes, "copies/mL" == "Copies / mL" and "lg copies/mL"
+    == "LG copies/mL". Empty strings never match anything.
+    """
+    a = (a or "").strip().lower()
+    b = (b or "").strip().lower()
+    if not a or not b:
+        return False
+    return a == b
+
+
 def _build_standardized_from_def(
     raw_bm: RawBiomarker,
     defn: BiomarkerDefinitionModel,
@@ -499,19 +573,28 @@ def _build_standardized_from_def(
     # No document range: fall back to the curated global reference, converting a
     # numeric value into the definition's canonical unit so the comparison is
     # valid. Qualitative values carry no unit so nothing to convert.
+    scale_function: Optional[str] = None
+    needs_review = False
     if isinstance(parsed_value, (int, float)) and not isinstance(parsed_value, bool):
-        std_value: Union[float, str, None] = convert_units(
-            parsed_value,
-            raw_bm.unit,
-            defn.unit,
-            analyte_name=defn.names.get("en", raw_bm.name),
-            loinc=defn.loinc_code,
-            client=client,
+        std_value, std_unit, scale_function, needs_review = _convert_to_canonical(
+            convert_units(
+                parsed_value,
+                raw_bm.unit,
+                defn.unit,
+                analyte_name=defn.names.get("en", raw_bm.name),
+                loinc=defn.loinc_code,
+                client=client,
+            ),
+            raw_bm,
+            defn,
+            client,
         )
-        std_unit = defn.unit
     else:
-        std_value = parsed_value
-        std_unit = doc_unit or defn.unit
+        # Qualitative / non-numeric — still align the unit with the canonical
+        # when there is one, so the display stays consistent.
+        std_value, std_unit, scale_function, needs_review = _convert_to_canonical(
+            parsed_value, raw_bm, defn, client,
+        )
 
     ref = merge_reference(None, defn.reference, std_value)
     if isinstance(ref, dict) and ref.get("kind") == "qualitative":
@@ -529,12 +612,15 @@ def _build_standardized_from_def(
         category=defn.category,
         definition_id=defn.loinc_code or defn.id,
         scope=defn.scope,
+        scale_function=scale_function,
+        needs_review=needs_review,
     )
 
 
 def _build_standardized_local(
     raw_bm: RawBiomarker,
     defn: BiomarkerDefinitionModel,
+    client: Optional[Mistral] = None,
 ) -> StandardizedBiomarker:
     parsed_value = parse_value(raw_bm.value)
     parsed_ref = parse_reference(raw_bm.raw_range_string)
@@ -554,6 +640,15 @@ def _build_standardized_local(
     else:
         std_value = normalize_qual(parsed_value)
 
+    # Cross-scale conversion: if the defn has a canonical unit (set on the
+    # first reading that defined it) and the current reading's translated
+    # unit differs, ask the LLM for the scale function (10^x, log10, …)
+    # and apply it. Numeric values are converted; string values are kept raw
+    # but flagged with `needs_review` so the UI can highlight the mismatch.
+    std_value, std_unit, scale_function, needs_review = _convert_to_canonical(
+        std_value, raw_bm, defn, client,
+    )
+
     # Prefer the translated English name; fall back to the original raw name if
     # the stored definition name is somehow still non-English (defense against
     # an untranslated local definition leaking the source language to the UI).
@@ -569,12 +664,14 @@ def _build_standardized_local(
         raw_range_string=raw_bm.raw_range_string,
         standard_name_en=_prefer_comma_pct(en),
         standard_value=std_value,
-        standard_unit=raw_bm.unit,
+        standard_unit=std_unit,
         reference=ref,
         status="",
         category=defn.category or raw_bm.category or "General",
         definition_id=defn.loinc_code or defn.id,
         scope=defn.scope,
+        scale_function=scale_function,
+        needs_review=needs_review,
     )
 
 
@@ -664,6 +761,247 @@ def _translate_names_batch(
             src.standard_name_en = en
             result[g.raw_name] = en
     return result
+
+
+_UNIT_TRANSLATE_PROMPT = """You are a clinical-laboratory unit normaliser. For each unit string below, return the standard English form used in medical lab reports.
+
+Rules:
+- Translate Russian / Belarusian / non-ASCII units into conventional English (e.g. "копий/мл" -> "copies/mL", "мг/дл" -> "mg/dL", "ммоль/л" -> "mmol/L", "г/л" -> "g/L").
+- Preserve log-scale prefixes ("lg", "log", "ln") and translate only the magnitude part (e.g. "lg копий/мл" -> "lg copies/mL", "ln копий/мл" -> "ln copies/mL", "log10 копий/мл" -> "lg copies/mL").
+- For an EMPTY unit string, invent a sensible unit based on the analyte name and category (e.g. stool microbiome panels without a unit cell usually mean "copies/mL" or "copies/g"). Set `inferred: true` when you do.
+- For already-English units, return them verbatim and set `inferred: false`.
+- `kind` is "linear" by default, "log10" if the unit starts with "lg" / "log10" / "log" (case-insensitive), "ln" if the unit starts with "ln" (natural log).
+
+Items (each line: english analyte name | category | raw unit):
+{items}
+
+Return a JSON array of objects, one per input in the same order, each with:
+- raw_unit: the original unit (copy verbatim, or "" for empty)
+- unit: the standard English unit (or "" if you can't decide)
+- kind: "linear" | "log10" | "ln"
+- inferred: true if the unit was invented (no source unit), false otherwise"""
+
+
+# Cache of unit translations for the duration of a single match_and_convert call.
+_unit_translation_cache: dict[str, dict] = {}
+
+
+def _heuristic_unit_translation(
+    raw_unit: str, analyte_name: str = "", category: str = ""
+) -> Optional[dict]:
+    """Cheap deterministic translation for units the parser can already
+    recognise. Returns a UnitTranslation-shaped dict or None when the unit
+    needs the LLM (e.g. Cyrillic / invented for empty)."""
+    u = (raw_unit or "").strip()
+    if not u:
+        return None  # needs LLM to invent from analyte/category
+    # The Cyrillic lowercase letters mean the LLM has to translate; skip.
+    if not _is_ascii(u):
+        return None
+    low = u.lower()
+    kind = "linear"
+    if low.startswith(("lg", "log10", "log ")) or low == "log":
+        kind = "log10"
+    elif low.startswith("ln"):
+        kind = "ln"
+    return {"unit": u, "kind": kind, "inferred": False}
+
+
+def _translated_unit(raw_unit: str) -> dict:
+    """Return the cached translation for ``raw_unit``, or fall back to a
+    plain identity translation (with kind inferred from the prefix).
+
+    Never raises: an unrecognised unit always yields a usable dict.
+    """
+    u = (raw_unit or "").strip()
+    entry = _unit_translation_cache.get(u)
+    if entry is not None:
+        return entry
+    # Fall back to a heuristic identity translation. This only runs for units
+    # that never reached the batch translator (e.g. when the LLM client
+    # was unavailable).
+    low = u.lower()
+    kind = "linear"
+    if low.startswith(("lg", "log10", "log ")) or low == "log":
+        kind = "log10"
+    elif low.startswith("ln"):
+        kind = "ln"
+    return {"unit": u, "kind": kind, "inferred": False}
+
+
+def _translate_units_batch(
+    biomarkers: list[RawBiomarker],
+    client: Mistral,
+) -> dict[str, dict]:
+    """Translate non-English / empty / ambiguous units to standard English
+    via a single LLM call. Returns {raw_unit: {"unit", "kind", "inferred"}}.
+
+    Already-English units with a recognised scale prefix are handled
+    heuristically (no LLM call) so the helper is fast on the common case.
+    """
+    needed: dict[str, dict] = {}  # raw_unit -> {analyte, category}
+    for b in biomarkers:
+        u = (b.unit or "").strip()
+        cache = _unit_translation_cache.get(u)
+        if cache is not None:
+            needed.pop(u, None)
+            continue
+        heur = _heuristic_unit_translation(u, b.name, b.category)
+        if heur is not None:
+            _unit_translation_cache[u] = heur
+            continue
+        needed[u] = {"name": b.standard_name_en or b.name, "category": b.category}
+
+    if not needed or client is None:
+        return {}
+
+    items = "\n".join(
+        f'- {meta["name"] or "?"} | {meta["category"] or "General"} | {raw!r}'
+        for raw, meta in needed.items()
+    )
+    system_prompt = _UNIT_TRANSLATE_PROMPT.format(items=items)
+    try:
+        chat_response = client.chat.parse(
+            model="mistral-large-latest",
+            temperature=0,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "Return the JSON array now."},
+            ],
+            response_format=UnitTranslationBatch,
+            max_tokens=1000,
+        )
+    except Exception as e:
+        logger.error("Unit translation LLM call failed: %s", e)
+        return {}
+
+    content = chat_response.choices[0].message.content
+    try:
+        if isinstance(content, str):
+            parsed = UnitTranslationBatch(**json.loads(content))
+        else:
+            parsed = content
+    except (json.JSONDecodeError, Exception) as e:
+        logger.error("Failed to parse unit translation response: %s", e)
+        return {}
+
+    result: dict[str, dict] = {}
+    for g, (raw_unit, _) in zip(parsed.translations, needed.items()):
+        unit = (g.unit or "").strip()
+        kind = (g.kind or "linear").strip().lower() or "linear"
+        if kind not in ("linear", "log10", "ln"):
+            kind = "linear"
+        entry = {"unit": unit, "kind": kind, "inferred": bool(g.inferred)}
+        _unit_translation_cache[raw_unit] = entry
+        result[raw_unit] = entry
+    return result
+
+
+# Cache of scale-function conversions for the duration of a single
+# match_and_convert call. Keyed by (analyte, from_unit, to_unit, from_kind,
+# to_kind) all lowercased.
+_scale_function_cache: dict[tuple, str] = {}
+
+
+_SCALE_FUNCTION_PROMPT = """You are a clinical laboratory scale-conversion expert.
+
+Convert a numeric measurement of `<analyte>` from `<from_unit>` to `<to_unit>`.
+The source scale is `<from_kind>` (linear | log10 | ln) and the target scale is `<to_kind>` (linear | log10 | ln).
+
+Return ONE of:
+- "10^x" — to convert from log10-scale to linear (e.g. 9 lg copies/mL -> 10^9 = 1e9 copies/mL).
+- "log10" — to convert from linear to log10-scale.
+- "exp(x)" — to convert from ln-scale to linear.
+- "ln" — to convert from linear to ln-scale.
+- "factor:<number>" — for a linear multiplicative conversion (e.g. 5 g -> 5000 mg is "factor:1000"). The factor is `value_in_target = value_in_source * factor`.
+- "" (empty string) — if the conversion is not well-defined for this analyte (e.g. incompatible magnitudes, or you are uncertain).
+
+Return a JSON object: {{"function": "<one of the above>"}}."""
+
+
+def _llm_scale_function(
+    analyte: str,
+    from_unit: str,
+    to_unit: str,
+    from_kind: str,
+    to_kind: str,
+    client: Optional[Mistral],
+) -> str:
+    """Return "10^x" / "log10" / "exp(x)" / "ln" / "factor:<float>" / "".
+
+    Cached for the request. Returns "" on failure or when the LLM can't
+    decide (the caller is expected to surface that as ``needs_review``).
+    """
+    key = (
+        (analyte or "").lower(),
+        (from_unit or "").lower(),
+        (to_unit or "").lower(),
+        from_kind,
+        to_kind,
+    )
+    if key in _scale_function_cache:
+        return _scale_function_cache[key]
+    if client is None:
+        _scale_function_cache[key] = ""
+        return ""
+    try:
+        chat_response = client.chat.parse(
+            model="mistral-large-latest",
+            temperature=0,
+            messages=[
+                {
+                    "role": "system",
+                    "content": _SCALE_FUNCTION_PROMPT.format(
+                        analyte=analyte or "unknown analyte",
+                        from_unit=from_unit or "(empty)",
+                        to_unit=to_unit or "(empty)",
+                        from_kind=from_kind,
+                        to_kind=to_kind,
+                    ),
+                },
+                {"role": "user", "content": "Return the JSON now."},
+            ],
+            response_format=ScaleFunction,
+            max_tokens=200,
+        )
+        content = chat_response.choices[0].message.content
+        if isinstance(content, str):
+            sf = ScaleFunction(**json.loads(content))
+        else:
+            sf = content
+        fn = (sf.function or "").strip()
+    except Exception as e:
+        logger.warning(
+            "LLM scale function failed (%s %s/%s -> %s/%s): %s",
+            analyte, from_kind, from_unit, to_kind, to_unit, e,
+        )
+        fn = ""
+    _scale_function_cache[key] = fn
+    return fn
+
+
+def _apply_scale_function(value: float, function: str) -> Optional[float]:
+    """Apply a scale function string to a numeric value. Returns None when
+    the function string is empty or malformed (caller treats as failure)."""
+    if not function or not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    try:
+        if function == "10^x":
+            return 10.0 ** float(value)
+        if function == "log10":
+            v = float(value)
+            return None if v <= 0 else math.log10(v)
+        if function == "exp(x)":
+            return math.exp(float(value))
+        if function == "ln":
+            v = float(value)
+            return None if v <= 0 else math.log(v)
+        if function.startswith("factor:"):
+            return float(value) * float(function.split(":", 1)[1])
+        # Unknown function (empty / junk) → caller should treat as failure.
+        return None
+    except (ValueError, OverflowError):
+        return None
 
 
 # Cache of multilingual synonym lookups (name -> loinc_code) for the request.
@@ -1005,18 +1343,23 @@ def verify_or_create(
                         db.flush()
                 return defn
 
-    defn_id = f"local-{hashlib.md5(raw_name.lower().encode()).hexdigest()[:12]}"
+    # Use the normalized name (trailing punctuation stripped + lowercased) for
+    # the def id so that cosmetic variants like "Bifidobacterium spp" and
+    # "Bifidobacterium spp." (period present or missing in the OCR) collapse to
+    # the same local definition instead of creating duplicates. The original
+    # raw name is still stored as a synonym so future exact-match by the raw
+    # form still works.
+    canonical_name = _normalize_name(raw_name)
+    defn_id = f"local-{hashlib.md5(canonical_name.encode()).hexdigest()[:12]}"
 
-    # Use the translated English name as the canonical "en" name when available;
-    # keep the original source-language name as a synonym so future matching by
-    # the raw name still works. Without this, an unmatched non-English biomarker
-    # (e.g. "Мутация в гене JAK2 (12 exon)") would surface its raw name as the
-    # English display name.
+    # Use the translated English name as the canonical "en" name when
+    # available; only strip OCR-attached trailing punctuation so the
+    # human-readable casing is preserved.
     en_name = raw_name
     if raw_biomarker and raw_biomarker.standard_name_en and _is_ascii(
         raw_biomarker.standard_name_en
     ):
-        en_name = raw_biomarker.standard_name_en.strip()
+        en_name = _strip_trailing_punct(raw_biomarker.standard_name_en.strip())
     syns = [raw_name]
     if en_name and en_name != raw_name and en_name not in syns:
         syns.append(en_name)
@@ -1025,11 +1368,27 @@ def verify_or_create(
     # a qualitative reference.
     reference = None
     unit = ""
+    # Canonical (English) unit + scale kind, used as the conversion target
+    # for any later reading of the same biomarker. Set on the first reading
+    # that creates the def, so e.g. a 25.06 row with an empty unit cell
+    # anchors the canonical to whatever the LLM invents (typically
+    # "copies/mL"); a 13.05 row with "lg копий/мл" is then converted into
+    # that canonical via ``_llm_scale_function``.
+    canonical_unit: Optional[str] = None
+    canonical_kind = "linear"
+    canonical_unit_inferred = False
     if raw_biomarker:
         doc_ref = parse_reference(raw_biomarker.raw_range_string)
         parsed_val = parse_value(raw_biomarker.value)
         reference = merge_reference(doc_ref, None, parsed_val)
         unit = raw_biomarker.unit
+        translation = _translated_unit(raw_biomarker.unit)
+        # An empty LLM translation means the helper couldn't decide (e.g. the
+        # LLM client was unavailable). Fall back to the raw unit so the
+        # canonical is still usable downstream.
+        canonical_unit = translation["unit"] or raw_biomarker.unit
+        canonical_kind = translation["kind"]
+        canonical_unit_inferred = bool(translation["inferred"])
 
     new_defn = BiomarkerDefinitionModel(
         id=defn_id,
@@ -1041,6 +1400,9 @@ def verify_or_create(
         scope="local",
         user_id=user_id,
         reference_source="pdf_extracted",
+        canonical_unit=canonical_unit,
+        canonical_kind=canonical_kind,
+        canonical_unit_inferred=canonical_unit_inferred,
     )
     db.add(new_defn)
     try:
@@ -1068,7 +1430,11 @@ def _make_local_copy(
     gets units/ranges), but keeps it in `scope='local'` so a wrong LLM guess
     never pollutes the shared global dictionary.
     """
-    defn_id = f"local-{hashlib.md5(raw_biomarker.name.lower().encode()).hexdigest()[:12]}"
+    # Use the normalized name (trailing punctuation stripped) for the def id
+    # so cosmetic variants collapse to the same local definition. See
+    # ``verify_or_create`` for the full rationale.
+    canonical_name = _normalize_name(raw_biomarker.name)
+    defn_id = f"local-{hashlib.md5(canonical_name.encode()).hexdigest()[:12]}"
     existing = db.query(BiomarkerDefinitionModel).filter(
         BiomarkerDefinitionModel.id == defn_id
     ).first()
@@ -1083,11 +1449,13 @@ def _make_local_copy(
     else:
         # Prefer the translated English name as the canonical "en" name; keep
         # the original source-language name as a synonym for future matching.
+        # Only strip OCR-attached trailing punctuation so the human-readable
+        # casing is preserved.
         en_name = raw_biomarker.name
         if raw_biomarker.standard_name_en and _is_ascii(
             raw_biomarker.standard_name_en
         ):
-            en_name = raw_biomarker.standard_name_en.strip()
+            en_name = _strip_trailing_punct(raw_biomarker.standard_name_en.strip())
         names = {"en": en_name}
         synonyms = [raw_biomarker.name]
         if en_name and en_name != raw_biomarker.name and en_name not in synonyms:
@@ -1103,6 +1471,14 @@ def _make_local_copy(
     source_ref = source.reference if source is not None else None
     reference = merge_reference(doc_ref, source_ref, parsed_val)
 
+    # Canonical (English) unit on first sight — anchors the conversion for
+    # any later reading of the same biomarker. See ``verify_or_create`` for
+    # the matching rationale.
+    translation = _translated_unit(raw_biomarker.unit)
+    canonical_unit = translation["unit"] or raw_biomarker.unit
+    canonical_kind = translation["kind"]
+    canonical_unit_inferred = bool(translation["inferred"])
+
     local = BiomarkerDefinitionModel(
         id=defn_id,
         names=names,
@@ -1113,6 +1489,9 @@ def _make_local_copy(
         scope="local",
         user_id=user_id,
         reference_source=source.reference_source if source is not None else "pdf_extracted",
+        canonical_unit=canonical_unit,
+        canonical_kind=canonical_kind,
+        canonical_unit_inferred=canonical_unit_inferred,
     )
     db.add(local)
     try:
@@ -1281,6 +1660,12 @@ def _match_and_convert_impl(
     # English name index for exact/fuzzy/candidate matching.
     if biomarkers and client:
         _translate_names_batch(biomarkers, client)
+        # Also translate units to a canonical English form. This is what
+        # lets a later extraction with a different unit (e.g. `lg копий/мл`
+        # vs. an empty cell) be converted into the same scale as the
+        # first-seen canonical. Results are cached in
+        # ``_unit_translation_cache`` for the duration of this call.
+        _translate_units_batch(biomarkers, client)
 
     # Direct multilingual lookup (curated table) — resolves the most common
     # localized names deterministically without any LLM call.
@@ -1413,11 +1798,11 @@ def _match_and_convert_impl(
             if resolved.scope == "global":
                 std_biomarkers.append(_build_standardized_from_def(b, resolved, db, user_id, client))
             else:
-                std_biomarkers.append(_build_standardized_local(b, resolved))
+                std_biomarkers.append(_build_standardized_local(b, resolved, client))
     elif unmatched:
         for b in unmatched:
             resolved = verify_or_create(db, b.name, None, user_id, raw_biomarker=b, grounded=False)
-            std_biomarkers.append(_build_standardized_local(b, resolved))
+            std_biomarkers.append(_build_standardized_local(b, resolved, client))
 
     # Step 5: Visit data translation
     visit_data = None

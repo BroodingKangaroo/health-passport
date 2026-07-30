@@ -43,6 +43,15 @@ export interface BiomarkerDefinition {
   scope: 'global' | 'local'
   user_id?: string | null
   reference_source: 'global' | 'local' | 'pdf_extracted'
+  // Canonical (English) unit + scale kind for cross-document comparison.
+  // Set on the first reading that defines the biomarker; subsequent
+  // readings with a different unit are converted to land on this.
+  canonical_unit?: string | null
+  canonical_kind?: string | null
+  // True when the canonical unit was LLM-invented (the source PDF had no
+  // unit cell) rather than translated from an existing unit. Surfaced in
+  // the UI so the user can verify it matches their lab's convention.
+  canonical_unit_inferred?: boolean
 }
 
 export interface Reading {
@@ -54,6 +63,12 @@ export interface Reading {
   original_value?: string
   original_unit?: string
   original_range?: string
+  // Scale conversion applied to land `value` in the def's canonical unit.
+  // "10^x" / "log10" / "factor:1.5" / null.
+  scale_function?: string | null
+  // True when the LLM couldn't determine a cross-scale conversion; the
+  // reading is kept raw and the UI surfaces a warning.
+  needs_review?: boolean
 }
 
 export interface BiomarkerResult {
@@ -132,6 +147,12 @@ export interface VisitData {
 export interface MatrixCell {
   value: string
   status: Status
+  // "10^x" / "log10" / "factor:1.5" / null. Surfaced so the UI can show the
+  // original in a footnote next to the converted value.
+  scale_function?: string | null
+  // True when the LLM couldn't determine a cross-scale conversion. The
+  // flowsheet cell still renders the raw value; the UI shows a warning.
+  needs_review?: boolean
 }
 
 export interface MatrixRow {
@@ -140,6 +161,9 @@ export interface MatrixRow {
   original: string
   unit: string
   reference: Reference | null
+  // True when the row's unit was LLM-invented (no source unit on the
+  // first reading). Surfaced in the UI so the user can verify it.
+  canonical_unit_inferred?: boolean
   cells: MatrixCell[]
 }
 
@@ -229,6 +253,12 @@ export interface StandardizedBiomarker {
   category: string
   definition_id: string
   scope: string
+  // Scale conversion applied to land `standard_value` in the def's
+  // canonical unit. "10^x" / "log10" / "factor:1.5" / null.
+  scale_function?: string | null
+  // True when the LLM couldn't determine a cross-scale conversion; the
+  // reading is kept raw and the UI surfaces a warning.
+  needs_review?: boolean
 }
 
 export interface ExtractedPrescription {

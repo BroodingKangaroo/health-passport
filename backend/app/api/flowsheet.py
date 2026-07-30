@@ -99,6 +99,12 @@ def _build_flowsheet(db: Session, patient_id: str):
             logger.warning("Skipping flowsheet reading with unresolvable biomarker_id=%r", def_id)
             continue
         cat = defn.category or "General"
+        # Use the def's canonical English unit + kind for the column header so
+        # the flowsheet is consistent across entries (the first-seen canonical
+        # wins, even when later entries use a different unit / scale).
+        canonical_unit = getattr(defn, "canonical_unit", None) or defn.unit
+        canonical_kind = getattr(defn, "canonical_kind", None) or "linear"
+        canonical_unit_inferred = bool(getattr(defn, "canonical_unit_inferred", False))
         cells = []
         for bt in blood_tests:
             reading = biomarker_readings_map.get(bt.id, {}).get(def_id)
@@ -107,6 +113,8 @@ def _build_flowsheet(db: Session, patient_id: str):
                 cells.append(MatrixCell(
                     value=str(rv) if rv is not None else "—",
                     status=reading.status,
+                    scale_function=getattr(reading, "scale_function", None),
+                    needs_review=bool(getattr(reading, "needs_review", False)),
                 ))
             else:
                 cells.append(MatrixCell(value="—", status="normal"))
@@ -120,8 +128,9 @@ def _build_flowsheet(db: Session, patient_id: str):
             id=def_id,
             name=defn.names.get("en", ""),
             original=original_name,
-            unit=defn.unit,
+            unit=canonical_unit,
             reference=first_ref,
+            canonical_unit_inferred=canonical_unit_inferred,
             cells=cells,
         ))
 
@@ -160,10 +169,13 @@ def _build_flowsheet(db: Session, patient_id: str):
                     synonyms=defn.synonyms or [],
                     category=defn.category,
                     reference=defn.reference,
-                    unit=defn.unit,
+                    unit=getattr(defn, "canonical_unit", None) or defn.unit,
                     scope=defn.scope,
                     user_id=defn.user_id,
                     reference_source=defn.reference_source,
+                    canonical_unit=getattr(defn, "canonical_unit", None),
+                    canonical_kind=getattr(defn, "canonical_kind", None),
+                    canonical_unit_inferred=bool(getattr(defn, "canonical_unit_inferred", False)),
                 ),
                 value=reading_value(reading),
                 date=bt.date.isoformat(),

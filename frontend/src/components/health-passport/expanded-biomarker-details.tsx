@@ -5,7 +5,8 @@ import { ArrowRight } from 'lucide-react'
 import { cn, formatDate, formatNumber } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { BiomarkerChart } from '@/components/shared/BiomarkerChart'
-import { formatReference, unitLabel, isQualitative } from '@/lib/reference'
+import { ScaleNote } from '@/components/shared/ScaleNote'
+import { formatReference, unitLabel, isQualitative, displayUnit } from '@/lib/reference'
 import type { BiomarkerResult, Status } from '@/lib/types'
 
 const statusText: Record<Status, string> = {
@@ -56,7 +57,7 @@ export function ExpandedBiomarkerDetails({
     { date: biomarker.date, value: biomarker.value, status: biomarker.status },
   ]
   const effRef = biomarker.reference ?? biomarker.definition.reference
-  const unitDisplay = unitLabel(biomarker.definition.unit, effRef)
+  const unitDisplay = unitLabel(displayUnit(biomarker.definition), effRef)
   const numericValues = chartData
     .map((d) => d.value)
     .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
@@ -106,25 +107,47 @@ export function ExpandedBiomarkerDetails({
             READING HISTORY
           </h4>
           <ul className="flex flex-wrap gap-2">
-            {[...chartData].reverse().map((reading, i) => (
-              <li
-                key={`${reading.date}-${i}`}
-                className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs"
-              >
-                <span className="text-muted-foreground">{formatDate(reading.date)}</span>
-                <span className="font-semibold text-foreground">
-                  {formatNumber(reading.value)} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}
-                </span>
-                <span
-                  className={cn(
-                    'font-medium capitalize',
-                    statusText[reading.status as Status],
-                  )}
-                >
-                  {reading.status}
-                </span>
-              </li>
-            ))}
+            {(() => {
+              // The history (most-recent at the end) carries
+              // scale_function / needs_review per entry. chartData is
+              // chronological and includes the latest, which is NOT in
+              // history. Walk chartData reversed; for each item past the
+              // latest (i >= 1) the corresponding history entry is
+              // hist[hist.length - i].
+              const hist = biomarker.history ?? []
+              const reversed = [...chartData].reverse()
+              return reversed.map((reading, i) => {
+                // i == 0 → latest, not in history.
+                // i >= 1 → hist[hist.length - i]
+                const corresponding = i === 0 ? undefined : hist[hist.length - i]
+                return (
+                  <li
+                    key={`${reading.date}-${i}`}
+                    className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs"
+                  >
+                    <span className="text-muted-foreground">{formatDate(reading.date)}</span>
+                    <span className="font-semibold text-foreground">
+                      {formatNumber(reading.value)} {unitDisplay}
+                      <ScaleNote
+                        className="ml-1"
+                        scaleFunction={corresponding?.scale_function}
+                        needsReview={corresponding?.needs_review}
+                        originalValue={corresponding?.original_value}
+                        originalUnit={corresponding?.original_unit}
+                      />
+                    </span>
+                    <span
+                      className={cn(
+                        'font-medium capitalize',
+                        statusText[reading.status as Status],
+                      )}
+                    >
+                      {reading.status}
+                    </span>
+                  </li>
+                )
+              })
+            })()}
           </ul>
         </div>
         <Button

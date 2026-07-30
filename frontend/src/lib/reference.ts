@@ -1,4 +1,4 @@
-import type { Reference, ReferenceInterval, ReferenceQualitative } from './types'
+import type { Reference, ReferenceInterval, ReferenceQualitative, BiomarkerDefinition } from './types'
 import { formatNumber } from './utils'
 
 /** Canonical qualitative values matching the backend's normalisation enum. */
@@ -113,4 +113,16 @@ const _PRESENT_LOWER = new Set([..._PRESENT].map((v) => v.toLowerCase()))
 export function intervalReference(low: number | null, high: number | null): ReferenceInterval | null {
   if (low == null && high == null) return null
   return { kind: 'interval', low, high }
+}
+
+/**
+ * Return the display unit for a biomarker definition: the canonical
+ * (English) unit when the matcher has set one, otherwise the raw
+ * ``unit`` field as a fallback. Older / global LOINC defs that don't
+ * have ``canonical_unit`` populated will simply return ``unit``.
+ */
+export function displayUnit(
+  definition: Pick<BiomarkerDefinition, 'canonical_unit' | 'unit'>,
+): string {
+  return definition.canonical_unit || definition.unit || ''
 }

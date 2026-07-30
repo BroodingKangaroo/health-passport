@@ -139,6 +139,8 @@ def _biomarkers_from_db(db: Session, patient_id: str):
                 original_value=r.original_value or "",
                 original_unit=r.original_unit or "",
                 original_range=r.original_range or "",
+                scale_function=getattr(r, "scale_function", None),
+                needs_review=bool(getattr(r, "needs_review", False)),
             )
             for r, date in readings_query[:-1]
         ]
@@ -152,10 +154,13 @@ def _biomarkers_from_db(db: Session, patient_id: str):
                 synonyms=defn.synonyms or [],
                 category=defn.category,
                 reference=defn.reference,
-                unit=defn.unit,
+                unit=getattr(defn, "canonical_unit", None) or defn.unit,
                 scope=defn.scope,
                 user_id=defn.user_id,
                 reference_source=defn.reference_source,
+                canonical_unit=getattr(defn, "canonical_unit", None),
+                canonical_kind=getattr(defn, "canonical_kind", None),
+                canonical_unit_inferred=bool(getattr(defn, "canonical_unit_inferred", False)),
             ),
             value=reading_value(latest_reading),
             date=latest_date.isoformat(),
@@ -318,7 +323,16 @@ async def get_biomarker_detail(
 
     latest_reading, latest_date = readings_query[-1]
     history = [
-        Reading(date=date.isoformat(), value=reading_value(r), status=r.status, reference=effective_reference(r, defn))
+        Reading(
+            date=date.isoformat(), value=reading_value(r), status=r.status,
+            reference=effective_reference(r, defn),
+            original_name=r.original_name or "",
+            original_value=r.original_value or "",
+            original_unit=r.original_unit or "",
+            original_range=r.original_range or "",
+            scale_function=getattr(r, "scale_function", None),
+            needs_review=bool(getattr(r, "needs_review", False)),
+        )
         for r, date in readings_query[:-1]
     ]
     return BiomarkerResult(
@@ -330,10 +344,13 @@ async def get_biomarker_detail(
             synonyms=defn.synonyms or [],
             category=defn.category,
             reference=defn.reference,
-            unit=defn.unit,
+            unit=getattr(defn, "canonical_unit", None) or defn.unit,
             scope=defn.scope,
             user_id=defn.user_id,
             reference_source=defn.reference_source,
+            canonical_unit=getattr(defn, "canonical_unit", None),
+            canonical_kind=getattr(defn, "canonical_kind", None),
+            canonical_unit_inferred=bool(getattr(defn, "canonical_unit_inferred", False)),
         ),
         value=reading_value(latest_reading),
         date=latest_date.isoformat(),
