@@ -14,7 +14,7 @@
       "raw_range_string": "",
       "standard_name_en": "JAK2 gene mutation (12 exon",
       "standard_value": "Not detected",
-      "standard_unit": "",
+      "standard_unit": "ratio",
       "reference": {
         "kind": "qualitative",
         "expected": null
@@ -22,7 +22,9 @@
       "status": "normal",
       "category": "Секвенирование",
       "definition_id": "local-68f924535f3a",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Мутация в гене JAK2 (14 exon; V617F)",
@@ -31,7 +33,7 @@
       "raw_range_string": "",
       "standard_name_en": "JAK2 gene mutation (14 exon; V617F",
       "standard_value": "Not detected",
-      "standard_unit": "",
+      "standard_unit": "ratio",
       "reference": {
         "kind": "qualitative",
         "expected": null
@@ -39,7 +41,9 @@
       "status": "normal",
       "category": "Секвенирование",
       "definition_id": "local-853903da0fb6",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Мутация в гене CALR (9 exon)",
@@ -48,7 +52,7 @@
       "raw_range_string": "",
       "standard_name_en": "CALR gene mutation (9 exon",
       "standard_value": "Not detected",
-      "standard_unit": "",
+      "standard_unit": "ratio",
       "reference": {
         "kind": "qualitative",
         "expected": null
@@ -56,7 +60,9 @@
       "status": "normal",
       "category": "Секвенирование",
       "definition_id": "local-f64d7bb07ae0",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     },
     {
       "raw_name": "Мутация в гене MPL (10 exon)",
@@ -65,7 +71,7 @@
       "raw_range_string": "",
       "standard_name_en": "MPL gene mutation (10 exon",
       "standard_value": "Not detected",
-      "standard_unit": "",
+      "standard_unit": "ratio",
       "reference": {
         "kind": "qualitative",
         "expected": null
@@ -73,7 +79,9 @@
       "status": "normal",
       "category": "Секвенирование",
       "definition_id": "local-6817c636cee1",
-      "scope": "local"
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false
     }
   ],
   "visit_data": {
@@ -96,5 +104,6 @@
     "modality": "",
     "findings": "",
     "conclusion": ""
-  }
+  },
+  "_status": "FOR REVIEW - not auto-accepted"
 }

@@ -472,7 +472,7 @@ def _convert_to_canonical(
     """
     canon_unit = getattr(defn, "canonical_unit", None) or None
     canon_kind = getattr(defn, "canonical_kind", None) or "linear"
-    raw_translation = _translated_unit(raw_bm.unit)
+    raw_translation = _translated_unit(raw_bm.unit, raw_bm.standard_name_en or raw_bm.name, raw_bm.category)
     raw_unit_en = raw_translation["unit"]
     raw_kind = raw_translation["kind"]
 
@@ -766,18 +766,18 @@ def _translate_names_batch(
 _UNIT_TRANSLATE_PROMPT = """You are a clinical-laboratory unit normaliser. For each unit string below, return the standard English form used in medical lab reports.
 
 Rules:
+- Items: one per line as `english analyte name | category | raw unit string`.
 - Translate Russian / Belarusian / non-ASCII units into conventional English (e.g. "копий/мл" -> "copies/mL", "мг/дл" -> "mg/dL", "ммоль/л" -> "mmol/L", "г/л" -> "g/L").
 - Preserve log-scale prefixes ("lg", "log", "ln") and translate only the magnitude part (e.g. "lg копий/мл" -> "lg copies/mL", "ln копий/мл" -> "ln copies/mL", "log10 копий/мл" -> "lg copies/mL").
-- For an EMPTY unit string, invent a sensible unit based on the analyte name and category (e.g. stool microbiome panels without a unit cell usually mean "copies/mL" or "copies/g"). Set `inferred: true` when you do.
+- For an EMPTY raw unit string, invent a sensible unit based on the analyte name and category (e.g. stool microbiome panels without a unit cell usually mean "copies/mL" or "copies/g"). You MUST always return a non-empty `unit` for every item — never leave it blank.
 - For already-English units, return them verbatim and set `inferred: false`.
 - `kind` is "linear" by default, "log10" if the unit starts with "lg" / "log10" / "log" (case-insensitive), "ln" if the unit starts with "ln" (natural log).
 
 Items (each line: english analyte name | category | raw unit):
 {items}
 
-Return a JSON array of objects, one per input in the same order, each with:
-- raw_unit: the original unit (copy verbatim, or "" for empty)
-- unit: the standard English unit (or "" if you can't decide)
+Return a JSON object with a single key "translations" whose value is an array of objects, one per input in the same order. Each object has:
+- unit: the standard English unit (MUST be non-empty even when the input unit is blank — invent one)
 - kind: "linear" | "log10" | "ln"
 - inferred: true if the unit was invented (no source unit), false otherwise"""
 
@@ -807,9 +807,12 @@ def _heuristic_unit_translation(
     return {"unit": u, "kind": kind, "inferred": False}
 
 
-def _translated_unit(raw_unit: str) -> dict:
+def _translated_unit(raw_unit: str, analyte_name: str = "", category: str = "") -> dict:
     """Return the cached translation for ``raw_unit``, or fall back to a
-    plain identity translation (with kind inferred from the prefix).
+    heuristic identity translation (with kind inferred from the prefix).
+
+    When the raw unit is empty and no LLM cache entry exists, the fallback is
+    a best-effort guess based on ``analyte_name`` and ``category``.
 
     Never raises: an unrecognised unit always yields a usable dict.
     """
@@ -817,9 +820,9 @@ def _translated_unit(raw_unit: str) -> dict:
     entry = _unit_translation_cache.get(u)
     if entry is not None:
         return entry
-    # Fall back to a heuristic identity translation. This only runs for units
-    # that never reached the batch translator (e.g. when the LLM client
-    # was unavailable).
+    # Fall back when the batch translator never ran (e.g. LLM unavailable).
+    if not u:
+        return _guess_unit(analyte_name, category)
     low = u.lower()
     kind = "linear"
     if low.startswith(("lg", "log10", "log ")) or low == "log":
@@ -827,6 +830,33 @@ def _translated_unit(raw_unit: str) -> dict:
     elif low.startswith("ln"):
         kind = "ln"
     return {"unit": u, "kind": kind, "inferred": False}
+
+
+def _guess_unit(analyte_name: str, category: str) -> dict:
+    """Best-effort fallback for an empty source unit when the LLM is
+    unavailable or failed.  Returns a dict compatible with ``_translated_unit``
+    shape with ``inferred: True``."""
+    an = (analyte_name or "").lower()
+    cat = (category or "").lower()
+    if "stool" in cat or "microbiome" in cat or "bacterial" in cat:
+        unit = "copies/mL"
+    elif "esr" in an or "sedimentation" in an:
+        unit = "mm/hr"
+    elif "wbc" in an or "leukocyte" in an or "white blood" in an:
+        unit = "×10⁹/L"
+    elif "rbc" in an or "erythrocyte" in an or "red blood" in an:
+        unit = "×10¹²/L"
+    elif "virus" in cat or "viral" in an:
+        unit = "copies/mL"
+    elif "hormone" in cat:
+        unit = "pg/mL"
+    elif "antibody" in cat or "igg" in an or "igm" in an:
+        unit = "U/mL"
+    elif "enzyme" in cat or "activity" in an:
+        unit = "U/L"
+    else:
+        unit = "copies/mL"  # broadest molecular/stool fallback
+    return {"unit": unit, "kind": "linear", "inferred": True}
 
 
 def _translate_units_batch(
@@ -866,7 +896,7 @@ def _translate_units_batch(
             temperature=0,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": "Return the JSON array now."},
+                {"role": "user", "content": "Return the JSON now."},
             ],
             response_format=UnitTranslationBatch,
             max_tokens=1000,
@@ -886,12 +916,21 @@ def _translate_units_batch(
         return {}
 
     result: dict[str, dict] = {}
-    for g, (raw_unit, _) in zip(parsed.translations, needed.items()):
+    for g, (raw_unit, meta) in zip(parsed.translations, needed.items()):
         unit = (g.unit or "").strip()
-        kind = (g.kind or "linear").strip().lower() or "linear"
-        if kind not in ("linear", "log10", "ln"):
-            kind = "linear"
-        entry = {"unit": unit, "kind": kind, "inferred": bool(g.inferred)}
+        # If the LLM left the unit blank despite being told to invent one,
+        # fall back to a best-effort guess based on analyte/category.
+        if not unit and not raw_unit.strip():
+            guess = _guess_unit(meta.get("name", ""), meta.get("category", ""))
+            unit = guess["unit"]
+            inferred = True
+            kind = guess["kind"]
+        else:
+            inferred = bool(g.inferred)
+            kind = (g.kind or "linear").strip().lower() or "linear"
+            if kind not in ("linear", "log10", "ln"):
+                kind = "linear"
+        entry = {"unit": unit, "kind": kind, "inferred": inferred}
         _unit_translation_cache[raw_unit] = entry
         result[raw_unit] = entry
     return result
@@ -1382,11 +1421,8 @@ def verify_or_create(
         parsed_val = parse_value(raw_biomarker.value)
         reference = merge_reference(doc_ref, None, parsed_val)
         unit = raw_biomarker.unit
-        translation = _translated_unit(raw_biomarker.unit)
-        # An empty LLM translation means the helper couldn't decide (e.g. the
-        # LLM client was unavailable). Fall back to the raw unit so the
-        # canonical is still usable downstream.
-        canonical_unit = translation["unit"] or raw_biomarker.unit
+        translation = _translated_unit(raw_biomarker.unit, en_name, raw_biomarker.category)
+        canonical_unit = translation["unit"]
         canonical_kind = translation["kind"]
         canonical_unit_inferred = bool(translation["inferred"])
 
@@ -1474,7 +1510,7 @@ def _make_local_copy(
     # Canonical (English) unit on first sight — anchors the conversion for
     # any later reading of the same biomarker. See ``verify_or_create`` for
     # the matching rationale.
-    translation = _translated_unit(raw_biomarker.unit)
+    translation = _translated_unit(raw_biomarker.unit, en_name, category)
     canonical_unit = translation["unit"] or raw_biomarker.unit
     canonical_kind = translation["kind"]
     canonical_unit_inferred = bool(translation["inferred"])

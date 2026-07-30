@@ -4,8 +4,8 @@
   "time": "13:11",
   "clinic": "ИООО \"Независимая лаборатория ИНВИТРО\"",
   "provider": "Выдрицкий А.В",
-  "title": "",
-  "notes": "Локализация: Кал. Снижено количество Lactobacillus spp. Повышено количество Escherichia coli. Снижено количество Blautia spp.",
+  "title": "Микробиологическое исследование кала",
+  "notes": "Снижено количество Lactobacillus spp. Повышено количество Escherichia coli. Снижено количество Blautia spp.",
   "biomarkers": [
     {
       "raw_name": "Общая бактериальная масса",
@@ -21,7 +21,7 @@
         "high": 13.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-dedc70f59b04",
       "scope": "local",
       "scale_function": null,
@@ -41,7 +41,7 @@
         "high": 8.0
       },
       "status": "low",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-8c86cf258a11",
       "scope": "local",
       "scale_function": null,
@@ -61,7 +61,7 @@
         "high": 10.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-16cf0b0fd973",
       "scope": "local",
       "scale_function": null,
@@ -81,7 +81,7 @@
         "high": 8.0
       },
       "status": "high",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-52c34f913a7c",
       "scope": "local",
       "scale_function": null,
@@ -101,7 +101,7 @@
         "high": 12.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-d9f6ee1a7921",
       "scope": "local",
       "scale_function": null,
@@ -121,7 +121,7 @@
         "high": 11.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-2988f1cd6b9e",
       "scope": "local",
       "scale_function": null,
@@ -141,7 +141,7 @@
         "high": null
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-eb472412ea39",
       "scope": "local",
       "scale_function": null,
@@ -161,7 +161,7 @@
         "high": 11.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-3134fc747022",
       "scope": "local",
       "scale_function": null,
@@ -181,7 +181,7 @@
         "high": 8.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-d3de7234bfe1",
       "scope": "local",
       "scale_function": null,
@@ -201,7 +201,7 @@
         "high": 5.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Патогенные микроорганизмы",
       "definition_id": "local-89c27419b864",
       "scope": "local",
       "scale_function": null,
@@ -221,7 +221,7 @@
         "high": 5.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Патогенные микроорганизмы",
       "definition_id": "local-7291df8e0881",
       "scope": "local",
       "scale_function": null,
@@ -241,7 +241,7 @@
         "high": 5.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Патогенные микроорганизмы",
       "definition_id": "local-d58b5529c818",
       "scope": "local",
       "scale_function": null,
@@ -261,7 +261,7 @@
         "high": 5.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Патогенные микроорганизмы",
       "definition_id": "local-531c1dd5fbba",
       "scope": "local",
       "scale_function": null,
@@ -281,7 +281,7 @@
         "high": 5.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Патогенные микроорганизмы",
       "definition_id": "local-6248ed0a1c72",
       "scope": "local",
       "scale_function": null,
@@ -300,7 +300,7 @@
         "expected": "Not detected"
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Патогенные микроорганизмы",
       "definition_id": "local-71fba6245da9",
       "scope": "local",
       "scale_function": null,
@@ -319,7 +319,7 @@
         "expected": "Not detected"
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Патогенные микроорганизмы",
       "definition_id": "local-85791070732d",
       "scope": "local",
       "scale_function": null,
@@ -339,7 +339,7 @@
         "high": 5.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Патогенные микроорганизмы",
       "definition_id": "local-bdb93f91d1a9",
       "scope": "local",
       "scale_function": null,
@@ -359,7 +359,7 @@
         "high": 5.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Патогенные микроорганизмы",
       "definition_id": "local-908fd2df1a95",
       "scope": "local",
       "scale_function": null,
@@ -379,7 +379,7 @@
         "high": 5.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Патогенные микроорганизмы",
       "definition_id": "local-650ca81cfac9",
       "scope": "local",
       "scale_function": null,
@@ -398,7 +398,7 @@
         "expected": "Not detected"
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Патогенные микроорганизмы",
       "definition_id": "local-f0d7389b7fa0",
       "scope": "local",
       "scale_function": null,
@@ -417,7 +417,7 @@
         "expected": "Not detected"
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Патогенные микроорганизмы",
       "definition_id": "local-3687c25eeb93",
       "scope": "local",
       "scale_function": null,
@@ -436,7 +436,7 @@
         "expected": "Not detected"
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Патогенные микроорганизмы",
       "definition_id": "local-fafbbc7bfac2",
       "scope": "local",
       "scale_function": null,
@@ -455,7 +455,7 @@
         "expected": "Not detected"
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Патогенные микроорганизмы",
       "definition_id": "local-44e1fbccaab1",
       "scope": "local",
       "scale_function": null,
@@ -475,7 +475,7 @@
         "high": 11.0
       },
       "status": "low",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-6275a9415dbe",
       "scope": "local",
       "scale_function": null,
@@ -495,7 +495,7 @@
         "high": 6.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-7ef87b34396c",
       "scope": "local",
       "scale_function": null,
@@ -515,7 +515,7 @@
         "high": 11.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-a254f2137e09",
       "scope": "local",
       "scale_function": null,
@@ -535,7 +535,7 @@
         "high": 8.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-8a6b37da3050",
       "scope": "local",
       "scale_function": null,
@@ -555,7 +555,7 @@
         "high": 10.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-9dfbbae4477f",
       "scope": "local",
       "scale_function": null,
@@ -575,7 +575,7 @@
         "high": 11.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-6d958fcdafd9",
       "scope": "local",
       "scale_function": null,
@@ -595,7 +595,7 @@
         "high": 10.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-d845cf7af9b2",
       "scope": "local",
       "scale_function": null,
@@ -615,7 +615,7 @@
         "high": 6.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-9600fb0a8d28",
       "scope": "local",
       "scale_function": null,
@@ -635,7 +635,7 @@
         "high": 11.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-09f1e00244bb",
       "scope": "local",
       "scale_function": null,
@@ -655,7 +655,7 @@
         "high": 100.0
       },
       "status": "normal",
-      "category": "Микробиом",
+      "category": "Микрофлора кишечника",
       "definition_id": "local-53b51cebc7e9",
       "scope": "local",
       "scale_function": null,
@@ -682,5 +682,6 @@
     "modality": "",
     "findings": "",
     "conclusion": ""
-  }
+  },
+  "_status": "FOR REVIEW - not auto-accepted"
 }
