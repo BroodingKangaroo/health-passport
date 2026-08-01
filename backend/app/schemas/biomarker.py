@@ -4,6 +4,16 @@ from typing import Optional, Union
 from app.schemas.reference import Reference
 
 
+class MergedSource(BaseModel):
+    """Metadata of the second (merged-in) upload: what the user typed for the
+    test that contributed these readings (name/title, doctor, place, time).
+    Only present on readings created by POST /api/entry/{id}/merge."""
+    title: Optional[str] = None
+    clinic: Optional[str] = None
+    provider: Optional[str] = None
+    time: Optional[str] = None
+
+
 class Reading(BaseModel):
     date: str
     value: Union[float, str, None] = None
@@ -17,6 +27,11 @@ class Reading(BaseModel):
     scale_function: Optional[str] = None
     # True when the LLM couldn't determine a cross-scale conversion.
     needs_review: bool = False
+    # True when the reading was merged into an existing entry from a later
+    # upload rather than created with it.
+    merged: bool = False
+    # Source upload metadata for merged readings (see MergedSource).
+    merged_source: Optional[MergedSource] = None
 
 
 class BiomarkerDefinition(BaseModel):
@@ -48,6 +63,10 @@ class BiomarkerResult(BaseModel):
     original_value: Optional[str] = None
     original_unit: Optional[str] = None
     original_range: Optional[str] = None
+    # True when the latest reading was merged into an existing entry.
+    merged: bool = False
+    # Source upload metadata for the latest reading when it was merged in.
+    merged_source: Optional[MergedSource] = None
 
 
 class BiomarkerDefinitionResponse(BaseModel):
@@ -75,6 +94,9 @@ class MatrixCell(BaseModel):
     # True when the LLM couldn't determine a cross-scale conversion. The
     # flowsheet cell still renders the raw value; the UI shows a warning.
     needs_review: bool = False
+    # True when the reading was merged into an existing entry from a later
+    # upload rather than created with it.
+    merged: bool = False
 
 
 class MatrixRow(BaseModel):

@@ -7,20 +7,10 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, Tuple, Union
 
-
-logger = logging.getLogger(__name__)
-
-
-_LOINC_RE = re.compile(r"^\d+-\d+(\.\d+)?$")
-
-
-def _is_loinc(code: Optional[str]) -> bool:
-    return bool(code) and bool(_LOINC_RE.match(code))
-
 from fastapi import APIRouter, Form, UploadFile, File, Depends, Query, HTTPException, Request, Response
-from sqlalchemy.orm import Session
 from sqlalchemy import cast, func, or_, String, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.schemas import SaveEntryResponse, DeleteEntryResponse
 from app.db.session import get_db
@@ -43,6 +33,16 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 
 
+logger = logging.getLogger(__name__)
+
+
+_LOINC_RE = re.compile(r"^\d+-\d+(\.\d+)?$")
+
+
+def _is_loinc(code: Optional[str]) -> bool:
+    return bool(code) and bool(_LOINC_RE.match(code))
+
+
 router = APIRouter()
 
 
@@ -54,6 +54,227 @@ def _normalize_date(date_str: str, time_str: str = "") -> datetime:
     else:
         dt = datetime.fromisoformat(date_str)
     return dt.replace(tzinfo=timezone.utc)
+
+
+class _ReadingSpec:
+    """A parsed, definition-resolved biomarker row, ready to be persisted as a
+    BiomarkerReading. Shared by save_entry and the merge endpoint so the two
+    never drift apart in semantics."""
+
+    __slots__ = ("defn", "value_col", "value_text", "result_value", "eff_ref", "status", "row")
+
+    def __init__(self, defn, value_col, value_text, result_value, eff_ref, status, row):
+        self.defn = defn
+        self.value_col = value_col
+        self.value_text = value_text
+        self.result_value = result_value
+        self.eff_ref = eff_ref
+        self.status = status
+        self.row = row
+
+
+def _resolve_definition(db: Session, user_id: str, name: str, row_defn_id: Optional[str], category: str, unit: str = "") -> BiomarkerDefinitionModel:
+    """Resolve a form row to a BiomarkerDefinition. Order:
+    1) by definition_id (or LOINC code, since the matcher emits LOINC as id);
+    2) fuzzy by name against definitions visible to this user;
+    3) create a per-user local definition.
+    Mirrors the historical save_entry resolution chain exactly."""
+    defn = None
+    if row_defn_id:
+        defn = db.query(BiomarkerDefinitionModel).filter(BiomarkerDefinitionModel.id == row_defn_id).first()
+        # Also resolve by LOINC code (the matcher emits LOINC as definition_id)
+        if not defn and _is_loinc(row_defn_id):
+            defn = db.query(BiomarkerDefinitionModel).filter(
+                BiomarkerDefinitionModel.loinc_code == row_defn_id
+            ).first()
+
+    # Fallback: fuzzy match by name using SQL ILIKE
+    if not defn:
+        name_lower = name.lower()
+        # Only match definitions visible to this user: global,
+        # system-shared (user_id IS NULL), or this user's own local
+        # definitions. This prevents a user's reading from being
+        # linked to another user's private local definition.
+        ownership = or_(
+            BiomarkerDefinitionModel.scope == "global",
+            BiomarkerDefinitionModel.user_id.is_(None),
+            BiomarkerDefinitionModel.user_id == user_id,
+        )
+        # Build OR conditions for names and synonyms
+        defn = (
+            db.query(BiomarkerDefinitionModel)
+            .filter(
+                or_(
+                    func.lower(BiomarkerDefinitionModel.names['en'].as_string()).ilike(name_lower),
+                    func.lower(BiomarkerDefinitionModel.names['ru'].as_string()).ilike(name_lower),
+                    func.lower(BiomarkerDefinitionModel.names['es'].as_string()).ilike(name_lower),
+                    func.lower(BiomarkerDefinitionModel.names['de'].as_string()).ilike(name_lower),
+                    func.lower(BiomarkerDefinitionModel.names['fr'].as_string()).ilike(name_lower),
+                    func.lower(BiomarkerDefinitionModel.names['he'].as_string()).ilike(name_lower),
+                ),
+                ownership,
+            )
+            .first()
+        )
+        # Also check synonyms array
+        if not defn:
+            defn = (
+                db.query(BiomarkerDefinitionModel)
+                .filter(
+                    func.lower(cast(BiomarkerDefinitionModel.synonyms, String)).ilike(f'%{name_lower}%'),
+                    ownership,
+                )
+                .first()
+            )
+
+    # No match at all — create a local entry
+    if not defn:
+        # Per-user id so two users entering the same novel analyte
+        # get isolated local definitions (and never collide on a
+        # shared primary key, which would raise an unhandled 500).
+        defn_id = f"local-{user_id}-{hashlib.md5(name.lower().encode()).hexdigest()[:12]}"
+        existing = db.query(BiomarkerDefinitionModel).filter(
+            BiomarkerDefinitionModel.id == defn_id
+        ).first()
+        if existing:
+            defn = existing
+        else:
+            defn = BiomarkerDefinitionModel(
+                id=defn_id,
+                loinc_code=row_defn_id if _is_loinc(row_defn_id) else None,
+                names={"en": name},
+                synonyms=[name],
+                category=category,
+                reference=None,
+                unit=unit,
+                scope="local",
+                user_id=user_id,
+            )
+            db.add(defn)
+            try:
+                db.flush()
+            except IntegrityError:
+                db.rollback()
+                defn = db.query(BiomarkerDefinitionModel).filter(
+                    BiomarkerDefinitionModel.id == defn_id
+                ).first()
+    return defn
+
+
+def _parse_biomarker_rows(db: Session, user_id: str, categories_data: list) -> list[_ReadingSpec]:
+    """Parse the form's biomarker categories into resolved reading specs.
+    Rows without a name or an unparseable value are skipped."""
+    specs: list[_ReadingSpec] = []
+    for cat in categories_data:
+        for row in cat.get("rows", []):
+            name = row.get("name", "").strip()
+            raw_value = row.get("value", "").strip()
+            if not name or not raw_value:
+                continue
+            parsed = parse_value(raw_value)
+            if parsed is None:
+                continue
+            if isinstance(parsed, (int, float)) and not isinstance(parsed, bool):
+                value_col: Optional[float] = parsed
+                value_text: Optional[str] = None
+                result_value: Union[float, str, None] = parsed
+            else:
+                # Qualitative result — keep the text; previously these were
+                # silently dropped because `value` was Float-only.
+                value_col = None
+                value_text = normalize_qual(parsed)
+                result_value = value_text
+
+            defn = _resolve_definition(db, user_id, name, row.get("definition_id"), cat.get("name", "General"), row.get("unit", ""))
+
+            # Compose the effective reference: an explicit per-row reference
+            # wins (document-first), a qualitative value forces qualitative,
+            # otherwise fall back to the definition's reference.
+            eff_ref = merge_reference(row.get("reference"), defn.reference, result_value)
+            derived_status = compute_status(result_value, eff_ref)
+
+            specs.append(_ReadingSpec(
+                defn=defn,
+                value_col=value_col,
+                value_text=value_text,
+                result_value=result_value,
+                eff_ref=eff_ref,
+                status=derived_status,
+                row=row,
+            ))
+    return specs
+
+
+def _create_reading_rows(
+    db: Session,
+    entry_id: str,
+    specs: list[_ReadingSpec],
+    merged: bool = False,
+    merged_source: Optional[dict] = None,
+) -> None:
+    for spec in specs:
+        db.add(BiomarkerReading(
+            entry_id=entry_id,
+            biomarker_id=spec.defn.id,
+            value=spec.value_col,
+            value_text=spec.value_text,
+            reference=spec.eff_ref,
+            status=spec.status,
+            original_name=spec.row.get("original_name"),
+            original_value=spec.row.get("original_value"),
+            original_unit=spec.row.get("original_unit"),
+            original_range=spec.row.get("original_range"),
+            merged=merged,
+            merged_source=merged_source,
+        ))
+
+
+async def _save_attachment(
+    db: Session,
+    entry_id: str,
+    user_id: str,
+    is_anonymous: bool,
+    file: Optional[UploadFile],
+) -> Optional[AttachmentModel]:
+    """Validate size, enforce the storage quota, persist the file on disk and
+    create its Attachment row. Returns None when no file was provided. The
+    quota UPDATE is deferred (commit=False) so a later failure rolls back the
+    upload together with the entry instead of orphaning either."""
+    if not file or not file.filename:
+        return None
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail=f"File too large ({len(content) // 1024} KB). Maximum allowed size is {MAX_FILE_SIZE // (1024 * 1024)} MB.")
+
+    # Enforce storage quota for ALL users (anon: 50MB, registered: 200MB — see config.py).
+    allowed, current_bytes, limit_bytes, remaining = check_and_record_storage_usage(
+        db, user_id, len(content), is_anonymous, commit=False
+    )
+    if not allowed:
+        tier = "Anonymous" if is_anonymous else "Registered"
+        raise HTTPException(
+            status_code=429,
+            detail=f"Storage limit reached. {tier} users can upload up to {limit_bytes // (1024*1024)}MB. Please remove old entries or contact support."
+        )
+
+    ext = os.path.splitext(file.filename)[1]
+    saved_name = f"{uuid.uuid4().hex}{ext}"
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    save_path = os.path.join(UPLOAD_DIR, saved_name)
+    with open(save_path, "wb") as f:
+        f.write(content)
+
+    att = AttachmentModel(
+        id=f"att-{uuid.uuid4().hex}",
+        entry_id=entry_id,
+        name=file.filename,
+        type="Uploaded Document",
+        size=f"{len(content) // 1024} KB",
+        file_path=f"/static/uploads/{saved_name}",
+    )
+    db.add(att)
+    db.flush()
+    return att
 
 
 @router.get("/api/entries/by-date")
@@ -76,7 +297,49 @@ async def get_entries_by_date(
     )
     if type:
         q = q.filter(MedicalEntryModel.type == type)
-    return {"date": date, "count": q.count()}
+    entries = q.order_by(MedicalEntryModel.date).all()
+
+    # Per entry: the definitions its readings reference, so callers can detect
+    # biomarker overlap (e.g. when deciding whether two blood tests can merge).
+    result_entries = []
+    for e in entries:
+        readings = (
+            db.query(BiomarkerReading)
+            .filter(BiomarkerReading.entry_id == e.id)
+            .all()
+        )
+        reading_ids = {r.biomarker_id for r in readings}
+        defns = (
+            db.query(BiomarkerDefinitionModel)
+            .filter(
+                (BiomarkerDefinitionModel.id.in_(reading_ids))
+                | (BiomarkerDefinitionModel.loinc_code.in_(reading_ids))
+            )
+            .all()
+        )
+        defn_by_id = {d.id: d for d in defns}
+        defn_by_loinc = {d.loinc_code: d for d in defns if d.loinc_code}
+        biomarkers = []
+        for r in readings:
+            defn = defn_by_id.get(r.biomarker_id) or defn_by_loinc.get(r.biomarker_id)
+            # Names + synonyms let the client detect conflicts for rows the
+            # user typed manually (no definition_id) — the server resolves
+            # those by name, so the client must be able to as well.
+            biomarkers.append({
+                "definition_id": r.biomarker_id,
+                "loinc_code": defn.loinc_code if defn else None,
+                "names": (defn.names or {}) if defn else {},
+                "synonyms": (defn.synonyms or []) if defn else [],
+            })
+        time_str = e.date.strftime("%H:%M") if (e.date.hour or e.date.minute) else None
+        result_entries.append({
+            "id": e.id,
+            "title": e.title,
+            "date": e.date.isoformat(),
+            "time": time_str,
+            "biomarkers": biomarkers,
+        })
+    return {"date": date, "count": len(entries), "entries": result_entries}
 
 
 @router.post("/api/entry", response_model=SaveEntryResponse)
@@ -119,168 +382,15 @@ async def save_entry(
     db.flush()
 
     if file and file.filename:
-        content = await file.read()
-        if len(content) > MAX_FILE_SIZE:
-            raise HTTPException(status_code=413, detail=f"File too large ({len(content) // 1024} KB). Maximum allowed size is {MAX_FILE_SIZE // (1024 * 1024)} MB.")
-        
-        # Enforce storage quota for ALL users (anon: 50MB, registered: 200MB — see config.py).
-        # Defer the commit: the entry is not finalized until the end of save_entry,
-        # so a later failure (e.g. bad visit_data) rolls back the upload + entry
-        # together instead of leaving an orphaned entry in the DB.
-        allowed, current_bytes, limit_bytes, remaining = check_and_record_storage_usage(
-            db, user_id, len(content), is_anonymous, commit=False
-        )
-        if not allowed:
-            tier = "Anonymous" if is_anonymous else "Registered"
-            raise HTTPException(
-                status_code=429,
-                detail=f"Storage limit reached. {tier} users can upload up to {limit_bytes // (1024*1024)}MB. Please remove old entries or contact support."
-            )
-        
-        ext = os.path.splitext(file.filename)[1]
-        saved_name = f"{uuid.uuid4().hex}{ext}"
-        os.makedirs(UPLOAD_DIR, exist_ok=True)
-        save_path = os.path.join(UPLOAD_DIR, saved_name)
-        with open(save_path, "wb") as f:
-            f.write(content)
-
-        att = AttachmentModel(
-            id=f"att-{entry_id}",
-            entry_id=entry_id,
-            name=file.filename,
-            type="Uploaded Document",
-            size=f"{len(content) // 1024} KB",
-            file_path=f"/static/uploads/{saved_name}",
-        )
-        db.add(att)
-        db.flush()
+        await _save_attachment(db, entry_id, user_id, is_anonymous, file)
 
     if biomarkers and biomarkers != "[]":
         try:
             categories_data = json.loads(biomarkers)
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="Invalid biomarkers JSON format.")
-        for cat in categories_data:
-            for row in cat.get("rows", []):
-                name = row.get("name", "").strip()
-                raw_value = row.get("value", "").strip()
-                if not name or not raw_value:
-                    continue
-                parsed = parse_value(raw_value)
-                if parsed is None:
-                    continue
-                if isinstance(parsed, (int, float)) and not isinstance(parsed, bool):
-                    value_col: Optional[float] = parsed
-                    value_text: Optional[str] = None
-                    result_value: Union[float, str, None] = parsed
-                else:
-                    # Qualitative result — keep the text; previously these were
-                    # silently dropped because `value` was Float-only.
-                    value_col = None
-                    value_text = normalize_qual(parsed)
-                    result_value = value_text
-
-                # 1) Lookup by definition_id (from AI pipeline)
-                row_defn_id = row.get("definition_id")
-                defn_id = row_defn_id
-                defn = None
-                if defn_id:
-                    defn = db.query(BiomarkerDefinitionModel).filter(BiomarkerDefinitionModel.id == defn_id).first()
-                    # Also resolve by LOINC code (the matcher emits LOINC as definition_id)
-                    if not defn and _is_loinc(defn_id):
-                        defn = db.query(BiomarkerDefinitionModel).filter(
-                            BiomarkerDefinitionModel.loinc_code == defn_id
-                        ).first()
-
-                # 2) Fallback: fuzzy match by name using SQL ILIKE
-                if not defn:
-                    name_lower = name.lower()
-                    # Only match definitions visible to this user: global,
-                    # system-shared (user_id IS NULL), or this user's own local
-                    # definitions. This prevents a user's reading from being
-                    # linked to another user's private local definition.
-                    ownership = or_(
-                        BiomarkerDefinitionModel.scope == "global",
-                        BiomarkerDefinitionModel.user_id.is_(None),
-                        BiomarkerDefinitionModel.user_id == user_id,
-                    )
-                    # Build OR conditions for names and synonyms
-                    defn = (
-                        db.query(BiomarkerDefinitionModel)
-                        .filter(
-                            or_(
-                                func.lower(BiomarkerDefinitionModel.names['en'].as_string()).ilike(name_lower),
-                                func.lower(BiomarkerDefinitionModel.names['ru'].as_string()).ilike(name_lower),
-                                func.lower(BiomarkerDefinitionModel.names['es'].as_string()).ilike(name_lower),
-                                func.lower(BiomarkerDefinitionModel.names['de'].as_string()).ilike(name_lower),
-                                func.lower(BiomarkerDefinitionModel.names['fr'].as_string()).ilike(name_lower),
-                                func.lower(BiomarkerDefinitionModel.names['he'].as_string()).ilike(name_lower),
-                            ),
-                            ownership,
-                        )
-                        .first()
-                    )
-                    # Also check synonyms array
-                    if not defn:
-                        defn = (
-                            db.query(BiomarkerDefinitionModel)
-                            .filter(
-                                func.lower(cast(BiomarkerDefinitionModel.synonyms, String)).ilike(f'%{name_lower}%'),
-                                ownership,
-                            )
-                            .first()
-                        )
-
-                # 3) No match at all — create a local entry
-                if not defn:
-                    # Per-user id so two users entering the same novel analyte
-                    # get isolated local definitions (and never collide on a
-                    # shared primary key, which would raise an unhandled 500).
-                    defn_id = f"local-{user_id}-{hashlib.md5(name.lower().encode()).hexdigest()[:12]}"
-                    existing = db.query(BiomarkerDefinitionModel).filter(
-                        BiomarkerDefinitionModel.id == defn_id
-                    ).first()
-                    if existing:
-                        defn = existing
-                    else:
-                        defn = BiomarkerDefinitionModel(
-                            id=defn_id,
-                            loinc_code=row_defn_id if _is_loinc(row_defn_id) else None,
-                            names={"en": name},
-                            synonyms=[name],
-                            category=cat.get("name", "General"),
-                            reference=None,
-                            unit=row.get("unit", ""),
-                            scope="local",
-                            user_id=user_id,
-                        )
-                        db.add(defn)
-                        try:
-                            db.flush()
-                        except IntegrityError:
-                            db.rollback()
-                            defn = db.query(BiomarkerDefinitionModel).filter(
-                                BiomarkerDefinitionModel.id == defn_id
-                            ).first()
-
-                # Compose the effective reference: an explicit per-row reference
-                # wins (document-first), a qualitative value forces qualitative,
-                # otherwise fall back to the definition's reference.
-                eff_ref = merge_reference(row.get("reference"), defn.reference, result_value)
-                derived_status = compute_status(result_value, eff_ref)
-
-                db.add(BiomarkerReading(
-                    entry_id=entry_id,
-                    biomarker_id=defn.id,
-                    value=value_col,
-                    value_text=value_text,
-                    reference=eff_ref,
-                    status=derived_status,
-                    original_name=row.get("original_name"),
-                    original_value=row.get("original_value"),
-                    original_unit=row.get("original_unit"),
-                    original_range=row.get("original_range"),
-                ))
+        specs = _parse_biomarker_rows(db, user_id, categories_data)
+        _create_reading_rows(db, entry_id, specs, merged=False)
         db.flush()
 
     if visit_data and visit_data != "":
@@ -354,6 +464,118 @@ async def save_entry(
 
     db.commit()
     return SaveEntryResponse(success=True, message="Entry saved", id=entry_id)
+
+
+@router.post("/api/entry/{entry_id}/merge", response_model=SaveEntryResponse)
+async def merge_entry(
+    entry_id: str,
+    date: str = Form(""),
+    title: str = Form(""),
+    clinic: str = Form(""),
+    provider: str = Form(""),
+    time: str = Form(""),
+    biomarkers: str = Form("[]"),
+    notes: str = Form(""),
+    file: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+):
+    """Merge a later blood-test upload into an existing entry on the same date:
+    new biomarker readings (marked ``merged=True``) are added, the uploaded
+    document is attached, and the new doc's notes are appended. The target
+    entry's own metadata (date/time/title/clinic/provider) is left untouched.
+
+    The merged upload's OWN metadata (title/clinic/provider/time) is snapshotted
+    onto every merged reading as ``merged_source``, so the UI can describe which
+    second test the readings came from.
+
+    Merging is refused with 409 when any biomarker definition would be
+    duplicated (already present in the target) — a merged entry can't hold two
+    readings of the same analyte. The target must be a blood_test owned by the
+    current user and (when a date is supplied) dated on that date."""
+    user, user_id, is_anonymous = user_data
+    entry = (
+        db.query(MedicalEntryModel)
+        .filter(
+            MedicalEntryModel.id == entry_id,
+            MedicalEntryModel.patient_id == user_id,
+        )
+        .first()
+    )
+    if not entry:
+        raise HTTPException(status_code=404, detail=f"Entry '{entry_id}' not found")
+    if entry.type != "blood_test":
+        raise HTTPException(status_code=400, detail="Only blood test entries can be merged into")
+    if date:
+        try:
+            target_date = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid date format: '{date}'. Expected ISO format (YYYY-MM-DD).")
+        # Compare in Python: sqlite stores naive datetimes, and passing mixed
+        # naive/tz-aware values through SQL func.date() is unreliable.
+        entry_day = entry.date
+        if entry_day.tzinfo is None:
+            entry_day = entry_day.replace(tzinfo=timezone.utc)
+        if entry_day.date() != target_date.date():
+            raise HTTPException(status_code=400, detail="Entry date does not match the supplied merge date")
+
+    if biomarkers and biomarkers != "[]":
+        try:
+            categories_data = json.loads(biomarkers)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid biomarkers JSON format.")
+        specs = _parse_biomarker_rows(db, user_id, categories_data)
+
+        # Conflict check: refuse when any resolved definition already has a
+        # reading in the target entry (by definition id OR LOINC code — a
+        # reading's biomarker_id may itself be a LOINC code from legacy
+        # ingestion, so both identifier forms are treated as equivalent).
+        existing_ids = {r.biomarker_id for r in entry.biomarker_readings}
+        existing_defns = (
+            db.query(BiomarkerDefinitionModel)
+            .filter(
+                (BiomarkerDefinitionModel.id.in_(existing_ids))
+                | (BiomarkerDefinitionModel.loinc_code.in_(existing_ids))
+            )
+            .all()
+        )
+        existing_keys = set(existing_ids)
+        for d in existing_defns:
+            existing_keys.add(d.id)
+            if d.loinc_code:
+                existing_keys.add(d.loinc_code)
+        conflicts = []
+        for spec in specs:
+            defn = spec.defn
+            if defn.id in existing_keys or (defn.loinc_code and defn.loinc_code in existing_keys):
+                conflicts.append(spec.row.get("name") or (defn.names or {}).get("en") or defn.id)
+        if conflicts:
+            detail = "Cannot merge: biomarker(s) already present in this test: " + ", ".join(sorted(set(conflicts)))
+            raise HTTPException(status_code=409, detail=detail)
+
+        # Snapshot the merged upload's own metadata so the UI can describe the
+        # second test these readings came from. Only non-empty fields are kept.
+        # When the user left the title blank, fall back to the uploaded
+        # document's filename (sans extension) — far more informative than a
+        # generic "Blood Test Panel" placeholder.
+        source_title = title.strip()
+        if not source_title and file and file.filename:
+            source_title = os.path.splitext(os.path.basename(file.filename))[0]
+        merged_source = {
+            "title": source_title, "clinic": clinic, "provider": provider, "time": time,
+        }
+        merged_source = {k: v for k, v in merged_source.items() if v} or None
+
+        _create_reading_rows(db, entry_id, specs, merged=True, merged_source=merged_source)
+
+    if notes:
+        entry.notes = (entry.notes + "\n" + notes) if entry.notes else notes
+
+    if file and file.filename:
+        await _save_attachment(db, entry_id, user_id, is_anonymous, file)
+
+    db.commit()
+    return SaveEntryResponse(success=True, message="Entry merged", id=entry_id)
 
 
 def _parse_size_to_bytes(size_str: str) -> int:

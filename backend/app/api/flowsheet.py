@@ -115,6 +115,7 @@ def _build_flowsheet(db: Session, patient_id: str):
                     status=reading.status,
                     scale_function=getattr(reading, "scale_function", None),
                     needs_review=bool(getattr(reading, "needs_review", False)),
+                    merged=bool(getattr(reading, "merged", False)),
                 ))
             else:
                 cells.append(MatrixCell(value="—", status="normal"))

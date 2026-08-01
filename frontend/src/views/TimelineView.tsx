@@ -102,7 +102,7 @@ export function TimelineView() {
   )
 }
 
-function biomarkersAtDate(biomarkers: BiomarkerResult[], date: string): BiomarkerResult[] {
+export function biomarkersAtDate(biomarkers: BiomarkerResult[], date: string): BiomarkerResult[] {
   if (!date) return biomarkers
   return biomarkers
     .map((b): BiomarkerResult | null => {
@@ -113,11 +113,19 @@ function biomarkersAtDate(biomarkers: BiomarkerResult[], date: string): Biomarke
       const idx = all.findIndex((r) => r.date === date)
       if (idx === -1) return null
       const current = all[idx]
+      const isLatest = idx === all.length - 1
       return {
         ...b,
         value: current.value,
         date: current.date,
         status: current.status as Status,
+        // The merged/merged_source flags must describe the reading AT this
+        // event, not the latest reading of the definition: a biomarker merged
+        // into an older entry and later re-tested separately is only "merged"
+        // at the older event. History readings carry their own flags; the
+        // latest reading's live on the top-level BiomarkerResult.
+        merged: isLatest ? b.merged : current.merged,
+        merged_source: isLatest ? b.merged_source : current.merged_source,
         // Full history of the biomarker (all readings except the one at this
         // blood test), not just the readings that occurred before it — so the
         // inline graph and reading list show the complete trend regardless of
@@ -125,5 +133,5 @@ function biomarkersAtDate(biomarkers: BiomarkerResult[], date: string): Biomarke
         history: [...all.slice(0, idx), ...all.slice(idx + 1)],
       }
     })
-    .filter((b): b is BiomarkerResult => b !== null)
+    .filter((x): x is BiomarkerResult => x !== null)
 }

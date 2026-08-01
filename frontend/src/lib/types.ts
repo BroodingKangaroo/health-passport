@@ -54,6 +54,15 @@ export interface BiomarkerDefinition {
   canonical_unit_inferred?: boolean
 }
 
+export interface MergedSource {
+  // Metadata of the second (merged-in) upload: what the user typed for the
+  // test that contributed these readings. Present on merged readings only.
+  title?: string | null
+  clinic?: string | null
+  provider?: string | null
+  time?: string | null
+}
+
 export interface Reading {
   date: string
   value: number | string | null
@@ -69,6 +78,11 @@ export interface Reading {
   // True when the LLM couldn't determine a cross-scale conversion; the
   // reading is kept raw and the UI surfaces a warning.
   needs_review?: boolean
+  // True when the reading was merged into an existing entry from a later
+  // upload (POST /api/entry/{id}/merge) rather than created with it.
+  merged?: boolean
+  // Source upload metadata for merged readings (see MergedSource).
+  merged_source?: MergedSource | null
 }
 
 export interface BiomarkerResult {
@@ -83,6 +97,8 @@ export interface BiomarkerResult {
   original_value?: string
   original_unit?: string
   original_range?: string
+  merged?: boolean
+  merged_source?: MergedSource | null
 }
 
 /* ----- Events ----- */
@@ -153,6 +169,9 @@ export interface MatrixCell {
   // True when the LLM couldn't determine a cross-scale conversion. The
   // flowsheet cell still renders the raw value; the UI shows a warning.
   needs_review?: boolean
+  // True when the reading was merged into an existing entry from a later
+  // upload rather than created with it.
+  merged?: boolean
 }
 
 export interface MatrixRow {
@@ -295,6 +314,35 @@ export interface StandardizedMedicalRecord {
   biomarkers?: StandardizedBiomarker[] | null
   visit_data?: ExtractedVisitData | null
   imaging_data?: ExtractedImagingData | null
+}
+
+/* ----- Entries by Date (duplicate/merge detection) ----- */
+export interface EntryBiomarkerRef {
+  // The reading's definition id (may itself be a LOINC code for legacy data).
+  definition_id: string
+  loinc_code: string | null
+  // Definition names + synonyms, so the client can detect conflicts for
+  // manually-typed rows that carry no definition_id (the server resolves
+  // those by name, so the client must be able to as well).
+  names?: Record<string, string>
+  synonyms?: string[]
+}
+
+export interface EntrySummary {
+  id: string
+  title: string
+  date: string
+  // "HH:MM" when the entry has a time, else null.
+  time: string | null
+  // Definitions the entry's readings reference — used to detect biomarker
+  // overlap when deciding whether a new upload can merge into this entry.
+  biomarkers: EntryBiomarkerRef[]
+}
+
+export interface EntriesByDateResponse {
+  date: string
+  count: number
+  entries: EntrySummary[]
 }
 
 /* ----- API Response Types ----- */

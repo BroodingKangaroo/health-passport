@@ -11,10 +11,9 @@ import { cn, formatDate, formatNumber } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { StatusBadge } from '@/components/shared/StatusBadge'
-import { ScaleNote } from '@/components/shared/ScaleNote'
 import { formatReference, unitLabel, displayUnit } from '@/lib/reference'
 import { ExpandedBiomarkerDetails } from './expanded-biomarker-details'
-import type { BiomarkerResult, Status } from '@/lib/types'
+import type { BiomarkerResult, Status, MergedSource } from '@/lib/types'
 
 const GRID_COLS =
   'grid grid-cols-[1.5fr_1.5fr_1fr_1fr_1fr_1.2fr_40px] items-center gap-x-3'
@@ -49,6 +48,30 @@ export function ResultsPanel({
         b.definition.names.ru.toLowerCase().includes(q),
     )
   }, [query, biomarkers])
+
+  // Original readings first, then merged-in ones grouped by the upload that
+  // contributed them (same title/clinic/provider/time = same group). A merged
+  // entry's biomarkers are either original-only or merged-only (the merge
+  // conflict check forbids duplicates), so the split is unambiguous.
+  const { originalList, mergedGroups } = useMemo(() => {
+    const originals: BiomarkerResult[] = []
+    const groups = new Map<string, { source: MergedSource | null; rows: BiomarkerResult[] }>()
+    for (const b of filtered) {
+      if (!b.merged) {
+        originals.push(b)
+        continue
+      }
+      const source = b.merged_source ?? null
+      const key = JSON.stringify(source)
+      let group = groups.get(key)
+      if (!group) {
+        group = { source, rows: [] }
+        groups.set(key, group)
+      }
+      group.rows.push(b)
+    }
+    return { originalList: originals, mergedGroups: [...groups.values()] }
+  }, [filtered])
 
   return (
     <Card className="overflow-hidden border-border">
@@ -89,23 +112,36 @@ export function ResultsPanel({
             <span aria-hidden />
           </div>
 
-          {filtered.map((b) => {
-            const expandable = true
-            const isOpen = expandedId === b.id && expandable
-            return (
-              <FlowRow
-                key={b.id}
-                biomarker={b}
-                expandable={expandable}
-                isOpen={isOpen}
-                onToggle={() =>
-                  expandable &&
-                  setExpandedId((cur) => (cur === b.id ? null : b.id))
-                }
-                onViewDetails={onViewDetails}
-              />
-            )
-          })}
+          {originalList.map((b) => (
+            <FlowRow
+              key={b.id}
+              biomarker={b}
+              expandable={true}
+              isOpen={expandedId === b.id}
+              onToggle={() =>
+                setExpandedId((cur) => (cur === b.id ? null : b.id))
+              }
+              onViewDetails={onViewDetails}
+            />
+          ))}
+
+          {mergedGroups.map((group) => (
+            <div key={JSON.stringify(group.source)}>
+              <MergedSectionHeader source={group.source} />
+              {group.rows.map((b) => (
+                <FlowRow
+                  key={b.id}
+                  biomarker={b}
+                  expandable={true}
+                  isOpen={expandedId === b.id}
+                  onToggle={() =>
+                    setExpandedId((cur) => (cur === b.id ? null : b.id))
+                  }
+                  onViewDetails={onViewDetails}
+                />
+              ))}
+            </div>
+          ))}
 
           {filtered.length === 0 && (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
@@ -184,6 +220,30 @@ function FlowRow({
           />
         </div>
       )}
+    </div>
+  )
+}
+
+function MergedSectionHeader({ source }: { source: MergedSource | null }) {
+  const title = source?.title?.trim() || 'Merged readings'
+  const time = source?.time?.trim()
+  const meta = [source?.clinic?.trim(), source?.provider?.trim()]
+    .filter((v): v is string => !!v)
+    .join(' · ')
+  return (
+    <div className="border-b border-border bg-primary/5 px-4 py-2.5">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">
+        {title}
+        {time ? ` \u00b7 ${time}` : ''}
+      </p>
+      {meta && (
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {meta}
+        </p>
+      )}
+      <p className="mt-0.5 text-[10px] text-muted-foreground/70">
+        Added from a later upload on the same date
+      </p>
     </div>
   )
 }

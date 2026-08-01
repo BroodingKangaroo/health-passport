@@ -2,44 +2,54 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from fastapi import FastAPI, Request, Response
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.db.session as _db_session
-from app.db.session import Base, get_db
+from app.db.session import Base, get_db, migrate_add_columns
 from app.db import models as _models  # noqa: F401  (registers tables on Base)
 from tests.seed_data import seed_test_db
 
 TEST_DATABASE_URL = "sqlite:///:memory:"
 
 
-def _migrate_add_columns(engine) -> None:
-    """Idempotent in-place schema migration for the default (file-backed)
-    engine. Adds any columns the model declares that the existing DB
-    doesn't yet have. This matters whenever a new column is added to a
-    model — SQLAlchemy's ``create_all`` only creates missing tables, not
-    missing columns on existing tables, so legacy test DBs (and
-    long-lived user DBs) would otherwise fall behind the schema.
+@pytest.fixture(scope="session", autouse=True)
+def _seeded_shared_database():
+    """The matcher tests (and a few auth tests) query the SHARED file-backed
+    engine via ``SessionLocal()`` / ``app.main.app`` rather than the per-test
+    in-memory engine. That DB needs real tables and the LOINC dictionary to be
+    resolvable, so ensure both exist before the suite runs.
+
+    Seeding is idempotent (insert-if-missing) and never drops existing rows,
+    so a local dev DB simply gains the dictionary rows it's supposed to have.
     """
-    insp = inspect(engine)
-    with engine.begin() as conn:
-        for table in Base.metadata.sorted_tables:
-            if not insp.has_table(table.name):
-                continue
-            existing = {c["name"] for c in insp.get_columns(table.name)}
-            for col in table.columns:
-                if col.name in existing:
-                    continue
-                # Build a portable CREATE COLUMN clause. Use the column's
-                # compiled type so defaults / nullability are preserved.
-                col_type = col.type.compile(engine.dialect)
-                nullable = "" if col.nullable else " NOT NULL"
-                default = ""
-                if col.default is not None and col.default.is_scalar:
-                    default = f" DEFAULT {col.default.arg!r}"
-                conn.execute(text(
-                    f"ALTER TABLE {table.name} ADD COLUMN {col.name} {col_type}{nullable}{default}"
-                ))
+    Base.metadata.create_all(bind=_db_session.engine)
+    migrate_add_columns(_db_session.engine)
+
+    import os
+    from app.db.seed_loinc import (
+        LOINC_CSV,
+        parse_loinc_csv,
+        row_to_definition,
+        dedupe_definitions,
+        apply_multilingual_synonyms,
+        seed_biomarkers,
+    )
+    if not os.path.isfile(os.path.abspath(LOINC_CSV)):
+        return
+    db = _db_session.SessionLocal()
+    try:
+        # Insert-if-missing, so a partially-seeded dev DB is completed without
+        # touching existing rows.
+        rows = parse_loinc_csv(os.path.abspath(LOINC_CSV))
+        definitions, aliases = dedupe_definitions([row_to_definition(r) for r in rows])
+        definitions = apply_multilingual_synonyms(definitions, aliases)
+        seed_biomarkers(db, definitions)
+        # Apply the curated reference ranges on top (idempotent).
+        from app.db.import_ranges import COMMON_RANGES, merge_ranges
+        merge_ranges(db, dict(COMMON_RANGES))
+    finally:
+        db.close()
 
 
 @pytest.fixture(scope="function")
@@ -49,7 +59,7 @@ def db_session():
     # the schema is already up to date. Without this, tests that use
     # ``SessionLocal()`` directly (rather than this fixture) would fail
     # on the new columns.
-    _migrate_add_columns(_db_session.engine)
+    migrate_add_columns(_db_session.engine)
     # The fixture itself uses a fresh in-memory engine so the per-test
     # ``drop_all`` at teardown only nukes the in-memory DB, not the
     # shared file-backed DB that other tests may query directly.

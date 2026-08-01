@@ -103,4 +103,109 @@ describe('BloodTestDetails', () => {
     expect(screen.getByText('Entry Details')).toBeDefined()
     expect(screen.getByText('Danger Zone')).toBeDefined()
   })
+
+  describe('merged readings section', () => {
+    function makeBiomarker(
+      id: string,
+      name: string,
+      overrides: Partial<BiomarkerResult> = {},
+    ): BiomarkerResult {
+      return {
+        id,
+        definition: {
+          id,
+          names: { en: name, ru: name },
+          synonyms: [],
+          category: 'Complete Blood Count',
+          unit: 'g/L',
+          reference: null,
+          scope: 'global',
+          reference_source: 'global',
+        },
+        value: 150,
+        date: 'Jan 15, 2027',
+        status: 'normal',
+        ...overrides,
+      }
+    }
+
+    it('groups merged readings under a header with the second test info', () => {
+      const biomarkers: BiomarkerResult[] = [
+        makeBiomarker('hb', 'Hemoglobin'),
+        makeBiomarker('cre', 'Creatinine', {
+          merged: true,
+          merged_source: {
+            title: 'Evening Panel',
+            clinic: 'Invitro Lab',
+            provider: 'Dr. Smith',
+            time: '18:30',
+          },
+        }),
+      ]
+      render(<BloodTestDetails event={baseEvent} biomarkers={biomarkers} onViewDetails={vi.fn()} />)
+
+      const header = screen.getByText('Evening Panel · 18:30')
+      expect(header).toBeInTheDocument()
+      expect(screen.getByText('Invitro Lab · Dr. Smith')).toBeInTheDocument()
+      expect(screen.getByText('Added from a later upload on the same date')).toBeInTheDocument()
+    })
+
+    it('shows no merged section when every reading is original', () => {
+      const biomarkers: BiomarkerResult[] = [
+        makeBiomarker('hb', 'Hemoglobin'),
+        makeBiomarker('glu', 'Glucose'),
+      ]
+      render(<BloodTestDetails event={baseEvent} biomarkers={biomarkers} onViewDetails={vi.fn()} />)
+
+      expect(screen.queryByText('Added from a later upload on the same date')).not.toBeInTheDocument()
+      expect(screen.getAllByText('Hemoglobin').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('Glucose').length).toBeGreaterThan(0)
+    })
+
+    it('renders one section per distinct merge source', () => {
+      const biomarkers: BiomarkerResult[] = [
+        makeBiomarker('hb', 'Hemoglobin'),
+        makeBiomarker('cre', 'Creatinine', {
+          merged: true,
+          merged_source: { title: 'Evening Panel', clinic: 'Invitro Lab', time: '18:30' },
+        }),
+        makeBiomarker('bun', 'Urea Nitrogen', {
+          merged: true,
+          merged_source: { title: 'Morning Follow-up', clinic: 'City Lab', provider: 'Dr. Day', time: '08:00' },
+        }),
+      ]
+      render(<BloodTestDetails event={baseEvent} biomarkers={biomarkers} onViewDetails={vi.fn()} />)
+
+      expect(screen.getByText('Evening Panel · 18:30')).toBeInTheDocument()
+      expect(screen.getByText('Morning Follow-up · 08:00')).toBeInTheDocument()
+      // Two sources → two "Added from a later upload" hints.
+      expect(screen.getAllByText('Added from a later upload on the same date')).toHaveLength(2)
+    })
+
+    it('falls back to a generic label when the merged upload has no title', () => {
+      const biomarkers: BiomarkerResult[] = [
+        makeBiomarker('hb', 'Hemoglobin'),
+        makeBiomarker('cre', 'Creatinine', {
+          merged: true,
+          merged_source: { time: '10:15' },
+        }),
+      ]
+      render(<BloodTestDetails event={baseEvent} biomarkers={biomarkers} onViewDetails={vi.fn()} />)
+
+      expect(screen.getByText('Merged readings · 10:15')).toBeInTheDocument()
+    })
+
+    it('renders the merged section alone when the entry has no original readings', () => {
+      const biomarkers: BiomarkerResult[] = [
+        makeBiomarker('cre', 'Creatinine', {
+          merged: true,
+          merged_source: { title: 'Evening Panel' },
+        }),
+      ]
+      render(<BloodTestDetails event={baseEvent} biomarkers={biomarkers} onViewDetails={vi.fn()} />)
+
+      expect(screen.getByText('Evening Panel')).toBeInTheDocument()
+      expect(screen.getByText('Added from a later upload on the same date')).toBeInTheDocument()
+    })
+  })
 })

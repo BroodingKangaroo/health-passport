@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import {
   UploadCloud,
@@ -26,7 +26,7 @@ import { Field } from '@/components/shared/Field'
 import { DoctorVisitForm } from './DoctorVisitForm'
 import { LabResultForm } from './LabResultForm'
 import { ImagingForm } from './ImagingForm'
-import { saveMedicalEntry, fetchEntriesByDate, extractMedicalData, UsageLimitError } from '@/services/api'
+import { saveMedicalEntry, mergeMedicalEntry, fetchEntriesByDate, extractMedicalData, UsageLimitError } from '@/services/api'
 import { toast } from 'sonner'
 import type {
   UploadState,
@@ -38,6 +38,7 @@ import type {
   StandardizedBiomarker,
   ProgressStage,
   ProgressEventPayload,
+  EntrySummary,
 } from '@/lib/types'
 import type { UnitConflict } from './unit-conflict-dialog'
 import { UnitConflictDialog } from './unit-conflict-dialog'
@@ -125,6 +126,9 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const [dateValue, setDateValue] = useState('')
   const [duplicateWarning, setDuplicateWarning] = useState(false)
   const [timeRequired, setTimeRequired] = useState(false)
+  const [existingBloodTests, setExistingBloodTests] = useState<EntrySummary[]>([])
+  const [mergeSelected, setMergeSelected] = useState(false)
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
   const [progressStage, setProgressStage] = useState<ProgressStage>('ocr_scanning')
@@ -321,6 +325,9 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     if (!dateValue || documentType !== 'blood_test') {
       setDuplicateWarning(false)
       setTimeRequired(false)
+      setExistingBloodTests([])
+      setMergeSelected(false)
+      setMergeTargetId(null)
       return
     }
     const controller = new AbortController()
@@ -330,13 +337,14 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         const res = await fetchEntriesByDate(dateValue, 'blood_test')
         // Ignore stale responses
         if (controller.signal.aborted) return
-        if (res.count > 0) {
-          setDuplicateWarning(true)
-          setTimeRequired(true)
-        } else {
-          setDuplicateWarning(false)
-          setTimeRequired(false)
-        }
+        setExistingBloodTests(res.entries ?? [])
+        const hasDuplicate = (res.entries?.length ?? 0) > 0
+        setDuplicateWarning(hasDuplicate)
+        setTimeRequired(hasDuplicate)
+        // A changed date invalidates any merge selection; default to the first
+        // candidate when a single blood test exists on the date.
+        setMergeSelected(false)
+        setMergeTargetId((prev) => (prev && res.entries?.some((e) => e.id === prev) ? prev : res.entries?.[0]?.id ?? null))
       } catch {
         // ignore fetch errors
       }
@@ -346,6 +354,56 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
       controller.abort()
     }
   }, [dateValue, documentType])
+
+  // Merge target + conflict detection against the biomarkers already present
+  // in the existing entry the user picked. A conflict (same biomarker in both
+  // tests) disables merging — a merged entry can't hold two readings of one
+  // analyte. Rows the backend would skip (empty name/value) are ignored.
+  const selectedMergeTarget = useMemo(() => {
+    if (mergeTargetId) return existingBloodTests.find((e) => e.id === mergeTargetId) ?? null
+    return existingBloodTests[0] ?? null
+  }, [existingBloodTests, mergeTargetId])
+  const mergeConflicts = useMemo(() => {
+    if (!selectedMergeTarget) return []
+    const keys = new Set<string>()
+    const names = new Set<string>()
+    for (const b of selectedMergeTarget.biomarkers) {
+      keys.add(b.definition_id)
+      if (b.loinc_code) keys.add(b.loinc_code)
+      for (const n of Object.values(b.names ?? {})) names.add(n.toLowerCase())
+      for (const s of b.synonyms ?? []) names.add(s.toLowerCase())
+    }
+    const conflicts: string[] = []
+    for (const cat of categories) {
+      for (const row of cat.rows) {
+        if (!row.name.trim() || !row.value.trim()) continue
+        const nameLower = row.name.trim().toLowerCase()
+        // Rows carrying a definition_id conflict when that id (or its LOINC
+        // code) is already in the target. Manually-typed rows without one are
+        // resolved by name on the server — match those client-side too, so the
+        // checkbox isn't left enabled for a merge that will 409.
+        const conflictsById = !!row.definition_id && keys.has(row.definition_id)
+        const conflictsByName = !row.definition_id && names.has(nameLower)
+        if (conflictsById || conflictsByName) {
+          conflicts.push(row.name)
+        }
+      }
+    }
+    return conflicts
+  }, [selectedMergeTarget, categories])
+  const mergeBlocked = mergeConflicts.length > 0
+  const merging = mergeSelected && !mergeBlocked && !!selectedMergeTarget
+
+  // If the box is ticked and a conflict shows up afterwards (e.g. the AI
+  // extraction lands a biomarker that's already in the target, or the user
+  // edits a row into conflict), reset the selection: a checked-but-blocked
+  // box is a lie, and saving would silently create a duplicate entry — the
+  // exact thing merging exists to prevent.
+  useEffect(() => {
+    if (mergeSelected && mergeBlocked) {
+      setMergeSelected(false)
+    }
+  }, [mergeSelected, mergeBlocked])
 
   useEffect(() => {
     if (selectedFile) {
@@ -446,7 +504,11 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
       fd.append('clinic', clinicRef.current?.value ?? '')
       fd.append('provider', providerRef.current?.value ?? '')
       const autoTitle = documentType === 'blood_test' ? 'Blood Test Panel' : documentType === 'doctor_visit' ? 'Doctor Visit' : documentType === 'imaging' ? 'Imaging Report' : 'Medical Record'
-      fd.append('title', titleRef.current?.value || autoTitle)
+      // When merging, send the title as typed (may be empty) so the merge
+      // endpoint can fall back to the document filename for the merged section
+      // header — the generic auto-title would be useless there. The entry's
+      // own title stays untouched on merge anyway.
+      fd.append('title', merging ? (titleRef.current?.value ?? '') : (titleRef.current?.value || autoTitle))
       fd.append('notes', notesRef.current?.value ?? '')
       fd.append('biomarkers', JSON.stringify(categories))
       if (documentType === 'doctor_visit' && visitFormData) {
@@ -457,7 +519,9 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
       } else if (fileRef.current?.files?.[0]) {
         fd.append('file', fileRef.current.files[0])
       }
-      const resp = await saveMedicalEntry(fd)
+      const resp = merging && selectedMergeTarget
+        ? await mergeMedicalEntry(selectedMergeTarget.id, fd)
+        : await saveMedicalEntry(fd)
       if (!resp.success) {
         setSaveError(resp.message || 'Failed to save entry')
         return
@@ -754,18 +818,65 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                   onChange={(e) => setDateValue(e.target.value)}
                 />
               </Field>
-              <Field label={timeRequired ? 'Time (required)' : 'Time (optional)'}>
+              <Field label={timeRequired && !merging ? 'Time (required)' : 'Time (optional)'}>
                 <Input
                   ref={timeRef}
                   type="time"
                   value={timeValue}
                   onChange={(e) => setTimeValue(e.target.value)}
-                  className={timeRequired ? 'border-red-500' : ''}
+                  className={timeRequired && !merging ? 'border-red-500' : ''}
                 />
-                {duplicateWarning && (
+                {duplicateWarning && !merging && (
                   <p className="mt-1 text-xs text-red-500">
                     There&apos;s already a blood test on this date. Time is required.
                   </p>
+                )}
+                {duplicateWarning && existingBloodTests.length > 0 && (
+                  <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                    <label className={cn('flex items-start gap-2.5', mergeBlocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer')}>
+                      <input
+                        type="checkbox"
+                        checked={mergeSelected}
+                        disabled={mergeBlocked}
+                        onChange={(e) => setMergeSelected(e.target.checked)}
+                        className="mt-0.5 size-4 accent-primary"
+                      />
+                      <span>
+                        <span className="text-sm font-semibold text-foreground">
+                          Merge with this date&apos;s existing blood test
+                        </span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          Add the new biomarkers and attach this document to the existing entry
+                          instead of creating a second one.
+                        </span>
+                      </span>
+                    </label>
+                    {mergeBlocked && (
+                      <p className="mt-2 text-xs text-red-500">
+                        Can&apos;t merge — {mergeConflicts.length === 1 ? 'this biomarker is already' : 'these biomarkers are already'} in
+                        the existing test: {mergeConflicts.join(', ')}.
+                      </p>
+                    )}
+                    {mergeSelected && !mergeBlocked && existingBloodTests.length > 1 && (
+                      <div className="mt-3 flex items-center gap-2">
+                        <label htmlFor="merge-target" className="shrink-0 text-xs font-medium text-muted-foreground">
+                          Merge into:
+                        </label>
+                        <select
+                          id="merge-target"
+                          value={selectedMergeTarget?.id ?? ''}
+                          onChange={(e) => setMergeTargetId(e.target.value)}
+                          className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm shadow-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+                        >
+                          {existingBloodTests.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.title}{c.time ? ` — ${c.time}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
                 )}
               </Field>
               <Field label="Clinic / Source">
@@ -826,8 +937,8 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
             <Button variant="ghost" onClick={onSave} disabled={saving}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={saving || (timeRequired && !timeValue)}>
-              {saving ? 'Saving...' : 'Save to HealthPassport'}
+            <Button onClick={handleSave} disabled={saving || ((timeRequired && !timeValue) && !merging)}>
+              {saving ? 'Saving...' : merging ? 'Merge & Save' : 'Save to HealthPassport'}
             </Button>
           </div>
         </div>

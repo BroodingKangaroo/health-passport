@@ -31,6 +31,7 @@ from app.schemas import (
     Prescription,
     Attachment as AttachmentSchema,
     Reading,
+    MergedSource,
 )
 from app.db.session import get_db
 from app.db.models import (
@@ -141,6 +142,8 @@ def _biomarkers_from_db(db: Session, patient_id: str):
                 original_range=r.original_range or "",
                 scale_function=getattr(r, "scale_function", None),
                 needs_review=bool(getattr(r, "needs_review", False)),
+                merged=bool(getattr(r, "merged", False)),
+                merged_source=_reading_merged_source(r),
             )
             for r, date in readings_query[:-1]
         ]
@@ -171,8 +174,24 @@ def _biomarkers_from_db(db: Session, patient_id: str):
             original_value=latest_reading.original_value or "",
             original_unit=latest_reading.original_unit or "",
             original_range=latest_reading.original_range or "",
+            merged=bool(getattr(latest_reading, "merged", False)),
+            merged_source=_reading_merged_source(latest_reading),
         ))
     return results
+
+
+def _reading_merged_source(r) -> Optional[MergedSource]:
+    """Build the MergedSource snapshot from a reading's stored merged_source
+    JSON dict (None for original readings)."""
+    src = getattr(r, "merged_source", None)
+    if not src or not isinstance(src, dict):
+        return None
+    return MergedSource(
+        title=src.get("title") or None,
+        clinic=src.get("clinic") or None,
+        provider=src.get("provider") or None,
+        time=src.get("time") or None,
+    )
 
 
 def _ensure_tx(val, default="") -> dict:
@@ -332,6 +351,8 @@ async def get_biomarker_detail(
             original_range=r.original_range or "",
             scale_function=getattr(r, "scale_function", None),
             needs_review=bool(getattr(r, "needs_review", False)),
+            merged=bool(getattr(r, "merged", False)),
+            merged_source=_reading_merged_source(r),
         )
         for r, date in readings_query[:-1]
     ]
@@ -361,6 +382,8 @@ async def get_biomarker_detail(
         original_value=latest_reading.original_value or "",
         original_unit=latest_reading.original_unit or "",
         original_range=latest_reading.original_range or "",
+        merged=bool(getattr(latest_reading, "merged", False)),
+        merged_source=_reading_merged_source(latest_reading),
     )
 
 

@@ -6,6 +6,7 @@ import type {
   SaveEntryResponse,
   StandardizedMedicalRecord,
   ProgressEventPayload,
+  EntriesByDateResponse,
 } from '@/lib/types'
 import { getAccessToken } from '@/lib/auth-token'
 
@@ -75,9 +76,12 @@ export async function fetchBiomarkerDetail(id: string): Promise<BiomarkerResult>
 }
 
 /* ----- Entries by Date ----- */
-export async function fetchEntriesByDate(date: string, type?: string): Promise<{ date: string; count: number }> {
+export async function fetchEntriesByDate(
+  date: string,
+  type?: string,
+): Promise<EntriesByDateResponse> {
   const params = `date=${date}${type ? `&type=${type}` : ''}`
-  return apiGet<{ date: string; count: number }>(`/entries/by-date?${params}`)
+  return apiGet<EntriesByDateResponse>(`/entries/by-date?${params}`)
 }
 
 /* ----- Biomarker Definitions ----- */
@@ -205,6 +209,28 @@ export async function saveMedicalEntry(formData: FormData): Promise<SaveEntryRes
       throw new UsageLimitError(res.status, detail.detail || 'Usage limit reached')
     }
     throw new ApiError(res.status, 'POST /entry failed')
+  }
+  return res.json()
+}
+
+/* ----- Merge into existing entry ----- */
+export async function mergeMedicalEntry(
+  entryId: string,
+  formData: FormData,
+): Promise<SaveEntryResponse> {
+  const res = await fetch(`${API_BASE}/entry/${encodeURIComponent(entryId)}/merge`, {
+    method: 'POST',
+    body: formData,
+    headers: { ...authHeaders() },
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    if (res.status === 429) {
+      const detail = await res.json().catch(() => ({ detail: 'Usage limit reached' }))
+      throw new UsageLimitError(res.status, detail.detail || 'Usage limit reached')
+    }
+    const detail = await res.json().catch(() => ({ detail: 'POST /entry/merge failed' }))
+    throw new ApiError(res.status, detail.detail || 'POST /entry/merge failed')
   }
   return res.json()
 }

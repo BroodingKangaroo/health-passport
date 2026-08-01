@@ -3,10 +3,11 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SessionProvider } from 'next-auth/react'
 import { AddEntry } from '../health-passport/add-entry'
-import type { StandardizedMedicalRecord } from '@/lib/types'
+import type { StandardizedMedicalRecord, EntriesByDateResponse } from '@/lib/types'
 
 const mockExtract = vi.fn()
 const mockSave = vi.fn()
+const mockMerge = vi.fn()
 const mockFetchByDate = vi.fn().mockResolvedValue({ date: '2026-10-12', count: 0 })
 const mockFetchDefinitions = vi.fn().mockResolvedValue([])
 
@@ -32,6 +33,7 @@ const { ApiError, UsageLimitError } = vi.hoisted(() => {
 vi.mock('@/services/api', () => ({
   extractMedicalData: (...args: any[]) => mockExtract(...args),
   saveMedicalEntry: (...args: any[]) => mockSave(...args),
+  mergeMedicalEntry: (...args: any[]) => mockMerge(...args),
   fetchEntriesByDate: (...args: any[]) => mockFetchByDate(...args),
   fetchBiomarkerDefinitions: (...args: any[]) => mockFetchDefinitions(...args),
   ApiError,
@@ -228,5 +230,226 @@ describe('AddEntry', () => {
     expect(
       screen.getByText('Switched to manual entry. Fill in the details below.'),
     ).toBeInTheDocument()
+  })
+
+  describe('merge with existing blood test', () => {
+    function bloodTestResult(biomarkers = bloodBiomarkers()): StandardizedMedicalRecord {
+      return {
+        entry_type: 'blood_test',
+        date: '2026-07-15',
+        time: null,
+        clinic: 'Test Lab',
+        provider: 'Dr. House',
+        title: null,
+        notes: null,
+        biomarkers,
+        visit_data: null,
+        imaging_data: null,
+      }
+    }
+
+    function bloodBiomarkers(): StandardizedMedicalRecord['biomarkers'] {
+      return [
+        {
+          raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170',
+          standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L',
+          reference: { kind: 'interval', low: 130, high: 170 },
+          status: 'normal', category: 'Complete Blood Count',
+          definition_id: 'hb', scope: 'global',
+        },
+      ]
+    }
+
+    function existingEntry(overrides: Partial<EntriesByDateResponse['entries'][0]> = {}): EntriesByDateResponse['entries'][0] {
+      return {
+        id: 'existing-1',
+        title: 'Morning Panel',
+        date: '2026-07-15T09:00:00',
+        time: '09:00',
+        biomarkers: [{ definition_id: 'wbc', loinc_code: '6690-2' }],
+        ...overrides,
+      }
+    }
+
+    async function renderEditorWithExistingEntry(entry: EntriesByDateResponse['entries'][0]) {
+      mockFetchByDate.mockResolvedValue({ date: '2026-07-15', count: 1, entries: [entry] })
+      mockExtract.mockResolvedValue(bloodTestResult())
+      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
+      selectFile(container, createFile())
+      await waitFor(() => {
+        expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
+      }, { timeout: 3000 })
+      return container
+    }
+
+    it('shows the merge checkbox when a non-conflicting test exists on the date', async () => {
+      await renderEditorWithExistingEntry(existingEntry())
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("Merge with this date's existing blood test"),
+        ).toBeInTheDocument()
+      })
+      expect(screen.getByRole('checkbox')).not.toBeDisabled()
+    })
+
+    it('hides the merge checkbox when no blood test exists on the date', async () => {
+      mockFetchByDate.mockResolvedValue({ date: '2026-07-15', count: 0, entries: [] })
+      mockExtract.mockResolvedValue(bloodTestResult())
+      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
+      selectFile(container, createFile())
+
+      await waitFor(() => {
+        expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
+      }, { timeout: 3000 })
+      // Give the debounced by-date effect time to run.
+      await new Promise((r) => setTimeout(r, 500))
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    })
+
+    it('disables the merge checkbox and explains when biomarkers conflict', async () => {
+      const entry = existingEntry({
+        biomarkers: [
+          { definition_id: 'wbc', loinc_code: '6690-2' },
+          { definition_id: 'hb', loinc_code: '718-7' },
+        ],
+      })
+      await renderEditorWithExistingEntry(entry)
+
+      await waitFor(() => {
+        expect(screen.getByRole('checkbox')).toBeDisabled()
+      })
+      expect(screen.getByText(/Can't merge/i)).toBeInTheDocument()
+      expect(screen.getByText(/in the existing test: Hemoglobin/)).toBeInTheDocument()
+    })
+
+    it('detects conflicts for manual rows resolved by name on the server', async () => {
+      // The target's hb definition carries its names; the extracted row has no
+      // definition_id ('' — like a manually-typed row), so only the name can
+      // reveal the conflict the server would otherwise reject with a 409.
+      const entry = existingEntry({
+        biomarkers: [
+          {
+            definition_id: 'hb',
+            loinc_code: '718-7',
+            names: { en: 'Hemoglobin', ru: 'Гемоглобин' },
+            synonyms: ['Hgb'],
+          },
+        ],
+      })
+      mockFetchByDate.mockResolvedValue({ date: '2026-07-15', count: 1, entries: [entry] })
+      mockExtract.mockResolvedValue(
+        bloodTestResult([
+          {
+            raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170',
+            standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L',
+            reference: { kind: 'interval', low: 130, high: 170 },
+            status: 'normal', category: 'Complete Blood Count',
+            definition_id: '', scope: 'global',
+          },
+        ]),
+      )
+      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
+      selectFile(container, createFile())
+
+      await waitFor(() => {
+        expect(screen.getByRole('checkbox')).toBeDisabled()
+      }, { timeout: 3000 })
+      expect(screen.getByText(/Can't merge/i)).toBeInTheDocument()
+      expect(screen.getByText(/in the existing test: Hemoglobin/)).toBeInTheDocument()
+    })
+
+    it('never saves as merge once the merge is blocked', async () => {
+      // A conflicting target: the box is disabled and unchecked; clicking it is
+      // a no-op, so the save can never silently route to mergeMedicalEntry.
+      const entry = existingEntry({
+        biomarkers: [{ definition_id: 'hb', loinc_code: '718-7' }],
+      })
+      await renderEditorWithExistingEntry(entry)
+
+      await waitFor(() => {
+        expect(screen.getByRole('checkbox')).toBeDisabled()
+      })
+      const box = screen.getByRole('checkbox') as HTMLInputElement
+      expect(box.checked).toBe(false)
+      fireEvent.click(box)
+      expect(box.checked).toBe(false)
+      expect(screen.queryByText('Merge & Save')).not.toBeInTheDocument()
+      expect(screen.getByText('Save to HealthPassport')).toBeInTheDocument()
+    })
+
+    it('does not require a time when merging', async () => {
+      await renderEditorWithExistingEntry(existingEntry())
+
+      await waitFor(() => {
+        expect(screen.getByRole('checkbox')).toBeInTheDocument()
+      })
+      fireEvent.click(screen.getByRole('checkbox'))
+
+      expect(screen.getByText('Time (optional)')).toBeInTheDocument()
+      expect(screen.getByText('Merge & Save')).toBeEnabled()
+    })
+
+    it('saves via mergeMedicalEntry with the target entry id when checked', async () => {
+      mockMerge.mockResolvedValue({ success: true, message: 'Entry merged', id: 'existing-1' })
+      await renderEditorWithExistingEntry(existingEntry())
+
+      await waitFor(() => {
+        expect(screen.getByRole('checkbox')).toBeInTheDocument()
+      })
+      fireEvent.click(screen.getByRole('checkbox'))
+      fireEvent.click(screen.getByText('Merge & Save'))
+
+      await waitFor(() => {
+        expect(mockMerge).toHaveBeenCalledTimes(1)
+      })
+      const [targetId, formData] = mockMerge.mock.calls[0]
+      expect(targetId).toBe('existing-1')
+      expect(formData).toBeInstanceOf(FormData)
+      expect(mockSave).not.toHaveBeenCalled()
+    })
+
+    it('saves via saveMedicalEntry when the checkbox is left unchecked', async () => {
+      mockSave.mockResolvedValue({ success: true, message: 'Entry saved', id: 'new-1' })
+      const container = await renderEditorWithExistingEntry(existingEntry())
+
+      await waitFor(() => {
+        expect(screen.getByRole('checkbox')).toBeInTheDocument()
+      })
+      // Without merging, an existing blood test on the date requires a time.
+      const timeInput = container.querySelector('input[type="time"]') as HTMLInputElement
+      fireEvent.change(timeInput, { target: { value: '10:00' } })
+      fireEvent.click(screen.getByText('Save to HealthPassport'))
+
+      await waitFor(() => {
+        expect(mockSave).toHaveBeenCalledTimes(1)
+      })
+      expect(mockMerge).not.toHaveBeenCalled()
+    })
+
+    it('shows a target picker when multiple blood tests share the date', async () => {
+      mockFetchByDate.mockResolvedValue({
+        date: '2026-07-15',
+        count: 2,
+        entries: [
+          existingEntry(),
+          existingEntry({ id: 'existing-2', title: 'Evening Panel', time: '18:30', biomarkers: [] }),
+        ],
+      })
+      mockExtract.mockResolvedValue(bloodTestResult())
+      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
+      selectFile(container, createFile())
+
+      await waitFor(() => {
+        expect(screen.getByRole('checkbox')).toBeInTheDocument()
+      }, { timeout: 3000 })
+      fireEvent.click(screen.getByRole('checkbox'))
+
+      const picker = screen.getByLabelText('Merge into:')
+      expect(picker).toBeInTheDocument()
+      expect(picker).toHaveValue('existing-1')
+      fireEvent.change(picker, { target: { value: 'existing-2' } })
+      expect(picker).toHaveValue('existing-2')
+    })
   })
 })

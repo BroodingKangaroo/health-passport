@@ -104,6 +104,14 @@ class BiomarkerReading(Base):
     # True when the LLM couldn't determine a cross-scale conversion. The
     # reading is kept raw (not converted) and the UI surfaces a warning.
     needs_review = Column(Boolean, nullable=False, default=False)
+    # True when the reading was merged into an existing entry from a later
+    # upload (POST /api/entry/{id}/merge) rather than created with it.
+    # Lets the UI distinguish original readings from merged-in ones.
+    merged = Column(Boolean, nullable=False, default=False)
+    # Snapshot of the second (merged-in) upload's own metadata — what the user
+    # typed for that upload: {title, clinic, provider, time}. Set on merged
+    # readings only, so the UI can describe the source test that added them.
+    merged_source = Column(JSON, nullable=True)
 
     entry = relationship("MedicalEntry", back_populates="biomarker_readings")
     definition = relationship("BiomarkerDefinition", back_populates="readings")
