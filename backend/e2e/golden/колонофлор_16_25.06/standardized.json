@@ -14,7 +14,7 @@
       "raw_range_string": "10^11-10^13",
       "standard_name_en": "Total bacterial mass",
       "standard_value": 10000000000.0,
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": 100000000000.0,
@@ -34,7 +34,7 @@
       "raw_range_string": "10^7-10^8",
       "standard_name_en": "Lactobacillus spp",
       "standard_value": 100000.0,
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": 10000000.0,
@@ -54,7 +54,7 @@
       "raw_range_string": "10^9-10^10",
       "standard_name_en": "Bifidobacterium spp",
       "standard_value": 90000000.0,
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": 1000000000.0,
@@ -74,7 +74,7 @@
       "raw_range_string": "10^6-10^8",
       "standard_name_en": "Escherichia coli",
       "standard_value": 60000000.0,
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": 1000000.0,
@@ -94,7 +94,7 @@
       "raw_range_string": "10^9-10^12",
       "standard_name_en": "Bacteroides spp",
       "standard_value": 7000000000.0,
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": 1000000000.0,
@@ -114,7 +114,7 @@
       "raw_range_string": "10^8-10^11",
       "standard_name_en": "Faecalibacterium prausnitzii",
       "standard_value": 800000000.0,
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": 100000000.0,
@@ -134,7 +134,7 @@
       "raw_range_string": "допустимо любое количество",
       "standard_name_en": "Bacteroides thetaomicron",
       "standard_value": 10000000.0,
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
@@ -154,7 +154,7 @@
       "raw_range_string": "не более 10^11",
       "standard_name_en": "Akkermansia muciniphila",
       "standard_value": 0.0,
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
@@ -174,7 +174,7 @@
       "raw_range_string": "не более 10^8",
       "standard_name_en": "Enterococcus spp",
       "standard_value": 200000.0,
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
@@ -194,7 +194,7 @@
       "raw_range_string": "не более 10^4",
       "standard_name_en": "Enteropathogenic Escherichia coli",
       "standard_value": 0.0,
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
@@ -214,7 +214,7 @@
       "raw_range_string": "не более 10^4",
       "standard_name_en": "Klebsiella pneumoniae",
       "standard_value": 0.0,
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
@@ -234,7 +234,7 @@
       "raw_range_string": "не более 10^4",
       "standard_name_en": "Klebsiella oxytoca",
       "standard_value": 0.0,
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
@@ -254,7 +254,7 @@
       "raw_range_string": "не более 10^4",
       "standard_name_en": "Candida spp",
       "standard_value": 0.0,
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
@@ -274,7 +274,7 @@
       "raw_range_string": "не более 10^4",
       "standard_name_en": "Staphylococcus aureus",
       "standard_value": 0.0,
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
@@ -294,7 +294,7 @@
       "raw_range_string": "не обнаружено",
       "standard_name_en": "Clostridium difficile",
       "standard_value": "Not detected",
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "qualitative",
         "expected": "Not detected"
@@ -313,7 +313,7 @@
       "raw_range_string": "не обнаружено",
       "standard_name_en": "Clostridium perfringens",
       "standard_value": "Not detected",
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "qualitative",
         "expected": "Not detected"
@@ -332,7 +332,7 @@
       "raw_range_string": "не более 10^4",
       "standard_name_en": "Proteus vulgaris/mirabilis",
       "standard_value": 0.0,
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
@@ -352,7 +352,7 @@
       "raw_range_string": "не более 10^4",
       "standard_name_en": "Citrobacter spp",
       "standard_value": 0.0,
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
@@ -372,7 +372,7 @@
       "raw_range_string": "не более 10^4",
       "standard_name_en": "Enterobacter spp",
       "standard_value": 0.0,
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
@@ -392,7 +392,7 @@
       "raw_range_string": "не обнаружено",
       "standard_name_en": "Fusobacterium nucleatum",
       "standard_value": "Not detected",
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "qualitative",
         "expected": "Not detected"
@@ -411,7 +411,7 @@
       "raw_range_string": "не обнаружено",
       "standard_name_en": "Parvimonas micra",
       "standard_value": "Not detected",
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "qualitative",
         "expected": "Not detected"
@@ -430,7 +430,7 @@
       "raw_range_string": "не обнаружено",
       "standard_name_en": "Salmonella spp",
       "standard_value": "Not detected",
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "qualitative",
         "expected": "Not detected"
@@ -449,7 +449,7 @@
       "raw_range_string": "не обнаружено",
       "standard_name_en": "Shigella spp",
       "standard_value": "Not detected",
-      "standard_unit": "ratio",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "qualitative",
         "expected": "Not detected"

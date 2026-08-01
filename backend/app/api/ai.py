@@ -179,7 +179,12 @@ async def extract_medical_data(
                 # the event-loop thread and must not be shared.
                 thread_db = SessionLocal()
                 try:
-                    return matcher.match_and_convert(raw, definitions, thread_db, user_id, client)
+                    result = matcher.match_and_convert(raw, definitions, thread_db, user_id, client)
+                    thread_db.commit()
+                    return result
+                except Exception:
+                    thread_db.rollback()
+                    raise
                 finally:
                     thread_db.close()
 

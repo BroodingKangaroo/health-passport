@@ -143,6 +143,8 @@ class StandardizedBiomarker(BaseModel):
     # True when the LLM couldn't determine a cross-scale conversion; the
     # reading is kept raw and the UI surfaces a warning.
     needs_review: bool = False
+    # True when the canonical unit was LLM-invented (empty unit cell in source).
+    canonical_unit_inferred: bool = False
 
 
 class StandardizedPrescription(BaseModel):

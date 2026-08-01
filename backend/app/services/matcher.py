@@ -538,36 +538,58 @@ def _build_standardized_from_def(
     # keep the value in the document's own (normalized) unit. This avoids lossy
     # unit conversion and compares like-for-like, preventing false out-of-range
     # flags (e.g. a glucose of 5.5 ммоль/л against the lab's own 3.9-6.1 range).
+    # HOWEVER, when the definition has a canonical unit in a different *scale*
+    # (e.g. log10 vs linear from a prior extraction), we MUST convert both the
+    # value and the reference bounds to the canonical scale so readings from
+    # different documents are numerically comparable.
     if doc_reference is not None:
-        # Keep the matched (global) definition and its identity. The document
-        # range is carried on the reading itself; `scope` reflects dictionary
-        # membership, NOT reference provenance, so a recognized analyte must stay
-        # "global" even when we display the lab's own range.
         ref = merge_reference(doc_reference, defn.reference, parsed_value)
-        # Keep the value type aligned with the ref kind. For an interval ref
-        # the value must be numeric, so a canonical "absent" result
-        # ("не обнаружено" / "Negative" / "Absent" / "Normal") collapses to
-        # 0.0 — the test was run and the result is below the detection limit.
-        # For a qualitative ref, the canonical English term is the right shape.
         if isinstance(parsed_value, str):
             canonical = normalize_qual(parsed_value)
             if ref.get("kind") == "interval" and canonical in _ABSENT_CANONICAL:
                 parsed_value = 0.0
             else:
                 parsed_value = canonical
+        std_value = parsed_value
+        std_unit = doc_unit or defn.unit
+        scale_function: Optional[str] = None
+        needs_review = False
+        if isinstance(std_value, (int, float)) and not isinstance(std_value, bool):
+            cv, cu, sf, nr = _convert_to_canonical(std_value, raw_bm, defn, client)
+            if sf is not None:
+                std_value = cv
+                std_unit = cu
+                scale_function = sf
+                needs_review = nr
+                if isinstance(ref, dict) and ref.get("kind") == "interval":
+                    low = ref.get("low")
+                    high = ref.get("high")
+                    if low is not None:
+                        cl = _apply_scale_function(float(low), sf)
+                        if cl is not None:
+                            ref["low"] = cl
+                    if high is not None:
+                        ch = _apply_scale_function(float(high), sf)
+                        if ch is not None:
+                            ref["high"] = ch
+            elif nr:
+                needs_review = True
         return StandardizedBiomarker(
             raw_name=raw_bm.name,
             raw_value=raw_bm.value,
             raw_unit=raw_bm.unit,
             raw_range_string=raw_bm.raw_range_string,
             standard_name_en=_prefer_comma_pct(defn.names.get("en", raw_bm.name)),
-            standard_value=parsed_value,
-            standard_unit=doc_unit or defn.unit,
+            standard_value=std_value,
+            standard_unit=std_unit,
             reference=ref,
-            status="",
+            status=compute_status(std_value, ref) if isinstance(ref, dict) else "",
             category=defn.category,
             definition_id=defn.loinc_code or defn.id,
             scope=defn.scope,
+            scale_function=scale_function,
+            needs_review=needs_review,
+            canonical_unit_inferred=getattr(defn, "canonical_unit_inferred", False),
         )
 
     # No document range: fall back to the curated global reference, converting a
@@ -614,6 +636,7 @@ def _build_standardized_from_def(
         scope=defn.scope,
         scale_function=scale_function,
         needs_review=needs_review,
+        canonical_unit_inferred=getattr(defn, "canonical_unit_inferred", False),
     )
 
 
@@ -648,6 +671,20 @@ def _build_standardized_local(
     std_value, std_unit, scale_function, needs_review = _convert_to_canonical(
         std_value, raw_bm, defn, client,
     )
+    # When the scale was converted (e.g. log10 → linear), also convert the
+    # document's reference bounds so the status computation compares values
+    # and bounds in the same scale.
+    if scale_function is not None and isinstance(parsed_ref, dict) and parsed_ref.get("kind") == "interval":
+        low = parsed_ref.get("low")
+        high = parsed_ref.get("high")
+        if low is not None:
+            cl = _apply_scale_function(float(low), scale_function)
+            if cl is not None:
+                parsed_ref["low"] = cl
+        if high is not None:
+            ch = _apply_scale_function(float(high), scale_function)
+            if ch is not None:
+                parsed_ref["high"] = ch
 
     # Prefer the translated English name; fall back to the original raw name if
     # the stored definition name is somehow still non-English (defense against
@@ -672,6 +709,7 @@ def _build_standardized_local(
         scope=defn.scope,
         scale_function=scale_function,
         needs_review=needs_review,
+        canonical_unit_inferred=bool(defn.canonical_unit_inferred) if hasattr(defn, "canonical_unit_inferred") else False,
     )
 
 
@@ -835,28 +873,90 @@ def _translated_unit(raw_unit: str, analyte_name: str = "", category: str = "") 
 def _guess_unit(analyte_name: str, category: str) -> dict:
     """Best-effort fallback for an empty source unit when the LLM is
     unavailable or failed.  Returns a dict compatible with ``_translated_unit``
-    shape with ``inferred: True``."""
+    shape with ``inferred: True``.
+
+    Returns an empty unit for qualitative-only biomarkers (mutations,
+    genetics) — those have no meaningful physical unit.
+    """
     an = (analyte_name or "").lower()
     cat = (category or "").lower()
-    if "stool" in cat or "microbiome" in cat or "bacterial" in cat:
-        unit = "copies/mL"
-    elif "esr" in an or "sedimentation" in an:
-        unit = "mm/hr"
-    elif "wbc" in an or "leukocyte" in an or "white blood" in an:
-        unit = "×10⁹/L"
-    elif "rbc" in an or "erythrocyte" in an or "red blood" in an:
-        unit = "×10¹²/L"
-    elif "virus" in cat or "viral" in an:
-        unit = "copies/mL"
-    elif "hormone" in cat:
-        unit = "pg/mL"
-    elif "antibody" in cat or "igg" in an or "igm" in an:
-        unit = "U/mL"
-    elif "enzyme" in cat or "activity" in an:
-        unit = "U/L"
-    else:
-        unit = "copies/mL"  # broadest molecular/stool fallback
-    return {"unit": unit, "kind": "linear", "inferred": True}
+
+    # Genetics / mutations are qualitative — no unit.
+    if "mutation" in an or "мутаци" in an or "gene" in an or "ген" in an:
+        return {"unit": "", "kind": "linear", "inferred": False}
+    if "genetic" in cat or "dna" in cat or "pcr" in cat:
+        return {"unit": "", "kind": "linear", "inferred": False}
+
+    # Ratio / dimensionless biomarkers — must come BEFORE the general category
+    # checks so a microbiome "species X to species Y ratio" doesn't get
+    # labelled "copies/mL".
+    if ("ratio" in an or "соотношение" in an or "отношение" in an
+            or "index" in an or "индекс" in an or "%" in an):
+        return {"unit": "ratio", "kind": "linear", "inferred": True}
+
+    # Microbiome / stool / bacterial panels → copies/mL (absolute PCR quant).
+    if ("микробиот" in cat or "microbiota" in cat or "microbiome" in cat
+            or "stool" in cat or "bacterial" in cat or "бактери" in cat
+            or "bacter" in cat):
+        return {"unit": "copies/mL", "kind": "linear", "inferred": True}
+
+    # Common haematology / chemistry.
+    if "esr" in an or "sedimentation" in an or "соэ" in an:
+        return {"unit": "mm/hr", "kind": "linear", "inferred": True}
+    if "wbc" in an or "leukocyte" in an or "white blood" in an or "лейкоцит" in an:
+        return {"unit": "×10⁹/L", "kind": "linear", "inferred": True}
+    if "rbc" in an or "erythrocyte" in an or "red blood" in an or "эритроцит" in an:
+        return {"unit": "×10¹²/L", "kind": "linear", "inferred": True}
+    if "hemoglobin" in an or "гемоглобин" in an or "hb" in an:
+        return {"unit": "g/L", "kind": "linear", "inferred": True}
+    if "hematocrit" in an or "гематокрит" in an or "hct" in an:
+        return {"unit": "%", "kind": "linear", "inferred": True}
+    if "platelet" in an or "тромбоцит" in an or "plt" in an:
+        return {"unit": "×10⁹/L", "kind": "linear", "inferred": True}
+    if "neutrophil" in an or "нейтрофил" in an or "neut" in an:
+        return {"unit": "×10⁹/L", "kind": "linear", "inferred": True}
+    if "lymphocyte" in an or "лимфоцит" in an or "lymph" in an:
+        return {"unit": "×10⁹/L", "kind": "linear", "inferred": True}
+    if "monocyte" in an or "моноцит" in an:
+        return {"unit": "×10⁹/L", "kind": "linear", "inferred": True}
+    if "eosinophil" in an or "эозинофил" in an:
+        return {"unit": "×10⁹/L", "kind": "linear", "inferred": True}
+    if "basophil" in an or "базофил" in an:
+        return {"unit": "×10⁹/L", "kind": "linear", "inferred": True}
+    if "creatinine" in an or "креатинин" in an:
+        return {"unit": "μmol/L", "kind": "linear", "inferred": True}
+    if "urea" in an or "мочевин" in an or "bun" in an:
+        return {"unit": "mmol/L", "kind": "linear", "inferred": True}
+    if "glucose" in an or "глюкоз" in an:
+        return {"unit": "mmol/L", "kind": "linear", "inferred": True}
+    if ("alt" in an or "alanine" in an or "аланин" in an or "алт" in an
+            or "ast" in an or "aspartate" in an or "асат" in an or "аст" in an):
+        return {"unit": "U/L", "kind": "linear", "inferred": True}
+    if "bilirubin" in an or "билирубин" in an:
+        return {"unit": "μmol/L", "kind": "linear", "inferred": True}
+    if "cholesterol" in an or "холестерин" in an:
+        return {"unit": "mmol/L", "kind": "linear", "inferred": True}
+    if "triglyceride" in an or "триглицерид" in an:
+        return {"unit": "mmol/L", "kind": "linear", "inferred": True}
+    if "iron" in an or "железо" in an or "ferritin" in an or "ферритин" in an:
+        return {"unit": "μmol/L", "kind": "linear", "inferred": True}
+    if "vitamin" in an or "витамин" in an:
+        return {"unit": "nmol/L", "kind": "linear", "inferred": True}
+    if "tsh" in an or "thyroid" in an or "тиреотроп" in an or "ттг" in an:
+        return {"unit": "mIU/L", "kind": "linear", "inferred": True}
+    if "cortisol" in an or "кортизол" in an:
+        return {"unit": "nmol/L", "kind": "linear", "inferred": True}
+    if "virus" in cat or "viral" in an:
+        return {"unit": "copies/mL", "kind": "linear", "inferred": True}
+    if "hormone" in cat or "гормон" in cat:
+        return {"unit": "pg/mL", "kind": "linear", "inferred": True}
+    if "antibody" in cat or "igg" in an or "igm" in an:
+        return {"unit": "U/mL", "kind": "linear", "inferred": True}
+    if "enzyme" in cat or "activity" in an:
+        return {"unit": "U/L", "kind": "linear", "inferred": True}
+
+    # Broad fallback for molecular assays.
+    return {"unit": "copies/mL", "kind": "linear", "inferred": True}
 
 
 def _translate_units_batch(
@@ -872,6 +972,12 @@ def _translate_units_batch(
     needed: dict[str, dict] = {}  # raw_unit -> {analyte, category}
     for b in biomarkers:
         u = (b.unit or "").strip()
+        # Empty units are handled per-biomarker by ``_guess_unit()`` later,
+        # never by the batch LLM — otherwise all empty-unit biomarkers share
+        # a single cache entry and the first extraction's guess (e.g. genetics
+        # → empty) poisons subsequent extractions (e.g. microbiome → also empty).
+        if not u:
+            continue
         cache = _unit_translation_cache.get(u)
         if cache is not None:
             needed.pop(u, None)
@@ -918,18 +1024,10 @@ def _translate_units_batch(
     result: dict[str, dict] = {}
     for g, (raw_unit, meta) in zip(parsed.translations, needed.items()):
         unit = (g.unit or "").strip()
-        # If the LLM left the unit blank despite being told to invent one,
-        # fall back to a best-effort guess based on analyte/category.
-        if not unit and not raw_unit.strip():
-            guess = _guess_unit(meta.get("name", ""), meta.get("category", ""))
-            unit = guess["unit"]
-            inferred = True
-            kind = guess["kind"]
-        else:
-            inferred = bool(g.inferred)
-            kind = (g.kind or "linear").strip().lower() or "linear"
-            if kind not in ("linear", "log10", "ln"):
-                kind = "linear"
+        inferred = bool(g.inferred)
+        kind = (g.kind or "linear").strip().lower() or "linear"
+        if kind not in ("linear", "log10", "ln"):
+            kind = "linear"
         entry = {"unit": unit, "kind": kind, "inferred": inferred}
         _unit_translation_cache[raw_unit] = entry
         result[raw_unit] = entry
@@ -968,8 +1066,12 @@ def _llm_scale_function(
 ) -> str:
     """Return "10^x" / "log10" / "exp(x)" / "ln" / "factor:<float>" / "".
 
-    Cached for the request. Returns "" on failure or when the LLM can't
-    decide (the caller is expected to surface that as ``needs_review``).
+    Pure log↔linear scale changes are handled deterministically without the
+    LLM.  The LLM is only consulted for ``factor:<N>`` (same-kind linear
+    conversions where the units differ, e.g. "copies/mL" → "copies/g").
+
+    Cached for the request. Returns "" on failure or when it can't decide
+    (the caller is expected to surface that as ``needs_review``).
     """
     key = (
         (analyte or "").lower(),
@@ -980,6 +1082,21 @@ def _llm_scale_function(
     )
     if key in _scale_function_cache:
         return _scale_function_cache[key]
+
+    # Deterministic cross-scale conversions — no LLM needed.
+    if from_kind == "log10" and to_kind == "linear":
+        _scale_function_cache[key] = "10^x"
+        return "10^x"
+    if from_kind == "linear" and to_kind == "log10":
+        _scale_function_cache[key] = "log10"
+        return "log10"
+    if from_kind == "ln" and to_kind == "linear":
+        _scale_function_cache[key] = "exp(x)"
+        return "exp(x)"
+    if from_kind == "linear" and to_kind == "ln":
+        _scale_function_cache[key] = "ln"
+        return "ln"
+
     if client is None:
         _scale_function_cache[key] = ""
         return ""
@@ -1025,18 +1142,22 @@ def _apply_scale_function(value: float, function: str) -> Optional[float]:
     if not function or not isinstance(value, (int, float)) or isinstance(value, bool):
         return None
     try:
+        v = float(value)
+        # Absent / below-detection (0.0) must stay 0 under log→linear
+        # conversion. 10^0 = 1 and e^0 = 1 would falsely mark the analyte
+        # as present.
+        if v == 0.0 and function in ("10^x", "exp(x)"):
+            return 0.0
         if function == "10^x":
-            return 10.0 ** float(value)
+            return 10.0 ** v
         if function == "log10":
-            v = float(value)
             return None if v <= 0 else math.log10(v)
         if function == "exp(x)":
-            return math.exp(float(value))
+            return math.exp(v)
         if function == "ln":
-            v = float(value)
             return None if v <= 0 else math.log(v)
         if function.startswith("factor:"):
-            return float(value) * float(function.split(":", 1)[1])
+            return v * float(function.split(":", 1)[1])
         # Unknown function (empty / junk) → caller should treat as failure.
         return None
     except (ValueError, OverflowError):

@@ -129,20 +129,34 @@ export function LabResultForm({
                         </>
                       )}
                     </div>
-                    <UnitCombobox
-                      value={row.unit}
-                      placeholder="—"
-                      onChange={(unit) => {
-                        updateRow(cat.id, row.id, 'unit', unit)
-                        if (unit === 'Qualitative') {
-                          updateRow(cat.id, row.id, 'reference', { kind: 'qualitative', expected: null })
-                          updateRow(cat.id, row.id, 'value', '')
-                        } else if (row.reference?.kind === 'qualitative') {
-                          updateRow(cat.id, row.id, 'reference', null)
-                          updateRow(cat.id, row.id, 'value', '')
-                        }
-                      }}
-                    />
+                    <div
+                      className={cn(
+                        'relative flex items-center gap-1 rounded-md transition-shadow',
+                        row.canonical_unit_inferred
+                          ? 'ring-2 ring-blue-400/80 bg-blue-50/60 shadow-[0_0_6px_rgba(96,165,250,0.4)] group'
+                          : '',
+                      )}
+                    >
+                      <UnitCombobox
+                        value={row.unit}
+                        placeholder="—"
+                        onChange={(unit) => {
+                          updateRow(cat.id, row.id, 'unit', unit)
+                          if (unit === 'Qualitative') {
+                            updateRow(cat.id, row.id, 'reference', { kind: 'qualitative', expected: null })
+                            updateRow(cat.id, row.id, 'value', '')
+                          } else if (row.reference?.kind === 'qualitative') {
+                            updateRow(cat.id, row.id, 'reference', null)
+                            updateRow(cat.id, row.id, 'value', '')
+                          }
+                        }}
+                      />
+                      {row.canonical_unit_inferred && (
+                        <span className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border bg-popover px-2 py-1 text-[11px] text-popover-foreground shadow-sm opacity-0 transition-opacity group-hover:opacity-100">
+                          Unit guessed by AI — verify
+                        </span>
+                      )}
+                    </div>
                     {qualitative ? (
                       <select
                         value={(row.reference as { expected?: string | null } | null)?.expected ?? ''}

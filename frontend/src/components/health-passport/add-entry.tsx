@@ -39,6 +39,8 @@ import type {
   ProgressStage,
   ProgressEventPayload,
 } from '@/lib/types'
+import type { UnitConflict } from './unit-conflict-dialog'
+import { UnitConflictDialog } from './unit-conflict-dialog'
 
 const DocumentViewer = dynamic(
   () => import('@/components/shared/DocumentViewer').then((m) => m.DocumentViewer),
@@ -103,6 +105,7 @@ function biomarkersToCategories(biomarkers: StandardizedBiomarker[]): FormCatego
       original_range: r.raw_range_string,
       definition_id: r.definition_id,
       scope: r.scope,
+      canonical_unit_inferred: r.canonical_unit_inferred,
     })),
   }))
 }
@@ -133,6 +136,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const [prefillProvider, setPrefillProvider] = useState('')
   const [prefillTitle, setPrefillTitle] = useState('')
   const [prefillNotes, setPrefillNotes] = useState('')
+  const [unitConflicts, setUnitConflicts] = useState<UnitConflict[]>([])
   const stageStep: Record<ProgressStage, number> = {
     ocr_scanning: 1,
     extracting: 2,
@@ -252,7 +256,32 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
       if (result.notes) setPrefillNotes(result.notes)
 
       if (result.entry_type === 'blood_test' && result.biomarkers && result.biomarkers.length > 0) {
-        setCategories(biomarkersToCategories(result.biomarkers))
+        const cats = biomarkersToCategories(result.biomarkers)
+        setCategories(cats)
+        // Detect unit conflicts (biomarkers where cross-scale conversion was applied)
+        const conflicts: UnitConflict[] = []
+        for (const bm of result.biomarkers) {
+          if (bm.scale_function) {
+            for (const cat of cats) {
+              for (const row of cat.rows) {
+                if (row.original_name === bm.raw_name && row.original_unit === bm.raw_unit) {
+                  conflicts.push({
+                    catId: cat.id,
+                    rowId: row.id,
+                    name: bm.standard_name_en,
+                    rawUnit: bm.raw_unit,
+                    standardUnit: bm.standard_unit,
+                    scaleFunction: bm.scale_function,
+                    keepConverted: true,
+                    originalValue: row.original_value ?? '',
+                    originalUnit: row.original_unit ?? '',
+                  })
+                }
+              }
+            }
+          }
+        }
+        setUnitConflicts(conflicts)
         setVisitFormData(null)
         setImagingFormData(null)
       } else if (result.entry_type === 'doctor_visit' && result.visit_data) {
@@ -803,6 +832,19 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
           </div>
         </div>
       </div>
+
+      <UnitConflictDialog
+        conflicts={unitConflicts}
+        onResolve={(resolved) => {
+          for (const c of resolved) {
+            if (!c.keepConverted) {
+              updateRow(c.catId, c.rowId, 'value', c.originalValue)
+              updateRow(c.catId, c.rowId, 'unit', c.originalUnit)
+            }
+          }
+          setUnitConflicts([])
+        }}
+      />
     </div>
   )
 }

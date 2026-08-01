@@ -11,7 +11,7 @@ import { cn, formatDate, formatNumber } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { StatusBadge } from '@/components/shared/StatusBadge'
-import { ScaleNote, InferredUnitNote } from '@/components/shared/ScaleNote'
+import { ScaleNote } from '@/components/shared/ScaleNote'
 import { formatReference, unitLabel, displayUnit } from '@/lib/reference'
 import { ExpandedBiomarkerDetails } from './expanded-biomarker-details'
 import type { BiomarkerResult, Status } from '@/lib/types'
@@ -154,9 +154,6 @@ function FlowRow({
         </span>
         <span className="text-muted-foreground">
           {unitLabel(displayUnit(biomarker.definition), biomarker.reference ?? biomarker.definition.reference)}
-          {biomarker.definition.canonical_unit_inferred && (
-            <InferredUnitNote className="ml-1" />
-          )}
         </span>
         <span className="text-muted-foreground">
           {formatReference(biomarker.reference ?? biomarker.definition.reference)}
