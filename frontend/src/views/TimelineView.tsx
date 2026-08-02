@@ -72,6 +72,7 @@ export function TimelineView() {
           {selectedEventData?.type === 'doctor_visit' && visits[selectedEventData.id] ? (
             <DoctorVisitDetails
               visit={visits[selectedEventData.id]}
+              entryId={selectedEventData.id}
               onDeleted={() => {
                 setSelectedEvent(null)
                 refetch()

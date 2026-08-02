@@ -32,7 +32,7 @@ const DocumentViewer = dynamic(
   },
 )
 
-export function DoctorVisitDetails({ visit, onDeleted }: { visit: VisitData; onDeleted?: () => void }) {
+export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: VisitData; entryId: string; onDeleted?: () => void }) {
   const [activeTab, setActiveTab] = useState<'summary' | 'document' | 'settings'>('summary')
   const [showOriginal, setShowOriginal] = useState(false)
   const [activeAttachmentId, setActiveAttachmentId] = useState<string | null>(null)
@@ -63,7 +63,7 @@ export function DoctorVisitDetails({ visit, onDeleted }: { visit: VisitData; onD
   const verdictLabel = showOriginal ? 'Original' : 'Translated'
 
   const eventForSettings = {
-    id: visit.date ? `${visit.clinic}-${visit.date}` : visit.clinic,
+    id: entryId,
     date: visit.date,
     type: 'doctor_visit' as const,
     title: visit.specialty,

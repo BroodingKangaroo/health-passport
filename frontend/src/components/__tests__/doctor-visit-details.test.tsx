@@ -29,6 +29,8 @@ const baseVisit: VisitData = {
   ],
 }
 
+const TEST_ENTRY_ID = 'entry-7f2a9c31'
+
 const visitNoUrl: VisitData = {
   ...baseVisit,
   attachments: [
@@ -38,7 +40,7 @@ const visitNoUrl: VisitData = {
 
 describe('DoctorVisitDetails', () => {
   it('renders DocumentViewer with the active attachment url', () => {
-    render(<DoctorVisitDetails visit={baseVisit} />)
+    render(<DoctorVisitDetails visit={baseVisit} entryId={TEST_ENTRY_ID} />)
 
     const documentsTab = screen.getByText('Original Document (2)')
     fireEvent.click(documentsTab)
@@ -48,7 +50,7 @@ describe('DoctorVisitDetails', () => {
   })
 
   it('switches DocumentViewer url when clicking a different attachment', () => {
-    render(<DoctorVisitDetails visit={baseVisit} />)
+    render(<DoctorVisitDetails visit={baseVisit} entryId={TEST_ENTRY_ID} />)
 
     const documentsTab = screen.getByText('Original Document (2)')
     fireEvent.click(documentsTab)
@@ -60,7 +62,7 @@ describe('DoctorVisitDetails', () => {
   })
 
   it('renders attachment name and type in the list', () => {
-    render(<DoctorVisitDetails visit={baseVisit} />)
+    render(<DoctorVisitDetails visit={baseVisit} entryId={TEST_ENTRY_ID} />)
 
     const documentsTab = screen.getByText('Original Document (2)')
     fireEvent.click(documentsTab)
@@ -72,7 +74,7 @@ describe('DoctorVisitDetails', () => {
   })
 
   it('does not fall back to a hardcoded pdf when attachment has no url', () => {
-    render(<DoctorVisitDetails visit={visitNoUrl} />)
+    render(<DoctorVisitDetails visit={visitNoUrl} entryId={TEST_ENTRY_ID} />)
 
     const documentsTab = screen.getByText('Original Document (1)')
     fireEvent.click(documentsTab)
@@ -87,7 +89,7 @@ describe('DoctorVisitDetails', () => {
   })
 
   it('renders a Settings tab and switches to it on click', () => {
-    render(<DoctorVisitDetails visit={baseVisit} onDeleted={vi.fn()} />)
+    render(<DoctorVisitDetails visit={baseVisit} entryId={TEST_ENTRY_ID} onDeleted={vi.fn()} />)
 
     const settingsTab = screen.getByRole('button', { name: 'Settings' })
     expect(settingsTab).toBeDefined()
@@ -95,5 +97,14 @@ describe('DoctorVisitDetails', () => {
 
     expect(screen.getByText('Entry Details')).toBeDefined()
     expect(screen.getByText('Danger Zone')).toBeDefined()
+  })
+
+  it('uses the real entry id for the Settings delete/ID action', () => {
+    render(<DoctorVisitDetails visit={baseVisit} entryId={TEST_ENTRY_ID} onDeleted={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+
+    expect(screen.getByText(TEST_ENTRY_ID)).toBeDefined()
+    expect(screen.queryByText(`${baseVisit.clinic}-${baseVisit.date}`)).toBeNull()
   })
 })

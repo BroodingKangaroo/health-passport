@@ -17,18 +17,6 @@ files as they stand now.
 - Backend has no reset endpoint (`grep -ri "forgot\|reset.password" backend` → nothing).
 - Clicking the link → 404 on a route that was never built.
 
-### 7. Deleting a Doctor Visit from the timeline always fails
-
-- File: `frontend/src/components/health-passport/doctor-visit-details.tsx:65-67`
-- `DoctorVisitDetails` never receives the real `MedicalEntry` id — it fabricates
-  one: `eventForSettings.id = clinic + '-' + date` (e.g. `'Polyclinic-2026-08-02'`).
-- `frontend/src/components/health-passport/entry-settings.tsx:160` then calls
-  `deleteEntry(event.id)` → `DELETE /api/entry/{clinic}-{date}`.
-- Backend scopes strictly by id (`backend/app/api/entries.py:664-673`) → always
-  `404 "Entry '…' not found"`. The "Copy Entry ID" button copies the same fake id.
-- User impact: a doctor visit can never be deleted from the timeline; the Delete
-  flow in Settings → Danger Zone always errors.
-
 ### 8. Imaging / MRI entries are saved without any imaging data and have no detail/delete view
 
 - `frontend/src/components/health-passport/add-entry.tsx:911-915` offers
