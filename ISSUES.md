@@ -9,21 +9,6 @@ Line numbers refer to files as they stand now.
 
 ## HIGH
 
-### 1. Printed document header is fake demo patient data
-- File: `frontend/src/components/health-passport/print-editor.tsx:502-522`
-- The print/export document header hardcodes the identity of a fictitious
-  patient instead of the logged-in user:
-  - Name: `Иванов Алексей` / `Alexey Ivanov`
-  - `ДР: 14.03.1988 · Муж` / `DOB: 14.03.1988 · Male`
-  - Generated date: `Дата: 12.10.2026` / `Generated: 10/12/2026` (static — not the real date)
-- The real patient (name/DOB/gender) is already available client-side via
-  `useAuthStatus()` → `/api/auth/me` (see `HeaderBar`), but the print editor
-  never consumes it. Every user prints the same demo identity.
-- This is a correctness problem for a medical document — the printed/exported
-  file claims the user is "Alexey Ivanov", born 14.03.1988.
-- The register page reuses "Alexey Ivanov" as a placeholder
-  (`frontend/src/app/register/page.tsx:135`), consistent with the demo data.
-
 ### 2. Correlation chart always starts empty
 
 - File: `frontend/src/components/health-passport/correlation-chart.tsx:81-84`
