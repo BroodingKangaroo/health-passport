@@ -17,17 +17,175 @@ files as they stand now.
 - Backend has no reset endpoint (`grep -ri "forgot\|reset.password" backend` → nothing).
 - Clicking the link → 404 on a route that was never built.
 
+### 7. Deleting a Doctor Visit from the timeline always fails
+
+- File: `frontend/src/components/health-passport/doctor-visit-details.tsx:65-67`
+- `DoctorVisitDetails` never receives the real `MedicalEntry` id — it fabricates
+  one: `eventForSettings.id = clinic + '-' + date` (e.g. `'Polyclinic-2026-08-02'`).
+- `frontend/src/components/health-passport/entry-settings.tsx:160` then calls
+  `deleteEntry(event.id)` → `DELETE /api/entry/{clinic}-{date}`.
+- Backend scopes strictly by id (`backend/app/api/entries.py:664-673`) → always
+  `404 "Entry '…' not found"`. The "Copy Entry ID" button copies the same fake id.
+- User impact: a doctor visit can never be deleted from the timeline; the Delete
+  flow in Settings → Danger Zone always errors.
+
+### 8. Imaging / MRI entries are saved without any imaging data and have no detail/delete view
+
+- `frontend/src/components/health-passport/add-entry.tsx:911-915` offers
+  "MRI / Imaging Scan" and collects `imagingFormData`, but
+  `buildSaveEntryFormData` (`api.ts:227-244`, used at `add-entry.tsx:510-521`)
+  never appends imaging data and backend `save_entry`
+  (`backend/app/api/entries.py:461-496`) has no imaging form field — no
+  `ImagingData` model exists at all.
+- Saved imaging entries render "No detailed view available for this event type."
+  (`frontend/src/views/TimelineView.tsx:94-97`) with no Settings/Delete tab.
+- Switching Document Type after an AI extraction leaves the extracted biomarker
+  rows in `categories`, which are still persisted (`add-entry.tsx:518`), so an
+  "Imaging" entry can silently carry invisible blood-test readings.
+
+### 9. Failed AI extraction still burns quota; no retry path
+
+- File: `backend/app/api/ai.py:112` — the extraction-count increment is written
+  with `db.commit()` right after file-format validation but *before* OCR
+  (lines 141-150) and LLM extraction. A document whose OCR/extraction fails
+  consumes 1 of the 5 anonymous (or 50 registered) extractions for nothing;
+  only file-validation failures (400) are refunded.
+- Frontend: `frontend/src/components/health-passport/add-entry.tsx:310-325`
+  shows "Switched to manual entry" with **no "Try again"** control, and the
+  failed file stays selected as if it will be attached on Save.
+
+### 10. Print "AI translation" is cosmetic — de/fr/es/he output is English
+
+- Files: `frontend/src/components/health-passport/print-setup.tsx:59-61,43-46`
+- "AI translation of medical terminology may take a few moments." is printed,
+  but "Generate Document" only does `router.push('/print-editor')` — no
+  translation API call, no backend translation endpoint.
+- Production definitions carry only `en` names
+  (`backend/app/db/seed_loinc.py:236` seeds `{"en": …}`; `matcher.py` local
+  defs are `en`-only), yet `translatedName()` (`print-editor.tsx:229-235`)
+  looks up `def.names[lang]`. The unit tests pass only because fixtures
+  (`backend/tests/seed_data.py`) carry full multilingual names maps. Result:
+  selecting German/French/Spanish/Hebrew renders English biomarker names, and
+  `he` has no translation data anywhere.
+
+---
+
+## MEDIUM
+
+### 11. Save/extract failures hide the real backend message
+
+- File: `frontend/src/services/api.ts:123,258`
+- Non-429 failures from `POST /extract` raise "POST /extract failed" and from
+  `POST /entry` "POST /entry failed", discarding the backend `detail`
+  (e.g. `Unsupported file type '…'` at `ai.py:108`, `File too large (…).
+  Maximum allowed size is 10 MB` at `entries.py:362-363`). The merge counterpart
+  (`api.ts:264-283`) does surface `detail` — inconsistent.
+
+### 12. `/api/biomarkers/definitions` omits `canonical_unit`
+
+- File: `backend/app/api/biomarkers.py:27-40`
+- The endpoint returns `unit=d.unit` and never populates
+  `canonical_unit`/`canonical_kind` (schema defaults to null), while the rest of
+  the app's serializers prefer the canonical unit
+  (`backend/app/api/_serializers.py:42-48`). The add-entry combobox
+  (`biomarker-combobox.tsx:90`) therefore shows a unit that can differ from the
+  flowsheet/timeline/graph unit for canonicalized definitions, and
+  `canonical_unit_inferred` can never light up the "guessed unit" ring in
+  `LabResultForm`.
+
+### 13. Anonymous → registered "transfer my data" drops fields
+
+- Files: `backend/app/services/data_migration.py:89-96,153-164`
+- Copied `BiomarkerDefinition`s lose `canonical_unit`, `canonical_kind`,
+  `canonical_unit_inferred`; copied readings lose `scale_function`,
+  `needs_review`, `merged`, `merged_source`. After "Transfer my data",
+  merged-entry sections and cross-scale conversion warnings vanish for migrated
+  data, and future cross-document unit conversions never engage on those defs.
+
+### 14. Older entries show the newest reading's metadata
+
+- File: `backend/app/api/_serializers.py:108-114` — `result_schema` reads
+  `original_name/original_value/original_unit/original_range` from the **latest**
+  reading.
+- `frontend/src/views/TimelineView.tsx:117-134` (`biomarkersAtDate`) overrides
+  only `value/date/status/merged`, so the "Original Name" column
+  (`results-panel.tsx:186`) shows the newest doc's name while displaying the
+  older value. The chart reference band is drawn from
+  `definition.reference` (`BiomarkerChartInner.tsx:86`) whereas the shown text
+  and status use the per-reading reference (`results-panel.tsx:195`) — the green
+  band and a cell's "high/low" verdict can contradict when ranges changed.
+
+### 15. "Insights & Correlation" delivers no correlation and drops common cases
+
+- File: `frontend/src/components/health-passport/correlation-chart.tsx`
+- Single-measurement biomarkers — the common one-test onboarding case — are
+  excluded because `history` is `[]` for them (`timeline.py:90-93`), so the
+  picker is empty ("Select at least one biomarker…" shows while checkboxes stay
+  ticked; `correlation-chart.tsx:99-101,118-121`).
+- One-sided references (`≤ 0.7`) produce null bounds → the series is silently
+  dropped with no message (`:146-158`).
+- Fixed Y domain `[-20, 120]` clips values above 3× the upper bound (`:280`).
+- No correlation coefficient, p-value, or regression exists anywhere; the dashed
+  "bridge" (`:168-189`) invents a constant flat trend across gaps, and tooltips
+  render blank rows for dates without readings.
+
+### 16. Same-date blood tests are ambiguous in selection, flowsheet, and headers
+
+- `biomarkersAtDate` matches by exact `date` string only
+  (`TimelineView.tsx:113`); two unmerged tests on one date → `findIndex` always
+  returns the first, so selecting the second test shows the first test's values
+  and merged-flags.
+- Backend sorts blood tests by `date` only (`flowsheet.py:36-44`, and the
+  timeline's readings/events order likewise), so same-day ordering is
+  nondeterministic and the "(Latest)"
+  badge (`flowsheet-matrix.tsx:110-112`) can sit on the earlier test. When three
+  tests share a day with mixed sub-labels where two collide `(#)` dedupe
+  (`flowsheet.py:71-78`) skips → two identically-labeled columns.
+
 ---
 
 ## LOW / UI dead-ends
 
 ### 6. Header RU→EN language toggle does nothing
 
-- File: `frontend/src/components/health-passport/header-bar.tsx:44,151-159`
+- File: `frontend/src/components/health-passport/header-bar.tsx:38,151-159`
 - `const [lang, setLang] = useState<'RU' | 'EN'>('EN')` only drives the
   segmented-button highlight. No content anywhere reacts to `lang`.
 - The print translation is configured separately on `/print-setup`
   (`print-setup.tsx`), so the header toggle is a dead control.
+
+### 17. Print export corrupts values with compact "K/M/B" notation
+
+- File: `frontend/src/components/health-passport/print-editor.tsx:637`
+- Cell values go through `formatNumber` (`frontend/src/lib/utils.ts:115-135`),
+  so 1,250,000 prints as "1.25M" and 9999 as "10K" — loss of precision in an
+  official medical export.
+
+### 18. "Drag & drop multiple documents here" is not a dropzone
+
+- File: `frontend/src/components/health-passport/add-entry.tsx:592-609`
+- The dashed "upload" surface is a `<button>` whose only handler opens the file
+  picker; there is no `onDrop`/`onDragOver`. `handleFilePicked` reads only
+  `files?.[0]` so multi-select silently drops every file after the first.
+
+### 19. Merge pre-flight conflict check diverges from the server → 409 on click
+
+- Files: `frontend/src/components/health-passport/add-entry.tsx:384-398`
+  vs `backend/app/api/entries.py:84-126`
+- The client exact-match on names & synonyms; the server also matches synonyms
+  with substring `ilike('%name%')`. A typed name that is a substring of an
+  existing synonym passes the client check but 409s on "Merge & Save".
+
+### 20. Blank/future dates and empty rows accepted silently
+
+- Files: `frontend/src/components/health-passport/add-entry.tsx:813-819` and
+  `backend/app/api/entries.py:47-49,168-171`
+- The date input is not required and has no max/future guard; a blank date saves
+  as "today", and a future date saves too (breaking timeline ordering).
+- Rows with an empty name or value are silently dropped on save with no warning.
+- Duplicate-test detection fetch errors are swallowed (`add-entry.tsx:353-355`),
+  so the "Time (required)" / merge warning can silently disappear while save
+  stays enabled → duplicate entries.
 
 ---
 
