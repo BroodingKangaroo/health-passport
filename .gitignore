@@ -35,4 +35,11 @@ app.log
 # Generated / secrets (do not commit)
 backend/data/loinc_aliases.json
 backend/.jwt_secret
-.opencode/
+
+# opencode: share config/commands/agents/skills, keep personal state local
+.opencode/memory/
+.opencode/plans/
+.opencode/node_modules/
+.opencode/package.json
+.opencode/package-lock.json
+.opencode/bun.lock
