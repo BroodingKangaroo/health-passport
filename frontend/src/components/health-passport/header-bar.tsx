@@ -11,9 +11,6 @@ import {
   Printer,
   Sun,
   Moon,
-  FlaskConical,
-  ClipboardPlus,
-  ScanLine,
   LogIn,
   LogOut,
   User,
@@ -21,12 +18,6 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { useTheme } from '@/providers/theme-provider'
-
-const addOptions = [
-  { label: 'Add Lab Result', icon: FlaskConical },
-  { label: 'Log Doctor Visit', icon: ClipboardPlus },
-  { label: 'Upload MRI Scan', icon: ScanLine },
-]
 
 function formatDob(dob: string | undefined): string {
   if (!dob) return ''
@@ -39,18 +30,13 @@ function formatDob(dob: string | undefined): string {
 export function HeaderBar() {
   const router = useRouter()
   const { status, user, anonId } = useAuthStatus()
-  const [open, setOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [lang, setLang] = useState<'RU' | 'EN'>('EN')
   const { theme, toggleTheme } = useTheme()
-  const menuRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
         setUserMenuOpen(false)
       }
@@ -97,47 +83,10 @@ export function HeaderBar() {
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="relative flex items-center" ref={menuRef}>
-          <Button
-            size="sm"
-            onClick={() => router.push('/add-entry')}
-            className="rounded-r-none"
-          >
-            <Plus className="size-3.5" />
-            Add New Entry
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => setOpen((v) => !v)}
-            aria-expanded={open}
-            aria-haspopup="menu"
-            aria-label="Choose entry type"
-            className="rounded-l-none border-l border-primary-foreground/20 px-2"
-          >
-            <ChevronDown className="size-3.5 opacity-80" />
-          </Button>
-          {open && (
-            <div
-              role="menu"
-              className="absolute right-0 top-full z-20 mt-1.5 w-48 overflow-hidden rounded-lg border border-border bg-popover p-1 shadow-lg"
-            >
-              {addOptions.map((opt) => (
-                <button
-                  key={opt.label}
-                  role="menuitem"
-                  onClick={() => {
-                    setOpen(false)
-                    router.push('/add-entry')
-                  }}
-                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                >
-                  <opt.icon className="size-4 text-muted-foreground" />
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <Button size="sm" onClick={() => router.push('/add-entry')}>
+          <Plus className="size-3.5" />
+          Add New Entry
+        </Button>
 
         <div className="flex items-center overflow-hidden rounded-lg border border-border bg-secondary text-xs font-medium">
           <button

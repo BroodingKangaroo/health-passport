@@ -20,18 +20,6 @@ Line numbers refer to files as they stand now.
 
 ## MEDIUM
 
-### 4. Header "Add New Entry" menu options are all identical
-
-- File: `frontend/src/components/health-passport/header-bar.tsx:25-30, 126-137`
-- All three options — "Add Lab Result", "Log Doctor Visit", "Upload MRI Scan" —
-  call `router.push('/add-entry')` with no type/param. The AddEntry page then
-  opens on the **Lab Results** tab by default (`add-entry.tsx:121`, `documentType`
-  default `blood_test`; the in-page pills are at `add-entry.tsx:60`).
-- So "Upload MRI Scan" from the header lands the user on the blood-test upload
-  flow; the doctor-visit / MRI forms are only reachable by clicking the in-page
-  pill after arrival. The menu is misleading — its options don't do what they
-  say.
-
 ### 5. AGENTS.md documents Playwright E2E that was deleted in the refactor
 
 - Affected: `AGENTS.md:23,41` vs actual repo state.
