@@ -55,7 +55,7 @@ def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str) -> dict:
     # Map old entry IDs to new entry IDs
     entry_id_map: dict[str, str] = {}
     for entry in entries:
-        new_entry_id = uuid.uuid4().hex[:8]
+        new_entry_id = uuid.uuid4().hex
         entry_id_map[entry.id] = new_entry_id
 
         new_entry = MedicalEntry(
