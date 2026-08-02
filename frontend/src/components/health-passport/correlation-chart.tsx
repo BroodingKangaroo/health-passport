@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { Search } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -78,10 +78,15 @@ function CustomTooltip({
 
 export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: BiomarkerResult[] }) {
   const [query, setQuery] = useState('')
-  const [selectedIds, setSelectedIds] = useState<string[]>([
-    'ldl',
-    'trig',
-  ])
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const userInteracted = useRef(false)
+
+  useEffect(() => {
+    if (userInteracted.current || allBiomarkers.length === 0) return
+    const withHistory = allBiomarkers.filter((b) => (b.history?.length ?? 0) > 0)
+    const pool = withHistory.length > 0 ? withHistory : allBiomarkers
+    setSelectedIds(pool.slice(0, 2).map((b) => b.id))
+  }, [allBiomarkers])
 
   const colorMap = useMemo(() => {
     const map: Record<string, string> = {}
@@ -103,6 +108,7 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
   }, [query, allBiomarkers])
 
   const toggleBiomarker = (id: string) => {
+    userInteracted.current = true
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     )
