@@ -31,6 +31,7 @@ Usage
     python backend/e2e/run_delete_e2e.py --keep-artifacts   # keep DB+files for debugging
 """
 import argparse
+import contextlib
 import os
 import shutil
 import signal
@@ -38,7 +39,6 @@ import subprocess
 import sys
 import tempfile
 import time
-from typing import Optional
 
 import requests
 
@@ -295,10 +295,8 @@ def main() -> int:
                 srv.kill()
         # Cleanup uploaded file (if any) plus the temp DB
         for f in created_files:
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(f)
-            except OSError:
-                pass
         if not args.keep_artifacts:
             shutil.rmtree(tmpdir, ignore_errors=True)
         else:

@@ -4,9 +4,9 @@ Handles registration, login, and current user info.
 """
 
 from datetime import timedelta
-from typing import Optional, Tuple
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jwt import ExpiredSignatureError
 from pydantic import BaseModel, EmailStr
@@ -20,8 +20,8 @@ from app.auth import (
     decode_token,
     get_user_by_email,
 )
-from app.db.session import get_db
 from app.db import models
+from app.db.session import get_db
 from app.services.data_migration import copy_anonymous_data
 from config import ANONYMOUS_COOKIE_NAME
 
@@ -72,7 +72,7 @@ async def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Se
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token expired",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from None
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -101,7 +101,7 @@ async def get_current_user_or_anon(
     response: Response,
     token: Optional[str] = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
-) -> Tuple[Optional[models.Patient], str, bool]:
+) -> tuple[Optional[models.Patient], str, bool]:
     """
     Get current user (authenticated or anonymous).
     

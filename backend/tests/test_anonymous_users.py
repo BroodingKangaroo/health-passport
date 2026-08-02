@@ -1,7 +1,6 @@
 """
 Tests for anonymous user sessions, usage limits, and data migration.
 """
-import json
 from datetime import datetime, timezone
 
 import pytest
@@ -13,26 +12,25 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.ai import router as ai_router
-from app.api.auth import get_current_user_or_anon, router as auth_router
+from app.api.auth import get_current_user_or_anon
+from app.api.auth import router as auth_router
 from app.api.biomarkers import router as biomarkers_router
 from app.api.entries import router as entries_router
 from app.api.flowsheet import router as flowsheet_router
 from app.api.timeline import router as timeline_router
 from app.api.usage_limits import router as usage_limits_router
+from app.db.models import MedicalEntry
 from app.db.session import Base, get_db
-from app.db.models import MedicalEntry, Patient, UsageLimit
-from app.services.data_migration import has_anonymous_data, copy_anonymous_data
+from app.services.data_migration import copy_anonymous_data, has_anonymous_data
 from app.services.usage_limits import (
     check_and_record_ai_usage,
     check_and_record_storage_usage,
     get_limits,
 )
-from config import ANONYMOUS_LIMITS, REGISTERED_LIMITS, ANONYMOUS_COOKIE_NAME
+from config import ANONYMOUS_LIMITS, REGISTERED_LIMITS
 from tests.seed_data import (
     TEST_ANON_ID,
-    TEST_USER_EMAIL,
     TEST_USER_ID,
-    TEST_USER_PASSWORD,
     seed_test_db,
 )
 
@@ -61,7 +59,6 @@ def anon_db_session():
 @pytest_asyncio.fixture
 async def anon_client(anon_db_session):
     """Client that simulates an anonymous user via cookie."""
-    import pytest_asyncio
 
     app = FastAPI()
     app.include_router(timeline_router)
@@ -168,7 +165,7 @@ class TestUsageLimits:
             check_and_record_ai_usage(anon_db_session, TEST_ANON_ID, is_anonymous=True)
 
         # Next attempt should be blocked
-        allowed, count, limit = check_and_record_ai_usage(
+        allowed, count, _limit = check_and_record_ai_usage(
             anon_db_session, TEST_ANON_ID, is_anonymous=True
         )
         assert allowed is False
@@ -194,7 +191,7 @@ class TestUsageLimits:
         )
 
         # Next upload should be blocked
-        allowed, current, limit, remaining = check_and_record_storage_usage(
+        allowed, current, _limit, remaining = check_and_record_storage_usage(
             anon_db_session, TEST_ANON_ID, 1, is_anonymous=True
         )
         assert allowed is False

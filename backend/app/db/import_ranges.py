@@ -9,10 +9,9 @@ Usage:
 import json
 import logging
 import os
-import sys
 
+from app.db import models
 from app.db.session import SessionLocal
-from app.db import models  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +158,7 @@ def load_ranges_from_file(path: str) -> dict:
     """Load ranges from external JSON file if it exists."""
     if not os.path.isfile(path):
         return {}
-    with open(path, "r") as f:
+    with open(path) as f:
         return json.load(f)
 
 

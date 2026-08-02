@@ -2,7 +2,6 @@
 Tests for authentication and security fixes.
 """
 import json
-import pytest
 
 
 class TestDataIsolation:
@@ -11,8 +10,8 @@ class TestDataIsolation:
     async def test_timeline_returns_only_user_data(self, client, db_session):
         """Test that timeline only returns data for the authenticated user."""
         from datetime import datetime, timezone
+
         from app.db.models import MedicalEntry, Patient
-        from tests.seed_data import TEST_USER_ID
         
         # Create a second user
         other_user = Patient(
@@ -56,8 +55,8 @@ class TestDataIsolation:
     async def test_flowsheet_returns_only_user_data(self, client, db_session):
         """Test that flowsheet only returns data for the authenticated user."""
         from datetime import datetime, timezone
-        from app.db.models import MedicalEntry, Patient, BiomarkerReading
-        from tests.seed_data import TEST_USER_ID
+
+        from app.db.models import BiomarkerReading, MedicalEntry, Patient
         
         # Create a second user
         other_user = Patient(
@@ -148,11 +147,12 @@ class TestPathTraversal:
 
     async def test_path_traversal_blocked(self, client, db_session):
         """Test that path traversal attempts are blocked."""
-        from app.main import app
         from fastapi.testclient import TestClient
+
         from app.api.auth import get_current_user_or_anon
-        from tests.seed_data import TEST_USER_ID, TEST_USER_EMAIL
         from app.db.models import Patient
+        from app.main import app
+        from tests.seed_data import TEST_USER_EMAIL, TEST_USER_ID
 
         # Create a test client
         test_client = TestClient(app)
@@ -185,11 +185,12 @@ class TestPathTraversal:
 
     async def test_valid_path_returns_404(self, client, db_session):
         """Test that valid paths return 404 (file not found) not 403."""
-        from app.main import app
         from fastapi.testclient import TestClient
+
         from app.api.auth import get_current_user_or_anon
-        from tests.seed_data import TEST_USER_ID, TEST_USER_EMAIL
         from app.db.models import Patient
+        from app.main import app
+        from tests.seed_data import TEST_USER_EMAIL, TEST_USER_ID
 
         test_client = TestClient(app)
 

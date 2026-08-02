@@ -3,10 +3,10 @@ prevents ungrounded LLM guesses from polluting the shared global dictionary."""
 
 import json
 
-from app.services import matcher
-from app.db.session import SessionLocal
 from app.db.models import BiomarkerDefinition
-from app.schemas.ai import RawMedicalRecord, RawBiomarker
+from app.db.session import SessionLocal
+from app.schemas.ai import RawBiomarker, RawMedicalRecord
+from app.services import matcher
 
 
 class _FakeMsg:
@@ -363,7 +363,7 @@ def test_verifier_corrects_when_grounded():
         defs = _global_defs(db)
         index = matcher.build_name_index(defs)
         potassium = next(d for d in defs if d.loinc_code == "2823-3")
-        erythrocytes = next(d for d in defs if d.loinc_code == "789-8")
+        next(d for d in defs if d.loinc_code == "789-8")
         b = RawBiomarker(name="Эритроциты", value="4.5", unit="10*12/L")
         client = _VerifyClient(
             {"Эритроциты": {"agree": False, "corrected_loinc": "789-8"}}

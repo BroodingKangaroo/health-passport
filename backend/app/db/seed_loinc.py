@@ -14,8 +14,8 @@ import re
 import sys
 from typing import Optional
 
-from app.db.session import engine, Base, SessionLocal
-from app.db import models  # noqa: F401
+from app.db import models
+from app.db.session import Base, SessionLocal, engine
 
 logger = logging.getLogger(__name__)
 
@@ -88,10 +88,7 @@ def is_lab_class(class_name: str) -> bool:
     if cls in EXCLUDE_CLASSES:
         return False
     # Check if it starts with any of our lab class prefixes
-    for lab_cls in LAB_CLASSES:
-        if cls.startswith(lab_cls):
-            return True
-    return False
+    return any(cls.startswith(lab_cls) for lab_cls in LAB_CLASSES)
 
 
 def parse_loinc_csv(path: str) -> list[dict]:
@@ -177,7 +174,7 @@ def _short_display_name(component: str) -> str:
 
 def _long_name_acronym(long_name: str) -> str:
     """Leading acronym/token of a LONG_COMMON_NAME (e.g. 'MCHC [Entitic...]' -> 'MCHC')."""
-    token = re.split(r"[\s\[]", long_name.strip(), 1)[0].strip()
+    token = re.split(r"[\s\[]", long_name.strip(), maxsplit=1)[0].strip()
     return token
 
 
@@ -293,7 +290,7 @@ def dedupe_definitions(definitions: list[dict]) -> tuple[list[dict], dict[str, s
         survivor_code = survivor.get("loinc_code")
         if folded_code and survivor_code and folded_code != survivor_code:
             aliases[folded_code] = survivor_code
-        for cand in [d.get("names", {}).get("en", "")] + list(d.get("synonyms") or []):
+        for cand in [d.get("names", {}).get("en", ""), *list(d.get("synonyms") or [])]:
             cand = (cand or "").strip()
             if cand:
                 extra_synonyms[key].append(cand)
@@ -314,8 +311,8 @@ def dedupe_definitions(definitions: list[dict]) -> tuple[list[dict], dict[str, s
     return result, aliases
 
 
-MULTILINGUAL_SYNONYMS = os.path.join(os.path.dirname(__file__), "..", "..", "data", "multilingual_synonyms.json")  # noqa: E501
-LOINC_ALIASES_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "loinc_aliases.json")  # noqa: E501
+MULTILINGUAL_SYNONYMS = os.path.join(os.path.dirname(__file__), "..", "..", "data", "multilingual_synonyms.json")
+LOINC_ALIASES_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "loinc_aliases.json")
 
 
 def load_multilingual_synonyms() -> dict[str, list[str]]:
@@ -330,7 +327,7 @@ def load_multilingual_synonyms() -> dict[str, list[str]]:
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
     by_code: dict[str, list[str]] = {}
-    for _lang, mapping in data.items():
+    for mapping in data.values():
         for name, code in mapping.items():
             by_code.setdefault(code, []).append(name)
     return by_code

@@ -193,9 +193,11 @@ def compare_standardized(observed, golden, text_threshold=DEFAULT_TEXT_THRESHOLD
             f"entry_type: expected {golden.get('entry_type')!r}, got {observed.get('entry_type')!r}"
         )
 
-    for f in ("date", "time"):
-        if _norm(observed.get(f, "")) != _norm(golden.get(f, "")):
-            diffs.append(f"{f}: expected {golden.get(f)!r}, got {observed.get(f)!r}")
+    diffs.extend(
+        f"{f}: expected {golden.get(f)!r}, got {observed.get(f)!r}"
+        for f in ("date", "time")
+        if _norm(observed.get(f, "")) != _norm(golden.get(f, ""))
+    )
 
     for f in ("clinic", "provider", "title", "notes"):
         g = golden.get(f, "")

@@ -3,6 +3,7 @@ Service for tracking and enforcing usage limits for both anonymous and registere
 """
 
 from datetime import datetime, timezone
+
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -48,7 +49,7 @@ def check_and_record_ai_usage(db: Session, user_id: str, is_anonymous: bool, com
     The increment is performed as a single conditional UPDATE
     (count < limit) so concurrent requests cannot both read "under limit"
     and both pass — the second UPDATE affects 0 rows and is rejected.
-    """  # noqa: E501
+    """
     max_ai = ANONYMOUS_LIMITS["ai_extractions"] if is_anonymous else REGISTERED_LIMITS["ai_extractions"]
     now = datetime.now(timezone.utc)
 
@@ -129,7 +130,7 @@ def check_and_record_storage_usage(
     The increment is performed as a single conditional UPDATE
     (current + size <= limit) so concurrent uploads cannot both read
     "under limit" and both pass.
-    """  # noqa: E501
+    """
     max_storage = ANON_STORAGE_BYTES if is_anonymous else REGISTERED_STORAGE_BYTES
     now = datetime.now(timezone.utc)
 

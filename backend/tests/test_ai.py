@@ -1,18 +1,17 @@
 import json
 from unittest.mock import patch
 
-from app.services.extractor import OCRProcessingError
 from app.schemas.ai import (
-    RawMedicalRecord,
     RawBiomarker,
-    RawVisitData,
     RawImagingData,
-    StandardizedMedicalRecord,
+    RawMedicalRecord,
+    RawVisitData,
     StandardizedBiomarker,
+    StandardizedMedicalRecord,
     StandardizedVisitData,
-    StandardizedPrescription,
     TranslatedText,
 )
+from app.services.extractor import OCRProcessingError
 
 
 def _parse_sse_result(body: str) -> dict:
@@ -236,7 +235,7 @@ class TestExtractEndpoint:
             if "event: error" in part:
                 assert "could not be processed by OCR" in part
                 return
-        assert False, "Expected error event in SSE stream"
+        raise AssertionError("Expected error event in SSE stream")
 
     @patch("app.api.ai.extractor.ocr_document")
     async def test_extract_ocr_auth_error(self, mock_ocr, client, monkeypatch):
@@ -258,7 +257,7 @@ class TestExtractEndpoint:
                 assert "authentication failed" in part
                 assert "MISTRAL_API_KEY" in part
                 return
-        assert False, "Expected error event in SSE stream"
+        raise AssertionError("Expected error event in SSE stream")
 
     @patch("app.api.ai.extractor.ocr_document")
     async def test_extract_ocr_quota_error(self, mock_ocr, client, monkeypatch):
@@ -278,7 +277,7 @@ class TestExtractEndpoint:
             if "event: error" in part:
                 assert "quota exceeded" in part
                 return
-        assert False, "Expected error event in SSE stream"
+        raise AssertionError("Expected error event in SSE stream")
 
     @patch("app.api.ai.extractor.llm_extract")
     @patch("app.api.ai.extractor.ocr_document")

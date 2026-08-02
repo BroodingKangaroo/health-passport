@@ -1,6 +1,5 @@
-import sqlite3
-import sys
 import os
+import sqlite3
 
 db_paths = [
     os.path.join(os.path.dirname(__file__), '..', 'health_passport.db'),

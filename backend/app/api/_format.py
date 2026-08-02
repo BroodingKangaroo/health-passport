@@ -37,4 +37,4 @@ def short_date_label(dt: datetime) -> str:
     return dt.strftime("%b %d")
 
 
-__all__ = ("reading_value", "effective_reference", "flowsheet_date_header", "short_date_label", "_current_year")
+__all__ = ("_current_year", "effective_reference", "flowsheet_date_header", "reading_value", "short_date_label")

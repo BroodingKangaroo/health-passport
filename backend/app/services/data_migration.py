@@ -3,14 +3,16 @@ Service for migrating anonymous user data to registered accounts.
 """
 
 import uuid
+
 from sqlalchemy.orm import Session
+
 from app.db.models import (
-    MedicalEntry,
-    BiomarkerDefinition,
     Attachment,
-    VisitData,
+    BiomarkerDefinition,
     BiomarkerReading,
+    MedicalEntry,
     UsageLimit,
+    VisitData,
 )
 
 
@@ -170,12 +172,12 @@ def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str) -> dict:
     # anon usage lingers and the registered user incorrectly appears at zero).
     anon_usage = db.query(UsageLimit).filter(
         UsageLimit.user_id == anon_id,
-        UsageLimit.is_anonymous == True,
+        UsageLimit.is_anonymous,
     ).first()
     if anon_usage:
         registered_usage = db.query(UsageLimit).filter(
             UsageLimit.user_id == new_user_id,
-            UsageLimit.is_anonymous == False,
+            not UsageLimit.is_anonymous,
         ).first()
         if registered_usage is None:
             db.add(UsageLimit(

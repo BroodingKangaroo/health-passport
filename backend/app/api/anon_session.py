@@ -3,6 +3,7 @@ Anonymous session handling utilities.
 """
 
 import uuid
+
 from fastapi import Request, Response
 
 from config import ANONYMOUS_COOKIE_NAME

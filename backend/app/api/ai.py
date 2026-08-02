@@ -3,21 +3,21 @@ import json
 import logging
 import os
 import time
-from typing import Optional, Tuple
+from typing import Optional
 
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from mistralai import Mistral
 from mistralai.utils.retries import BackoffStrategy, RetryConfig
 from sqlalchemy.orm import Session
 
-from app.schemas.ai import StandardizedMedicalRecord, StandardizedVisitData, RawImagingData
+from app.api.auth import get_current_user_or_anon
+from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
+from app.db.models import Patient
+from app.db.session import SessionLocal, get_db
+from app.schemas.ai import RawImagingData, StandardizedMedicalRecord, StandardizedVisitData
 from app.services import extractor, matcher
 from app.services.usage_limits import check_and_record_ai_usage
-from app.db.session import get_db, SessionLocal
-from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel, Patient
-from app.api.auth import get_current_user_or_anon
-from config import ANONYMOUS_LIMITS, REGISTERED_LIMITS
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +61,9 @@ async def extract_medical_data(
     response: Response,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
 ):
-    user, user_id, is_anonymous = user_data
+    _user, user_id, is_anonymous = user_data
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
 
@@ -96,7 +96,7 @@ async def extract_medical_data(
     try:
         bytes_data = await file.read()
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to read file: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to read file: {e}") from e
 
     if not bytes_data:
         raise HTTPException(status_code=400, detail="Empty file")

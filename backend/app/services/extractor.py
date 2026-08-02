@@ -75,9 +75,8 @@ def _classify_ocr_error(exc: Exception) -> OCRProcessingError:
 
     if status in (401, 403):
         return OCRProcessingError(
-            "Mistral AI authentication failed (HTTP %s). The MISTRAL_API_KEY in "
-            "backend/.env is invalid or expired. Please update it and restart the backend."
-            % status,
+            f"Mistral AI authentication failed (HTTP {status}). The MISTRAL_API_KEY in "
+            "backend/.env is invalid or expired. Please update it and restart the backend.",
             kind="auth",
         )
     if status == 429:
@@ -220,7 +219,7 @@ def ocr_document(bytes_data: bytes, ext: str, client: Mistral) -> str:
                 kind = _classify_ocr_error(e).kind
                 # Auth/quota will never succeed on retry — fail fast.
                 if kind in ("auth", "quota"):
-                    raise _classify_ocr_error(e)
+                    raise _classify_ocr_error(e) from e
                 logger.warning(
                     "OCR attempt %d/%d (candidate=%s) failed: %s",
                     attempt, OCR_MAX_ATTEMPTS, c_name, e,

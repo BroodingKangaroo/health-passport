@@ -1,10 +1,12 @@
+# ruff: noqa: E402 -- load_dotenv() + logging setup must run before the app
+# imports: app.db.session reads DATABASE_URL from the environment at import time.
 import logging
 import os
 from contextlib import asynccontextmanager
-from typing import Optional, Tuple
+from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -15,15 +17,18 @@ log_file.setLevel(logging.INFO)
 logging.getLogger().setLevel(logging.INFO)
 logging.getLogger().addHandler(log_file)
 
-from app.api.timeline import router as timeline_router
-from app.api.flowsheet import router as flowsheet_router
-from app.api.entries import router as entries_router
 from app.api.ai import router as ai_router
+from app.api.auth import get_current_user_or_anon
+from app.api.auth import router as auth_router
 from app.api.biomarkers import router as biomarkers_router
-from app.api.auth import router as auth_router, get_current_user_or_anon
+from app.api.entries import router as entries_router
+from app.api.flowsheet import router as flowsheet_router
+from app.api.timeline import router as timeline_router
 from app.api.usage_limits import router as usage_limits_router
-from app.db.session import init_db, get_db
-from app.db.models import Patient, Attachment as AttachmentModel, MedicalEntry as MedicalEntryModel
+from app.db.models import Attachment as AttachmentModel
+from app.db.models import MedicalEntry as MedicalEntryModel
+from app.db.models import Patient
+from app.db.session import get_db, init_db
 
 
 @asynccontextmanager
@@ -57,11 +62,11 @@ os.makedirs("static", exist_ok=True)
 @app.get("/static/uploads/{file_path:path}")
 async def serve_upload(
     file_path: str,
-    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
     db: Session = Depends(get_db),
 ):
     from fastapi.responses import FileResponse
-    user, user_id, is_anonymous = user_data
+    _user, user_id, _is_anonymous = user_data
     # Validate file_path to prevent path traversal
     if not file_path or '..' in file_path or file_path.startswith('/'):
         raise HTTPException(status_code=403, detail="Forbidden")

@@ -11,12 +11,14 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.api._format import reading_value, effective_reference
+from app.api._format import effective_reference, reading_value
 from app.db.models import (
     BiomarkerDefinition as BiomarkerDefinitionModel,
 )
 from app.schemas.biomarker import (
     BiomarkerDefinition as BiomarkerDefinitionSchema,
+)
+from app.schemas.biomarker import (
     BiomarkerResult,
     MergedSource,
     Reading,

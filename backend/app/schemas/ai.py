@@ -1,9 +1,9 @@
-from pydantic import BaseModel
 from typing import Optional, Union
+
+from pydantic import BaseModel
 from typing_extensions import Literal
 
 from app.schemas.reference import Reference
-
 
 # +++++ Reusable dual-language text container +++++
 

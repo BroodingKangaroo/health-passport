@@ -1,7 +1,8 @@
-from typing import Optional, Tuple
 import logging
 import re
-from fastapi import APIRouter, HTTPException, Depends, Request, Response
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from app.api._serializers import (
@@ -12,6 +13,33 @@ from app.api._serializers import (
     resolve_definitions,
     result_schema,
 )
+from app.api.auth import get_current_user_or_anon
+from app.db.models import (
+    BiomarkerDefinition as BiomarkerDefinitionModel,
+)
+from app.db.models import (
+    BiomarkerReading,
+    Patient,
+)
+from app.db.models import (
+    MedicalEntry as MedicalEntryModel,
+)
+from app.db.models import (
+    VisitData as VisitDataModel,
+)
+from app.db.session import get_db
+from app.schemas import (
+    Attachment as AttachmentSchema,
+)
+from app.schemas import (
+    BiomarkerResult,
+    MedicalEvent,
+    Prescription,
+    Reading,
+    TimelineResponse,
+    VisitData,
+    VisitNote,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,27 +49,6 @@ logger = logging.getLogger(__name__)
 _FLOW_SHEET_LABEL_RE = re.compile(
     r"-(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)-\d{1,2}$"
 )
-
-from app.schemas import (
-    TimelineResponse,
-    MedicalEvent,
-    BiomarkerResult,
-    VisitData,
-    VisitNote,
-    Prescription,
-    Attachment as AttachmentSchema,
-    Reading,
-)
-from app.db.session import get_db
-from app.db.models import (
-    MedicalEntry as MedicalEntryModel,
-    BiomarkerDefinition as BiomarkerDefinitionModel,
-    BiomarkerReading,
-    VisitData as VisitDataModel,
-    Patient,
-)
-from app.api.auth import get_current_user_or_anon
-
 
 router = APIRouter()
 
@@ -229,9 +236,9 @@ async def get_timeline(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
-    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon)
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon)
 ):
-    user, user_id, is_anonymous = user_data
+    _user, user_id, _is_anonymous = user_data
     return TimelineResponse(
         events=_events_from_db(db, user_id),
         biomarkers=_biomarkers_from_db(db, user_id),
@@ -245,9 +252,9 @@ async def get_biomarker_detail(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
-    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon)
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon)
 ):
-    user, user_id, is_anonymous = user_data
+    _user, user_id, _is_anonymous = user_data
 
     # The flowsheet passes composite ids of the form "{biomarker_id}-{date-label}"
     # (e.g. "713-8-may-26", "local-774a579f1f27-may-26"). Recover the underlying
@@ -265,7 +272,7 @@ async def get_biomarker_detail(
 
 def _resolve_biomarker_base_id(
     db: Session, biomarker_id: str
-) -> Tuple[str, Optional[BiomarkerDefinitionModel]]:
+) -> tuple[str, Optional[BiomarkerDefinitionModel]]:
     """Resolve a timeline or flowsheet-style biomarker id back to the underlying
     definition. Handles plain ids, legacy LOINC codes, and the
     "{biomarker_id}-{month}-{day}" composites the flowsheet emits."""
@@ -302,9 +309,9 @@ async def get_visit_data(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
-    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon)
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon)
 ):
-    user, user_id, is_anonymous = user_data
+    _user, user_id, _is_anonymous = user_data
     entry = (
         db.query(MedicalEntryModel)
         .filter(

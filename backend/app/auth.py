@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.db import models
 
+
 # JWT settings
 def _get_secret_key() -> str:
     """Resolve a stable JWT secret.

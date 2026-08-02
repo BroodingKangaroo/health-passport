@@ -11,7 +11,7 @@ conversion factor and apply it deterministically (see `apply_factor`).
 
 import logging
 import re
-from typing import Optional, Tuple
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +189,7 @@ def conversion_factor(
     to_unit: str,
     analyte_name: str = "",
     mw: Optional[float] = None,
-) -> Tuple[Optional[float], str]:
+) -> tuple[Optional[float], str]:
     """Return (factor, method). value_in_target = value * factor.
 
     method is one of: 'identity', 'dimensional', 'molar_mass', 'none'.
@@ -229,7 +229,7 @@ def convert_value(
     to_unit: str,
     analyte_name: str = "",
     mw: Optional[float] = None,
-) -> Tuple[Optional[float], str]:
+) -> tuple[Optional[float], str]:
     """Convert `value` from `from_unit` to `to_unit`.
 
     Returns (converted_value, method). converted_value is None when no

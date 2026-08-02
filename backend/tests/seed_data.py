@@ -1,15 +1,14 @@
 from datetime import datetime, timezone
 
-from app.db.models import (
-    BiomarkerDefinition,
-    MedicalEntry,
-    BiomarkerReading,
-    Attachment,
-    VisitData,
-    Patient,
-    UsageLimit,
-)
 from app.auth import get_password_hash as hash_password
+from app.db.models import (
+    Attachment,
+    BiomarkerDefinition,
+    BiomarkerReading,
+    MedicalEntry,
+    Patient,
+    VisitData,
+)
 
 # Use a consistent test user ID
 TEST_USER_ID = "testuser"

@@ -25,13 +25,11 @@ Pending (not-yet-reviewed) cases are reported but do not fail the run.
 """
 
 import argparse
-import glob
 import json
 import os
 import sys
 
 import httpx
-
 from compare import compare_standardized
 
 HERE = os.path.dirname(os.path.abspath(__file__))

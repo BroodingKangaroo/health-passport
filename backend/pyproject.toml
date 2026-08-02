@@ -1,0 +1,25 @@
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+exclude = ["venv"]
+
+[tool.ruff.lint]
+select = [
+  "E4", "E7", "E9", "F", "I",
+  "UP", "B", "SIM",
+  "RUF", "PERF", "ASYNC",
+]
+ignore = [
+  "B008",  # FastAPI idiom: Depends() / Security() in parameter defaults
+  "BLE001",  # broad except is intentional for error-wrapping in this app
+  "RUF001",  # Russian (Cyrillic) strings are intentional in tests and units
+  "RUF002",  # Russian comments/strings intentionally mix scripts
+  "RUF003",  # Russian strings in f-strings are intentional
+  "ASYNC230",  # async routes deliberately do small sync file ops
+  "ASYNC240",  # os.path usage inside async routes is idiomatic FastAPI here
+  "PERF203",  # per-iteration try/except is explicit and scoped
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ASYNC", "DTZ005", "SLF001"]
+"e2e/**" = ["ASYNC", "DTZ005"]

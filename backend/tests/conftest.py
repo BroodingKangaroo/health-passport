@@ -1,13 +1,13 @@
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
 from fastapi import FastAPI, Request, Response
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.db.session as _db_session
-from app.db.session import Base, get_db, migrate_add_columns
 from app.db import models as _models  # noqa: F401  (registers tables on Base)
+from app.db.session import Base, get_db, migrate_add_columns
 from tests.seed_data import seed_test_db
 
 TEST_DATABASE_URL = "sqlite:///:memory:"
@@ -27,12 +27,13 @@ def _seeded_shared_database():
     migrate_add_columns(_db_session.engine)
 
     import os
+
     from app.db.seed_loinc import (
         LOINC_CSV,
+        apply_multilingual_synonyms,
+        dedupe_definitions,
         parse_loinc_csv,
         row_to_definition,
-        dedupe_definitions,
-        apply_multilingual_synonyms,
         seed_biomarkers,
     )
     if not os.path.isfile(os.path.abspath(LOINC_CSV)):
@@ -79,21 +80,21 @@ def db_session():
 @pytest.fixture
 def auth_token(db_session):
     from app.auth import create_access_token
-    from tests.seed_data import TEST_USER_ID, TEST_USER_EMAIL
+    from tests.seed_data import TEST_USER_EMAIL, TEST_USER_ID
     return create_access_token(data={"sub": TEST_USER_ID, "email": TEST_USER_EMAIL})
 
 
 @pytest_asyncio.fixture
 async def client(db_session, auth_token):
-    from app.api.timeline import router as timeline_router
-    from app.api.flowsheet import router as flowsheet_router
-    from app.api.entries import router as entries_router
     from app.api.ai import router as ai_router
-    from app.api.biomarkers import router as biomarkers_router
     from app.api.auth import get_current_user, get_current_user_or_anon
+    from app.api.biomarkers import router as biomarkers_router
+    from app.api.entries import router as entries_router
+    from app.api.flowsheet import router as flowsheet_router
+    from app.api.timeline import router as timeline_router
     from app.api.usage_limits import router as usage_limits_router
     from app.db.models import Patient
-    from tests.seed_data import TEST_USER_ID, TEST_USER_EMAIL
+    from tests.seed_data import TEST_USER_EMAIL, TEST_USER_ID
 
     app = FastAPI()
     app.include_router(timeline_router)

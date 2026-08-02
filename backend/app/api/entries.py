@@ -1,29 +1,47 @@
+import hashlib
 import json
+import logging
 import os
 import re
 import uuid
-import hashlib
-import logging
 from datetime import datetime, timezone
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
-from fastapi import APIRouter, Form, UploadFile, File, Depends, Query, HTTPException, Request, Response
-from sqlalchemy import cast, func, or_, String, update
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
+from sqlalchemy import String, cast, func, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.schemas import SaveEntryResponse, DeleteEntryResponse, EntriesByDateResponse
-from app.db.session import get_db
+from app.api.auth import get_current_user_or_anon
 from app.db.models import (
-    MedicalEntry as MedicalEntryModel,
-    BiomarkerDefinition as BiomarkerDefinitionModel,
-    BiomarkerReading,
     Attachment as AttachmentModel,
-    VisitData as VisitDataModel,
+)
+from app.db.models import (
+    BiomarkerDefinition as BiomarkerDefinitionModel,
+)
+from app.db.models import (
+    BiomarkerReading,
     Patient,
 )
-from app.api.auth import get_current_user_or_anon
-from app.services.reference import compute_status, merge_reference, parse_value, normalize_qual
+from app.db.models import (
+    MedicalEntry as MedicalEntryModel,
+)
+from app.db.models import (
+    VisitData as VisitDataModel,
+)
+from app.db.session import get_db
+from app.schemas import DeleteEntryResponse, EntriesByDateResponse, SaveEntryResponse
+from app.services.reference import compute_status, merge_reference, normalize_qual, parse_value
 from app.services.usage_limits import check_and_record_storage_usage
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -59,7 +77,7 @@ class _ReadingSpec:
     BiomarkerReading. Shared by save_entry and the merge endpoint so the two
     never drift apart in semantics."""
 
-    __slots__ = ("defn", "value_col", "value_text", "result_value", "eff_ref", "status", "row")
+    __slots__ = ("defn", "eff_ref", "result_value", "row", "status", "value_col", "value_text")
 
     def __init__(self, defn, value_col, value_text, result_value, eff_ref, status, row):
         self.defn = defn
@@ -363,7 +381,7 @@ async def _save_attachment(
         raise HTTPException(status_code=413, detail=f"File too large ({len(content) // 1024} KB). Maximum allowed size is {MAX_FILE_SIZE // (1024 * 1024)} MB.")
 
     # Enforce storage quota for ALL users (anon: 50MB, registered: 200MB — see config.py).
-    allowed, current_bytes, limit_bytes, remaining = check_and_record_storage_usage(
+    allowed, _current_bytes, limit_bytes, _remaining = check_and_record_storage_usage(
         db, user_id, len(content), is_anonymous, commit=False
     )
     if not allowed:
@@ -400,13 +418,13 @@ async def get_entries_by_date(
     date: str = Query(...),
     type: str = Query(""),
     db: Session = Depends(get_db),
-    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
 ):
-    user, user_id, is_anonymous = user_data
+    _user, user_id, _is_anonymous = user_data
     try:
         target = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
     except ValueError:
-        raise HTTPException(status_code=400, detail=f"Invalid date format: '{date}'. Expected ISO format (YYYY-MM-DD).")
+        raise HTTPException(status_code=400, detail=f"Invalid date format: '{date}'. Expected ISO format (YYYY-MM-DD).") from None
     q = db.query(MedicalEntryModel).filter(
         MedicalEntryModel.patient_id == user_id,
         func.date(MedicalEntryModel.date) == func.date(target),
@@ -473,14 +491,14 @@ async def save_entry(
     visit_data: str = Form(""),
     file: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
-    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
 ):
-    user, user_id, is_anonymous = user_data
+    _user, user_id, is_anonymous = user_data
     entry_id = uuid.uuid4().hex
     try:
         entry_date = _normalize_date(date, time)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid date/time format: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid date/time format: {e}") from e
 
     entry = MedicalEntryModel(
         id=entry_id,
@@ -504,7 +522,7 @@ async def save_entry(
         try:
             categories_data = json.loads(biomarkers)
         except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid biomarkers JSON format.")
+            raise HTTPException(status_code=400, detail="Invalid biomarkers JSON format.") from None
         specs = _parse_biomarker_rows(db, user_id, categories_data)
         _create_reading_rows(db, entry_id, specs, merged=False)
         db.flush()
@@ -513,7 +531,7 @@ async def save_entry(
         try:
             vd = json.loads(visit_data)
         except json.JSONDecodeError as e:
-            raise HTTPException(status_code=400, detail=f"Invalid visit_data JSON: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid visit_data JSON: {e}") from e
         if not isinstance(vd, dict):
             raise HTTPException(status_code=400, detail="visit_data must be a JSON object")
         db.add(_build_visit_data_model(entry_id, vd, title, provider, entry_date, clinic))
@@ -535,7 +553,7 @@ async def merge_entry(
     notes: str = Form(""),
     file: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
-    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
 ):
     """Merge a later blood-test upload into an existing entry on the same date:
     new biomarker readings (marked ``merged=True``) are added, the uploaded
@@ -550,7 +568,7 @@ async def merge_entry(
     duplicated (already present in the target) — a merged entry can't hold two
     readings of the same analyte. The target must be a blood_test owned by the
     current user and (when a date is supplied) dated on that date."""
-    user, user_id, is_anonymous = user_data
+    _user, user_id, is_anonymous = user_data
     entry = (
         db.query(MedicalEntryModel)
         .filter(
@@ -567,7 +585,7 @@ async def merge_entry(
         try:
             target_date = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid date format: '{date}'. Expected ISO format (YYYY-MM-DD).")
+            raise HTTPException(status_code=400, detail=f"Invalid date format: '{date}'. Expected ISO format (YYYY-MM-DD).") from None
         # Compare in Python: sqlite stores naive datetimes, and passing mixed
         # naive/tz-aware values through SQL func.date() is unreliable.
         entry_day = entry.date
@@ -580,7 +598,7 @@ async def merge_entry(
         try:
             categories_data = json.loads(biomarkers)
         except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid biomarkers JSON format.")
+            raise HTTPException(status_code=400, detail="Invalid biomarkers JSON format.") from None
         specs = _parse_biomarker_rows(db, user_id, categories_data)
 
         # Conflict check: refuse when any resolved definition already has a
@@ -653,14 +671,14 @@ async def delete_entry(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
-    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
 ):
     """Hard-delete a single entry and its cascade-owned rows (readings, visit
     data, attachments). Attached files on disk are removed only when no other
     entry still references them, so the anon→user migration case (which
     duplicates the attachment row) is safe. Storage quota is decremented by the
     freed bytes of files that are actually unlinked."""
-    user, user_id, is_anonymous = user_data
+    _user, user_id, is_anonymous = user_data
     entry = (
         db.query(MedicalEntryModel)
         .filter(

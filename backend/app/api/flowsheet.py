@@ -1,31 +1,40 @@
+import logging
 from collections import Counter
-from typing import Optional, Tuple
+from typing import Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-import logging
 
-from app.schemas import (
-    FlowsheetResponse,
-    DateHeader,
-    MatrixCategory,
-    MatrixRow,
-    MatrixCell,
-    BiomarkerResult,
+from app.api._format import (
+    effective_reference,
+    flowsheet_date_header,
+    reading_value,
+    short_date_label,
 )
 from app.api._serializers import (
     lookup_definition,
     result_schema,
 )
-from app.db.session import get_db
+from app.api.auth import get_current_user_or_anon
 from app.db.models import (
-    MedicalEntry as MedicalEntryModel,
     BiomarkerDefinition as BiomarkerDefinitionModel,
+)
+from app.db.models import (
     BiomarkerReading,
     Patient,
 )
-from app.api._format import short_date_label, flowsheet_date_header, reading_value, effective_reference
-from app.api.auth import get_current_user_or_anon
+from app.db.models import (
+    MedicalEntry as MedicalEntryModel,
+)
+from app.db.session import get_db
+from app.schemas import (
+    BiomarkerResult,
+    DateHeader,
+    FlowsheetResponse,
+    MatrixCategory,
+    MatrixCell,
+    MatrixRow,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +77,7 @@ def _build_date_headers(blood_tests) -> list[DateHeader]:
 
     date_headers: list[DateHeader] = []
     seen: dict[str, int] = {}
-    for i, e in enumerate(blood_tests):
+    for i, _e in enumerate(blood_tests):
         label, sub = headers[i]
         if label_counts[label] > 1:
             same_subs = {h[1] for h in headers if h[0] == label}
@@ -216,8 +225,8 @@ def _build_biomarker_rows(
 @router.get("/api/flowsheet", response_model=FlowsheetResponse)
 async def get_flowsheet(
     db: Session = Depends(get_db),
-    user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon)
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon)
 ):
-    user, user_id, is_anonymous = user_data
+    _user, user_id, _is_anonymous = user_data
     dates, matrix, biomarkers = _build_flowsheet(db, user_id)
     return FlowsheetResponse(dates=dates, matrix=matrix, biomarkers=biomarkers)

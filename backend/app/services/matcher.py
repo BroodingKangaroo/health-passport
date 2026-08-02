@@ -7,24 +7,15 @@ import re
 import threading
 import unicodedata
 from datetime import datetime
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 from mistralai import Mistral
 from rapidfuzz import fuzz, process
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
 from app.db.seed_loinc import LOINC_NAME_OVERRIDES
-
-from app.services import converters
-from app.services.reference import (
-    _ABSENT_CANONICAL,
-    compute_status,
-    merge_reference,
-    normalize_qual,
-    parse_reference,
-    parse_value,
-)
 from app.schemas.ai import (
     ConversionFactor,
     LoincGuess,
@@ -35,15 +26,22 @@ from app.schemas.ai import (
     RawMedicalRecord,
     RawVisitData,
     ScaleFunction,
-    StandardizedMedicalRecord,
     StandardizedBiomarker,
-    StandardizedVisitData,
+    StandardizedMedicalRecord,
     StandardizedPrescription,
+    StandardizedVisitData,
     TranslatedText,
-    UnitTranslation,
     UnitTranslationBatch,
 )
-from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
+from app.services import converters
+from app.services.reference import (
+    _ABSENT_CANONICAL,
+    compute_status,
+    merge_reference,
+    normalize_qual,
+    parse_reference,
+    parse_value,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -270,10 +268,7 @@ def _llm_conversion_factor(
             max_tokens=200,
         )
         content = chat_response.choices[0].message.content
-        if isinstance(content, str):
-            cf = ConversionFactor(**json.loads(content))
-        else:
-            cf = content
+        cf = ConversionFactor(**json.loads(content)) if isinstance(content, str) else content
         factor = cf.factor if cf.convertible else None
     except Exception as e:
         logger.warning("LLM conversion factor failed (%s %s->%s): %s", analyte, from_unit, to_unit, e)
@@ -374,10 +369,7 @@ def _common_biomarker_guide(
         (d for d in definitions if d.scope == "global" and d.common_rank),
         key=lambda d: d.common_rank,
     )
-    out = []
-    for d in ranked[:limit]:
-        out.append(f'{d.loinc_code}: {d.names.get("en", d.id)}')
-    return out
+    return [f'{d.loinc_code}: {d.names.get("en", d.id)}' for d in ranked[:limit]]
 
 
 def deterministic_match(
@@ -416,7 +408,7 @@ def fuzzy_match(
         key = _normalize_name(candidate or "")
         if not key:
             continue
-        for matched_key, wr, _ in process.extract(
+        for matched_key, _wr, _ in process.extract(
             key, keys, scorer=fuzz.WRatio, limit=15, score_cutoff=score_cutoff
         ):
             if len(matched_key) < MIN_FUZZY_KEY_LEN and matched_key != key:
@@ -469,7 +461,7 @@ def _candidates_for(
         key = _normalize_name(candidate or "")
         if not key:
             continue
-        for match_key, score, _idx in process.extract(
+        for match_key, _score, _idx in process.extract(
             key, keys, scorer=fuzz.WRatio, limit=limit, score_cutoff=score_cutoff
         ):
             defn = index[match_key]
@@ -803,10 +795,7 @@ def _translate_names_batch(
 
     content = chat_response.choices[0].message.content
     try:
-        if isinstance(content, str):
-            parsed = LoincGuessBatch(**json.loads(content))
-        else:
-            parsed = content
+        parsed = LoincGuessBatch(**json.loads(content)) if isinstance(content, str) else content
     except (json.JSONDecodeError, Exception) as e:
         logger.error("Failed to parse translation response: %s", e)
         return {}
@@ -1050,7 +1039,7 @@ def _translate_units_batch(
 
     result: dict[str, dict] = {}
     cache = _local_cache(_unit_translation_cache)
-    for g, (raw_unit, meta) in zip(parsed.translations, needed.items()):
+    for g, (raw_unit, _meta) in zip(parsed.translations, needed.items()):
         unit = (g.unit or "").strip()
         inferred = bool(g.inferred)
         kind = (g.kind or "linear").strip().lower() or "linear"
@@ -1150,10 +1139,7 @@ def _llm_scale_function(
             max_tokens=200,
         )
         content = chat_response.choices[0].message.content
-        if isinstance(content, str):
-            sf = ScaleFunction(**json.loads(content))
-        else:
-            sf = content
+        sf = ScaleFunction(**json.loads(content)) if isinstance(content, str) else content
         fn = (sf.function or "").strip()
     except Exception as e:
         logger.warning(
@@ -1255,7 +1241,7 @@ def _load_multilingual_lookup() -> dict[str, str]:
     except Exception:
         return {}
     lookup: dict[str, str] = {}
-    for _lang, mapping in data.items():
+    for mapping in data.values():
         for name, code in mapping.items():
             lookup[name.strip().lower()] = code
             # Also index a punctuation-normalized variant so OCR noise like
@@ -1466,7 +1452,7 @@ def _guess_is_consistent(
     if not en:
         return True
     def_name = defn.names.get("en", "") or ""
-    names = [def_name] + list(defn.synonyms or [])
+    names = [def_name, *list(defn.synonyms or [])]
     best = max(
         (fuzz.WRatio(_normalize_name(en), _normalize_name(n)) for n in names if n),
         default=0,

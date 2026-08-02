@@ -4,6 +4,8 @@ live LLM matching steps (client=None), so it exercises only the deterministic
 matching path (multilingual table + fuzzy + LOINC promotion). This isolates
 matcher/data correctness from LLM nondeterminism and API availability.
 """
+# ruff: noqa: E402 -- load_dotenv() must run before importing app.db.session,
+# which reads DATABASE_URL from the environment at import time.
 import json
 import os
 import sys
@@ -13,9 +15,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app.db.session import SessionLocal
-from app.db import models
+from app.schemas.ai import RawBiomarker, RawMedicalRecord
 from app.services.matcher import match_and_convert
-from app.schemas.ai import RawMedicalRecord, RawBiomarker
 from e2e.compare import compare_standardized
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -39,17 +40,16 @@ def main():
     db = SessionLocal()
     total_fail = 0
     for name, golden in _load_cases():
-        bm = []
-        for b in golden.get("biomarkers", []):
-            bm.append(
-                RawBiomarker(
-                    name=b["raw_name"],
-                    value=b.get("raw_value", ""),
-                    unit=b.get("raw_unit", ""),
-                    raw_range_string=b.get("raw_range_string", ""),
-                    category=b.get("category"),
-                )
+        bm = [
+            RawBiomarker(
+                name=b["raw_name"],
+                value=b.get("raw_value", ""),
+                unit=b.get("raw_unit", ""),
+                raw_range_string=b.get("raw_range_string", ""),
+                category=b.get("category"),
             )
+            for b in golden.get("biomarkers", [])
+        ]
         raw = RawMedicalRecord(
             entry_type=golden.get("entry_type", "blood_test"),
             date=golden.get("date", ""),

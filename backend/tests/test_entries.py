@@ -1,5 +1,4 @@
 import json
-import pytest
 
 from tests.seed_data import TEST_USER_ID
 
@@ -353,7 +352,7 @@ class TestDeleteEntry:
     async def test_delete_404_for_other_users_entry(self, client, db_session):
         # given — create a second user and an entry that belongs to them
         from app.auth import create_user
-        from app.db.models import MedicalEntry, Patient
+        from app.db.models import MedicalEntry
         other = create_user(
             db_session,
             "other@example.com",
@@ -426,9 +425,7 @@ class TestDeleteEntry:
     async def test_delete_removes_attachment_files_from_disk(self, client, db_session, tmp_path, monkeypatch):
         """End-to-end: upload → assert file on disk → delete → assert file gone,
         and confirm the storage counter was decremented by the file's actual size."""
-        from app.db.models import UsageLimit
         from app.db.models import MedicalEntry
-        from app.api.entries import UPLOAD_DIR
         from tests.seed_data import TEST_USER_ID
 
         # Redirect uploads to a clean temp dir for this test
@@ -484,9 +481,8 @@ class TestDeleteEntry:
         """Regression: the anon→user migration duplicates the attachment row
         so two entries can share one file_path. Deleting one must not unlink
         the file or refund the quota."""
-        from app.db.models import Attachment, MedicalEntry, UsageLimit
+        from app.db.models import Attachment, MedicalEntry
         from app.services.usage_limits import get_limits
-        from app.api.entries import UPLOAD_DIR
         from tests.seed_data import TEST_USER_ID
 
         test_dir = str(tmp_path / "uploads_for_shared")
@@ -597,7 +593,7 @@ class TestDeleteEntry:
         # by 1024 bytes. (Belt-and-suspenders: keeps the counter honest when
         # attachments were lost out-of-band.)
         assert body["freed_bytes"] == 0
-        after = get_limits(db_session, TEST_USER_ID, False)["total_upload_size_bytes"]
+        get_limits(db_session, TEST_USER_ID, False)["total_upload_size_bytes"]
 
         # Cleanup: roll back the artifact UsageLimit we may have created earlier
         # in this test so other tests aren't affected.
@@ -977,9 +973,8 @@ class TestMergeEntry:
     async def test_merge_title_falls_back_to_document_filename(self, client, db_session, tmp_path, monkeypatch):
         """A blank merged title defaults to the uploaded document's filename
         (sans extension) so the merged section header stays descriptive."""
-        from app.db.models import BiomarkerReading
-
         from app.api import entries as entries_module
+        from app.db.models import BiomarkerReading
 
         # Route uploads to a temp dir so the test leaves no stray files.
         monkeypatch.setattr(entries_module, "UPLOAD_DIR", str(tmp_path))
@@ -1015,9 +1010,8 @@ class TestMergeEntry:
 
     async def test_merge_explicit_title_wins_over_filename(self, client, db_session, tmp_path, monkeypatch):
         """An explicitly typed title is kept even when a document is attached."""
-        from app.db.models import BiomarkerReading
-
         from app.api import entries as entries_module
+        from app.db.models import BiomarkerReading
 
         monkeypatch.setattr(entries_module, "UPLOAD_DIR", str(tmp_path))
         target_id = await self._create_target(client)
@@ -1051,8 +1045,8 @@ class TestMergeEntry:
         assert resp.status_code == 404
 
     async def test_merge_other_users_entry_404(self, client, db_session):
-        from app.db.models import MedicalEntry
         from app.auth import create_user
+        from app.db.models import MedicalEntry
 
         other = create_user(
             db_session, "merge-other@example.com", "otherpassword123", "Other", "1995-05-05", "Other"
@@ -1134,7 +1128,6 @@ class TestMergeEntry:
 
     async def test_merge_attaches_document_and_charges_quota(self, client, db_session, tmp_path, monkeypatch):
         from app.db.models import Attachment
-        from app.api.entries import UPLOAD_DIR
         from app.services.usage_limits import get_limits
 
         test_dir = str(tmp_path / "uploads_for_merge")
@@ -1168,7 +1161,6 @@ class TestMergeEntry:
     async def test_merge_multiple_documents_on_one_entry(self, client, db_session, tmp_path, monkeypatch):
         """Two merges with files attach both — attachment ids must be unique."""
         from app.db.models import Attachment
-        from app.api.entries import UPLOAD_DIR
 
         test_dir = str(tmp_path / "uploads_for_merge2")
         import os
