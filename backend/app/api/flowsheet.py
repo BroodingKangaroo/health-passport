@@ -1,7 +1,7 @@
 from collections import Counter
 from typing import Optional, Tuple
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 import logging
 
@@ -12,7 +12,10 @@ from app.schemas import (
     MatrixRow,
     MatrixCell,
     BiomarkerResult,
-    BiomarkerDefinition as BiomarkerDefinitionSchema,
+)
+from app.api._serializers import (
+    lookup_definition,
+    result_schema,
 )
 from app.db.session import get_db
 from app.db.models import (
@@ -40,6 +43,25 @@ def _build_flowsheet(db: Session, patient_id: str):
         .all()
     )
 
+    date_headers = _build_date_headers(blood_tests)
+
+    biomarker_readings_map: dict[str, dict[str, BiomarkerReading]] = {}
+    for bt in blood_tests:
+        readings = (
+            db.query(BiomarkerReading)
+            .filter(BiomarkerReading.entry_id == bt.id)
+            .all()
+        )
+        biomarker_readings_map[bt.id] = {r.biomarker_id: r for r in readings}
+
+    defn_by_id, defn_by_loinc = _resolve_flowsheet_definitions(db, patient_id, biomarker_readings_map)
+    matrix = _build_matrix(blood_tests, biomarker_readings_map, defn_by_id, defn_by_loinc)
+    biomarkers = _build_biomarker_rows(blood_tests, biomarker_readings_map, defn_by_id, defn_by_loinc)
+
+    return date_headers, matrix, biomarkers
+
+
+def _build_date_headers(blood_tests) -> list[DateHeader]:
     headers = [flowsheet_date_header(e.date) for e in blood_tests]
     header_labels = [h[0] for h in headers]
     label_counts = Counter(header_labels)
@@ -54,30 +76,26 @@ def _build_flowsheet(db: Session, patient_id: str):
                 seen[label] = seen.get(label, 0) + 1
                 label = f"{label} (#{seen[label]})"
         date_headers.append(DateHeader(label=label, sub=sub))
+    return date_headers
 
+
+def _resolve_flowsheet_definitions(
+    db: Session,
+    patient_id: str,
+    biomarker_readings_map: dict[str, dict[str, BiomarkerReading]],
+) -> tuple[dict, dict]:
+    """All definitions visible to the user, merged with the definitions that a
+    reading references (by id OR LOINC code, regardless of owner) so a reading
+    is never silently dropped."""
     all_defns = db.query(BiomarkerDefinitionModel).filter(
         (BiomarkerDefinitionModel.scope == "global")
         | (BiomarkerDefinitionModel.user_id == patient_id)
         | (BiomarkerDefinitionModel.user_id.is_(None))
     ).all()
 
-    biomarker_readings_map: dict[str, dict[str, BiomarkerReading]] = {}
-    for bt in blood_tests:
-        readings = (
-            db.query(BiomarkerReading)
-            .filter(BiomarkerReading.entry_id == bt.id)
-            .all()
-        )
-        biomarker_readings_map[bt.id] = {r.biomarker_id: r for r in readings}
-
-    # A reading's biomarker_id may be a LOINC code (legacy ingestion) or may
-    # reference a definition owned by another user (shared local catalog entry).
-    # Resolve definitions by id AND by LOINC code, fetching any referenced
-    # definition regardless of owner so the reading is never silently dropped.
     referenced_ids = set()
     for readings in biomarker_readings_map.values():
         referenced_ids.update(readings.keys())
-
     referenced_defns = db.query(BiomarkerDefinitionModel).filter(
         (BiomarkerDefinitionModel.id.in_(referenced_ids))
         | (BiomarkerDefinitionModel.loinc_code.in_(referenced_ids))
@@ -87,14 +105,25 @@ def _build_flowsheet(db: Session, patient_id: str):
     for d in referenced_defns:
         defn_by_id.setdefault(d.id, d)
     defn_by_loinc = {d.loinc_code: d for d in defn_by_id.values() if d.loinc_code}
+    return defn_by_id, defn_by_loinc
 
-    all_def_ids = set()
+
+def _all_referenced_ids(biomarker_readings_map: dict[str, dict[str, BiomarkerReading]]) -> set[str]:
+    all_def_ids: set[str] = set()
     for readings in biomarker_readings_map.values():
         all_def_ids.update(readings.keys())
+    return all_def_ids
 
+
+def _build_matrix(
+    blood_tests,
+    biomarker_readings_map: dict[str, dict[str, BiomarkerReading]],
+    defn_by_id: dict,
+    defn_by_loinc: dict,
+) -> list[MatrixCategory]:
     cat_rows: dict[str, list[MatrixRow]] = {}
-    for def_id in all_def_ids:
-        defn = defn_by_id.get(def_id) or defn_by_loinc.get(def_id)
+    for def_id in _all_referenced_ids(biomarker_readings_map):
+        defn = lookup_definition(defn_by_id, defn_by_loinc, def_id)
         if not defn:
             logger.warning("Skipping flowsheet reading with unresolvable biomarker_id=%r", def_id)
             continue
@@ -102,23 +131,11 @@ def _build_flowsheet(db: Session, patient_id: str):
         # Use the def's canonical English unit + kind for the column header so
         # the flowsheet is consistent across entries (the first-seen canonical
         # wins, even when later entries use a different unit / scale).
-        canonical_unit = getattr(defn, "canonical_unit", None) or defn.unit
-        canonical_kind = getattr(defn, "canonical_kind", None) or "linear"
-        canonical_unit_inferred = bool(getattr(defn, "canonical_unit_inferred", False))
-        cells = []
-        for bt in blood_tests:
-            reading = biomarker_readings_map.get(bt.id, {}).get(def_id)
-            if reading is not None:
-                rv = reading_value(reading)
-                cells.append(MatrixCell(
-                    value=str(rv) if rv is not None else "—",
-                    status=reading.status,
-                    scale_function=getattr(reading, "scale_function", None),
-                    needs_review=bool(getattr(reading, "needs_review", False)),
-                    merged=bool(getattr(reading, "merged", False)),
-                ))
-            else:
-                cells.append(MatrixCell(value="—", status="normal"))
+        canonical_unit = defn.canonical_unit or defn.unit
+        cells = [
+            _matrix_cell(def_id, bt.id, biomarker_readings_map)
+            for bt in blood_tests
+        ]
         first_reading = next(
             (bt_readings.get(def_id) for bt_readings in biomarker_readings_map.values() if def_id in bt_readings),
             None,
@@ -131,7 +148,7 @@ def _build_flowsheet(db: Session, patient_id: str):
             original=original_name,
             unit=canonical_unit,
             reference=first_ref,
-            canonical_unit_inferred=canonical_unit_inferred,
+            canonical_unit_inferred=bool(defn.canonical_unit_inferred),
             cells=cells,
         ))
 
@@ -151,50 +168,53 @@ def _build_flowsheet(db: Session, patient_id: str):
     for cat in sorted(cat_rows):
         rows = sorted(cat_rows[cat], key=lambda r: r.name.lower())
         matrix.append(MatrixCategory(category=cat, rows=rows))
+    return matrix
 
+
+def _matrix_cell(
+    def_id: str,
+    entry_id: str,
+    biomarker_readings_map: dict[str, dict[str, BiomarkerReading]],
+) -> MatrixCell:
+    reading = biomarker_readings_map.get(entry_id, {}).get(def_id)
+    if reading is None:
+        return MatrixCell(value="—", status="normal")
+    rv = reading_value(reading)
+    return MatrixCell(
+        value=str(rv) if rv is not None else "—",
+        status=reading.status,
+        scale_function=reading.scale_function,
+        needs_review=bool(reading.needs_review),
+        merged=bool(reading.merged),
+    )
+
+
+def _build_biomarker_rows(
+    blood_tests,
+    biomarker_readings_map: dict[str, dict[str, BiomarkerReading]],
+    defn_by_id: dict,
+    defn_by_loinc: dict,
+) -> list[BiomarkerResult]:
     biomarkers = []
     for bt in blood_tests:
         readings = biomarker_readings_map.get(bt.id, {})
         for def_id, reading in readings.items():
-            defn = defn_by_id.get(def_id) or defn_by_loinc.get(def_id)
+            defn = lookup_definition(defn_by_id, defn_by_loinc, def_id)
             if not defn:
                 logger.warning("Skipping flowsheet reading with unresolvable biomarker_id=%r", def_id)
                 continue
             label = short_date_label(bt.date).lower().replace(" ", "-")
-            biomarkers.append(BiomarkerResult(
+            biomarkers.append(result_schema(
                 id=f"{def_id}-{label}",
-                definition=BiomarkerDefinitionSchema(
-                    id=defn.id,
-                    loinc_code=defn.loinc_code,
-                    names=defn.names,
-                    synonyms=defn.synonyms or [],
-                    category=defn.category,
-                    reference=defn.reference,
-                    unit=getattr(defn, "canonical_unit", None) or defn.unit,
-                    scope=defn.scope,
-                    user_id=defn.user_id,
-                    reference_source=defn.reference_source,
-                    canonical_unit=getattr(defn, "canonical_unit", None),
-                    canonical_kind=getattr(defn, "canonical_kind", None),
-                    canonical_unit_inferred=bool(getattr(defn, "canonical_unit_inferred", False)),
-                ),
-                value=reading_value(reading),
-                date=bt.date.isoformat(),
-                status=reading.status,
-                reference=effective_reference(reading, defn),
-                original_name=reading.original_name or "",
-                original_value=reading.original_value or "",
-                original_unit=reading.original_unit or "",
-                original_range=reading.original_range or "",
+                defn=defn,
+                reading=reading,
+                date_label=bt.date.isoformat(),
             ))
-
-    return date_headers, matrix, biomarkers
+    return biomarkers
 
 
 @router.get("/api/flowsheet", response_model=FlowsheetResponse)
 async def get_flowsheet(
-    request: Request,
-    response: Response,
     db: Session = Depends(get_db),
     user_data: Tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon)
 ):

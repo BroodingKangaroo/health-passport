@@ -4,11 +4,16 @@ import re
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from sqlalchemy.orm import Session
 
-from app.api._format import reading_value, effective_reference
+from app.api._serializers import (
+    is_loinc,
+    lookup_definition,
+    reading_merged_source,
+    reading_schema,
+    resolve_definitions,
+    result_schema,
+)
 
 logger = logging.getLogger(__name__)
-
-_LOINC_RE = re.compile(r"^\d+-\d+(\.\d+)?$")
 
 # Flowsheet composite ids look like "{biomarker_id}-{month}-{day}" (e.g.
 # "713-8-may-26"), where the suffix is short_date_label() lowercased. Used to
@@ -17,21 +22,15 @@ _FLOW_SHEET_LABEL_RE = re.compile(
     r"-(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)-\d{1,2}$"
 )
 
-
-def _is_loinc(code: Optional[str]) -> bool:
-    return bool(code) and bool(_LOINC_RE.match(code))
-
 from app.schemas import (
     TimelineResponse,
     MedicalEvent,
     BiomarkerResult,
-    BiomarkerDefinition as BiomarkerDefinitionSchema,
     VisitData,
     VisitNote,
     Prescription,
     Attachment as AttachmentSchema,
     Reading,
-    MergedSource,
 )
 from app.db.session import get_db
 from app.db.models import (
@@ -39,7 +38,6 @@ from app.db.models import (
     BiomarkerDefinition as BiomarkerDefinitionModel,
     BiomarkerReading,
     VisitData as VisitDataModel,
-    Attachment as AttachmentModel,
     Patient,
 )
 from app.api.auth import get_current_user_or_anon
@@ -74,6 +72,45 @@ def _events_from_db(db: Session, patient_id: str):
     ]
 
 
+def _readings_query(db: Session, patient_id: str, biomarker_id: str):
+    """All readings of a biomarker across the patient's blood tests, oldest first."""
+    return (
+        db.query(BiomarkerReading, MedicalEntryModel.date)
+        .join(MedicalEntryModel, BiomarkerReading.entry_id == MedicalEntryModel.id)
+        .filter(
+            BiomarkerReading.biomarker_id == biomarker_id,
+            MedicalEntryModel.type == "blood_test",
+            MedicalEntryModel.patient_id == patient_id,
+        )
+        .order_by(MedicalEntryModel.date)
+        .all()
+    )
+
+
+def _history_from_query(query, defn) -> list[Reading]:
+    return [
+        reading_schema(r, defn, date.isoformat())
+        for r, date in query[:-1]
+    ]
+
+
+def _result_from_query(
+    biomarker_id: str,
+    defn: BiomarkerDefinitionModel,
+    query,
+) -> BiomarkerResult:
+    latest_reading, latest_date = query[-1]
+    return result_schema(
+        id=biomarker_id,
+        defn=defn,
+        reading=latest_reading,
+        date_label=latest_date.isoformat(),
+        history=_history_from_query(query, defn),
+        merged=bool(latest_reading.merged),
+        merged_source=reading_merged_source(latest_reading),
+    )
+
+
 def _biomarkers_from_db(db: Session, patient_id: str):
     blood_tests = (
         db.query(MedicalEntryModel)
@@ -88,9 +125,7 @@ def _biomarkers_from_db(db: Session, patient_id: str):
         return []
 
     all_biomarker_ids: set[str] = set()
-    entry_map: dict[str, MedicalEntryModel] = {}
     for bt in blood_tests:
-        entry_map[bt.id] = bt
         readings = (
             db.query(BiomarkerReading)
             .filter(BiomarkerReading.entry_id == bt.id)
@@ -98,100 +133,21 @@ def _biomarkers_from_db(db: Session, patient_id: str):
         )
         all_biomarker_ids.update(r.biomarker_id for r in readings)
 
-    referenced_defns = (
-        db.query(BiomarkerDefinitionModel)
-        .filter(
-            (BiomarkerDefinitionModel.id.in_(all_biomarker_ids))
-            | (BiomarkerDefinitionModel.loinc_code.in_(all_biomarker_ids))
-        )
-        .all()
-    )
-    defn_by_id = {d.id: d for d in referenced_defns}
-    defn_by_loinc = {d.loinc_code: d for d in referenced_defns if d.loinc_code}
+    defn_by_id, defn_by_loinc = resolve_definitions(db, all_biomarker_ids)
 
     results = []
     for bid in sorted(all_biomarker_ids):
-        defn = defn_by_id.get(bid) or defn_by_loinc.get(bid)
+        defn = lookup_definition(defn_by_id, defn_by_loinc, bid)
         if not defn:
             logger.warning("Skipping timeline biomarker with unresolvable id=%r", bid)
             continue
 
-        readings_query = (
-            db.query(BiomarkerReading, MedicalEntryModel.date)
-            .join(MedicalEntryModel, BiomarkerReading.entry_id == MedicalEntryModel.id)
-            .filter(
-                BiomarkerReading.biomarker_id == bid,
-                MedicalEntryModel.type == "blood_test",
-                MedicalEntryModel.patient_id == patient_id,
-            )
-            .order_by(MedicalEntryModel.date)
-            .all()
-        )
-
+        readings_query = _readings_query(db, patient_id, bid)
         if not readings_query:
             continue
 
-        latest_reading, latest_date = readings_query[-1]
-        history = [
-            Reading(
-                date=date.isoformat(), value=reading_value(r), status=r.status,
-                reference=effective_reference(r, defn),
-                original_name=r.original_name or "",
-                original_value=r.original_value or "",
-                original_unit=r.original_unit or "",
-                original_range=r.original_range or "",
-                scale_function=getattr(r, "scale_function", None),
-                needs_review=bool(getattr(r, "needs_review", False)),
-                merged=bool(getattr(r, "merged", False)),
-                merged_source=_reading_merged_source(r),
-            )
-            for r, date in readings_query[:-1]
-        ]
-
-        results.append(BiomarkerResult(
-            id=bid,
-            definition=BiomarkerDefinitionSchema(
-                id=defn.id,
-                loinc_code=defn.loinc_code,
-                names=defn.names,
-                synonyms=defn.synonyms or [],
-                category=defn.category,
-                reference=defn.reference,
-                unit=getattr(defn, "canonical_unit", None) or defn.unit,
-                scope=defn.scope,
-                user_id=defn.user_id,
-                reference_source=defn.reference_source,
-                canonical_unit=getattr(defn, "canonical_unit", None),
-                canonical_kind=getattr(defn, "canonical_kind", None),
-                canonical_unit_inferred=bool(getattr(defn, "canonical_unit_inferred", False)),
-            ),
-            value=reading_value(latest_reading),
-            date=latest_date.isoformat(),
-            status=latest_reading.status,
-            history=history,
-            reference=effective_reference(latest_reading, defn),
-            original_name=latest_reading.original_name or "",
-            original_value=latest_reading.original_value or "",
-            original_unit=latest_reading.original_unit or "",
-            original_range=latest_reading.original_range or "",
-            merged=bool(getattr(latest_reading, "merged", False)),
-            merged_source=_reading_merged_source(latest_reading),
-        ))
+        results.append(_result_from_query(bid, defn, readings_query))
     return results
-
-
-def _reading_merged_source(r) -> Optional[MergedSource]:
-    """Build the MergedSource snapshot from a reading's stored merged_source
-    JSON dict (None for original readings)."""
-    src = getattr(r, "merged_source", None)
-    if not src or not isinstance(src, dict):
-        return None
-    return MergedSource(
-        title=src.get("title") or None,
-        clinic=src.get("clinic") or None,
-        provider=src.get("provider") or None,
-        time=src.get("time") or None,
-    )
 
 
 def _ensure_tx(val, default="") -> dict:
@@ -296,95 +252,48 @@ async def get_biomarker_detail(
     # The flowsheet passes composite ids of the form "{biomarker_id}-{date-label}"
     # (e.g. "713-8-may-26", "local-774a579f1f27-may-26"). Recover the underlying
     # definition id so flowsheet and timeline callers resolve to the same analyte.
+    base_id, defn = _resolve_biomarker_base_id(db, biomarker_id)
+    if defn is None:
+        raise HTTPException(status_code=404, detail=f"Biomarker '{biomarker_id}' not found")
+
+    readings_query = _readings_query(db, user_id, base_id)
+    if not readings_query:
+        raise HTTPException(status_code=404, detail=f"Biomarker '{biomarker_id}' not found")
+
+    return _result_from_query(base_id, defn, readings_query)
+
+
+def _resolve_biomarker_base_id(
+    db: Session, biomarker_id: str
+) -> Tuple[str, Optional[BiomarkerDefinitionModel]]:
+    """Resolve a timeline or flowsheet-style biomarker id back to the underlying
+    definition. Handles plain ids, legacy LOINC codes, and the
+    "{biomarker_id}-{month}-{day}" composites the flowsheet emits."""
     base_id = biomarker_id
-    defn = (
-        db.query(BiomarkerDefinitionModel)
-        .filter(BiomarkerDefinitionModel.id == base_id)
-        .first()
-    )
-    if not defn and _is_loinc(base_id):
-        defn = (
-            db.query(BiomarkerDefinitionModel)
-            .filter(BiomarkerDefinitionModel.loinc_code == base_id)
-            .first()
-        )
+    defn = _find_definition_by_id_or_loinc(db, base_id)
     if not defn:
         stripped = _FLOW_SHEET_LABEL_RE.sub("", base_id)
         if stripped != base_id:
             base_id = stripped
-            defn = (
-                db.query(BiomarkerDefinitionModel)
-                .filter(BiomarkerDefinitionModel.id == base_id)
-                .first()
-            )
-            if not defn and _is_loinc(base_id):
-                defn = (
-                    db.query(BiomarkerDefinitionModel)
-                    .filter(BiomarkerDefinitionModel.loinc_code == base_id)
-                    .first()
-                )
-    if not defn:
-        raise HTTPException(status_code=404, detail=f"Biomarker '{biomarker_id}' not found")
+            defn = _find_definition_by_id_or_loinc(db, base_id)
+    return base_id, defn
 
-    readings_query = (
-        db.query(BiomarkerReading, MedicalEntryModel.date)
-        .join(MedicalEntryModel, BiomarkerReading.entry_id == MedicalEntryModel.id)
-        .filter(
-            BiomarkerReading.biomarker_id == base_id,
-            MedicalEntryModel.type == "blood_test",
-            MedicalEntryModel.patient_id == user_id,
-        )
-        .order_by(MedicalEntryModel.date)
-        .all()
-    )
-    if not readings_query:
-        raise HTTPException(status_code=404, detail=f"Biomarker '{biomarker_id}' not found")
 
-    latest_reading, latest_date = readings_query[-1]
-    history = [
-        Reading(
-            date=date.isoformat(), value=reading_value(r), status=r.status,
-            reference=effective_reference(r, defn),
-            original_name=r.original_name or "",
-            original_value=r.original_value or "",
-            original_unit=r.original_unit or "",
-            original_range=r.original_range or "",
-            scale_function=getattr(r, "scale_function", None),
-            needs_review=bool(getattr(r, "needs_review", False)),
-            merged=bool(getattr(r, "merged", False)),
-            merged_source=_reading_merged_source(r),
-        )
-        for r, date in readings_query[:-1]
-    ]
-    return BiomarkerResult(
-        id=base_id,
-        definition=BiomarkerDefinitionSchema(
-            id=defn.id,
-            loinc_code=defn.loinc_code,
-            names=defn.names,
-            synonyms=defn.synonyms or [],
-            category=defn.category,
-            reference=defn.reference,
-            unit=getattr(defn, "canonical_unit", None) or defn.unit,
-            scope=defn.scope,
-            user_id=defn.user_id,
-            reference_source=defn.reference_source,
-            canonical_unit=getattr(defn, "canonical_unit", None),
-            canonical_kind=getattr(defn, "canonical_kind", None),
-            canonical_unit_inferred=bool(getattr(defn, "canonical_unit_inferred", False)),
-        ),
-        value=reading_value(latest_reading),
-        date=latest_date.isoformat(),
-        status=latest_reading.status,
-        history=history,
-        reference=effective_reference(latest_reading, defn),
-        original_name=latest_reading.original_name or "",
-        original_value=latest_reading.original_value or "",
-        original_unit=latest_reading.original_unit or "",
-        original_range=latest_reading.original_range or "",
-        merged=bool(getattr(latest_reading, "merged", False)),
-        merged_source=_reading_merged_source(latest_reading),
+def _find_definition_by_id_or_loinc(
+    db: Session, identifier: str
+) -> Optional[BiomarkerDefinitionModel]:
+    defn = (
+        db.query(BiomarkerDefinitionModel)
+        .filter(BiomarkerDefinitionModel.id == identifier)
+        .first()
     )
+    if not defn and is_loinc(identifier):
+        defn = (
+            db.query(BiomarkerDefinitionModel)
+            .filter(BiomarkerDefinitionModel.loinc_code == identifier)
+            .first()
+        )
+    return defn
 
 
 @router.get("/api/visit-data/{event_id}", response_model=VisitData)

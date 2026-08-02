@@ -10,6 +10,8 @@ import {
   YAxis,
   ReferenceArea,
   Tooltip,
+  type TooltipContentProps,
+  type XAxisTickContentProps,
 } from 'recharts'
 
 import { cn, splitDateLabel } from '@/lib/utils'
@@ -31,20 +33,31 @@ const CLINICAL_PALETTE = [
   '#6366f1',
 ]
 
-function CustomTooltip({ active, payload, label, biomarkers }: any) {
+function CustomTooltip({
+  active,
+  payload,
+  label,
+  biomarkers,
+}: Partial<TooltipContentProps> & { biomarkers: BiomarkerResult[] }) {
   if (active && payload && payload.length) {
-    const { label: mainLabel, sub } = splitDateLabel(label)
+    const labelText = typeof label === 'string' ? label : String(label ?? '')
+    const { label: mainLabel, sub } = splitDateLabel(labelText)
+    const visible = payload.filter((entry) => {
+      if (typeof entry.dataKey !== 'string') return false
+      return !entry.dataKey.startsWith('dash_')
+    })
     return (
       <div className="rounded-md border border-border bg-white p-3 shadow-lg">
         <p className="text-sm font-semibold">{mainLabel}</p>
         {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
-        {payload.filter((entry: any) => !entry.dataKey.startsWith('dash_')).map((entry: any) => {
-          const name = entry.dataKey.replace('norm_', '')
+        {visible.map((entry) => {
+          const dataKey = String(entry.dataKey)
+          const name = dataKey.replace('norm_', '')
           const raw = entry.payload[`raw_${name}`]
           const b = biomarkers.find((x: BiomarkerResult) => x.id === name)
           return (
             <div
-              key={entry.dataKey}
+              key={dataKey}
               className="flex items-center gap-2 text-sm"
               style={{ color: entry.color }}
             >
@@ -241,10 +254,10 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
                   tickLine={false}
                   axisLine={{ stroke: '#d4d4d8' }}
                   padding={{ left: 20, right: 20 }}
-                  tick={({ x, y, payload }: any) => {
-                    const { label, sub } = splitDateLabel(payload.value)
+                  tick={(tickProps: XAxisTickContentProps) => {
+                    const { label, sub } = splitDateLabel(String(tickProps.payload.value))
                     return (
-                      <g transform={`translate(${x},${y})`}>
+                      <g transform={`translate(${tickProps.x},${tickProps.y})`}>
                         <text x={0} y={0} dy={12} textAnchor="middle" fill="#71717a" fontSize={11}>
                           {label}
                         </text>

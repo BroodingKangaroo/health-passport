@@ -7,6 +7,18 @@ import type {
   StandardizedMedicalRecord,
   ProgressEventPayload,
   EntriesByDateResponse,
+  ExtractedVisitData,
+  FormCategory,
+  DeleteEntryResponse,
+  UsageLimits,
+  CurrentUser,
+} from '@/lib/types'
+
+// Re-exported for callers that historically imported these from the api module.
+export type {
+  DeleteEntryResponse,
+  UsageLimits,
+  CurrentUser,
 } from '@/lib/types'
 import { getAccessToken } from '@/lib/auth-token'
 
@@ -196,6 +208,42 @@ export async function extractMedicalData(
 }
 
 /* ----- Save Entry ----- */
+export interface SaveEntryFormData {
+  type: string
+  date: string
+  time: string
+  clinic: string
+  provider: string
+  title: string
+  notes: string
+  biomarkers: FormCategory[]
+  visit_data?: ExtractedVisitData | null
+  file?: File | null
+}
+
+/**
+ * Build the multipart FormData shared by POST /entry and /entry/{id}/merge.
+ * Kept here so the exact wire shape lives next to the endpoints that consume it.
+ */
+export function buildSaveEntryFormData(f: SaveEntryFormData): FormData {
+  const fd = new FormData()
+  fd.append('type', f.type)
+  fd.append('date', f.date)
+  fd.append('time', f.time)
+  fd.append('clinic', f.clinic)
+  fd.append('provider', f.provider)
+  fd.append('title', f.title)
+  fd.append('notes', f.notes)
+  fd.append('biomarkers', JSON.stringify(f.biomarkers))
+  if (f.visit_data) {
+    fd.append('visit_data', JSON.stringify(f.visit_data))
+  }
+  if (f.file) {
+    fd.append('file', f.file)
+  }
+  return fd
+}
+
 export async function saveMedicalEntry(formData: FormData): Promise<SaveEntryResponse> {
   const res = await fetch(`${API_BASE}/entry`, {
     method: 'POST',
@@ -236,13 +284,6 @@ export async function mergeMedicalEntry(
 }
 
 /* ----- Delete Entry ----- */
-export interface DeleteEntryResponse {
-  success: boolean
-  id: string
-  deleted_visit_data: boolean
-  freed_bytes: number
-}
-
 export async function deleteEntry(id: string): Promise<DeleteEntryResponse> {
   const res = await fetch(`${API_BASE}/entry/${encodeURIComponent(id)}`, {
     method: 'DELETE',
@@ -257,26 +298,8 @@ export async function deleteEntry(id: string): Promise<DeleteEntryResponse> {
 }
 
 /* ----- Usage Limits ----- */
-export interface UsageLimits {
-  is_anonymous: boolean
-  ai_extraction_count: number
-  ai_extraction_limit: number
-  total_upload_size_bytes: number
-  total_upload_limit_bytes: number
-}
-
 export async function fetchUsageLimits(): Promise<UsageLimits> {
   return apiGet<UsageLimits>('/usage/limits')
-}
-
-/* ----- Current User (backend-verified auth state) ----- */
-export interface CurrentUser {
-  id: string
-  email: string
-  name: string
-  dob: string
-  gender: string
-  external_id: string
 }
 
 /**

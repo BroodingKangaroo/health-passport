@@ -12,7 +12,7 @@ from sqlalchemy import cast, func, or_, String, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.schemas import SaveEntryResponse, DeleteEntryResponse
+from app.schemas import SaveEntryResponse, DeleteEntryResponse, EntriesByDateResponse
 from app.db.session import get_db
 from app.db.models import (
     MedicalEntry as MedicalEntryModel,
@@ -22,11 +22,9 @@ from app.db.models import (
     VisitData as VisitDataModel,
     Patient,
 )
-from app.api._format import to_display_datetime, effective_reference
 from app.api.auth import get_current_user_or_anon
 from app.services.reference import compute_status, merge_reference, parse_value, normalize_qual
 from app.services.usage_limits import check_and_record_storage_usage
-from config import ANON_STORAGE_BYTES, REGISTERED_STORAGE_BYTES
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
@@ -229,6 +227,124 @@ def _create_reading_rows(
         ))
 
 
+def _build_visit_data_model(
+    entry_id: str,
+    vd: dict,
+    title: str,
+    provider: str,
+    entry_date: datetime,
+    clinic: str,
+) -> VisitDataModel:
+    """Translate the parsed visit_data JSON payload into a VisitDataModel row."""
+    diagnosis = vd.get("diagnosis", {})
+    chief_complaint = vd.get("chief_complaint", {})
+    objective_findings = vd.get("objective_findings", {})
+
+    def _get_tx(field, key):
+        val = field.get(key) if isinstance(field, dict) else field
+        return val if isinstance(val, str) else ""
+
+    notes = []
+    if chief_complaint.get("translated_en") or chief_complaint.get("original"):
+        notes.append({
+            "heading": "Chief Complaint & Subjective",
+            "text_original": chief_complaint.get("original", ""),
+            "text_translated": chief_complaint.get("translated_en", ""),
+        })
+    if objective_findings.get("translated_en") or objective_findings.get("original"):
+        notes.append({
+            "heading": "Objective Findings",
+            "text_original": objective_findings.get("original", ""),
+            "text_translated": objective_findings.get("translated_en", ""),
+        })
+
+    return VisitDataModel(
+        entry_id=entry_id,
+        specialty=title or "",
+        provider=provider or "",
+        date=entry_date,
+        clinic=clinic or "",
+        verdict={
+            "original": _get_tx(diagnosis, "original"),
+            "translated_en": _get_tx(diagnosis, "translated_en"),
+        },
+        notes=notes,
+        prescriptions=[
+            {
+                "id": i + 1,
+                "name": {
+                    "original": _get_tx(rx.get("name", {}), "original"),
+                    "translated_en": _get_tx(rx.get("name", {}), "translated_en"),
+                },
+                "dose": {
+                    "original": _get_tx(rx.get("dosage", {}), "original"),
+                    "translated_en": _get_tx(rx.get("dosage", {}), "translated_en"),
+                },
+                "instruction": {
+                    "original": _get_tx(rx.get("instructions", {}), "original"),
+                    "translated_en": _get_tx(rx.get("instructions", {}), "translated_en"),
+                },
+            }
+            for i, rx in enumerate(vd.get("prescriptions", []))
+        ],
+        recommendations=[
+            {
+                "text_original": _get_tx(r, "original"),
+                "text_translated": _get_tx(r, "translated_en"),
+            }
+            for r in vd.get("recommendations", [])
+        ],
+    )
+
+
+def _detect_merge_conflicts(db: Session, entry, specs: list[_ReadingSpec]) -> list[str]:
+    """Return the display names of biomarkers already present in the target
+    entry (by definition id OR LOINC code — a reading's biomarker_id may itself
+    be a LOINC code from legacy ingestion, so both identifier forms are treated
+    as equivalent). A non-empty result means the merge must be refused."""
+    existing_ids = {r.biomarker_id for r in entry.biomarker_readings}
+    existing_defns = (
+        db.query(BiomarkerDefinitionModel)
+        .filter(
+            (BiomarkerDefinitionModel.id.in_(existing_ids))
+            | (BiomarkerDefinitionModel.loinc_code.in_(existing_ids))
+        )
+        .all()
+    )
+    existing_keys = set(existing_ids)
+    for d in existing_defns:
+        existing_keys.add(d.id)
+        if d.loinc_code:
+            existing_keys.add(d.loinc_code)
+    conflicts = []
+    for spec in specs:
+        defn = spec.defn
+        if defn.id in existing_keys or (defn.loinc_code and defn.loinc_code in existing_keys):
+            conflicts.append(spec.row.get("name") or (defn.names or {}).get("en") or defn.id)
+    return conflicts
+
+
+def _merged_source_from(
+    title: str,
+    clinic: str,
+    provider: str,
+    time: str,
+    file: Optional[UploadFile],
+) -> Optional[dict]:
+    """Snapshot the merged upload's own metadata so the UI can describe the
+    second test the readings came from. Only non-empty fields are kept. When
+    the user left the title blank, fall back to the uploaded document's
+    filename (sans extension) — far more informative than a generic "Blood
+    Test Panel" placeholder."""
+    source_title = title.strip()
+    if not source_title and file and file.filename:
+        source_title = os.path.splitext(os.path.basename(file.filename))[0]
+    merged_source = {
+        "title": source_title, "clinic": clinic, "provider": provider, "time": time,
+    }
+    return {k: v for k, v in merged_source.items() if v} or None
+
+
 async def _save_attachment(
     db: Session,
     entry_id: str,
@@ -277,7 +393,7 @@ async def _save_attachment(
     return att
 
 
-@router.get("/api/entries/by-date")
+@router.get("/api/entries/by-date", response_model=EntriesByDateResponse)
 async def get_entries_by_date(
     request: Request,
     response: Response,
@@ -400,66 +516,7 @@ async def save_entry(
             raise HTTPException(status_code=400, detail=f"Invalid visit_data JSON: {e}")
         if not isinstance(vd, dict):
             raise HTTPException(status_code=400, detail="visit_data must be a JSON object")
-
-        diagnosis = vd.get("diagnosis", {})
-        chief_complaint = vd.get("chief_complaint", {})
-        objective_findings = vd.get("objective_findings", {})
-
-        notes = []
-        if chief_complaint.get("translated_en") or chief_complaint.get("original"):
-            notes.append({
-                "heading": "Chief Complaint & Subjective",
-                "text_original": chief_complaint.get("original", ""),
-                "text_translated": chief_complaint.get("translated_en", ""),
-            })
-        if objective_findings.get("translated_en") or objective_findings.get("original"):
-            notes.append({
-                "heading": "Objective Findings",
-                "text_original": objective_findings.get("original", ""),
-                "text_translated": objective_findings.get("translated_en", ""),
-            })
-
-        def _get_tx(field, key):
-            val = field.get(key) if isinstance(field, dict) else field
-            return val if isinstance(val, str) else ""
-
-        db.add(VisitDataModel(
-            entry_id=entry_id,
-            specialty=title or "",
-            provider=provider or "",
-            date=entry_date,
-            clinic=clinic or "",
-            verdict={
-                "original": _get_tx(diagnosis, "original"),
-                "translated_en": _get_tx(diagnosis, "translated_en"),
-            },
-            notes=notes,
-            prescriptions=[
-                {
-                    "id": i + 1,
-                    "name": {
-                        "original": _get_tx(rx.get("name", {}), "original"),
-                        "translated_en": _get_tx(rx.get("name", {}), "translated_en"),
-                    },
-                    "dose": {
-                        "original": _get_tx(rx.get("dosage", {}), "original"),
-                        "translated_en": _get_tx(rx.get("dosage", {}), "translated_en"),
-                    },
-                    "instruction": {
-                        "original": _get_tx(rx.get("instructions", {}), "original"),
-                        "translated_en": _get_tx(rx.get("instructions", {}), "translated_en"),
-                    },
-                }
-                for i, rx in enumerate(vd.get("prescriptions", []))
-            ],
-            recommendations=[
-                {
-                    "text_original": _get_tx(r, "original"),
-                    "text_translated": _get_tx(r, "translated_en"),
-                }
-                for r in vd.get("recommendations", [])
-            ],
-        ))
+        db.add(_build_visit_data_model(entry_id, vd, title, provider, entry_date, clinic))
         db.flush()
 
     db.commit()
@@ -527,44 +584,13 @@ async def merge_entry(
         specs = _parse_biomarker_rows(db, user_id, categories_data)
 
         # Conflict check: refuse when any resolved definition already has a
-        # reading in the target entry (by definition id OR LOINC code — a
-        # reading's biomarker_id may itself be a LOINC code from legacy
-        # ingestion, so both identifier forms are treated as equivalent).
-        existing_ids = {r.biomarker_id for r in entry.biomarker_readings}
-        existing_defns = (
-            db.query(BiomarkerDefinitionModel)
-            .filter(
-                (BiomarkerDefinitionModel.id.in_(existing_ids))
-                | (BiomarkerDefinitionModel.loinc_code.in_(existing_ids))
-            )
-            .all()
-        )
-        existing_keys = set(existing_ids)
-        for d in existing_defns:
-            existing_keys.add(d.id)
-            if d.loinc_code:
-                existing_keys.add(d.loinc_code)
-        conflicts = []
-        for spec in specs:
-            defn = spec.defn
-            if defn.id in existing_keys or (defn.loinc_code and defn.loinc_code in existing_keys):
-                conflicts.append(spec.row.get("name") or (defn.names or {}).get("en") or defn.id)
+        # reading in the target entry (by definition id OR LOINC code).
+        conflicts = _detect_merge_conflicts(db, entry, specs)
         if conflicts:
             detail = "Cannot merge: biomarker(s) already present in this test: " + ", ".join(sorted(set(conflicts)))
             raise HTTPException(status_code=409, detail=detail)
 
-        # Snapshot the merged upload's own metadata so the UI can describe the
-        # second test these readings came from. Only non-empty fields are kept.
-        # When the user left the title blank, fall back to the uploaded
-        # document's filename (sans extension) — far more informative than a
-        # generic "Blood Test Panel" placeholder.
-        source_title = title.strip()
-        if not source_title and file and file.filename:
-            source_title = os.path.splitext(os.path.basename(file.filename))[0]
-        merged_source = {
-            "title": source_title, "clinic": clinic, "provider": provider, "time": time,
-        }
-        merged_source = {k: v for k, v in merged_source.items() if v} or None
+        merged_source = _merged_source_from(title, clinic, provider, time, file)
 
         _create_reading_rows(db, entry_id, specs, merged=True, merged_source=merged_source)
 

@@ -26,7 +26,7 @@ import { Field } from '@/components/shared/Field'
 import { DoctorVisitForm } from './DoctorVisitForm'
 import { LabResultForm } from './LabResultForm'
 import { ImagingForm } from './ImagingForm'
-import { saveMedicalEntry, mergeMedicalEntry, fetchEntriesByDate, extractMedicalData, UsageLimitError } from '@/services/api'
+import { saveMedicalEntry, mergeMedicalEntry, fetchEntriesByDate, extractMedicalData, UsageLimitError, buildSaveEntryFormData } from '@/services/api'
 import { toast } from 'sonner'
 import type {
   UploadState,
@@ -39,6 +39,8 @@ import type {
   ProgressStage,
   ProgressEventPayload,
   EntrySummary,
+  ExtractedVisitData,
+  ExtractedImagingData,
 } from '@/lib/types'
 import type { UnitConflict } from './unit-conflict-dialog'
 import { UnitConflictDialog } from './unit-conflict-dialog'
@@ -120,8 +122,8 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const [activeFile, setActiveFile] = useState(0)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [visitFormData, setVisitFormData] = useState<any>(null)
-  const [imagingFormData, setImagingFormData] = useState<any>(null)
+  const [visitFormData, setVisitFormData] = useState<ExtractedVisitData | null>(null)
+  const [imagingFormData, setImagingFormData] = useState<ExtractedImagingData | null>(null)
   const [timeValue, setTimeValue] = useState('')
   const [dateValue, setDateValue] = useState('')
   const [duplicateWarning, setDuplicateWarning] = useState(false)
@@ -305,15 +307,18 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
       setStage('completed')
       await new Promise((r) => setTimeout(r, 1500))
       setUploadState('editor')
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Ignore aborts from a superseding extraction — the new run is in charge.
-      if (err?.name === 'AbortError') return
+      if (err instanceof Error && err.name === 'AbortError') return
       if (err instanceof UsageLimitError) {
         toast.error('AI Extraction Limit Reached', {
           description: err.message,
         })
       }
-      const msg = err?.message || 'AI extraction failed'
+      const msg =
+        typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'AI extraction failed'
       setAiError(msg)
       setEntryMode('manual')
       setCategories(manualCategories())
@@ -497,28 +502,23 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     setSaving(true)
     setSaveError(null)
     try {
-      const fd = new FormData()
-      fd.append('type', documentType)
-      fd.append('date', dateRef.current?.value ?? '')
-      fd.append('time', timeValue)
-      fd.append('clinic', clinicRef.current?.value ?? '')
-      fd.append('provider', providerRef.current?.value ?? '')
       const autoTitle = documentType === 'blood_test' ? 'Blood Test Panel' : documentType === 'doctor_visit' ? 'Doctor Visit' : documentType === 'imaging' ? 'Imaging Report' : 'Medical Record'
       // When merging, send the title as typed (may be empty) so the merge
       // endpoint can fall back to the document filename for the merged section
       // header — the generic auto-title would be useless there. The entry's
       // own title stays untouched on merge anyway.
-      fd.append('title', merging ? (titleRef.current?.value ?? '') : (titleRef.current?.value || autoTitle))
-      fd.append('notes', notesRef.current?.value ?? '')
-      fd.append('biomarkers', JSON.stringify(categories))
-      if (documentType === 'doctor_visit' && visitFormData) {
-        fd.append('visit_data', JSON.stringify(visitFormData))
-      }
-      if (selectedFile) {
-        fd.append('file', selectedFile)
-      } else if (fileRef.current?.files?.[0]) {
-        fd.append('file', fileRef.current.files[0])
-      }
+      const fd = buildSaveEntryFormData({
+        type: documentType,
+        date: dateRef.current?.value ?? '',
+        time: timeValue,
+        clinic: clinicRef.current?.value ?? '',
+        provider: providerRef.current?.value ?? '',
+        title: merging ? (titleRef.current?.value ?? '') : (titleRef.current?.value || autoTitle),
+        notes: notesRef.current?.value ?? '',
+        biomarkers: categories,
+        visit_data: documentType === 'doctor_visit' && visitFormData ? visitFormData : null,
+        file: selectedFile ?? fileRef.current?.files?.[0] ?? null,
+      })
       const resp = merging && selectedMergeTarget
         ? await mergeMedicalEntry(selectedMergeTarget.id, fd)
         : await saveMedicalEntry(fd)

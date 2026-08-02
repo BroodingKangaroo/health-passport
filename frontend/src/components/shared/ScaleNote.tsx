@@ -49,25 +49,3 @@ export function ScaleNote({
     </span>
   )
 }
-
-/**
- * Indicator for a unit cell whose canonical was LLM-invented (i.e. the
- * source PDF had no unit cell and the matcher had to pick one based on
- * the analyte / category). Surfaces a tooltip so the user can verify
- * it matches their lab's convention.
- */
-export function InferredUnitNote({
-  className,
-}: {
-  className?: string
-}) {
-  return (
-    <span
-      className={cn('inline-flex items-center text-amber-600', className)}
-      title="Unit inferred from analyte name / category — verify it matches your lab's convention."
-      aria-label="Unit inferred from analyte name / category"
-    >
-      <AlertTriangle className="size-3" />
-    </span>
-  )
-}

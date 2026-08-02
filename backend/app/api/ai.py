@@ -76,8 +76,10 @@ async def extract_medical_data(
             yield _sse("error", {"message": "AI extraction unavailable: MISTRAL_API_KEY not configured. Please add the key to backend/.env or enter data manually."})
         return StreamingResponse(error_stream(), media_type="text/event-stream")
 
-    # Check AI extraction limit
-    allowed, current_count, limit = check_and_record_ai_usage(db, user_id, is_anonymous)
+    # Check AI extraction limit. Defer the commit (commit=False) so a request
+    # that fails file validation below does not burn the user's extraction
+    # count — the commit happens only once the file is known to be usable.
+    allowed, current_count, limit = check_and_record_ai_usage(db, user_id, is_anonymous, commit=False)
     if not allowed:
         if is_anonymous:
             detail = (
@@ -105,6 +107,9 @@ async def extract_medical_data(
             status_code=400,
             detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(sorted(extractor.ALLOWED_EXTENSIONS))}",
         )
+
+    # File validated — persist the extraction-count increment now.
+    db.commit()
 
     definitions = db.query(BiomarkerDefinitionModel).filter(
         (BiomarkerDefinitionModel.scope == "global")

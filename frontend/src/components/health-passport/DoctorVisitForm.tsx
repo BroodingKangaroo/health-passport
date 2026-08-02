@@ -177,7 +177,7 @@ export function DoctorVisitForm({
   onDataChange,
 }: {
   initialData?: ExtractedVisitData | null
-  onDataChange?: (data: any) => void
+  onDataChange?: (data: ExtractedVisitData) => void
 }) {
   const [diagnosis, setDiagnosis] = useState<TranslatedText>(_tx(initialData?.diagnosis ?? ''))
   const [chiefComplaint, setChiefComplaint] = useState<TranslatedText>(_tx(initialData?.chief_complaint ?? ''))

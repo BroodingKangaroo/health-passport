@@ -400,13 +400,3 @@ def _get(ref: Any, key: str, default: Any = None) -> Any:
     if isinstance(ref, dict):
         return ref.get(key, default)
     return getattr(ref, key, default)
-
-
-def reference_interval(low: Optional[float], high: Optional[float]) -> Optional[dict]:
-    if low is None and high is None:
-        return None
-    return {"kind": "interval", "low": low, "high": high}
-
-
-def reference_qualitative(expected: Optional[str] = None) -> dict:
-    return {"kind": "qualitative", "expected": expected}

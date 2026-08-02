@@ -172,9 +172,3 @@ class StandardizedMedicalRecord(BaseModel):
     biomarkers: list[StandardizedBiomarker] = []
     visit_data: StandardizedVisitData = StandardizedVisitData()
     imaging_data: RawImagingData = RawImagingData()
-
-
-# +++++ Legacy aliases for types shared across passes +++++
-
-ExtractedPrescription = RawPrescription
-ExtractedImagingData = RawImagingData

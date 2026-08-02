@@ -13,7 +13,6 @@ import jwt
 from sqlalchemy.orm import Session
 
 from app.db import models
-from app.db.session import SessionLocal
 
 # JWT settings
 def _get_secret_key() -> str:
@@ -82,11 +81,6 @@ def get_user_by_email(db: Session, email: str) -> Optional[models.Patient]:
     return db.query(models.Patient).filter(models.Patient.email == email).first()
 
 
-def get_user_by_id(db: Session, user_id: str) -> Optional[models.Patient]:
-    """Get a user by ID."""
-    return db.query(models.Patient).filter(models.Patient.id == user_id).first()
-
-
 def authenticate_user(db: Session, email: str, password: str) -> Optional[models.Patient]:
     """Authenticate a user with email and password."""
     user = get_user_by_email(db, email)
@@ -116,18 +110,3 @@ def create_user(db: Session, email: str, password: str, name: str, dob: str, gen
     db.commit()
     db.refresh(user)
     return user
-
-
-def get_current_user(token: str) -> Optional[models.Patient]:
-    """Get current user from token (for use in API dependencies)."""
-    payload = decode_token(token)
-    if not payload:
-        return None
-    user_id = payload.get("sub")
-    if not user_id:
-        return None
-    db = SessionLocal()
-    try:
-        return get_user_by_id(db, user_id)
-    finally:
-        db.close()

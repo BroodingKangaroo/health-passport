@@ -11,7 +11,7 @@ export function ImagingForm({
   onDataChange,
 }: {
   initialData?: ExtractedImagingData | null
-  onDataChange?: (data: any) => void
+  onDataChange?: (data: ExtractedImagingData) => void
 }) {
   const [modality, setModality] = useState(initialData?.modality ?? '')
   const [findings, setFindings] = useState(initialData?.findings ?? '')

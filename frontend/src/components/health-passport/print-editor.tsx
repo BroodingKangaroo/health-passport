@@ -153,14 +153,6 @@ export function PrintEditor({
       .filter((cat) => cat.rows.length > 0)
   }, [matrix, order, selectedBiomarkers, showAbnormalOnly, visibleDateIndices])
 
-  function toggleDate(label: string) {
-    setSelectedDates(
-      selectedDates.includes(label)
-        ? selectedDates.filter((l) => l !== label)
-        : [...selectedDates, label],
-    )
-  }
-
   function toggleDateId(d: DateHeader) {
     const id = dateId(d)
     setSelectedDates(
@@ -505,7 +497,7 @@ export function PrintEditor({
               'print:m-0 print:max-w-none print:p-0 print:shadow-none',
               layout === 'portrait' ? 'max-w-3xl' : 'max-w-5xl',
             )}
-            style={{ fontSize: `${textSize}px`, colorScheme: 'light' as any }}
+            style={{ fontSize: `${textSize}px`, colorScheme: 'light' }}
           >
             <div className="mb-3 flex items-start justify-between border-b border-gray-400 pb-2">
               <div>

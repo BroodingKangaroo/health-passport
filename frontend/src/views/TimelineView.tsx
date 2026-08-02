@@ -9,7 +9,7 @@ import { HistoryList } from '@/components/health-passport/history-list'
 import { DoctorVisitDetails } from '@/components/health-passport/doctor-visit-details'
 import { BloodTestDetails } from '@/components/health-passport/blood-test-details'
 import { useTimelineData } from '@/hooks/useTimelineData'
-import type { MedicalEvent, BiomarkerResult, Status, Reading } from '@/lib/types'
+import type { MedicalEvent, BiomarkerResult, Reading } from '@/lib/types'
 
 export function TimelineView() {
   const router = useRouter()
@@ -118,7 +118,7 @@ export function biomarkersAtDate(biomarkers: BiomarkerResult[], date: string): B
         ...b,
         value: current.value,
         date: current.date,
-        status: current.status as Status,
+        status: current.status,
         // The merged/merged_source flags must describe the reading AT this
         // event, not the latest reading of the definition: a biomarker merged
         // into an older entry and later re-tested separately is only "merged"

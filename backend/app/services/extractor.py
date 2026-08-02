@@ -1,7 +1,6 @@
 import io
 import json
 import logging
-import os
 import re
 from typing import Optional
 
@@ -268,30 +267,3 @@ def llm_extract(markdown: str, client: Mistral) -> RawMedicalRecord:
     result = chat_response.choices[0].message.content
     logger.info("LLM raw response: %s", result[:500] if isinstance(result, str) else type(result))
     return _parse_llm_response(result, markdown)
-
-
-def extract_raw(
-    bytes_data: bytes,
-    filename: str,
-    client: Mistral,
-) -> RawMedicalRecord:
-    ext = os.path.splitext(filename)[1].lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        raise ValueError(
-            f"Unsupported file type '{ext}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
-        )
-
-    try:
-        markdown = ocr_document(bytes_data, ext, client)
-    except OCRProcessingError:
-        return RawMedicalRecord(
-            entry_type="unknown",
-            notes="The uploaded document appears to contain images that cannot be processed. You can enter the data manually below.",
-        )
-    if not markdown:
-        return RawMedicalRecord(
-            entry_type="unknown",
-            notes="OCR returned no text content",
-        )
-
-    return llm_extract(markdown, client)

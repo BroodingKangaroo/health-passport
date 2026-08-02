@@ -30,15 +30,19 @@ const { ApiError, UsageLimitError } = vi.hoisted(() => {
   return { ApiError, UsageLimitError }
 })
 
-vi.mock('@/services/api', () => ({
-  extractMedicalData: (...args: any[]) => mockExtract(...args),
-  saveMedicalEntry: (...args: any[]) => mockSave(...args),
-  mergeMedicalEntry: (...args: any[]) => mockMerge(...args),
-  fetchEntriesByDate: (...args: any[]) => mockFetchByDate(...args),
-  fetchBiomarkerDefinitions: (...args: any[]) => mockFetchDefinitions(...args),
-  ApiError,
-  UsageLimitError,
-}))
+vi.mock('@/services/api', async () => {
+  const actual = await vi.importActual<typeof import('@/services/api')>('@/services/api')
+  return {
+    extractMedicalData: (...args: any[]) => mockExtract(...args),
+    saveMedicalEntry: (...args: any[]) => mockSave(...args),
+    mergeMedicalEntry: (...args: any[]) => mockMerge(...args),
+    fetchEntriesByDate: (...args: any[]) => mockFetchByDate(...args),
+    fetchBiomarkerDefinitions: (...args: any[]) => mockFetchDefinitions(...args),
+    buildSaveEntryFormData: actual.buildSaveEntryFormData,
+    ApiError,
+    UsageLimitError,
+  }
+})
 
 function renderWithProviders(ui: React.ReactElement) {
   const queryClient = new QueryClient({

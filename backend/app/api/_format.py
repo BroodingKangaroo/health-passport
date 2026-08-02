@@ -25,22 +25,6 @@ def effective_reference(reading: Optional[BiomarkerReading], defn: BiomarkerDefi
     return defn.reference
 
 
-def to_display_datetime(dt: datetime) -> str:
-    base = dt.strftime("%b %d, %Y")
-    if dt.hour != 0 or dt.minute != 0:
-        base += dt.strftime(" at %H:%M")
-    return base
-
-
-def compact_date_label(dt: datetime) -> str:
-    base = dt.strftime("%b %d")
-    if dt.year != _current_year():
-        base += dt.strftime(", %Y")
-    if dt.hour != 0 or dt.minute != 0:
-        base += dt.strftime(" %H:%M")
-    return base
-
-
 def flowsheet_date_header(dt: datetime) -> tuple[str, Optional[str]]:
     label = dt.strftime("%b %d")
     if dt.year != _current_year():
@@ -51,3 +35,6 @@ def flowsheet_date_header(dt: datetime) -> tuple[str, Optional[str]]:
 
 def short_date_label(dt: datetime) -> str:
     return dt.strftime("%b %d")
+
+
+__all__ = ("reading_value", "effective_reference", "flowsheet_date_header", "short_date_label", "_current_year")

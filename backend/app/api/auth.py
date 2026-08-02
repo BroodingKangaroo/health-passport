@@ -22,7 +22,7 @@ from app.auth import (
 )
 from app.db.session import get_db
 from app.db import models
-from app.services.data_migration import has_anonymous_data, copy_anonymous_data
+from app.services.data_migration import copy_anonymous_data
 from config import ANONYMOUS_COOKIE_NAME
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])

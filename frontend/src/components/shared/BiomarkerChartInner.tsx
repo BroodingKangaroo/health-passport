@@ -9,6 +9,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  type XAxisTickContentProps,
 } from 'recharts'
 
 import type { BiomarkerResult, Reading } from '@/lib/types'
@@ -96,14 +97,14 @@ export default function BiomarkerChartInner({
             dataKey="date"
             tickLine={false}
             axisLine={{ stroke: '#d4d4d8' }}
-            tick={({ x, y, payload }: any) => {
-              const { label, sub } = splitDateLabel(payload.value)
+            tick={(tickProps: XAxisTickContentProps) => {
+              const { label, sub } = splitDateLabel(String(tickProps.payload.value))
               const fs = compact ? 9 : 11
               const subFs = compact ? 8 : 9
               const dy1 = compact ? 10 : 12
               const dy2 = compact ? 20 : 24
               return (
-                <g transform={`translate(${x},${y})`}>
+                <g transform={`translate(${tickProps.x},${tickProps.y})`}>
                   <text x={0} y={0} dy={dy1} textAnchor="middle" fill="#71717a" fontSize={fs}>
                     {label}
                   </text>
@@ -132,7 +133,7 @@ export default function BiomarkerChartInner({
               boxShadow: '0 4px 12px rgb(0 0 0 / 0.06)',
             }}
             labelStyle={{ color: '#71717a', fontWeight: 500 }}
-            labelFormatter={(label: any) => {
+            labelFormatter={(label) => {
               const { label: mainLabel, sub } = splitDateLabel(String(label))
               return sub ? (
                 <>

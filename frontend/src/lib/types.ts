@@ -22,15 +22,6 @@ export type Reference = ReferenceInterval | ReferenceQualitative
 
 export type Status = 'normal' | 'low' | 'high' | 'abnormal'
 
-/* ----- Patient ----- */
-export interface Patient {
-  id: string
-  name: string
-  dob: string
-  gender: string
-  external_id: string
-}
-
 /* ----- Biomarker ----- */
 export interface BiomarkerDefinition {
   id: string
@@ -47,7 +38,9 @@ export interface BiomarkerDefinition {
   // Set on the first reading that defines the biomarker; subsequent
   // readings with a different unit are converted to land on this.
   canonical_unit?: string | null
-  canonical_kind?: string | null
+  // 'linear' | 'log10' | 'ln' — the scale the canonical_unit lives on.
+  // Absent for legacy definitions that were never given a canonical unit.
+  canonical_kind?: 'linear' | 'log10' | 'ln' | null
   // True when the canonical unit was LLM-invented (the source PDF had no
   // unit cell) rather than translated from an existing unit. Surfaced in
   // the UI so the user can verify it matches their lab's convention.
@@ -194,26 +187,6 @@ export interface MatrixCategory {
 /* ----- Print / Export ----- */
 export type PrintLang = 'ru' | 'en' | 'de' | 'fr' | 'es' | 'he'
 
-export interface DateCol {
-  id: string
-  year: string
-  short: string
-  ru: string
-}
-
-export interface Marker {
-  id: string
-  unit: string
-  labels: Record<PrintLang, string>
-  values: Record<string, { v: string; abnormal?: boolean }>
-}
-
-export interface PrintCategory {
-  id: string
-  name: string
-  markers: string[]
-}
-
 /* ----- Form Types ----- */
 export type UploadState = 'idle' | 'scanning' | 'editor'
 export type ProgressStage = 'ocr_scanning' | 'extracting' | 'matching' | 'completed'
@@ -244,20 +217,6 @@ export interface FormCategory {
   name: string
   rows: FormBiomarkerRow[]
 }
-
-export interface Prescription {
-  id: string
-  name: string
-  dosage: string
-  instructions: string
-}
-
-export interface Recommendation {
-  id: string
-  text: string
-}
-
-
 
 /* ----- AI Extraction Types (two-pass: Standardized output) ----- */
 export interface StandardizedBiomarker {
@@ -367,4 +326,28 @@ export interface SaveEntryResponse {
   success: boolean
   message: string
   id: string
+}
+
+export interface DeleteEntryResponse {
+  success: boolean
+  id: string
+  deleted_visit_data: boolean
+  freed_bytes: number
+}
+
+export interface UsageLimits {
+  is_anonymous: boolean
+  ai_extraction_count: number
+  ai_extraction_limit: number
+  total_upload_size_bytes: number
+  total_upload_limit_bytes: number
+}
+
+export interface CurrentUser {
+  id: string
+  email: string
+  name: string
+  dob: string
+  gender: string
+  external_id: string
 }

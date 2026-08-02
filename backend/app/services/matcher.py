@@ -4,6 +4,7 @@ import logging
 import math
 import os
 import re
+import threading
 import unicodedata
 from datetime import datetime
 from typing import List, Optional, Tuple, Union
@@ -200,8 +201,30 @@ def _apply_status(result: StandardizedMedicalRecord) -> None:
         b.status = compute_status(b.standard_value, b.reference)
 
 
-# Cache of LLM-supplied conversion factors keyed by (analyte, from_unit, to_unit).
-_factor_cache: dict[tuple[str, str, str], Optional[float]] = {}
+class _RequestBucket(threading.local):
+    """Per-thread holder for the extraction-scoped LLM caches below.
+
+    Each /api/extract request runs its matching inside a single worker thread
+    (``asyncio.to_thread``), so a thread-local bucket gives exactly the
+    per-call lifetime the cache docstrings promise — and keeps one
+    extraction's LLM guesses from leaking into a later extraction in the
+    same process.
+    """
+
+
+def _local_cache(bucket: _RequestBucket) -> dict:
+    """Return this thread's cache dict stored on ``bucket``, creating it on
+    first access within the thread."""
+    cache = getattr(bucket, "store", None)
+    if cache is None:
+        cache = {}
+        bucket.store = cache
+    return cache
+
+
+# Cache of LLM-supplied conversion factors keyed by (analyte, from_unit, to_unit),
+# scoped to the current worker thread (one extraction).
+_factor_cache = _RequestBucket()
 
 CONVERSION_FACTOR_PROMPT = (
     "You are a clinical laboratory unit-conversion expert. Provide the numeric "
@@ -222,10 +245,11 @@ def _llm_conversion_factor(
 ) -> Optional[float]:
     """Ask the LLM only for the conversion FACTOR (not the arithmetic), cached."""
     key = ((loinc or analyte).lower(), from_unit.strip().lower(), to_unit.strip().lower())
-    if key in _factor_cache:
-        return _factor_cache[key]
+    cache = _local_cache(_factor_cache)
+    if key in cache:
+        return cache[key]
     if client is None:
-        _factor_cache[key] = None
+        cache[key] = None
         return None
     try:
         chat_response = client.chat.parse(
@@ -254,7 +278,7 @@ def _llm_conversion_factor(
     except Exception as e:
         logger.warning("LLM conversion factor failed (%s %s->%s): %s", analyte, from_unit, to_unit, e)
         factor = None
-    _factor_cache[key] = factor
+    cache[key] = factor
     return factor
 
 
@@ -303,7 +327,7 @@ def _normalize_name(name: str) -> str:
 def _definition_rank(defn: BiomarkerDefinitionModel) -> int:
     """Preference key (lower = better). Uses LOINC COMMON_TEST_RANK so the most
     commonly ordered test wins when several definitions share a synonym."""
-    rank = getattr(defn, "common_rank", None)
+    rank = defn.common_rank
     return rank if rank is not None else 10**9
 
 
@@ -470,8 +494,8 @@ def _convert_to_canonical(
     can't decide the conversion, the function returns the original value
     and sets ``needs_review=True`` so the UI can flag it.
     """
-    canon_unit = getattr(defn, "canonical_unit", None) or None
-    canon_kind = getattr(defn, "canonical_kind", None) or "linear"
+    canon_unit = defn.canonical_unit or None
+    canon_kind = defn.canonical_kind or "linear"
     raw_translation = _translated_unit(raw_bm.unit, raw_bm.standard_name_en or raw_bm.name, raw_bm.category)
     raw_unit_en = raw_translation["unit"]
     raw_kind = raw_translation["kind"]
@@ -589,7 +613,7 @@ def _build_standardized_from_def(
             scope=defn.scope,
             scale_function=scale_function,
             needs_review=needs_review,
-            canonical_unit_inferred=getattr(defn, "canonical_unit_inferred", False),
+            canonical_unit_inferred=defn.canonical_unit_inferred,
         )
 
     # No document range: fall back to the curated global reference, converting a
@@ -636,7 +660,7 @@ def _build_standardized_from_def(
         scope=defn.scope,
         scale_function=scale_function,
         needs_review=needs_review,
-        canonical_unit_inferred=getattr(defn, "canonical_unit_inferred", False),
+        canonical_unit_inferred=defn.canonical_unit_inferred,
     )
 
 
@@ -820,8 +844,10 @@ Return a JSON object with a single key "translations" whose value is an array of
 - inferred: true if the unit was invented (no source unit), false otherwise"""
 
 
-# Cache of unit translations for the duration of a single match_and_convert call.
-_unit_translation_cache: dict[str, dict] = {}
+# Cache of unit translations scoped to the current worker thread (one
+# match_and_convert call): a shared cache would let one extraction's guess
+# (e.g. genetics → empty) poison another's (e.g. microbiome → also empty).
+_unit_translation_cache = _RequestBucket()
 
 
 def _heuristic_unit_translation(
@@ -855,7 +881,8 @@ def _translated_unit(raw_unit: str, analyte_name: str = "", category: str = "") 
     Never raises: an unrecognised unit always yields a usable dict.
     """
     u = (raw_unit or "").strip()
-    entry = _unit_translation_cache.get(u)
+    cache = _local_cache(_unit_translation_cache)
+    entry = cache.get(u)
     if entry is not None:
         return entry
     # Fall back when the batch translator never ran (e.g. LLM unavailable).
@@ -970,6 +997,7 @@ def _translate_units_batch(
     heuristically (no LLM call) so the helper is fast on the common case.
     """
     needed: dict[str, dict] = {}  # raw_unit -> {analyte, category}
+    cache = _local_cache(_unit_translation_cache)
     for b in biomarkers:
         u = (b.unit or "").strip()
         # Empty units are handled per-biomarker by ``_guess_unit()`` later,
@@ -978,13 +1006,12 @@ def _translate_units_batch(
         # → empty) poisons subsequent extractions (e.g. microbiome → also empty).
         if not u:
             continue
-        cache = _unit_translation_cache.get(u)
-        if cache is not None:
+        if u in cache:
             needed.pop(u, None)
             continue
         heur = _heuristic_unit_translation(u, b.name, b.category)
         if heur is not None:
-            _unit_translation_cache[u] = heur
+            cache[u] = heur
             continue
         needed[u] = {"name": b.standard_name_en or b.name, "category": b.category}
 
@@ -1022,6 +1049,7 @@ def _translate_units_batch(
         return {}
 
     result: dict[str, dict] = {}
+    cache = _local_cache(_unit_translation_cache)
     for g, (raw_unit, meta) in zip(parsed.translations, needed.items()):
         unit = (g.unit or "").strip()
         inferred = bool(g.inferred)
@@ -1029,15 +1057,15 @@ def _translate_units_batch(
         if kind not in ("linear", "log10", "ln"):
             kind = "linear"
         entry = {"unit": unit, "kind": kind, "inferred": inferred}
-        _unit_translation_cache[raw_unit] = entry
+        cache[raw_unit] = entry
         result[raw_unit] = entry
     return result
 
 
-# Cache of scale-function conversions for the duration of a single
-# match_and_convert call. Keyed by (analyte, from_unit, to_unit, from_kind,
-# to_kind) all lowercased.
-_scale_function_cache: dict[tuple, str] = {}
+# Cache of scale-function conversions scoped to the current worker thread
+# (one match_and_convert call). Keyed by (analyte, from_unit, to_unit,
+# from_kind, to_kind) all lowercased.
+_scale_function_cache = _RequestBucket()
 
 
 _SCALE_FUNCTION_PROMPT = """You are a clinical laboratory scale-conversion expert.
@@ -1080,25 +1108,26 @@ def _llm_scale_function(
         from_kind,
         to_kind,
     )
-    if key in _scale_function_cache:
-        return _scale_function_cache[key]
+    cache = _local_cache(_scale_function_cache)
+    if key in cache:
+        return cache[key]
 
     # Deterministic cross-scale conversions — no LLM needed.
     if from_kind == "log10" and to_kind == "linear":
-        _scale_function_cache[key] = "10^x"
+        cache[key] = "10^x"
         return "10^x"
     if from_kind == "linear" and to_kind == "log10":
-        _scale_function_cache[key] = "log10"
+        cache[key] = "log10"
         return "log10"
     if from_kind == "ln" and to_kind == "linear":
-        _scale_function_cache[key] = "exp(x)"
+        cache[key] = "exp(x)"
         return "exp(x)"
     if from_kind == "linear" and to_kind == "ln":
-        _scale_function_cache[key] = "ln"
+        cache[key] = "ln"
         return "ln"
 
     if client is None:
-        _scale_function_cache[key] = ""
+        cache[key] = ""
         return ""
     try:
         chat_response = client.chat.parse(
@@ -1132,7 +1161,7 @@ def _llm_scale_function(
             analyte, from_kind, from_unit, to_kind, to_unit, e,
         )
         fn = ""
-    _scale_function_cache[key] = fn
+    cache[key] = fn
     return fn
 
 

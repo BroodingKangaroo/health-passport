@@ -3,7 +3,6 @@ Service for tracking and enforcing usage limits for both anonymous and registere
 """
 
 from datetime import datetime, timezone
-from typing import Optional, Tuple
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -208,11 +207,3 @@ def check_and_record_storage_usage(
     ).first()
     new_total = usage.total_upload_size_bytes if usage else size_bytes
     return (True, new_total, max_storage, max_storage - new_total)
-
-
-def get_usage_record(db: Session, user_id: str, is_anonymous: bool) -> Optional[UsageLimit]:
-    """Get the usage limit record for a user."""
-    return db.query(UsageLimit).filter(
-        UsageLimit.user_id == user_id,
-        UsageLimit.is_anonymous == is_anonymous
-    ).first()
