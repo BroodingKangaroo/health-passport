@@ -2,15 +2,34 @@
   "$schema": "https://opencode.ai/config.json",
   "permission": {
     "bash": {
-      "pnpm *": "allow",
-      "npm *": "allow",
-      "backend/venv/bin/python *": "allow",
-      "git status": "allow",
-      "git diff *": "allow",
-      "git log *": "allow",
-      "git branch *": "allow",
-      "ls *": "allow",
-      "*": "ask"
+      "*": "allow",
+      "git commit *": "ask",
+      "git commit": "ask",
+      "git am *": "ask",
+      "git push *": "ask",
+      "git pull *": "ask",
+      "git reset *": "ask",
+      "git checkout *": "ask",
+      "git switch *": "ask",
+      "git merge *": "ask",
+      "git rebase *": "ask",
+      "git clean *": "ask",
+      "git restore *": "ask",
+      "git rm*": "ask",
+      "git stash *": "ask",
+      "git tag -d*": "ask",
+      "git branch -D *": "ask",
+      "git fetch --prune*": "ask",
+      "rm -rf *": "ask",
+      "rm -r *": "ask",
+      "rm -f *": "ask",
+      "rm *": "ask",
+      "mv *": "ask",
+      "pkill *": "ask",
+      "sudo *": "ask",
+      "chmod *": "ask",
+      "python -m app.db.seed_loinc*": "ask",
+      "*--regen-golden*": "ask"
     }
   }
 }
