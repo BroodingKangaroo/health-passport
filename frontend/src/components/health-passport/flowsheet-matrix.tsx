@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Sparkline } from '@/components/shared/Sparkline'
 import { ScaleNote } from '@/components/shared/ScaleNote'
 import { formatReference, intervalBounds, qualitativeToNumber, isQualitative } from '@/lib/reference'
-import type { DateHeader, MatrixCategory, MatrixCell, BiomarkerResult, Status, MatrixRow } from '@/lib/types'
+import type { DateHeader, MatrixCategory, MatrixCell, BiomarkerResult, Status } from '@/lib/types'
 
 const statusText: Record<Status, string> = {
   normal: 'text-foreground',

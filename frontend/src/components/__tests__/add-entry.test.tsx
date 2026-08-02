@@ -33,11 +33,11 @@ const { ApiError, UsageLimitError } = vi.hoisted(() => {
 vi.mock('@/services/api', async () => {
   const actual = await vi.importActual<typeof import('@/services/api')>('@/services/api')
   return {
-    extractMedicalData: (...args: any[]) => mockExtract(...args),
-    saveMedicalEntry: (...args: any[]) => mockSave(...args),
-    mergeMedicalEntry: (...args: any[]) => mockMerge(...args),
-    fetchEntriesByDate: (...args: any[]) => mockFetchByDate(...args),
-    fetchBiomarkerDefinitions: (...args: any[]) => mockFetchDefinitions(...args),
+    extractMedicalData: (...args: Parameters<typeof actual.extractMedicalData>) => mockExtract(...args),
+    saveMedicalEntry: (...args: Parameters<typeof actual.saveMedicalEntry>) => mockSave(...args),
+    mergeMedicalEntry: (...args: Parameters<typeof actual.mergeMedicalEntry>) => mockMerge(...args),
+    fetchEntriesByDate: (...args: Parameters<typeof actual.fetchEntriesByDate>) => mockFetchByDate(...args),
+    fetchBiomarkerDefinitions: (...args: Parameters<typeof actual.fetchBiomarkerDefinitions>) => mockFetchDefinitions(...args),
     buildSaveEntryFormData: actual.buildSaveEntryFormData,
     ApiError,
     UsageLimitError,

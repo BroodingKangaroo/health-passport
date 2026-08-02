@@ -1,6 +1,5 @@
 'use client'
 
-import { useMemo } from 'react'
 import { useSearchParams, notFound } from 'next/navigation'
 import { BookOpen } from 'lucide-react'
 

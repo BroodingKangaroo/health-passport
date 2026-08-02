@@ -3,7 +3,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useSession } from 'next-auth/react'
 import { fetchTimelineEvents } from '@/services/api'
-import type { TimelineResponse } from '@/lib/types'
 
 export function useTimelineData() {
   const { data: session, status } = useSession()

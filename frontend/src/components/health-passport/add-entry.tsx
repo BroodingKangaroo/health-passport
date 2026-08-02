@@ -6,12 +6,8 @@ import {
   UploadCloud,
   Loader2,
   Sparkles,
-  ZoomIn,
   FileText,
-  Plus,
   Pencil,
-  ChevronLeft,
-  ChevronRight,
   ImagePlus,
   AlertCircle,
   CheckCircle2,
@@ -34,10 +30,8 @@ import type {
   FormCategory,
   FormBiomarkerRow,
   Reference,
-  StandardizedMedicalRecord,
   StandardizedBiomarker,
   ProgressStage,
-  ProgressEventPayload,
   EntrySummary,
   ExtractedVisitData,
   ExtractedImagingData,
@@ -119,7 +113,6 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const [entryMode, setEntryMode] = useState<EntryMode>('ai')
   const [categories, setCategories] = useState<FormCategory[]>(manualCategories())
   const [documentType, setDocumentType] = useState('blood_test')
-  const [activeFile, setActiveFile] = useState(0)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [visitFormData, setVisitFormData] = useState<ExtractedVisitData | null>(null)
@@ -179,14 +172,16 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const resizeNotes = useAutoResize(notesRef)
   const fileRef = useRef<HTMLInputElement>(null)
   const uploadFileRef = useRef<HTMLInputElement>(null)
-  const stageEntryTimeRef = useRef(0)
-  const stageEstimateRef = useRef(0)
   const elapsedRef = useRef(0)
   const extractionStartRef = useRef(0)
   const stageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hasLeftOcrRef = useRef(false)
   const markdownCharsRef = useRef<number | null>(null)
   const extractionAbortRef = useRef<AbortController | null>(null)
+  // Stage progress bookkeeping kept as state (not refs) so the render can
+  // read it to draw the progress bar — React 19 forbids ref reads during render.
+  const [stageStart, setStageStart] = useState(0)
+  const [stageEstimate, setStageEstimate] = useState(0)
 
   const runExtraction = useCallback(async (file: File) => {
     // Cancel any in-flight extraction so its late-arriving result can't
@@ -201,8 +196,8 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     setMarkdownChars(null)
     setBiomarkerCount(null)
     setElapsedSeconds(0)
-    stageEntryTimeRef.current = 0
-    stageEstimateRef.current = 0
+    setStageStart(0)
+    setStageEstimate(0)
     elapsedRef.current = 0
     extractionStartRef.current = performance.now()
     if (stageTimeoutRef.current !== null) clearTimeout(stageTimeoutRef.current)
@@ -221,17 +216,17 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
           if (payload.markdown_chars != null) {
           markdownCharsRef.current = payload.markdown_chars
           setMarkdownChars(payload.markdown_chars)
-          stageEntryTimeRef.current = now
+          setStageStart(now)
           const estExt = estimateExtractionTime(payload.markdown_chars)
           const estBm = Math.round(payload.markdown_chars * 0.007)
           const estMatch = estimateMatchingTime(estBm, payload.markdown_chars)
-          stageEstimateRef.current = Math.round(estExt + estMatch)
+          setStageEstimate(Math.round(estExt + estMatch))
         }
         if (payload.biomarker_count != null) {
           setBiomarkerCount(payload.biomarker_count)
-          stageEntryTimeRef.current = now
+          setStageStart(now)
           const chars = markdownCharsRef.current ?? 0
-          stageEstimateRef.current = Math.round(estimateMatchingTime(payload.biomarker_count, chars))
+          setStageEstimate(Math.round(estimateMatchingTime(payload.biomarker_count, chars)))
         }
         if (stageTimeoutRef.current !== null) clearTimeout(stageTimeoutRef.current)
         stageTimeoutRef.current = null
@@ -326,17 +321,22 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     }
   }, [])
 
+  // Reset duplicate-detection/merge state when the date or document type
+  // changes. Adjusted during render (React 19's "storing info from previous
+  // renders" pattern) because it's derived state — no setState-in-effect here.
+  const [prevFilter, setPrevFilter] = useState({ type: documentType, date: dateValue })
+  if (prevFilter.type !== documentType || prevFilter.date !== dateValue) {
+    setPrevFilter({ type: documentType, date: dateValue })
+    setDuplicateWarning(false)
+    setTimeRequired(false)
+    setExistingBloodTests([])
+    setMergeSelected(false)
+    setMergeTargetId(null)
+  }
+
   useEffect(() => {
-    if (!dateValue || documentType !== 'blood_test') {
-      setDuplicateWarning(false)
-      setTimeRequired(false)
-      setExistingBloodTests([])
-      setMergeSelected(false)
-      setMergeTargetId(null)
-      return
-    }
+    if (!dateValue || documentType !== 'blood_test') return
     const controller = new AbortController()
-    const requestId = Date.now()
     const t = setTimeout(async () => {
       try {
         const res = await fetchEntriesByDate(dateValue, 'blood_test')
@@ -403,21 +403,17 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   // extraction lands a biomarker that's already in the target, or the user
   // edits a row into conflict), reset the selection: a checked-but-blocked
   // box is a lie, and saving would silently create a duplicate entry — the
-  // exact thing merging exists to prevent.
-  useEffect(() => {
-    if (mergeSelected && mergeBlocked) {
-      setMergeSelected(false)
-    }
-  }, [mergeSelected, mergeBlocked])
+  // exact thing merging exists to prevent. Adjusted during render (React 19's
+  // "adjusting state when props change" pattern) instead of in an effect.
+  if (mergeSelected && mergeBlocked) {
+    setMergeSelected(false)
+  }
 
   useEffect(() => {
-    if (selectedFile) {
-      const url = URL.createObjectURL(selectedFile)
-      setObjectUrl(url)
-      return () => URL.revokeObjectURL(url)
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-    setObjectUrl(null)
-  }, [selectedFile])
+  }, [objectUrl])
 
   useEffect(() => {
     if (uploadState !== 'scanning') return
@@ -437,6 +433,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     const file = e.target.files?.[0]
     if (!file) return
     setSelectedFile(file)
+    setObjectUrl(URL.createObjectURL(file))
     if (fileRef.current) {
       const dt = new DataTransfer()
       dt.items.add(file)
@@ -450,12 +447,16 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     setCategories(manualCategories())
     setUploadState('editor')
     setSelectedFile(null)
+    setObjectUrl(null)
     setAiError(null)
   }
 
   function handleFileRefChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (file) setSelectedFile(file)
+    if (file) {
+      setSelectedFile(file)
+      setObjectUrl(URL.createObjectURL(file))
+    }
   }
 
   function updateRow(
@@ -560,10 +561,10 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     } else if (progressStage === 'ocr_scanning') {
       progressWidth = 2
     } else if (progressStage === 'extracting' && markdownChars !== null) {
-      remainingSeconds = Math.max(0, stageEstimateRef.current - (elapsedSeconds - stageEntryTimeRef.current))
+      remainingSeconds = Math.max(0, stageEstimate - (elapsedSeconds - stageStart))
       progressWidth = Math.min(90, (elapsedSeconds / (elapsedSeconds + remainingSeconds)) * 100)
     } else if (progressStage === 'matching' && biomarkerCount !== null) {
-      remainingSeconds = Math.max(0, stageEstimateRef.current - (elapsedSeconds - stageEntryTimeRef.current))
+      remainingSeconds = Math.max(0, stageEstimate - (elapsedSeconds - stageStart))
       progressWidth = Math.min(95, (elapsedSeconds / (elapsedSeconds + remainingSeconds)) * 100)
     } else {
       progressWidth = ((stageStep[progressStage] - 1) / totalSteps) * 100

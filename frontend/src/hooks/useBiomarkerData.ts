@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useCallback } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { fetchBiomarkerDetail } from '@/services/api'
 import type { BiomarkerResult } from '@/lib/types'
 
@@ -12,40 +13,23 @@ interface UseBiomarkerDataReturn {
 }
 
 export function useBiomarkerData(id: string | null): UseBiomarkerDataReturn {
-  const [data, setData] = useState<BiomarkerResult | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
-  const fetchIdRef = useRef(0)
-  const cancelledRef = useRef(false)
+  const query = useQuery({
+    queryKey: ['biomarker', id ?? 'none'],
+    queryFn: () => fetchBiomarkerDetail(id as string),
+    enabled: !!id,
+    staleTime: 1000 * 60 * 5,
+  })
 
-  const load = useCallback(() => {
-    if (!id) { setIsLoading(false); return }
-    const fetchId = ++fetchIdRef.current
-    cancelledRef.current = false
-    setIsLoading(true)
-    setError(null)
-    fetchBiomarkerDetail(id)
-      .then((result) => {
-        if (fetchId === fetchIdRef.current && !cancelledRef.current) {
-          setData(result)
-        }
-      })
-      .catch((err) => {
-        if (fetchId === fetchIdRef.current && !cancelledRef.current) {
-          setError(err instanceof Error ? err : new Error(String(err)))
-        }
-      })
-      .finally(() => {
-        if (fetchId === fetchIdRef.current && !cancelledRef.current) {
-          setIsLoading(false)
-        }
-      })
-  }, [id])
+  const onRefetch = useCallback(() => {
+    void query.refetch()
+  }, [query])
 
-  useEffect(() => {
-    load()
-    return () => { cancelledRef.current = true }
-  }, [load])
-
-  return { data, isLoading, error, refetch: load }
+  return {
+    data: query.data ?? null,
+    // Without an id there is nothing to load — treat as loading (matches the
+    // pre-query behavior) so the caller keeps rendering its loading state.
+    isLoading: query.isLoading || !id,
+    error: query.error instanceof Error ? query.error : query.error ? new Error(String(query.error)) : null,
+    refetch: onRefetch,
+  }
 }

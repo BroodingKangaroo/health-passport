@@ -45,10 +45,6 @@ export function HeaderBar() {
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
 
-  const handleLogout = () => {
-    signOut({ callbackUrl: '/' })
-  }
-
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border bg-card px-5 py-3 print:hidden">
       <div className="flex items-center gap-3">

@@ -6,7 +6,7 @@ import { cn, formatDate, formatNumber } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { BiomarkerChart } from '@/components/shared/BiomarkerChart'
 import { ScaleNote } from '@/components/shared/ScaleNote'
-import { formatReference, unitLabel, isQualitative, displayUnit } from '@/lib/reference'
+import { formatReference, unitLabel, displayUnit } from '@/lib/reference'
 import type { BiomarkerResult, Status } from '@/lib/types'
 
 const statusText: Record<Status, string> = {

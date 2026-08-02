@@ -13,17 +13,10 @@ import { Card } from '@/components/ui/card'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { formatReference, unitLabel, displayUnit } from '@/lib/reference'
 import { ExpandedBiomarkerDetails } from './expanded-biomarker-details'
-import type { BiomarkerResult, Status, MergedSource } from '@/lib/types'
+import type { BiomarkerResult, MergedSource } from '@/lib/types'
 
 const GRID_COLS =
   'grid grid-cols-[1.5fr_1.5fr_1fr_1fr_1fr_1.2fr_40px] items-center gap-x-3'
-
-const statusText: Record<Status, string> = {
-  normal: 'text-status-normal',
-  low: 'text-status-low',
-  high: 'text-status-high',
-  abnormal: 'text-status-high',
-}
 
 export function ResultsPanel({
   biomarkers,

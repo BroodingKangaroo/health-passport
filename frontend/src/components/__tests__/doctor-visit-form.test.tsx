@@ -55,7 +55,7 @@ describe('DoctorVisitForm', () => {
   })
 
   it('adds a prescription row when add medication is clicked', async () => {
-    const { rerender } = render(<DoctorVisitForm />)
+    render(<DoctorVisitForm />)
 
     expect(screen.queryByPlaceholderText('Medication name')).not.toBeInTheDocument()
     const addBtn = screen.getByText('Add Medication')

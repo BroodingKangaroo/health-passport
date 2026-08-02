@@ -30,17 +30,18 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
   const [numPages, setNumPages] = useState(0)
   const [pageNum, setPageNum] = useState(1)
   const [scale, setScale] = useState(1)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => !url)
   const [imgSrc, setImgSrc] = useState<string | null>(null)
   const [fitHeight, setFitHeight] = useState(0)
+  const imgUrlRef = useRef<string | undefined>(undefined)
 
-  useEffect(() => {
-    if (!url) {
-      setLoading(false)
-      return
-    }
-    let cancelled = false
-    let objectUrl: string | undefined
+  // Reset the viewer whenever the requested document changes — adjusted during
+  // render (React 19's "storing info from previous renders" pattern) so the
+  // effect only performs the asynchronous loading work.
+  const [prevUrl, setPrevUrl] = useState<string | null>(null)
+  const urlKey = url ?? null
+  if (prevUrl !== urlKey) {
+    setPrevUrl(urlKey)
     setPdf(null)
     setImgSrc(null)
     setNumPages(0)
@@ -48,7 +49,11 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
     setScale(1)
     setFitHeight(0)
     setLoading(true)
+  }
 
+  useEffect(() => {
+    if (!url) return
+    let cancelled = false
     const token = getAccessToken()
     const headers: Record<string, string> = token
       ? { Authorization: `Bearer ${token}` }
@@ -62,8 +67,9 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
         })
         .then((blob) => {
           if (cancelled) return
-          objectUrl = URL.createObjectURL(blob)
-          setImgSrc(objectUrl)
+          const u = URL.createObjectURL(blob)
+          imgUrlRef.current = u
+          setImgSrc(u)
           setLoading(false)
         })
         .catch(() => {
@@ -71,7 +77,10 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
         })
       return () => {
         cancelled = true
-        if (objectUrl) URL.revokeObjectURL(objectUrl)
+        if (imgUrlRef.current) {
+          URL.revokeObjectURL(imgUrlRef.current)
+          imgUrlRef.current = undefined
+        }
       }
     }
 
@@ -177,7 +186,7 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
     }
     el.addEventListener('wheel', handler, { passive: false })
     return () => el.removeEventListener('wheel', handler)
-  }, [])
+  }, [isImage])
 
   const zoomAtCenter = useCallback((direction: 1 | -1) => {
     const el = scrollRef.current

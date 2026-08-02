@@ -43,7 +43,6 @@ function formatRangeHint(def: { unit: string; reference: Reference | null }): st
 export function BiomarkerCombobox({
   value,
   originalName,
-  definitionId,
   scope,
   onNameChange,
   onUnitChange,

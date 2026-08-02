@@ -25,25 +25,58 @@ const AuthStatusContext = createContext<AuthStatusContextValue | null>(null)
 
 export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const { data: session, status: sessionStatus } = useSession()
-  const [status, setStatus] = useState<AuthStatus>('loading')
   const [user, setUser] = useState<CurrentUser | null>(null)
   const [anonId, setAnonId] = useState<string | null>(null)
+  const [authed, setAuthed] = useState(false)
   const [nonce, setNonce] = useState(0)
 
-  const token = session?.accessToken
-  const sessionReady = sessionStatus !== 'loading'
+  const token = session?.accessToken ?? null
+
+  // Reset the async resolution when the token changes. Adjusted during render
+  // so we never need a synchronous setState in an effect (React 19 avoids
+  // setState-in-effect for derived state like this).
+  const [prevToken, setPrevToken] = useState(token)
+  if (prevToken !== token) {
+    setPrevToken(token)
+    setAuthed(false)
+    setUser(null)
+    setAnonId(null)
+  }
+
+  const status: AuthStatus =
+    sessionStatus === 'loading'
+      ? 'loading'
+      : token
+        ? authed
+          ? 'authenticated'
+          : 'loading'
+        : 'unauthenticated'
 
   useEffect(() => {
+    if (sessionStatus === 'loading') return
     let cancelled = false
 
-    if (!sessionReady) {
-      setStatus('loading')
-      return
-    }
-
-    if (!token) {
-      setStatus('unauthenticated')
-      setUser(null)
+    if (token) {
+      fetchCurrentUser(token)
+        .then((me) => {
+          if (cancelled) return
+          if (me) {
+            setUser(me)
+            setAuthed(true)
+          } else {
+            // Token is invalid/expired on the backend but NextAuth still has a
+            // session — clear it so the menu and data stay consistent.
+            setUser(null)
+            setAuthed(false)
+            signOut({ callbackUrl: '/' })
+          }
+        })
+        .catch(() => {
+          if (cancelled) return
+          setUser(null)
+          setAuthed(false)
+        })
+    } else {
       fetchAnonId()
         .then((id) => {
           if (!cancelled) setAnonId(id)
@@ -51,41 +84,18 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
         .catch(() => {
           if (!cancelled) setAnonId(null)
         })
-      return
     }
-
-    setAnonId(null)
-    setStatus('loading')
-    fetchCurrentUser(token)
-      .then((me) => {
-        if (cancelled) return
-        if (me) {
-          setUser(me)
-          setStatus('authenticated')
-        } else {
-          // Token is invalid/expired on the backend but NextAuth still has a
-          // session — clear it so the menu and data stay consistent.
-          setUser(null)
-          setStatus('unauthenticated')
-          signOut({ callbackUrl: '/' })
-        }
-      })
-      .catch(() => {
-        if (cancelled) return
-        setUser(null)
-        setStatus('unauthenticated')
-      })
 
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, sessionReady, nonce])
+  }, [token, sessionStatus, nonce])
 
   const refresh = () => setNonce((n) => n + 1)
+  const visibleUser = status === 'authenticated' ? user : null
 
   return (
-    <AuthStatusContext.Provider value={{ status, user, anonId, refresh }}>
+    <AuthStatusContext.Provider value={{ status, user: visibleUser, anonId, refresh }}>
       {children}
     </AuthStatusContext.Provider>
   )

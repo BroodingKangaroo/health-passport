@@ -4,7 +4,7 @@ import { BloodTestDetails } from '../health-passport/blood-test-details'
 import type { MedicalEvent, BiomarkerResult } from '@/lib/types'
 
 vi.mock('next/dynamic', () => ({
-  default: (fn: () => Promise<{ DocumentViewer: React.ComponentType<{ url: string }> }>) => {
+  default: () => {
     const MockComponent = ({ url }: { url: string }) => (
       <div data-testid="document-viewer" data-url={url}>
         Document Viewer: {url}

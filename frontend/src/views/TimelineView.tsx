@@ -17,7 +17,7 @@ export function TimelineView() {
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
 
   const events: MedicalEvent[] = data?.events ?? []
-  const biomarkers = data?.biomarkers ?? []
+  const biomarkers = useMemo(() => data?.biomarkers ?? [], [data?.biomarkers])
   const visits = data?.visits ?? {}
   // Default to the most recent event (events are date-ascending, so the last
   // element is newest) until the user picks one; never a stale hardcoded id.

@@ -4,7 +4,7 @@ import { DoctorVisitDetails } from '../health-passport/doctor-visit-details'
 import type { VisitData } from '@/lib/types'
 
 vi.mock('next/dynamic', () => ({
-  default: (fn: () => Promise<{ DocumentViewer: React.ComponentType<{ url: string }> }>) => {
+  default: () => {
     const MockComponent = ({ url }: { url: string }) => (
       <div data-testid="document-viewer" data-url={url}>
         Document Viewer: {url}

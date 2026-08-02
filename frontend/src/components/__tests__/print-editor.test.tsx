@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { useEffect } from 'react'
 import { PrintEditor } from '@/components/health-passport/print-editor'
@@ -130,7 +130,7 @@ function PrintEditorInit(props: {
     const allDateLabels = props.dates.map((d) => dateId(d))
     const allRowIds = props.matrix.flatMap((cat) => cat.rows.map((r) => r.id))
     initFilters(allDateLabels, allRowIds)
-  }, [])
+  }, [props.dates, props.matrix, initFilters])
   return <PrintEditor {...props} />
 }
 

@@ -18,11 +18,10 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { cn, formatDate } from '@/lib/utils'
+import { formatDate } from '@/lib/utils'
 import { deleteEntry } from '@/services/api'
 import type {
   BiomarkerResult,
-  EventAttachment,
   MedicalEvent,
   Status,
   VisitData,
@@ -98,7 +97,7 @@ export function EntrySettings({
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
-  const attachments = event.attachments ?? []
+  const attachments = useMemo(() => event.attachments ?? [], [event.attachments])
   const attachmentCount = attachments.length
   const totalSizeBytes = useMemo(
     () => attachments.reduce((sum, a) => sum + parseSizeToBytes(a.size), 0),

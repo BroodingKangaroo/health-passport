@@ -358,7 +358,3 @@ export function DoctorVisitDetails({ visit, onDeleted }: { visit: VisitData; onD
     </div>
   )
 }
-
-async function handlePrintDocument(url: string) {
-  printAuthedDocument(url).catch((e) => console.error('Print failed', e))
-}

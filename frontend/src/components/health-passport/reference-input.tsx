@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { intervalReference } from '@/lib/reference'
 import type { Reference } from '@/lib/types'
@@ -44,19 +44,10 @@ function buildReference(type: RefType, lo: string, hi: string): Reference | null
 }
 
 export function ReferenceInput({ value, onChange }: Props) {
-  const [initialized, setInitialized] = useState(false)
-  const [type, setType] = useState<RefType>('none')
-  const [loVal, setLoVal] = useState('')
-  const [hiVal, setHiVal] = useState('')
-
-  useEffect(() => {
-    if (initialized) return
-    const parsed = parseType(value)
-    setType(parsed.type)
-    setLoVal(parsed.lo)
-    setHiVal(parsed.hi)
-    setInitialized(true)
-  }, [value, initialized])
+  const [initial] = useState(() => parseType(value))
+  const [type, setType] = useState<RefType>(initial.type)
+  const [loVal, setLoVal] = useState(initial.lo)
+  const [hiVal, setHiVal] = useState(initial.hi)
 
   const emit = (t: RefType, lo: string, hi: string) => {
     onChange(buildReference(t, lo, hi))

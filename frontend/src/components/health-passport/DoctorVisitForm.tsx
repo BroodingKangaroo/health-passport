@@ -1,48 +1,13 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Plus, X, Pill, CheckCircle, Activity, Languages } from 'lucide-react'
+import { X, Pill, CheckCircle, Activity, Languages } from 'lucide-react'
 import { useAutoResize } from '@/lib/hooks/useAutoResize'
 
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/shared/Field'
 import type { TranslatedText, ExtractedVisitData } from '@/lib/types'
-
-
-function TxViewer({ value, label }: { value: TranslatedText; label: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div>
-      <div className="relative">
-        <textarea
-          value={value.translated_en}
-          readOnly
-          rows={3}
-          className="flex w-full rounded-lg border border-input bg-background px-2.5 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
-        />
-        <span className="absolute right-2 top-2 rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
-          EN
-        </span>
-      </div>
-      {value.original && value.original !== value.translated_en && (
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          className="mt-1 flex items-center gap-1 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-        >
-          <Languages className="size-3" />
-          {open ? 'Hide' : 'Show'} original text
-        </button>
-      )}
-      {open && value.original && (
-        <div className="mt-1 rounded border border-dashed border-muted-foreground/20 bg-muted/30 p-2 text-xs italic text-muted-foreground/70">
-          {value.original}
-        </div>
-      )}
-    </div>
-  )
-}
 
 
 function TxField({
@@ -188,7 +153,7 @@ export function DoctorVisitForm({
 
   const [prescriptions, setPrescriptions] = useState<PrescriptionFormItem[]>(
     initialData?.prescriptions?.map((p, i) => ({
-      id: `rx-${Date.now()}-${i}`,
+      id: `rx-init-${i}`,
       name_editable: _tx(p.name).translated_en,
       name_original: _tx(p.name).original,
       dosage_editable: _tx(p.dosage).translated_en,
@@ -200,7 +165,7 @@ export function DoctorVisitForm({
 
   const [recommendations, setRecommendations] = useState<RecommendationFormItem[]>(
     initialData?.recommendations?.map((r, i) => ({
-      id: `rec-${Date.now()}-${i}`,
+      id: `rec-init-${i}`,
       editable: _tx(r).translated_en,
       original: _tx(r).original,
     })) ?? [],
