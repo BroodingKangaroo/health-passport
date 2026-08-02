@@ -374,11 +374,12 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     if (!selectedMergeTarget) return []
     const keys = new Set<string>()
     const names = new Set<string>()
+    const synonyms: string[] = []
     for (const b of selectedMergeTarget.biomarkers) {
       keys.add(b.definition_id)
       if (b.loinc_code) keys.add(b.loinc_code)
       for (const n of Object.values(b.names ?? {})) names.add(n.toLowerCase())
-      for (const s of b.synonyms ?? []) names.add(s.toLowerCase())
+      for (const s of b.synonyms ?? []) synonyms.push(s.toLowerCase())
     }
     const conflicts: string[] = []
     for (const cat of categories) {
@@ -388,9 +389,14 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         // Rows carrying a definition_id conflict when that id (or its LOINC
         // code) is already in the target. Manually-typed rows without one are
         // resolved by name on the server — match those client-side too, so the
-        // checkbox isn't left enabled for a merge that will 409.
+        // checkbox isn't left enabled for a merge that will 409. The server
+        // resolves names exactly (ILIKE without wildcards) but synonyms with
+        // substring containment (ILIKE '%name%'), so a typed name that is a
+        // substring of an existing synonym also conflicts.
         const conflictsById = !!row.definition_id && keys.has(row.definition_id)
-        const conflictsByName = !row.definition_id && names.has(nameLower)
+        const conflictsByName =
+          !row.definition_id &&
+          (names.has(nameLower) || synonyms.some((s) => s.includes(nameLower)))
         if (conflictsById || conflictsByName) {
           conflicts.push(row.name)
         }

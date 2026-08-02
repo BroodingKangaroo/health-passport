@@ -121,14 +121,6 @@ files as they stand now.
 - The print translation is configured separately on `/print-setup`
   (`print-setup.tsx`), so the header toggle is a dead control.
 
-### 19. Merge pre-flight conflict check diverges from the server → 409 on click
-
-- Files: `frontend/src/components/health-passport/add-entry.tsx:384-398`
-  vs `backend/app/api/entries.py:84-126`
-- The client exact-match on names & synonyms; the server also matches synonyms
-  with substring `ilike('%name%')`. A typed name that is a substring of an
-  existing synonym passes the client check but 409s on "Merge & Save".
-
 ### 20. Blank/future dates and empty rows accepted silently
 
 - Files: `frontend/src/components/health-passport/add-entry.tsx:813-819` and

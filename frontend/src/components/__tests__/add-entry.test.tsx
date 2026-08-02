@@ -399,6 +399,44 @@ describe('AddEntry', () => {
       expect(screen.getByText(/in the existing test: Hemoglobin/)).toBeInTheDocument()
     })
 
+    it('detects conflicts when a typed name is a substring of an existing synonym', async () => {
+      // The server resolves synonyms with substring containment (ILIKE
+      // '%name%'), so a manual row whose name is a substring of a target
+      // synonym would 409 on Merge & Save even though it matches no name
+      // exactly. The client's pre-flight check must mirror that, not
+      // exact-match only.
+      const entry = existingEntry({
+        biomarkers: [
+          {
+            definition_id: 'hba1c',
+            loinc_code: '4548-4',
+            names: { en: 'Glycated Hemoglobin' },
+            synonyms: ['HbA1c', 'Hemoglobin A1c'],
+          },
+        ],
+      })
+      mockFetchByDate.mockResolvedValue({ date: '2026-07-15', count: 1, entries: [entry] })
+      mockExtract.mockResolvedValue(
+        bloodTestResult([
+          {
+            raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170',
+            standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L',
+            reference: { kind: 'interval', low: 130, high: 170 },
+            status: 'normal', category: 'Complete Blood Count',
+            definition_id: '', scope: 'global',
+          },
+        ]),
+      )
+      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
+      selectFile(container, createFile())
+
+      await waitFor(() => {
+        expect(screen.getByRole('checkbox')).toBeDisabled()
+      }, { timeout: 3000 })
+      expect(screen.getByText(/Can't merge/i)).toBeInTheDocument()
+      expect(screen.getByText(/in the existing test: Hemoglobin/)).toBeInTheDocument()
+    })
+
     it('never saves as merge once the merge is blocked', async () => {
       // A conflicting target: the box is disabled and unchecked; clicking it is
       // a no-op, so the save can never silently route to mergeMedicalEntry.
