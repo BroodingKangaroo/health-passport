@@ -4,12 +4,14 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { fetchFlowsheetData } from '@/services/api'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
+import { useAuthStatus } from '@/components/providers/AuthStatusProvider'
 import { PrintEditor } from '@/components/health-passport/print-editor'
 import type { FlowsheetResponse, PrintLang } from '@/lib/types'
 
 export function PrintEditorView() {
   const router = useRouter()
   const { mode, targetLanguage, initFilters } = usePrintConfig()
+  const { user } = useAuthStatus()
   const [data, setData] = useState<FlowsheetResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -55,6 +57,7 @@ export function PrintEditorView() {
       biomarkers={data.biomarkers}
       lang={lang}
       bilingual={bilingual}
+      patient={user}
       onBack={() => router.push('/print-setup')}
     />
   )

@@ -12,7 +12,7 @@ import { cn, formatNumber } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
 import { formatReference } from '@/lib/reference'
-import type { PrintLang, DateHeader, MatrixCategory, BiomarkerResult, BiomarkerDefinition } from '@/lib/types'
+import type { PrintLang, DateHeader, MatrixCategory, BiomarkerResult, BiomarkerDefinition, CurrentUser } from '@/lib/types'
 
 const LANG_NAME: Record<PrintLang, string> = {
   ru: 'Russian',
@@ -21,6 +21,34 @@ const LANG_NAME: Record<PrintLang, string> = {
   fr: 'French',
   es: 'Spanish',
   he: 'Hebrew',
+}
+
+const GENDER_RU: Record<string, string> = {
+  Male: '\u041C\u0443\u0436\u0447\u0438\u043D\u0430',
+  Female: '\u0416\u0435\u043D\u0449\u0438\u043D\u0430',
+  Other: '\u0414\u0440\u0443\u0433\u043E\u0435',
+}
+
+function formatDob(dob: string, lang: PrintLang): string {
+  const m = dob.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return dob
+  const [, y, mo, d] = m
+  return lang === 'ru' ? `${d}.${mo}.${y}` : `${mo}.${d}.${y}`
+}
+
+function formatToday(lang: PrintLang): string {
+  const now = new Date()
+  const d = String(now.getDate()).padStart(2, '0')
+  const mo = String(now.getMonth() + 1).padStart(2, '0')
+  const y = now.getFullYear()
+  return lang === 'ru' ? `${d}.${mo}.${y}` : `${mo}.${d}.${y}`
+}
+
+function genderLabel(gender: string, lang: PrintLang): string {
+  const cleaned = gender.trim()
+  if (!cleaned) return ''
+  if (lang === 'ru' && GENDER_RU[cleaned]) return GENDER_RU[cleaned]
+  return cleaned
 }
 
 const TABLE_HEADINGS: Record<PrintLang, { biomarker: string; title: string; note: string }> = {
@@ -82,6 +110,7 @@ export function PrintEditor({
   lang,
   bilingual,
   onBack,
+  patient = null,
 }: {
   dates: DateHeader[]
   matrix: MatrixCategory[]
@@ -89,6 +118,7 @@ export function PrintEditor({
   lang: PrintLang
   bilingual: boolean
   onBack: () => void
+  patient?: CurrentUser | null
 }) {
   const {
     layout,
@@ -500,19 +530,29 @@ export function PrintEditor({
             style={{ fontSize: `${textSize}px`, colorScheme: 'light' }}
           >
             <div className="mb-3 flex items-start justify-between border-b border-gray-400 pb-2">
-              <div>
-                <div className="font-semibold">
-                  {lang === 'ru' ? '\u0418\u0432\u0430\u043D\u043E\u0432 \u0410\u043B\u0435\u043A\u0441\u0435\u0439' : 'Alexey Ivanov'}
+              {patient ? (
+                <div>
+                  <div className="font-semibold">
+                    {patient.name?.trim() || '\u2014'}
+                  </div>
+                  <div className="text-gray-600">
+                    {(patient.dob || patient.gender) && (
+                      <span>
+                        {patient.dob
+                          ? `${lang === 'ru' ? '\u0414\u0420' : 'DOB'}: ${formatDob(patient.dob, lang)}`
+                          : ''}
+                        {patient.dob && patient.gender ? ' \u00B7 ' : ''}
+                        {genderLabel(patient.gender, lang)}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="text-gray-600">
-                  {lang === 'ru' ? '\u0414\u0420: 14.03.1988 \u00B7 \u041C\u0443\u0436' : 'DOB: 14.03.1988 \u00B7 Male'}
-                </div>
-              </div>
+              ) : null}
               <div className="text-right text-gray-600">
                 <div>
                   {lang === 'ru'
-                    ? '\u0414\u0430\u0442\u0430: 12.10.2026'
-                    : 'Generated: 10/12/2026'}
+                    ? `\u0414\u0430\u0442\u0430: ${formatToday(lang)}`
+                    : `Generated: ${formatToday(lang)}`}
                 </div>
                 <div>
                   {lang === 'ru' ? '\u042F\u0437\u044B\u043A: \u0420\u0443\u0441\u0441\u043A\u0438\u0439' : `Language: ${LANG_NAME[lang]}`}

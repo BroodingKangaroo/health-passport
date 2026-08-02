@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import { PrintEditor } from '@/components/health-passport/print-editor'
 import { PrintConfigProvider } from '@/providers/print-config-provider'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
-import type { DateHeader, MatrixCategory, PrintLang, BiomarkerResult } from '@/lib/types'
+import type { DateHeader, MatrixCategory, PrintLang, BiomarkerResult, CurrentUser } from '@/lib/types'
 
 const mockDates: DateHeader[] = [
   { label: '10.08.2024' },
@@ -123,6 +123,7 @@ function PrintEditorInit(props: {
   lang: PrintLang
   bilingual: boolean
   onBack: () => void
+  patient?: CurrentUser | null
 }) {
   const { initFilters } = usePrintConfig()
   useEffect(() => {
@@ -139,6 +140,7 @@ function renderEditor(props?: {
   dates?: DateHeader[]
   matrix?: MatrixCategory[]
   biomarkers?: BiomarkerResult[]
+  patient?: CurrentUser | null
 }) {
   const dates = props?.dates ?? mockDates
   const matrix = props?.matrix ?? mockMatrix
@@ -151,6 +153,7 @@ function renderEditor(props?: {
         biomarkers={biomarkers}
         lang={props?.lang ?? 'en'}
         bilingual={props?.bilingual ?? false}
+        patient={props?.patient ?? null}
         onBack={vi.fn()}
       />
     </PrintConfigProvider>,
@@ -306,5 +309,61 @@ describe('PrintEditor', () => {
     expect(vitDInTable).toBe(false)
     const hbInTable = rows.some((r) => r.textContent?.includes('Hemoglobin'))
     expect(hbInTable).toBe(true)
+  })
+
+  it('renders real patient identity in the document header', () => {
+    renderEditor({
+      patient: {
+        id: 'u1',
+        email: 'maria@example.com',
+        name: 'Maria Petrova',
+        dob: '1990-05-14',
+        gender: 'Female',
+        external_id: '',
+      },
+    })
+    expect(screen.getByText('Maria Petrova')).toBeTruthy()
+    expect(screen.getByText('DOB: 05.14.1990 · Female')).toBeTruthy()
+  })
+
+  it('renders a dash for a patient with an empty name', () => {
+    renderEditor({
+      patient: {
+        id: 'u3',
+        email: 'anon@example.com',
+        name: '',
+        dob: '1990-05-14',
+        gender: 'Female',
+        external_id: '',
+      },
+    })
+    const dashName = screen.getAllByText('—').some(
+      (el) => typeof el.className === 'string' && el.className.includes('font-semibold'),
+    )
+    expect(dashName).toBe(true)
+    expect(screen.getByText('DOB: 05.14.1990 · Female')).toBeTruthy()
+  })
+
+  it('localizes patient DOB and gender to Russian', () => {
+    renderEditor({
+      lang: 'ru',
+      patient: {
+        id: 'u2',
+        email: 'ivan@example.com',
+        name: 'Иван Петров',
+        dob: '1988-03-14',
+        gender: 'Male',
+        external_id: '',
+      },
+    })
+    expect(screen.getByText('Иван Петров')).toBeTruthy()
+    expect(screen.getByText('ДР: 14.03.1988 · Мужчина')).toBeTruthy()
+  })
+
+  it('omits the patient identity block for anonymous users', () => {
+    renderEditor()
+    expect(screen.queryByText('Maria Petrova')).toBeNull()
+    expect(screen.queryByText(/DOB: /)).toBeNull()
+    expect(screen.queryByText(/ДР: /)).toBeNull()
   })
 })
