@@ -26,15 +26,14 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL
   ? `${process.env.NEXT_PUBLIC_API_URL}/api`
   : '/api'
 
-// SSE/streaming endpoints must NOT go through the Next.js rewrite proxy, which
-// buffers the whole response body and breaks incremental progress updates.
-// Prefer an explicit backend origin; fall back to the backend dev port so the
-// stream is consumed directly (CORS on the backend already allows this origin).
+// SSE/streaming endpoints route through the same Next.js rewrite proxy as every
+// other API call (STATIC_PROXY_URL). The proxy streams SSE through unchanged —
+// verified incrementally on Next 16 (dev Turbopack and production standalone) —
+// so progress events are not buffered. Setting NEXT_PUBLIC_API_URL keeps an
+// escape hatch to talk to a backend origin directly (requires CORS_ORIGINS on
+// the backend to include this site).
 function streamApiBase(): string {
   if (process.env.NEXT_PUBLIC_API_URL) return `${process.env.NEXT_PUBLIC_API_URL}/api`
-  if (typeof window !== 'undefined') {
-    return `${window.location.protocol}//${window.location.hostname}:8000/api`
-  }
   return '/api'
 }
 

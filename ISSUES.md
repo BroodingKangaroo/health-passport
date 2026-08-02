@@ -29,17 +29,6 @@ files as they stand now.
 - The print translation is configured separately on `/print-setup`
   (`print-setup.tsx`), so the header toggle is a dead control.
 
-### 7. Extract SSE endpoint hardcodes port 8000 in the browser (deploy concern)
-- File: `frontend/src/services/api.ts:33-39`
-- `streamApiBase()` falls back to
-  `window.location.protocol://window.location.hostname:8000/api` when
-  `NEXT_PUBLIC_API_URL` is unset.
-- `docker-compose.yml` publishes the backend on the host's port 8000, so this
-  works on a single machine, but any deployment where port 8000 is not exposed
-  externally will fail `POST /api/extract` for the streaming path, while every
-  other API call correctly goes through the `STATIC_PROXY_URL` rewrite. Needs
-  `NEXT_PUBLIC_API_URL` to be set in such environments.
-
 ---
 
 ## Verified working (explicitly checked, no findings)
