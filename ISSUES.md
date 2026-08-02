@@ -9,17 +9,6 @@ Line numbers refer to files as they stand now.
 
 ## HIGH
 
-### 2. Correlation chart always starts empty
-
-- File: `frontend/src/components/health-passport/correlation-chart.tsx:81-84`
-- Default selection is hardcoded to `['ldl', 'trig']`. Real biomarker ids are
-  LOINC codes (e.g. `718-7`) or definition ids (`local-…` / `713-8-…`), so
-  `'ldl'`/`'trig'` never match any biomarker. The user always sees the
-  placeholder "Select at least one biomarker to display the correlation chart."
-  even when they have lots of history.
-- Expected: seed `selectedIds` with the first 1–2 biomarkers that have
-  `history?.length`, falling back to an empty state only when no data exists.
-
 ### 3. "Forgot password?" is a dead link; password reset not implemented
 
 - File: `frontend/src/app/login/page.tsx:87` links to `/forgot-password`
