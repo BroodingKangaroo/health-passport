@@ -8,7 +8,7 @@ import {
   Filter,
 } from 'lucide-react'
 
-import { cn, formatNumber } from '@/lib/utils'
+import { cn, formatNumberFull } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
 import { formatReference } from '@/lib/reference'
@@ -610,7 +610,7 @@ export function PrintEditor({
                             <span className="font-medium">{rowLabel(row)}</span>
                             {showReferences && row.reference && (
                               <span className="block text-[0.75em] text-gray-400 leading-tight">
-                                {formatReference(row.reference, row.unit)}
+                                {formatReference(row.reference, row.unit, { full: true })}
                               </span>
                             )}
                           </td>
@@ -634,7 +634,7 @@ export function PrintEditor({
                                   cell.status !== 'normal' && 'font-semibold text-red-600',
                                 )}
                               >
-                                {formatNumber(cell.value)}
+                                {formatNumberFull(cell.value)}
                                 {cell.status !== 'normal' ? ' *' : ''}
                               </td>
                             )

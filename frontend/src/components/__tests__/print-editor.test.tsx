@@ -185,6 +185,29 @@ describe('PrintEditor', () => {
     expect(screen.getByText('155', { exact: false })).toBeTruthy()
   })
 
+  it('renders large values full-precision (never K/M/B compacted)', () => {
+    const matrixWithLarge: MatrixCategory[] = [
+      {
+        category: 'Viral Load',
+        rows: [
+          {
+            id: 'vload',
+            name: 'HBV DNA',
+            original: 'ДНК HBV',
+            unit: 'copies/mL',
+            reference: { kind: 'interval', low: 10, high: 1250000 },
+            cells: [{ value: '1250000', status: 'high' }, { value: '9999', status: 'normal' }, { value: '—', status: 'normal' }],
+          },
+        ],
+      },
+    ]
+    renderEditor({ matrix: matrixWithLarge })
+    expect(screen.getAllByText(/1250000/).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText(/9999/)).toBeTruthy()
+    expect(screen.queryByText(/1\.25M/)).toBeNull()
+    expect(screen.queryByText(/10K/)).toBeNull()
+  })
+
   it('shows range below biomarker name when showRanges is on', () => {
     renderEditor()
     expect(screen.getByText('12 – 16 g/dL')).toBeTruthy()

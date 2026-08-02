@@ -6,6 +6,7 @@ from app.schemas.biomarker import BiomarkerDefinitionResponse
 from app.db.session import get_db
 from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel, Patient
 from app.api.auth import get_current_user_or_anon
+from app.api._serializers import definition_schema
 
 router = APIRouter()
 
@@ -24,18 +25,4 @@ async def list_definitions(
         | (BiomarkerDefinitionModel.user_id.is_(None))
     ).all()
     defs.sort(key=lambda d: d.names.get("en", "") or "")
-    return [
-        BiomarkerDefinitionResponse(
-            id=d.id,
-            loinc_code=d.loinc_code,
-            names=d.names,
-            synonyms=d.synonyms or [],
-            category=d.category,
-            unit=d.unit,
-            reference=d.reference,
-            scope=d.scope,
-            user_id=d.user_id,
-            reference_source=d.reference_source,
-        )
-        for d in defs
-    ]
+    return [definition_schema(d) for d in defs]

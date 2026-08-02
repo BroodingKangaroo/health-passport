@@ -139,6 +139,28 @@ function _stripTrailingZeros(s: string): string {
   return s.replace(/\.?0+$/, '')
 }
 
+/**
+ * Full-precision number formatting for official exports (print editor). Unlike
+ * `formatNumber`, large magnitudes are NOT compacted into K/M/B/T suffixes, so
+ * a lab value such as 1,250,000 prints as "1250000" — never "1.25M".
+ *
+ *   0             -> "0"
+ *   8.75          -> "8.75"
+ *   1234          -> "1234"
+ *   1250000       -> "1250000"
+ *   "Not detected"-> "Not detected"
+ *   null / ""     -> ""
+ */
+export function formatNumberFull(
+  value: number | string | null | undefined,
+): string {
+  if (value == null || value === '') return ''
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return String(value)
+  if (n === 0) return '0'
+  return _stripTrailingZeros(n.toString())
+}
+
 export function splitDateLabel(dateStr: string): { label: string; sub?: string } {
   const d = new Date(dateStr)
   if (!isNaN(d.getTime())) {

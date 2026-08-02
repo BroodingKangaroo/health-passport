@@ -264,3 +264,34 @@ class TestBiomarkerDefinitions:
             assert "category" in d
             assert "unit" in d
             assert "reference" in d
+
+    async def test_definitions_expose_canonical_unit_fields(self, client, db_session, auth_token):
+        from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
+
+        wbc = db_session.query(BiomarkerDefinitionModel).filter(BiomarkerDefinitionModel.id == "wbc").first()
+        wbc.canonical_unit = "K/uL"
+        wbc.canonical_kind = "linear"
+        wbc.canonical_unit_inferred = True
+        db_session.commit()
+
+        resp = await client.get("/api/biomarkers/definitions", headers={"Authorization": f"Bearer {auth_token}"})
+        assert resp.status_code == 200
+        data = resp.json()
+
+        wbc_out = next(d for d in data if d["id"] == "wbc")
+        assert wbc_out["canonical_unit"] == "K/uL"
+        assert wbc_out["canonical_kind"] == "linear"
+        assert wbc_out["canonical_unit_inferred"] is True
+
+    async def test_definitions_unit_prefers_canonical(self, client, db_session, auth_token):
+        from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
+
+        hb = db_session.query(BiomarkerDefinitionModel).filter(BiomarkerDefinitionModel.id == "hb").first()
+        hb.canonical_unit = "g/L"
+        db_session.commit()
+
+        resp = await client.get("/api/biomarkers/definitions", headers={"Authorization": f"Bearer {auth_token}"})
+        data = resp.json()
+        hb_out = next(d for d in data if d["id"] == "hb")
+        assert hb_out["unit"] == "g/L"
+        assert hb_out["canonical_unit"] == "g/L"

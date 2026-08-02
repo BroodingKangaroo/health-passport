@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatNumber } from '@/lib/utils'
+import { formatNumber, formatNumberFull } from '@/lib/utils'
 import { formatReference } from '@/lib/reference'
 
 describe('formatNumber', () => {
@@ -56,6 +56,41 @@ describe('formatNumber', () => {
     expect(formatNumber(1_500_000_000)).toBe('1.5B')
     expect(formatNumber(1_000_000_000)).toBe('1B')
     expect(formatNumber(2_000)).toBe('2K')
+  })
+})
+
+describe('formatNumberFull (full precision for exports)', () => {
+  it('returns "" for null / undefined / empty', () => {
+    expect(formatNumberFull(null)).toBe('')
+    expect(formatNumberFull(undefined)).toBe('')
+    expect(formatNumberFull('')).toBe('')
+  })
+
+  it('keeps large values full-precision, never compacted', () => {
+    expect(formatNumberFull(1234)).toBe('1234')
+    expect(formatNumberFull(9999)).toBe('9999')
+    expect(formatNumberFull(1_250_000)).toBe('1250000')
+    expect(formatNumberFull(10_000_000)).toBe('10000000')
+    expect(formatNumberFull(1_000_000_000)).toBe('1000000000')
+    expect(formatNumberFull(2_500_000_000_000)).toBe('2500000000000')
+  })
+
+  it('keeps small decimal values and zero', () => {
+    expect(formatNumberFull(0)).toBe('0')
+    expect(formatNumberFull(8.75)).toBe('8.75')
+    expect(formatNumberFull(-42)).toBe('-42')
+    expect(formatNumberFull(0.5)).toBe('0.5')
+  })
+
+  it('parses numeric strings without compacting', () => {
+    expect(formatNumberFull('1250000')).toBe('1250000')
+    expect(formatNumberFull('8.75')).toBe('8.75')
+  })
+
+  it('passes through non-numeric strings unchanged', () => {
+    expect(formatNumberFull('Not detected')).toBe('Not detected')
+    expect(formatNumberFull('Negative')).toBe('Negative')
+    expect(formatNumberFull('—')).toBe('—')
   })
 })
 

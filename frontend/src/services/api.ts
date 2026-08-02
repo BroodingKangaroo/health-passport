@@ -120,7 +120,8 @@ export async function extractMedicalData(
       const detail = await res.json().catch(() => ({ detail: 'Usage limit reached' }))
       throw new UsageLimitError(res.status, detail.detail || 'Usage limit reached')
     }
-    throw new ApiError(res.status, 'POST /extract failed')
+    const detail = await res.json().catch(() => ({ detail: 'POST /extract failed' }))
+    throw new ApiError(res.status, detail.detail || 'POST /extract failed')
   }
 
   if (!res.body) throw new Error('Response body is missing — cannot read extraction stream')
@@ -255,7 +256,8 @@ export async function saveMedicalEntry(formData: FormData): Promise<SaveEntryRes
       const detail = await res.json().catch(() => ({ detail: 'Usage limit reached' }))
       throw new UsageLimitError(res.status, detail.detail || 'Usage limit reached')
     }
-    throw new ApiError(res.status, 'POST /entry failed')
+    const detail = await res.json().catch(() => ({ detail: 'POST /entry failed' }))
+    throw new ApiError(res.status, detail.detail || 'POST /entry failed')
   }
   return res.json()
 }

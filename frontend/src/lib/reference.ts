@@ -1,5 +1,5 @@
 import type { Reference, ReferenceInterval, ReferenceQualitative, BiomarkerDefinition } from './types'
-import { formatNumber } from './utils'
+import { formatNumber, formatNumberFull } from './utils'
 
 /** Canonical qualitative values matching the backend's normalisation enum. */
 export const QUALITATIVE_VALUES = [
@@ -27,11 +27,18 @@ export const QUALITATIVE_VALUES = [
  *   {kind:'qualitative', expected:'отсутствуют'} -> 'отсутствуют'
  *   {kind:'qualitative', expected:null}       -> '—'
  *   null                                       -> '—'
+ *
+ * Pass `{ full: true }` for official exports (print editor): bounds render at
+ * full precision (e.g. `1250000`) instead of compact form (`1.25M`).
  */
-export function formatReference(ref: Reference | null | undefined, unit?: string | null): string {
+export function formatReference(
+  ref: Reference | null | undefined,
+  unit?: string | null,
+  opts?: { full?: boolean },
+): string {
   if (!ref) return '—'
   if (ref.kind === 'interval') {
-    return formatInterval(ref, unit)
+    return formatInterval(ref, unit, opts?.full ?? false)
   }
   // qualitative
   const q = ref as ReferenceQualitative
@@ -39,15 +46,17 @@ export function formatReference(ref: Reference | null | undefined, unit?: string
   return unit ? `${text} ${unit}`.trim() : text
 }
 
-function formatInterval(ref: ReferenceInterval, unit?: string | null): string {
+function formatInterval(ref: ReferenceInterval, unit?: string | null, full = false): string {
+  const fmt = (n: number | null) =>
+    n == null ? '' : full ? formatNumberFull(n) : formatNumber(n)
   const { low, high } = ref
   let body: string
   if (low != null && high != null) {
-    body = `${formatNumber(low)} – ${formatNumber(high)}`
+    body = `${fmt(low)} – ${fmt(high)}`
   } else if (low != null) {
-    body = `≥ ${formatNumber(low)}`
+    body = `≥ ${fmt(low)}`
   } else if (high != null) {
-    body = `≤ ${formatNumber(high)}`
+    body = `≤ ${fmt(high)}`
   } else {
     body = '—'
   }

@@ -72,27 +72,6 @@ files as they stand now.
 
 ## MEDIUM
 
-### 11. Save/extract failures hide the real backend message
-
-- File: `frontend/src/services/api.ts:123,258`
-- Non-429 failures from `POST /extract` raise "POST /extract failed" and from
-  `POST /entry` "POST /entry failed", discarding the backend `detail`
-  (e.g. `Unsupported file type '…'` at `ai.py:108`, `File too large (…).
-  Maximum allowed size is 10 MB` at `entries.py:362-363`). The merge counterpart
-  (`api.ts:264-283`) does surface `detail` — inconsistent.
-
-### 12. `/api/biomarkers/definitions` omits `canonical_unit`
-
-- File: `backend/app/api/biomarkers.py:27-40`
-- The endpoint returns `unit=d.unit` and never populates
-  `canonical_unit`/`canonical_kind` (schema defaults to null), while the rest of
-  the app's serializers prefer the canonical unit
-  (`backend/app/api/_serializers.py:42-48`). The add-entry combobox
-  (`biomarker-combobox.tsx:90`) therefore shows a unit that can differ from the
-  flowsheet/timeline/graph unit for canonicalized definitions, and
-  `canonical_unit_inferred` can never light up the "guessed unit" ring in
-  `LabResultForm`.
-
 ### 13. Anonymous → registered "transfer my data" drops fields
 
 - Files: `backend/app/services/data_migration.py:89-96,153-164`
@@ -153,13 +132,6 @@ files as they stand now.
   segmented-button highlight. No content anywhere reacts to `lang`.
 - The print translation is configured separately on `/print-setup`
   (`print-setup.tsx`), so the header toggle is a dead control.
-
-### 17. Print export corrupts values with compact "K/M/B" notation
-
-- File: `frontend/src/components/health-passport/print-editor.tsx:637`
-- Cell values go through `formatNumber` (`frontend/src/lib/utils.ts:115-135`),
-  so 1,250,000 prints as "1.25M" and 9999 as "10K" — loss of precision in an
-  official medical export.
 
 ### 18. "Drag & drop multiple documents here" is not a dropzone
 
