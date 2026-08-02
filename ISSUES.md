@@ -121,13 +121,6 @@ files as they stand now.
 - The print translation is configured separately on `/print-setup`
   (`print-setup.tsx`), so the header toggle is a dead control.
 
-### 18. "Drag & drop multiple documents here" is not a dropzone
-
-- File: `frontend/src/components/health-passport/add-entry.tsx:592-609`
-- The dashed "upload" surface is a `<button>` whose only handler opens the file
-  picker; there is no `onDrop`/`onDragOver`. `handleFilePicked` reads only
-  `files?.[0]` so multi-select silently drops every file after the first.
-
 ### 19. Merge pre-flight conflict check diverges from the server → 409 on click
 
 - Files: `frontend/src/components/health-passport/add-entry.tsx:384-398`

@@ -125,6 +125,8 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const [mergeSelected, setMergeSelected] = useState(false)
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [dragActive, setDragActive] = useState(false)
+  const [multiFileNotice, setMultiFileNotice] = useState<string | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
   const [progressStage, setProgressStage] = useState<ProgressStage>('ocr_scanning')
   const [markdownChars, setMarkdownChars] = useState<number | null>(null)
@@ -429,9 +431,15 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
 
   useEffect(() => { resizeNotes() }, [resizeNotes, prefillNotes])
 
-  function handleFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  function handleFiles(files: FileList | null) {
+    const list = files ? Array.from(files) : []
+    if (list.length === 0) return
+    // The extraction and save pipeline is single-document; when several files
+    // are dropped, deterministically process the first and say so.
+    const file = list[0]
+    setMultiFileNotice(
+      list.length > 1 ? 'Only the first document is processed — upload files one at a time.' : null,
+    )
     setSelectedFile(file)
     setObjectUrl(URL.createObjectURL(file))
     if (fileRef.current) {
@@ -442,6 +450,33 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     runExtraction(file)
   }
 
+  function handleFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    handleFiles(e.target.files)
+    e.target.value = ''
+  }
+
+  function handleDragOver(e: React.DragEvent<HTMLButtonElement>) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+  }
+
+  function handleDragEnter(e: React.DragEvent<HTMLButtonElement>) {
+    e.preventDefault()
+    if (uploadState === 'idle') setDragActive(true)
+  }
+
+  function handleDragLeave(e: React.DragEvent<HTMLButtonElement>) {
+    e.preventDefault()
+    setDragActive(false)
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLButtonElement>) {
+    e.preventDefault()
+    setDragActive(false)
+    if (uploadState !== 'idle') return
+    handleFiles(e.dataTransfer.files)
+  }
+
   function startManual() {
     setEntryMode('manual')
     setCategories(manualCategories())
@@ -449,6 +484,8 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     setSelectedFile(null)
     setObjectUrl(null)
     setAiError(null)
+    setMultiFileNotice(null)
+    setDragActive(false)
   }
 
   function handleFileRefChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -593,9 +630,14 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         <button
           type="button"
           onClick={() => uploadState === 'idle' && uploadFileRef.current?.click()}
+          onDragOver={handleDragOver}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
           disabled={uploadState === 'scanning'}
           className={cn(
             'w-full rounded-xl border-2 border-dashed border-primary/30 bg-accent/40 p-12 text-center transition',
+            dragActive && 'border-primary bg-accent/80 ring-2 ring-primary/40',
             uploadState === 'idle' && 'cursor-pointer hover:bg-accent/70',
           )}
         >
@@ -606,7 +648,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
               </div>
               <div>
                 <p className="text-sm font-semibold text-foreground">
-                  Drag &amp; drop multiple documents here, or click to browse.
+                  Drag &amp; drop a document here, or click to browse.
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Supports PDF, JPG, PNG
@@ -666,6 +708,13 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
             </div>
           )}
         </button>
+
+        {multiFileNotice && (
+          <p className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+            {multiFileNotice}
+          </p>
+        )}
 
         {uploadState === 'idle' && (
           <>

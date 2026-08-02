@@ -64,6 +64,12 @@ function selectFile(container: HTMLElement, file: File) {
   fireEvent.change(input, { target: { files: [file] } })
 }
 
+function dropFiles(element: HTMLElement, files: File[]) {
+  fireEvent.drop(element, {
+    dataTransfer: { files },
+  })
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
 })
@@ -96,6 +102,36 @@ describe('AddEntry', () => {
     selectFile(container, createFile())
 
     expect(screen.getByText('Scanning document pages...')).toBeInTheDocument()
+  })
+
+  it('starts extraction when a file is dropped on the upload surface', () => {
+    mockExtract.mockImplementation(
+      () => new Promise(() => {}),
+    )
+
+    const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
+    const zone = container.querySelector('button[type="button"]') as HTMLButtonElement
+    dropFiles(zone, [createFile('dropped.pdf')])
+
+    expect(mockExtract).toHaveBeenCalledTimes(1)
+    expect(mockExtract.mock.calls[0][0].name).toBe('dropped.pdf')
+    expect(screen.getByText('Scanning document pages...')).toBeInTheDocument()
+  })
+
+  it('uses only the first file when multiple are dropped and shows a notice', () => {
+    mockExtract.mockImplementation(
+      () => new Promise(() => {}),
+    )
+
+    const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
+    const zone = container.querySelector('button[type="button"]') as HTMLButtonElement
+    dropFiles(zone, [createFile('first.pdf'), createFile('second.pdf')])
+
+    expect(mockExtract).toHaveBeenCalledTimes(1)
+    expect(mockExtract.mock.calls[0][0].name).toBe('first.pdf')
+    expect(
+      screen.getByText(/Only the first document is processed/),
+    ).toBeInTheDocument()
   })
 
   it('pre-fills blood test form from AI data', async () => {
