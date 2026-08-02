@@ -1,9 +1,10 @@
 # HealthPassport — Bug / Inconsistency Log
 
 Audit date: 2026-08-02. Findings verified against the current working tree
-(repo has uncommitted refactoring: frontend Playwright e2e removed, backend
-serializers hoisted into `app/api/_serializers.py`, several scripts deleted).
-Line numbers refer to files as they stand now.
+(the e2e refactor referenced below is committed as `feca353`: frontend
+Playwright e2e removed, backend serializers hoisted into
+`app/api/_serializers.py`, several scripts deleted). Line numbers refer to
+files as they stand now.
 
 ---
 
@@ -15,26 +16,6 @@ Line numbers refer to files as they stand now.
 - No such route exists (only `/login` and `/register` under `src/app`).
 - Backend has no reset endpoint (`grep -ri "forgot\|reset.password" backend` → nothing).
 - Clicking the link → 404 on a route that was never built.
-
----
-
-## MEDIUM
-
-### 5. AGENTS.md documents Playwright E2E that was deleted in the refactor
-
-- Affected: `AGENTS.md:23,41` vs actual repo state.
-- `AGENTS.md` claims:
-  - `pnpm test:e2e` → Playwright, with `playwright.config.ts` auto-starting
-    both servers (`AGENTS.md:23`)
-  - CI has three jobs including a Playwright e2e job (`AGENTS.md:41`)
-- Actual state (working tree):
-  - `frontend/e2e/` deleted (specs, global-setup/teardown) — see `git status`
-  - `frontend/playwright.config.ts` deleted
-  - `package.json` has no `test:e2e` script; no `@playwright/test` dep
-  - `.github/workflows/tests.yml` only has `backend-test` + `frontend-test`
-    (2 jobs, no Playwright job)
-- Docs either need updating to describe the backend-only golden harness, or the
-  frontend e2e must be restored.
 
 ---
 

@@ -34,9 +34,10 @@ respect these hard rules:
 - **Settings tab** is the third tab in `BloodTestDetails`/`DoctorVisitDetails`
   (`entry-settings.tsx`): entry stats + Danger Zone deletes; TimelineView
   passes `onDeleted`.
-- **Commands**: `pnpm test` (vitest, jsdom, `@`→`src/`), `pnpm lint`,
-  `pnpm test:e2e` (Playwright, auto-starts both servers). Images are
-  `unoptimized`; `recharts` is transpiled.
+- **Commands**: `pnpm test` (vitest, jsdom, `@`→`src/`), `pnpm lint`. No
+  Playwright e2e — end-to-end coverage is the backend golden harness
+  (`backend/e2e/run_e2e_server.py`). Images are `unoptimized`; `recharts`
+  is transpiled.
 
 When suggesting changes, note the component(s) touched and call out any effect
 on the merge/units behavioral contracts above.
