@@ -100,11 +100,12 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
     const q = query.trim().toLowerCase()
     const available = allBiomarkers.filter((b) => b.history?.length)
     if (!q) return available
-    return available.filter(
-      (b) =>
-        b.definition.names.en.toLowerCase().includes(q) ||
-        b.definition.names.ru.toLowerCase().includes(q),
-    )
+    return available.filter((b) => {
+      const names = b.definition.names
+      return Object.keys(names).some((key) =>
+        names[key].toLowerCase().includes(q),
+      )
+    })
   }, [query, allBiomarkers])
 
   const toggleBiomarker = (id: string) => {
