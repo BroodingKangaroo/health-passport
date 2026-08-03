@@ -31,7 +31,6 @@ export function HeaderBar() {
   const router = useRouter()
   const { status, user, anonId } = useAuthStatus()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
-  const [lang, setLang] = useState<'RU' | 'EN'>('EN')
   const { theme, toggleTheme } = useTheme()
   const userMenuRef = useRef<HTMLDivElement>(null)
 
@@ -83,30 +82,6 @@ export function HeaderBar() {
           <Plus className="size-3.5" />
           Add New Entry
         </Button>
-
-        <div className="flex items-center overflow-hidden rounded-lg border border-border bg-secondary text-xs font-medium">
-          <button
-            onClick={() => setLang('RU')}
-            className={
-              lang === 'RU'
-                ? 'bg-primary px-2.5 py-1.5 text-primary-foreground'
-                : 'px-2.5 py-1.5 text-muted-foreground transition-colors hover:text-foreground'
-            }
-          >
-            RU
-          </button>
-          <span className="px-1 text-muted-foreground">→</span>
-          <button
-            onClick={() => setLang('EN')}
-            className={
-              lang === 'EN'
-                ? 'bg-primary px-2.5 py-1.5 text-primary-foreground'
-                : 'px-2.5 py-1.5 text-muted-foreground transition-colors hover:text-foreground'
-            }
-          >
-            EN MEDICAL
-          </button>
-        </div>
 
         <Button variant="outline" size="icon-sm" onClick={toggleTheme} aria-label="Toggle theme">
           {theme === 'light' ? <Moon className="size-3.5" /> : <Sun className="size-3.5" />}

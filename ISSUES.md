@@ -74,18 +74,6 @@ files as they stand now.
 
 ---
 
-## LOW / UI dead-ends
-
-### 6. Header RU→EN language toggle does nothing
-
-- File: `frontend/src/components/health-passport/header-bar.tsx:38,151-159`
-- `const [lang, setLang] = useState<'RU' | 'EN'>('EN')` only drives the
-  segmented-button highlight. No content anywhere reacts to `lang`.
-- The print translation is configured separately on `/print-setup`
-  (`print-setup.tsx`), so the header toggle is a dead control.
-
----
-
 ## Refactors / agentic-development (2026-08-03)
 
 Refactor candidates identified during an agentic-development audit. These are
