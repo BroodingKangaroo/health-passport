@@ -121,17 +121,6 @@ files as they stand now.
 - The print translation is configured separately on `/print-setup`
   (`print-setup.tsx`), so the header toggle is a dead control.
 
-### 20. Blank/future dates and empty rows accepted silently
-
-- Files: `frontend/src/components/health-passport/add-entry.tsx:813-819` and
-  `backend/app/api/entries.py:47-49,168-171`
-- The date input is not required and has no max/future guard; a blank date saves
-  as "today", and a future date saves too (breaking timeline ordering).
-- Rows with an empty name or value are silently dropped on save with no warning.
-- Duplicate-test detection fetch errors are swallowed (`add-entry.tsx:353-355`),
-  so the "Time (required)" / merge warning can silently disappear while save
-  stays enabled → duplicate entries.
-
 ---
 
 ## Refactors / agentic-development (2026-08-03)

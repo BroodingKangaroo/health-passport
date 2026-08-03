@@ -119,7 +119,9 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const [imagingFormData, setImagingFormData] = useState<ExtractedImagingData | null>(null)
   const [timeValue, setTimeValue] = useState('')
   const [dateValue, setDateValue] = useState('')
+  const [dateError, setDateError] = useState<string | null>(null)
   const [duplicateWarning, setDuplicateWarning] = useState(false)
+  const [duplicateCheckFailed, setDuplicateCheckFailed] = useState(false)
   const [timeRequired, setTimeRequired] = useState(false)
   const [existingBloodTests, setExistingBloodTests] = useState<EntrySummary[]>([])
   const [mergeSelected, setMergeSelected] = useState(false)
@@ -180,6 +182,10 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const hasLeftOcrRef = useRef(false)
   const markdownCharsRef = useRef<number | null>(null)
   const extractionAbortRef = useRef<AbortController | null>(null)
+  // Local-today as YYYY-MM-DD (string comparison is valid for ISO dates).
+  // Gates the date picker's max and the save-time future-date check.
+  const nowLocal = new Date()
+  const todayLocal = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth() + 1).padStart(2, '0')}-${String(nowLocal.getDate()).padStart(2, '0')}`
   // Stage progress bookkeeping kept as state (not refs) so the render can
   // read it to draw the progress bar — React 19 forbids ref reads during render.
   const [stageStart, setStageStart] = useState(0)
@@ -330,6 +336,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   if (prevFilter.type !== documentType || prevFilter.date !== dateValue) {
     setPrevFilter({ type: documentType, date: dateValue })
     setDuplicateWarning(false)
+    setDuplicateCheckFailed(false)
     setTimeRequired(false)
     setExistingBloodTests([])
     setMergeSelected(false)
@@ -345,6 +352,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         // Ignore stale responses
         if (controller.signal.aborted) return
         setExistingBloodTests(res.entries ?? [])
+        setDuplicateCheckFailed(false)
         const hasDuplicate = (res.entries?.length ?? 0) > 0
         setDuplicateWarning(hasDuplicate)
         setTimeRequired(hasDuplicate)
@@ -353,7 +361,10 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         setMergeSelected(false)
         setMergeTargetId((prev) => (prev && res.entries?.some((e) => e.id === prev) ? prev : res.entries?.[0]?.id ?? null))
       } catch {
-        // ignore fetch errors
+        // The duplicate/merge pre-flight failed — say so instead of letting
+        // the warning silently vanish while Save stays enabled (which is how
+        // duplicate entries happen).
+        setDuplicateCheckFailed(true)
       }
     }, 300)
     return () => {
@@ -406,6 +417,25 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   }, [selectedMergeTarget, categories])
   const mergeBlocked = mergeConflicts.length > 0
   const merging = mergeSelected && !mergeBlocked && !!selectedMergeTarget
+
+  // Rows the backend would skip on save (empty name or value). Counted live
+  // so the form can warn before saving: a partially-empty list still saves
+  // (the backend drops those rows), but an all-empty list is a save with
+  // nothing in it and is blocked.
+  const skippedRowCount = useMemo(() => {
+    if (documentType !== 'blood_test') return 0
+    return categories.reduce(
+      (n, cat) => n + cat.rows.filter((r) => !r.name.trim() || !r.value.trim()).length,
+      0,
+    )
+  }, [categories, documentType])
+  const validRowCount = useMemo(() => {
+    if (documentType !== 'blood_test') return 0
+    return categories.reduce(
+      (n, cat) => n + cat.rows.filter((r) => r.name.trim() && r.value.trim()).length,
+      0,
+    )
+  }, [categories, documentType])
 
   // If the box is ticked and a conflict shows up afterwards (e.g. the AI
   // extraction lands a biomarker that's already in the target, or the user
@@ -546,6 +576,24 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     setSaving(true)
     setSaveError(null)
     try {
+      // Date is required and must not be in the future — a blank silently
+      // saved as "today" and a future date broke timeline ordering before.
+      const dateStr = dateRef.current?.value ?? ''
+      if (!dateStr) {
+        setDateError('Date is required')
+        return
+      }
+      if (dateStr > todayLocal) {
+        setDateError('Date can\u2019t be in the future')
+        return
+      }
+      // Saving with nothing but empty rows and no document would create an
+      // empty entry. A file-only save (e.g. an AI-extracted report with no
+      // biomarkers) stays allowed.
+      if (documentType === 'blood_test' && validRowCount === 0 && skippedRowCount > 0 && !selectedFile) {
+        setSaveError('Add at least one biomarker with a name and value.')
+        return
+      }
       const autoTitle = documentType === 'blood_test' ? 'Blood Test Panel' : documentType === 'doctor_visit' ? 'Doctor Visit' : documentType === 'imaging' ? 'Imaging Report' : 'Medical Record'
       // When merging, send the title as typed (may be empty) so the merge
       // endpoint can fall back to the document filename for the merged section
@@ -553,7 +601,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
       // own title stays untouched on merge anyway.
       const fd = buildSaveEntryFormData({
         type: documentType,
-        date: dateRef.current?.value ?? '',
+        date: dateStr,
         time: timeValue,
         clinic: clinicRef.current?.value ?? '',
         provider: providerRef.current?.value ?? '',
@@ -866,13 +914,23 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                   <option value="imaging">MRI / Imaging Scan</option>
                 </select>
               </Field>
-              <Field label="Date">
+              <Field label="Date *">
                 <Input
                   ref={dateRef}
                   type="date"
+                  required
+                  max={todayLocal}
                   defaultValue={dateValue}
-                  onChange={(e) => setDateValue(e.target.value)}
+                  onChange={(e) => {
+                    setDateValue(e.target.value)
+                    setDateError(null)
+                  }}
+                  className={dateError ? 'border-red-500' : ''}
+                  aria-invalid={!!dateError}
                 />
+                {dateError && (
+                  <p className="mt-1 text-xs text-red-500">{dateError}</p>
+                )}
               </Field>
               <Field label={timeRequired && !merging ? 'Time (required)' : 'Time (optional)'}>
                 <Input
@@ -885,6 +943,11 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                 {duplicateWarning && !merging && (
                   <p className="mt-1 text-xs text-red-500">
                     There&apos;s already a blood test on this date. Time is required.
+                  </p>
+                )}
+                {duplicateCheckFailed && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    Couldn&apos;t check for existing tests on this date — saving may create a duplicate entry.
                   </p>
                 )}
                 {duplicateWarning && existingBloodTests.length > 0 && (
@@ -980,6 +1043,16 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
               />
             )}
           </div>
+
+          {skippedRowCount > 0 && validRowCount > 0 && (
+            <div className="flex items-start gap-3 border-t border-border p-4 text-xs text-amber-600">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" />
+              <span>
+                {skippedRowCount} {skippedRowCount === 1 ? 'row is' : 'rows are'} missing a name or value
+                and will be skipped on save.
+              </span>
+            </div>
+          )}
 
           {saveError && (
             <div className="flex items-start gap-3 border-t border-border p-4 text-xs text-status-high">

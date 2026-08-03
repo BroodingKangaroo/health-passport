@@ -272,6 +272,124 @@ describe('AddEntry', () => {
     ).toBeInTheDocument()
   })
 
+  describe('save validation', () => {
+    async function renderManualEditor() {
+      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
+      fireEvent.click(screen.getByText('Skip Upload & Enter Manually'))
+      await waitFor(() => {
+        expect(screen.getByText('Save to HealthPassport')).toBeInTheDocument()
+      })
+      return container
+    }
+
+    function setDate(container: HTMLElement, value: string) {
+      const input = container.querySelector('input[type="date"]') as HTMLInputElement
+      fireEvent.change(input, { target: { value } })
+    }
+
+    it('blocks save when the date is blank', async () => {
+      const container = await renderManualEditor()
+      // the date input starts empty in manual mode
+
+      fireEvent.click(screen.getByText('Save to HealthPassport'))
+
+      await waitFor(() => {
+        expect(screen.getByText('Date is required')).toBeInTheDocument()
+      })
+      expect(mockSave).not.toHaveBeenCalled()
+      // The error clears as soon as a date is picked.
+      setDate(container, '2025-06-10')
+      expect(screen.queryByText('Date is required')).not.toBeInTheDocument()
+    })
+
+    it('blocks save when the date is in the future', async () => {
+      const container = await renderManualEditor()
+      const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      const pad = (n: number) => String(n).padStart(2, '0')
+      setDate(container, `${future.getFullYear()}-${pad(future.getMonth() + 1)}-${pad(future.getDate())}`)
+
+      fireEvent.click(screen.getByText('Save to HealthPassport'))
+
+      await waitFor(() => {
+        expect(screen.getByText('Date can\u2019t be in the future')).toBeInTheDocument()
+      })
+      expect(mockSave).not.toHaveBeenCalled()
+    })
+
+    it('blocks save when every biomarker row is empty', async () => {
+      const container = await renderManualEditor()
+      setDate(container, '2025-06-10')
+      // manual mode starts with a single empty template row
+
+      fireEvent.click(screen.getByText('Save to HealthPassport'))
+
+      await waitFor(() => {
+        expect(
+          screen.getByText('Add at least one biomarker with a name and value.'),
+        ).toBeInTheDocument()
+      })
+      expect(mockSave).not.toHaveBeenCalled()
+    })
+
+    it('warns about skipped rows but saves when at least one row is filled', async () => {
+      // AI-extracted test where one biomarker parsed and one came back empty:
+      // the empty row must be flagged, not silently dropped, yet the save
+      // proceeds with the valid row.
+      mockSave.mockResolvedValue({ success: true, message: 'Entry saved', id: 'new-1' })
+      mockExtract.mockResolvedValue({
+        entry_type: 'blood_test',
+        date: '2025-06-10',
+        time: null,
+        clinic: 'Test Lab',
+        provider: null,
+        title: null,
+        notes: null,
+        biomarkers: [
+          {
+            raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170',
+            standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L',
+            reference: { kind: 'interval', low: 130, high: 170 },
+            status: 'normal', category: 'Complete Blood Count',
+            definition_id: 'hb', scope: 'global',
+          },
+          {
+            raw_name: '', raw_value: '', raw_unit: '', raw_range_string: '',
+            standard_name_en: '', standard_value: null, standard_unit: '',
+            reference: null, status: 'normal', category: 'Complete Blood Count',
+            definition_id: '', scope: 'local',
+          },
+        ],
+        visit_data: null,
+        imaging_data: null,
+      } satisfies StandardizedMedicalRecord)
+      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
+      selectFile(container, createFile())
+
+      await waitFor(() => {
+        expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
+      }, { timeout: 3000 })
+      fireEvent.click(screen.getByText('Save to HealthPassport'))
+
+      await waitFor(() => {
+        expect(mockSave).toHaveBeenCalledTimes(1)
+      })
+      expect(screen.getByText(/1 row is missing a name or value/)).toBeInTheDocument()
+    })
+
+    it('shows a warning when the duplicate-test check fails, save stays enabled', async () => {
+      mockFetchByDate.mockRejectedValue(new Error('backend down'))
+      const container = await renderManualEditor()
+      setDate(container, '2025-06-10')
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/Couldn't check for existing tests on this date/),
+        ).toBeInTheDocument()
+      })
+      expect(screen.getByText('Save to HealthPassport')).toBeEnabled()
+    })
+  })
+
   describe('merge with existing blood test', () => {
     function bloodTestResult(biomarkers = bloodBiomarkers()): StandardizedMedicalRecord {
       return {

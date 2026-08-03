@@ -122,7 +122,7 @@ class TestDataIsolation:
             "/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2026-11-15",
+                "date": "2025-11-15",
                 "clinic": "Test Lab",
                 "provider": "Dr. Test",
                 "title": "Test Panel",

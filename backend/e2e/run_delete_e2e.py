@@ -169,7 +169,7 @@ def main() -> int:
             f"{base}/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2027-05-15",
+                "date": "2025-05-15",
                 "clinic": "E2E Delete Lab",
                 "title": "E2E Delete Test",
                 "biomarkers": biomarkers_json,

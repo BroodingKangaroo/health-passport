@@ -110,7 +110,7 @@ class TestAnonymousUserAccess:
             "/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2026-11-15",
+                "date": "2025-11-15",
                 "clinic": "Test Lab",
                 "title": "Anon Test",
                 "biomarkers": "[]",

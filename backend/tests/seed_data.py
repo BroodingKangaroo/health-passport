@@ -57,8 +57,8 @@ CATEGORY_GROUPING: dict[str, list[str]] = {
 BLOOD_TEST_IDS = ["blood-feb", "blood-may", "blood-jun", "blood-aug", "blood-sep", "blood-oct", "blood-oct-eve", "blood-dec", "blood-jan"]
 
 BLOOD_TEST_DATES = [
-    "2026-02-18", "2026-05-05", "2026-06-28", "2026-08-10",
-    "2026-09-20", "2026-10-15T09:00", "2026-10-15T14:30", "2026-12-03", "2027-01-12",
+    "2024-02-18", "2024-05-05", "2024-06-28", "2024-08-10",
+    "2024-09-20", "2024-10-15T09:00", "2024-10-15T14:30", "2024-12-03", "2025-01-12",
 ]
 
 BLOOD_TEST_TITLES = [
@@ -129,20 +129,20 @@ DOCTOR_VISITS: list[dict] = [
     {
         "id": "cardio",
         "type": "doctor_visit",
-        "date": "2026-09-05",
+        "date": "2024-09-05",
         "title": "Cardiology Follow-up",
         "subtitle": "Dr. Elena Ivanova",
         "category": "Cardiology",
         "status": "Completed",
         "clinic": "Central Heart Institute",
         "attachments": [
-            {"id": "consult", "name": "Consultation_Notes_Sep2026.pdf", "type": "Physician commentary", "size": "128 KB"},
+            {"id": "consult", "name": "Consultation_Notes_Sep2024.pdf", "type": "Physician commentary", "size": "128 KB"},
             {"id": "ekg", "name": "EKG_Strip_Scan.pdf", "type": "Diagnostic image", "size": "2.1 MB"},
         ],
         "visit_data": {
             "specialty": "Cardiology Follow-up",
             "provider": "Dr. Elena Ivanova, MD",
-            "date": "2026-09-05",
+            "date": "2024-09-05",
             "clinic": "Central Heart Institute",
             "verdict": _wrap_tx("Mild Sinus Tachycardia - Under Control. Patient responding well to current regimen."),
             "notes": [
@@ -162,7 +162,7 @@ DOCTOR_VISITS: list[dict] = [
     {
         "id": "ortho",
         "type": "doctor_visit",
-        "date": "2026-08-22",
+        "date": "2024-08-22",
         "title": "Orthopedic Consultation",
         "subtitle": "Dr. James Mitchell, DO",
         "category": "Orthopedics",
@@ -172,7 +172,7 @@ DOCTOR_VISITS: list[dict] = [
         "visit_data": {
             "specialty": "Orthopedic Consultation",
             "provider": "Dr. James Mitchell, DO",
-            "date": "2026-08-22",
+            "date": "2024-08-22",
             "clinic": "Northern Sports Medicine",
             "verdict": _wrap_tx("Left knee patellar tendinopathy (Jumper's Knee). MRI confirms mild tendinosis without tear."),
             "notes": [
@@ -193,7 +193,7 @@ DOCTOR_VISITS: list[dict] = [
     {
         "id": "neuro",
         "type": "doctor_visit",
-        "date": "2026-10-18",
+        "date": "2024-10-18",
         "title": "Neurology Assessment",
         "subtitle": "Dr. S. Reynolds, MD, PhD",
         "category": "Neurology",
@@ -205,7 +205,7 @@ DOCTOR_VISITS: list[dict] = [
         "visit_data": {
             "specialty": "Neurology Assessment",
             "provider": "Dr. S. Reynolds, MD, PhD",
-            "date": "2026-10-18",
+            "date": "2024-10-18",
             "clinic": "Neurology Associates",
             "verdict": _wrap_tx("Suspected Migraine with Brainstem Aura. MRI brain scheduled to rule out structural causes."),
             "notes": [
@@ -232,7 +232,7 @@ PROCEDURES: list[dict] = [
     {
         "id": "derm",
         "type": "procedure",
-        "date": "2026-09-12",
+        "date": "2024-09-12",
         "title": "Skin Biopsy",
         "subtitle": "Left upper arm",
         "category": "Dermatology",

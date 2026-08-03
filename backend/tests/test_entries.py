@@ -35,7 +35,7 @@ class TestSaveBloodTest:
             "/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2026-11-15",
+                "date": "2025-11-15",
                 "clinic": "Test Lab",
                 "provider": "Dr. Test",
                 "title": "Test Panel",
@@ -67,7 +67,7 @@ class TestSaveBloodTest:
             "/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2026-11-15",
+                "date": "2025-11-15",
                 "clinic": "Test Lab",
                 "provider": "Dr. Test",
                 "title": "Test Panel",
@@ -81,7 +81,7 @@ class TestSaveBloodTest:
         events = timeline.json()["events"]
         saved = [e for e in events if e["id"] == entry_id]
         assert len(saved) == 1
-        assert saved[0]["date"] == "2026-11-15T00:00:00"
+        assert saved[0]["date"] == "2025-11-15T00:00:00"
         assert saved[0]["clinic"] == "Test Lab"
 
     async def test_saved_blood_test_appears_in_flowsheet(self, client):
@@ -101,7 +101,7 @@ class TestSaveBloodTest:
             "/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2026-11-15",
+                "date": "2025-11-15",
                 "clinic": "Test Lab",
                 "provider": "Dr. Test",
                 "title": "Test Panel",
@@ -112,7 +112,7 @@ class TestSaveBloodTest:
 
         # then
         dates = flowsheet.json()["dates"]
-        assert any(d["label"] == "Nov 15" for d in dates)
+        assert any(d["label"].startswith("Nov 15") for d in dates)
 
     async def test_save_blood_test_without_title_falls_back(self, client):
         # given
@@ -131,7 +131,7 @@ class TestSaveBloodTest:
             "/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2026-11-15",
+                "date": "2025-11-15",
                 "clinic": "Test Lab",
                 "provider": "Dr. Test",
                 "biomarkers": biomakers_json,
@@ -149,7 +149,7 @@ class TestSaveBloodTest:
             "/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2026-11-15",
+                "date": "2025-11-15",
                 "clinic": "Test Lab",
                 "provider": "Dr. Test",
                 "title": "Bad Panel",
@@ -160,6 +160,41 @@ class TestSaveBloodTest:
         # then
         assert resp.status_code == 400
         assert "Invalid biomarkers JSON" in resp.json()["detail"]
+
+    async def test_save_rejects_blank_date(self, client):
+        # when — no date submitted
+        resp = await client.post(
+            "/api/entry",
+            data={
+                "type": "blood_test",
+                "date": "",
+                "biomarkers": _biomarkers_json([_row("WBC", "8.5")]),
+            },
+        )
+
+        # then — must not silently default to today
+        assert resp.status_code == 400
+        assert "date is required" in resp.json()["detail"].lower()
+
+    async def test_save_rejects_future_date(self, client):
+        # given — tomorrow relative to the server clock
+        from datetime import datetime, timedelta, timezone
+
+        future = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
+
+        # when
+        resp = await client.post(
+            "/api/entry",
+            data={
+                "type": "blood_test",
+                "date": future,
+                "biomarkers": _biomarkers_json([_row("WBC", "8.5")]),
+            },
+        )
+
+        # then
+        assert resp.status_code == 400
+        assert "future" in resp.json()["detail"].lower()
 
 
 class TestSaveDoctorVisit:
@@ -178,7 +213,7 @@ class TestSaveDoctorVisit:
             "/api/entry",
             data={
                 "type": "doctor_visit",
-                "date": "2026-12-01",
+                "date": "2025-12-01",
                 "clinic": "Heart Institute",
                 "provider": "Dr. Smith",
                 "title": "Cardiology Follow-up",
@@ -208,7 +243,7 @@ class TestSaveDoctorVisit:
             "/api/entry",
             data={
                 "type": "doctor_visit",
-                "date": "2026-12-01",
+                "date": "2025-12-01",
                 "clinic": "Heart Institute",
                 "provider": "Dr. Smith",
                 "title": "Cardiology Follow-up",
@@ -246,7 +281,7 @@ class TestSaveDoctorVisit:
             "/api/entry",
             data={
                 "type": "doctor_visit",
-                "date": "2026-12-05",
+                "date": "2025-12-05",
                 "clinic": "Allergy Clinic",
                 "provider": "Dr. Allergy",
                 "title": "Allergy Consult",
@@ -441,7 +476,7 @@ class TestDeleteEntry:
             "/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2027-04-01",
+                "date": "2025-04-01",
                 "clinic": "Delete Lab",
                 "title": "Upload-Then-Delete",
                 "biomarkers": biomarkers_json,
@@ -602,9 +637,9 @@ class TestDeleteEntry:
 
 class TestEntriesByDate:
     async def test_by_date_returns_count_and_entries_with_biomarkers(self, client):
-        # given — two seeded blood tests exist on 2026-10-15 (09:00 and 14:30)
+        # given — two seeded blood tests exist on 2024-10-15 (09:00 and 14:30)
         # when
-        resp = await client.get("/api/entries/by-date", params={"date": "2026-10-15", "type": "blood_test"})
+        resp = await client.get("/api/entries/by-date", params={"date": "2024-10-15", "type": "blood_test"})
 
         # then
         assert resp.status_code == 200
@@ -627,7 +662,7 @@ class TestEntriesByDate:
 
     async def test_by_date_filters_by_type(self, client):
         # when
-        resp = await client.get("/api/entries/by-date", params={"date": "2026-09-05"})
+        resp = await client.get("/api/entries/by-date", params={"date": "2024-09-05"})
 
         # then — no type filter: both the doctor visit and nothing else on that day
         data = resp.json()
@@ -654,7 +689,7 @@ class TestMergeEntry:
     target's own metadata stays untouched."""
 
     @staticmethod
-    async def _create_target(client, date: str = "2028-01-10", name: str = "Glucose", value: str = "95") -> str:
+    async def _create_target(client, date: str = "2025-03-10", name: str = "Glucose", value: str = "95") -> str:
         resp = await client.post(
             "/api/entry",
             data={
@@ -678,7 +713,7 @@ class TestMergeEntry:
         resp = await client.post(
             f"/api/entry/{target_id}/merge",
             data={
-                "date": "2028-01-10",
+                "date": "2025-03-10",
                 "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")]),
             },
         )
@@ -708,11 +743,11 @@ class TestMergeEntry:
 
         await client.post(
             f"/api/entry/{target_id}/merge",
-            data={"date": "2028-01-10", "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")])},
+            data={"date": "2025-03-10", "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")])},
         )
 
         timeline = await client.get("/api/timeline")
-        events = [e for e in timeline.json()["events"] if e["date"].startswith("2028-01-10")]
+        events = [e for e in timeline.json()["events"] if e["date"].startswith("2025-03-10")]
         assert len(events) == 1
         assert events[0]["id"] == target_id
 
@@ -723,7 +758,7 @@ class TestMergeEntry:
 
         await client.post(
             f"/api/entry/{target_id}/merge",
-            data={"date": "2028-01-10", "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")])},
+            data={"date": "2025-03-10", "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")])},
         )
 
         timeline = await client.get("/api/timeline")
@@ -742,7 +777,7 @@ class TestMergeEntry:
         resp = await client.post(
             f"/api/entry/{target_id}/merge",
             data={
-                "date": "2028-01-10",
+                "date": "2025-03-10",
                 "title": "Evening Panel",
                 "clinic": "Second Lab",
                 "provider": "Dr. Night",
@@ -793,7 +828,7 @@ class TestMergeEntry:
         resp = await client.post(
             f"/api/entry/{target_id}/merge",
             data={
-                "date": "2028-01-10",
+                "date": "2025-03-10",
                 "time": "10:15",
                 "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")]),
             },
@@ -825,7 +860,7 @@ class TestMergeEntry:
         await client.post(
             f"/api/entry/{target_id}/merge",
             data={
-                "date": "2028-01-10",
+                "date": "2025-03-10",
                 "title": "Evening Panel",
                 "clinic": "Second Lab",
                 "time": "18:30",
@@ -838,7 +873,7 @@ class TestMergeEntry:
             "/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2028-02-01",
+                "date": "2025-04-01",
                 "clinic": "Later Lab",
                 "title": "Later Panel",
                 "biomarkers": _biomarkers_json([_row("Creatinine", "0.8")]),
@@ -853,8 +888,8 @@ class TestMergeEntry:
         assert cre["merged"] is False
         assert cre["merged_source"] is None
         by_date = {h["date"][:10]: h for h in cre["history"]}
-        assert by_date["2028-01-10"]["merged"] is True
-        assert by_date["2028-01-10"]["merged_source"] == {
+        assert by_date["2025-03-10"]["merged"] is True
+        assert by_date["2025-03-10"]["merged_source"] == {
             "title": "Evening Panel",
             "clinic": "Second Lab",
             "provider": None,
@@ -873,7 +908,7 @@ class TestMergeEntry:
         # when — merge a biomarker that already exists in the target
         resp = await client.post(
             f"/api/entry/{target_id}/merge",
-            data={"date": "2028-01-10", "biomarkers": _biomarkers_json([_row("Glucose", "102")])},
+            data={"date": "2025-03-10", "biomarkers": _biomarkers_json([_row("Glucose", "102")])},
         )
 
         # then
@@ -895,7 +930,7 @@ class TestMergeEntry:
         resp = await client.post(
             f"/api/entry/{target_id}/merge",
             data={
-                "date": "2028-01-10",
+                "date": "2025-03-10",
                 # "glu" definition has loinc_code 2345-7 (see seed_data.py)
                 "biomarkers": _biomarkers_json([_row("Glucose", "102", definition_id="2345-7")]),
             },
@@ -912,7 +947,7 @@ class TestMergeEntry:
         resp = await client.post(
             f"/api/entry/{target_id}/merge",
             data={
-                "date": "2028-01-10",
+                "date": "2025-03-10",
                 "biomarkers": _biomarkers_json([
                     _row("Creatinine", "0.9"),
                     _row("Glucose", "102"),  # conflict
@@ -936,7 +971,7 @@ class TestMergeEntry:
 
         resp = await client.post(
             f"/api/entry/{target_id}/merge",
-            data={"date": "2028-01-10", "biomarkers": _biomarkers_json([_row("Platelets", "250")])},
+            data={"date": "2025-03-10", "biomarkers": _biomarkers_json([_row("Platelets", "250")])},
         )
         assert resp.status_code == 200
 
@@ -958,7 +993,7 @@ class TestMergeEntry:
         # "Glucose" (no definition_id) resolves by name to the target's glu.
         resp = await client.post(
             f"/api/entry/{target_id}/merge",
-            data={"date": "2028-01-10", "biomarkers": _biomarkers_json([_row("Glucose", "102")])},
+            data={"date": "2025-03-10", "biomarkers": _biomarkers_json([_row("Glucose", "102")])},
         )
         assert resp.status_code == 409
         assert "Glucose" in resp.json()["detail"]
@@ -986,7 +1021,7 @@ class TestMergeEntry:
             resp = await client.post(
                 f"/api/entry/{target_id}/merge",
                 data={
-                    "date": "2028-01-10",
+                    "date": "2025-03-10",
                     "title": "",  # user left the title blank
                     "clinic": "Second Lab",
                     "time": "18:30",
@@ -1022,7 +1057,7 @@ class TestMergeEntry:
             resp = await client.post(
                 f"/api/entry/{target_id}/merge",
                 data={
-                    "date": "2028-01-10",
+                    "date": "2025-03-10",
                     "title": "Evening Panel",
                     "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")]),
                 },
@@ -1040,7 +1075,7 @@ class TestMergeEntry:
     async def test_merge_unknown_entry_404(self, client):
         resp = await client.post(
             "/api/entry/does-not-exist/merge",
-            data={"date": "2028-01-10", "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")])},
+            data={"date": "2025-03-10", "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")])},
         )
         assert resp.status_code == 404
 
@@ -1063,7 +1098,7 @@ class TestMergeEntry:
 
         resp = await client.post(
             "/api/entry/merge-other-entry/merge",
-            data={"date": "2028-01-10", "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")])},
+            data={"date": "2025-03-10", "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")])},
         )
         assert resp.status_code == 404
 
@@ -1074,7 +1109,7 @@ class TestMergeEntry:
         # "cardio" is a seeded doctor_visit
         resp = await client.post(
             "/api/entry/cardio/merge",
-            data={"date": "2026-09-05", "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")])},
+            data={"date": "2024-09-05", "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")])},
         )
         assert resp.status_code == 400
         assert "blood test" in resp.json()["detail"].lower()
@@ -1084,7 +1119,7 @@ class TestMergeEntry:
 
         resp = await client.post(
             f"/api/entry/{target_id}/merge",
-            data={"date": "2028-02-20", "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")])},
+            data={"date": "2025-04-20", "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")])},
         )
         assert resp.status_code == 400
 
@@ -1095,7 +1130,7 @@ class TestMergeEntry:
 
         resp = await client.post(
             f"/api/entry/{target_id}/merge",
-            data={"date": "2028-01-10", "notes": "added by second draw"},
+            data={"date": "2025-03-10", "notes": "added by second draw"},
         )
         assert resp.status_code == 200
 
@@ -1112,7 +1147,7 @@ class TestMergeEntry:
             "/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2028-01-11",
+                "date": "2025-03-11",
                 "biomarkers": _biomarkers_json([_row("Glucose", "95")]),
             },
         )
@@ -1120,7 +1155,7 @@ class TestMergeEntry:
 
         await client.post(
             f"/api/entry/{target_id}/merge",
-            data={"date": "2028-01-11", "notes": "fresh note"},
+            data={"date": "2025-03-11", "notes": "fresh note"},
         )
 
         entry = db_session.query(MedicalEntry).filter(MedicalEntry.id == target_id).first()
@@ -1141,7 +1176,7 @@ class TestMergeEntry:
         content = b"%PDF-1.4 second-draw fixture"
         resp = await client.post(
             f"/api/entry/{target_id}/merge",
-            data={"date": "2028-01-10", "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")])},
+            data={"date": "2025-03-10", "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")])},
             files={"file": ("second_draw.pdf", content, "application/pdf")},
         )
         assert resp.status_code == 200
@@ -1172,7 +1207,7 @@ class TestMergeEntry:
         for i, name in enumerate(("first.pdf", "second.pdf")):
             resp = await client.post(
                 f"/api/entry/{target_id}/merge",
-                data={"date": "2028-01-10", "biomarkers": _biomarkers_json([_row("Creatinine", "0.9"), _row("Platelets", "250")][i:i + 1])},
+                data={"date": "2025-03-10", "biomarkers": _biomarkers_json([_row("Creatinine", "0.9"), _row("Platelets", "250")][i:i + 1])},
                 files={"file": (name, f"%PDF-{i}".encode(), "application/pdf")},
             )
             assert resp.status_code == 200
@@ -1191,7 +1226,7 @@ class TestMergeEntry:
         resp = await client.post(
             f"/api/entry/{target_id}/merge",
             data={
-                "date": "2028-01-10",
+                "date": "2025-03-10",
                 "biomarkers": _biomarkers_json([
                     {"id": "row-urine", "name": "Urine Protein", "value": "Negative", "unit": "Qualitative"},
                 ]),

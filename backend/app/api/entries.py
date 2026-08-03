@@ -64,7 +64,7 @@ router = APIRouter()
 
 def _normalize_date(date_str: str, time_str: str = "") -> datetime:
     if not date_str:
-        date_str = datetime.now().strftime("%Y-%m-%d")
+        raise ValueError("date is required")
     if time_str:
         dt = datetime.fromisoformat(f"{date_str}T{time_str}")
     else:
@@ -499,6 +499,9 @@ async def save_entry(
         entry_date = _normalize_date(date, time)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid date/time format: {e}") from e
+
+    if entry_date.date() > datetime.now(timezone.utc).date():
+        raise HTTPException(status_code=400, detail="Date cannot be in the future")
 
     entry = MedicalEntryModel(
         id=entry_id,

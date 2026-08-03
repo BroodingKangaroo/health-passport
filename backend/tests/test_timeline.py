@@ -68,7 +68,7 @@ class TestTimeline:
 
         # then
         for b in biomarkers:
-            assert b["date"] in ("2026-12-03T00:00:00", "2027-01-12T00:00:00")
+            assert b["date"] in ("2024-12-03T00:00:00", "2025-01-12T00:00:00")
 
     async def test_timeline_visits_structure(self, client):
         # when

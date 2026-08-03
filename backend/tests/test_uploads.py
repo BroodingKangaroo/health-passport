@@ -34,7 +34,7 @@ class TestFileUpload:
             "/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2026-12-15",
+                "date": "2025-12-15",
                 "clinic": "Test Lab",
                 "provider": "Dr. Test",
                 "title": "Upload Test",
@@ -79,7 +79,7 @@ class TestFileUpload:
             "/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2026-12-15",
+                "date": "2025-12-15",
                 "title": "Upload Test",
                 "biomarkers": biomarkers_json,
                 # Deliberately malformed visit_data JSON -> 400 further down.
@@ -110,7 +110,7 @@ class TestFileUpload:
             "/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2026-12-20",
+                "date": "2025-12-20",
                 "clinic": "Test Lab",
                 "provider": "Dr. Test",
                 "biomarkers": biomakers_json,
@@ -142,7 +142,7 @@ class TestFileUpload:
             "/api/entry",
             data={
                 "type": "doctor_visit",
-                "date": "2026-12-25",
+                "date": "2025-12-25",
                 "clinic": "Test Clinic",
                 "provider": "Dr. Test",
                 "title": "Test Visit",
@@ -171,7 +171,7 @@ class TestFileUpload:
             "/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2026-12-30",
+                "date": "2025-12-30",
                 "clinic": "Test Lab",
                 "provider": "Dr. Test",
                 "biomarkers": biomakers_json,
@@ -200,7 +200,7 @@ class TestFileUpload:
             "/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2027-01-05",
+                "date": "2025-01-05",
                 "clinic": "Test Lab",
                 "provider": "Dr. Test",
                 "biomarkers": biomakers_json,
@@ -225,7 +225,7 @@ class TestFileUpload:
             "/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2027-02-01",
+                "date": "2025-02-01",
                 "clinic": "Lab A",
                 "provider": "Dr. A",
                 "biomarkers": biomakers_json,
@@ -236,7 +236,7 @@ class TestFileUpload:
             "/api/entry",
             data={
                 "type": "blood_test",
-                "date": "2027-02-02",
+                "date": "2025-02-02",
                 "clinic": "Lab B",
                 "provider": "Dr. B",
                 "biomarkers": biomakers_json,
