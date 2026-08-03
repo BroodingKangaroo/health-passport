@@ -42,17 +42,31 @@ files as they stand now.
 
 ### 10. Print "AI translation" is cosmetic — de/fr/es/he output is English
 
+Status: **decision (2026-08-03) — implement a real LLM translation feature
+(option C). Deferred, not implemented. Do NOT close this with a
+cosmetic/UI-only fix.**
+
 - Files: `frontend/src/components/health-passport/print-setup.tsx:59-61,43-46`
 - "AI translation of medical terminology may take a few moments." is printed,
   but "Generate Document" only does `router.push('/print-editor')` — no
   translation API call, no backend translation endpoint.
 - Production definitions carry only `en` names
-  (`backend/app/db/seed_loinc.py:236` seeds `{"en": …}`; `matcher.py` local
+  (`backend/app/db/seed_loinc.py:233` seeds `{"en": …}`; `matcher.py` local
   defs are `en`-only), yet `translatedName()` (`print-editor.tsx:229-235`)
   looks up `def.names[lang]`. The unit tests pass only because fixtures
   (`backend/tests/seed_data.py`) carry full multilingual names maps. Result:
   selecting German/French/Spanish/Hebrew renders English biomarker names, and
   `he` has no translation data anywhere.
+- Chosen design (2026-08-03 analysis): new Mistral-backed translation
+  endpoint; frontend awaits the call before navigating to `/print-editor`;
+  cache results by `(def.id, lang)`. Rejected cheaper paths: dropping `he` /
+  restricting the dropdown (hides the feature instead of fixing it); wiring
+  `backend/data/multilingual_synonyms.json` into `names[lang]` (it is flat,
+  language-untagged synonyms, ru/es/de/fr only — no `he`). Facts shaping the
+  fix: the `names` JSON column and `entries.py:125-129` already anticipate
+  `names[lang]`; `_serializers.py` already ships `names` + `synonyms` on every
+  definition; e2e goldens carry only `standard_name_en`/`definition_id`, so
+  seed/name changes do not break them.
 
 ---
 
