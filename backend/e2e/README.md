@@ -34,10 +34,25 @@ links the input to `golden/<case>/standardized.json`.
 runs the harness, and tears down only that process. It never touches a port-8000
 dev server. First run seeds the LOINC dictionary into its DB.
 
+**Server rule (IMPORTANT):** the harness targets a *live* server; it does NOT
+start or stop one. Never `pkill -f "uvicorn app.main:app"` — that kills any
+server the user already has running (typically on port 8000). Always use
+`run_e2e_server.py` (isolated port, default 8099; never 8000) or
+`run_delete_e2e.py` (port 8098) which tear down only their own PID.
+
 ```bash
 python backend/e2e/run_e2e_server.py                 # all cases
 python backend/e2e/run_e2e_server.py --case оак_26.05  # one case
 ```
+
+## Known flakiness
+
+Extraction is LLM/OCR-based, so results vary run-to-run. Also, a single failed
+image extraction can contaminate later requests *in the same process* (returns
+`unknown`/empty) until the server is restarted — this is a pre-existing bug,
+not a definition-seeding issue. The deterministic, LLM-free oracle is
+`python backend/e2e/validate_offline.py` (uses the LOINC-seeded DB; the
+`default` user); prefer it for matcher/data correctness.
 
 ## Delete endpoint e2e
 

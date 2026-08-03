@@ -1,0 +1,89 @@
+# Frontend architecture (HealthPassport)
+
+On-demand companion to AGENTS.md — read this file before touching API
+proxying, reference formatting, merge/unit-conflict UI, the settings tab, or
+the add-entry editor.
+
+## Stack & commands
+
+- Node 22, package manager **pnpm@11.9.0** (enable corepack). Install:
+  `pnpm install --frozen-lockfile`. `pnpm-workspace.yaml` only whitelists
+  `sharp` builds.
+- Next.js 16, `output: 'standalone'`, **images `unoptimized`**, `recharts`
+  transpiled.
+- Dev: `pnpm dev` (port 3000). Lint: `pnpm lint`. Unit tests: `pnpm test` →
+  `vitest run`, jsdom env, `@/` → `src/` alias.
+- **No frontend Playwright suite** (removed in the e2e refactor — no
+  `test:e2e` script, no `@playwright/test` dep). End-to-end coverage lives in
+  the backend golden harness (see `backend/e2e/README.md`).
+
+## API proxying
+
+API calls are proxied server-side via `next.config.mjs` rewrites: `/api/*`
+(except next-auth paths) and `/static/*` → `STATIC_PROXY_URL` (default
+`http://localhost:8000`, Docker uses `http://backend:8000`). Don't add
+client-side API base URLs that bypass this.
+
+This includes the `/api/extract` SSE stream — the rewrite proxies SSE through
+incrementally (verified on Next 16 dev + standalone), so `streamApiBase()` in
+`services/api.ts` only differs from `API_BASE` when `NEXT_PUBLIC_API_URL` is
+explicitly set (direct-origin escape hatch; requires `CORS_ORIGINS` on the
+backend to include the site).
+
+## Reference formatting / stats
+
+Mirror of the backend's reference model (see `backend/docs/architecture.md`):
+
+- `frontend/src/lib/reference.ts` — `formatReference`, `intervalBounds`,
+  `isOutsideReference`.
+- Manual entry sends a structured `reference` object per row (not a range
+  string); `frontend/src/components/health-passport/reference-input.tsx` is
+  its interval editor.
+
+## AI-guessed unit UI
+
+- A unit cell whose canonical unit was LLM-invented (`canonical_unit_inferred`)
+  is flagged only in the **add-entry editor** (`LabResultForm.tsx`): blue
+  ring/glow (`ring-2 ring-blue-400/80 bg-blue-50/60 shadow…`) plus an instant
+  CSS hover tooltip ("Unit guessed by AI — verify").
+- The old amber `InferredUnitNote` triangle was **removed** from the timeline
+  (`results-panel.tsx`) and flowsheet (`flowsheet-matrix.tsx`) — do not re-add
+  it there.
+
+## Unit-conversion decision dialog
+
+- After `/api/extract`, `AddEntry` scans returned biomarkers for
+  `scale_function` (a cross-scale conversion was applied because the doc unit
+  differed from the existing canonical). If any exist, `UnitConflictDialog`
+  (`unit-conflict-dialog.tsx`) lists them with per-biomarker choice "Use
+  converted value" (default) vs "Keep document unit" (warns the biomarker
+  graph becomes unusable).
+- "Keep document unit" rewrites the form row back to `raw_value`/`raw_unit`;
+  it does NOT change the stored definition's canonical unit.
+
+## Merge UI + merged-readings sections
+
+- `AddEntry` (`add-entry.tsx`) shows a merge checkbox when another blood test
+  exists on the same date (target dropdown when several exist). Conflicts are
+  detected client-side by definition_id/LOINC **and by name** (mirroring the
+  server's name-based resolution of manually-typed rows); the checkbox
+  auto-unchecks when a conflict appears so saving can never silently create a
+  duplicate entry.
+- Merged readings show up **only in the timeline details view**
+  (`results-panel.tsx`), grouped under a `MergedSectionHeader` describing the
+  second upload (title · time, clinic · provider, "Added from a later upload
+  on the same date"); the flowsheet and print editor don't show them.
+- `biomarkersAtDate` (`views/TimelineView.tsx`) copies `merged`/`merged_source`
+  from the reading AT the selected event (`isLatest`-gated, per-reading
+  flags) — never a `??`-fallback to the latest reading's flags.
+
+## Settings tab
+
+- `frontend/src/components/health-passport/entry-settings.tsx` — third tab
+  inside `BloodTestDetails` and `DoctorVisitDetails` (next to Documents).
+- Surfaces entry-level stats (type, date, age, document count + total size,
+  biomarker counts by status for blood tests, notes/Rx/recommendation counts
+  for visits, copyable entry ID) and a Danger Zone with a destructive Delete
+  button + Radix Popover confirm dialog.
+- The view-level `TimelineView` passes an `onDeleted` callback that clears the
+  local selection and refetches the timeline.

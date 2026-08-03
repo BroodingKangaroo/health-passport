@@ -11,9 +11,11 @@ matcher rules, and you **never** modify or commit files.
 
 ## Context
 
+- Read `AGENTS.md` (backend invariants) and `backend/docs/architecture.md`
+  (reference model, unit canonicalization) for the rules to check against.
 - Harness: `backend/e2e/run_e2e.py` (pure HTTP client, diffs output vs
-  `golden/<case>/standardized.json`). It returns non-zero only on
-  verified-golden mismatch; pending/unreviewed goldens don't fail.
+  `golden/<case>/standardized.json`). Returns non-zero only on verified-golden
+  mismatch; pending/unreviewed goldens don't fail. See `backend/e2e/README.md`.
 - Golden sources: `backend/e2e/inputs/<case>/`; verified outputs in
   `backend/e2e/golden/<case>/`.
 - Rule: `pkill -f "uvicorn app.main:app"` and port 8000 are off-limits; use
@@ -26,8 +28,8 @@ matcher rules, and you **never** modify or commit files.
 1. Read the source document(s) in the case's `inputs/` dir.
 2. Read `golden/<case>/standardized.json` against the backend's reference
    model (`{kind:'interval', low, high}` numeric / `{kind:'qualitative',
-   expected}` text) and the unit-conversion rules in AGENTS.md (`lg`=log10,
-   canonical unit set on first reading, `scale_function`/`needs_review`).
+   expected}` text) and the unit-conversion rules (`lg`=log10, canonical unit
+   set on first reading, `scale_function`/`needs_review`).
 3. Flag, with `file:line` or case/item references:
    - biomarkers that are wrong, missing, or mis-mapped to LOINC,
    - `reference` bounds that contradict the source ranges,

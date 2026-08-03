@@ -134,6 +134,47 @@ files as they stand now.
 
 ---
 
+## Refactors / agentic-development (2026-08-03)
+
+Refactor candidates identified during an agentic-development audit. These are
+not user-facing bugs; they increase per-task token cost for AI-assisted
+development (wholesale file reads) and slow agent context loading.
+
+### 21. Split `backend/app/services/matcher.py` (1,998 lines)
+
+- File: `backend/app/services/matcher.py` — bundles LOINC/name matching,
+  canonical-unit assignment, `_guess_unit()` heuristics, `_llm_scale_function`,
+  `_apply_scale_function`, cross-scale conversion, and `verify_or_create`.
+- Every matcher/unit task reads the file wholesale (~21k tokens).
+- Proposal: split into focused modules (matching, units/conversion, guessing)
+  behind the same public entry points, keep behavior identical, run the full
+  backend suite + `validate_offline.py` after.
+
+### 22. Split `frontend/src/components/health-passport/add-entry.tsx` (1,017 lines)
+
+- File: `frontend/src/components/health-passport/add-entry.tsx` — bundles the
+  extract SSE flow, merge checkbox/conflict detection, unit-conflict dialog
+  wiring, and form-row rewriting.
+- Proposal: extract merge pre-flight + conflict detection and the unit-conflict
+  application into dedicated hooks/components; keep `add-entry.tsx` as the
+  orchestrator.
+
+### 23. Document the undocumented backend/frontend modules
+
+- Backend: `app/db/models.py`, `app/db/import_ranges.py`,
+  `app/services/extractor.py`, `app/services/converters.py`,
+  `app/services/data_migration.py`, `app/api/anon_session.py` — referenced
+  indirectly but never named in AGENTS.md or `backend/docs/architecture.md`.
+- Frontend: view layer (`src/views/*` — CorrelationView, AddEntryView,
+  BiomarkerDetailsView, FlowsheetView, PrintEditorView, PrintSetupView) and
+  shared components (`src/components/shared/BiomarkerChart.tsx`, DocumentViewer,
+  Sparkline, StatusBadge, ScaleNote) — unnamed in docs.
+- Proposal: add a module map (file → purpose, 1-2 lines each) to
+  `backend/docs/architecture.md` / `frontend/docs/architecture.md` so agents
+  don't re-derive them via grep.
+
+---
+
 ## Verified working (explicitly checked, no findings)
 
 - Auth round-trip (JWT ⇄ NextAuth), anonymous-session id, `fetchAuthedObjectUrl` /

@@ -31,5 +31,13 @@
       "python -m app.db.seed_loinc*": "ask",
       "*--regen-golden*": "ask"
     }
+  },
+  "tool_output": {
+    "max_lines": 500,
+    "max_bytes": 16384
+  },
+  "compaction": {
+    "auto": true,
+    "tail_turns": 6
   }
 }
