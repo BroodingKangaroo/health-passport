@@ -99,6 +99,9 @@ def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str) -> dict:
             scope="local",
             user_id=new_user_id,
             reference_source=defn.reference_source,
+            canonical_unit=defn.canonical_unit,
+            canonical_kind=defn.canonical_kind,
+            canonical_unit_inferred=defn.canonical_unit_inferred,
         )
         db.add(new_def)
         summary["biomarker_defs_copied"] += 1
@@ -163,6 +166,10 @@ def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str) -> dict:
             original_value=reading.original_value,
             original_unit=reading.original_unit,
             original_range=reading.original_range,
+            scale_function=reading.scale_function,
+            needs_review=reading.needs_review,
+            merged=reading.merged,
+            merged_source=reading.merged_source,
         )
         db.add(new_reading)
         summary["readings_copied"] += 1

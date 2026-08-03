@@ -1,5 +1,12 @@
 # HealthPassport — Bug / Inconsistency Log
 
+Convention: when an issue is resolved, mark its heading with `~~strikethrough~~`
+(or a `(resolved)` tag) rather than deleting the entry, so history stays
+traceable. When a fix changes behavior/architecture, the affected docs
+(`backend/docs/architecture.md`, `frontend/docs/architecture.md`,
+`backend/e2e/README.md`, AGENTS.md invariants) must be updated in the same
+change.
+
 Audit date: 2026-08-02. Findings verified against the current working tree
 (the e2e refactor referenced below is committed as `feca353`: frontend
 Playwright e2e removed, backend serializers hoisted into
@@ -59,15 +66,6 @@ files as they stand now.
 ---
 
 ## MEDIUM
-
-### 13. Anonymous → registered "transfer my data" drops fields
-
-- Files: `backend/app/services/data_migration.py:89-96,153-164`
-- Copied `BiomarkerDefinition`s lose `canonical_unit`, `canonical_kind`,
-  `canonical_unit_inferred`; copied readings lose `scale_function`,
-  `needs_review`, `merged`, `merged_source`. After "Transfer my data",
-  merged-entry sections and cross-scale conversion warnings vanish for migrated
-  data, and future cross-document unit conversions never engage on those defs.
 
 ### 14. Older entries show the newest reading's metadata
 
