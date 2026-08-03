@@ -138,6 +138,29 @@ extractions "forget" units.
   clients can mirror the server's name-based resolution for manually-typed
   rows.
 
+## Timeline / flowsheet ordering and entry ids
+
+- Blood-test queries order by `(date, created_at, id)` — never `date` alone —
+  so same-day tests have a deterministic order (and the timeline's default
+  selection and the flowsheet "(Latest)" badge are stable). `created_at` is
+  preserved by the anon→user migration; ties within one second fall back to
+  the (arbitrary but stable) id.
+- Every `Reading` (history entry) and `BiomarkerResult` (top-level latest
+  reading) carries `entry_id` — the medical entry the reading belongs to — so
+  clients match readings to events unambiguously when several tests share a
+  date. All serialization flows through `reading_schema`/`result_schema` in
+  `app/api/_serializers.py`.
+- Flowsheet composite ids look like `{biomarker_id}-{month}-{day}`
+  (`short_date_label` lowercased, e.g. `713-8-may-26`); when several tests
+  share that label (same month/day across years too), the FIRST keeps the
+  plain id and repeats get `-{n}` (`wbc-oct-15-2`). `/api/biomarker/{id}`
+  strips the suffix via `_FLOW_SHEET_LABEL_RE`
+  (`-(?:month)-\d{1,2}(?:-\d+)?$`) before resolving.
+- Flowsheet date headers disambiguate identical columns only: a `(#n)` suffix
+  is added per colliding `(label, time-sub)` pair, never blanket-applied to a
+  whole day (tests with distinct times stay plain, tests with the same time —
+  or no time — get numbered).
+
 ## DB migrations
 
 New model columns are added to existing DBs by `migrate_add_columns()` in

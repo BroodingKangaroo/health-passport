@@ -72,19 +72,6 @@ files as they stand now.
   "bridge" (`:168-189`) invents a constant flat trend across gaps, and tooltips
   render blank rows for dates without readings.
 
-### 16. Same-date blood tests are ambiguous in selection, flowsheet, and headers
-
-- `biomarkersAtDate` matches by exact `date` string only
-  (`TimelineView.tsx:113`); two unmerged tests on one date → `findIndex` always
-  returns the first, so selecting the second test shows the first test's values
-  and merged-flags.
-- Backend sorts blood tests by `date` only (`flowsheet.py:36-44`, and the
-  timeline's readings/events order likewise), so same-day ordering is
-  nondeterministic and the "(Latest)"
-  badge (`flowsheet-matrix.tsx:110-112`) can sit on the earlier test. When three
-  tests share a day with mixed sub-labels where two collide `(#)` dedupe
-  (`flowsheet.py:71-78`) skips → two identically-labeled columns.
-
 ---
 
 ## LOW / UI dead-ends

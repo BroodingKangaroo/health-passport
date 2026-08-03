@@ -82,12 +82,17 @@ Mirror of the backend's reference model (see `backend/docs/architecture.md`):
   (`results-panel.tsx`), grouped under a `MergedSectionHeader` describing the
   second upload (title · time, clinic · provider, "Added from a later upload
   on the same date"); the flowsheet and print editor don't show them.
-- `biomarkersAtDate` (`views/TimelineView.tsx`) copies `merged`/`merged_source`
-  from the reading AT the selected event (`isLatest`-gated, per-reading
-  flags) — never a `??`-fallback to the latest reading's flags. The same
-  `isLatest`-gated copy applies to `original_name/value/unit/range` and
-  `reference`, so an older event shows the metadata of the reading at that
-  event (matching its save-time status), not the newest doc's.
+- `biomarkersAtDate` (`views/TimelineView.tsx`) matches readings by
+  **`entry_id`** — every `Reading` and `BiomarkerResult` carries the medical
+  entry it belongs to, so two unmerged tests on the same date select their own
+  values/flags instead of the first date-match. It then copies
+  `merged`/`merged_source` from the reading AT the selected event
+  (`isLatest`-gated, per-reading flags) — never a `??`-fallback to the latest
+  reading's flags. The same `isLatest`-gated copy applies to
+  `original_name/value/unit/range` and `reference`, so an older event shows
+  the metadata of the reading at that event (matching its save-time status),
+  not the newest doc's. The history-list "abnormal only" filter matches the
+  same way (`entry_id === event.id`).
 
 ## Settings tab
 

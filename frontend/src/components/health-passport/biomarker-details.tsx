@@ -42,7 +42,7 @@ export function BiomarkerDetails() {
   const history = biomarker.history ?? []
   const chartData = [
     ...history,
-    { date: biomarker.date, value: biomarker.value, status: biomarker.status },
+    { entry_id: biomarker.entry_id, date: biomarker.date, value: biomarker.value, status: biomarker.status },
   ]
 
   return (

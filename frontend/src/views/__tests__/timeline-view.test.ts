@@ -6,9 +6,14 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
 }))
 
+// The latest reading lives at event EVT_LATEST (top-level fields); history
+// readings live at their own entry ids.
+const EVT_LATEST = 'evt-latest'
+
 function makeBiomarker(overrides: Partial<BiomarkerResult>): BiomarkerResult {
   return {
     id: 'hb',
+    entry_id: EVT_LATEST,
     definition: {
       id: 'hb',
       names: { en: 'Hemoglobin', ru: 'Гемоглобин' },
@@ -27,17 +32,20 @@ function makeBiomarker(overrides: Partial<BiomarkerResult>): BiomarkerResult {
 }
 
 describe('biomarkersAtDate', () => {
-  it('returns the full list when no date is given', () => {
+  it('returns the full list when no event id is given', () => {
     const b = makeBiomarker({})
     expect(biomarkersAtDate([b], '')).toHaveLength(1)
   })
 
-  it('drops biomarkers with no reading at the given date', () => {
+  it('drops biomarkers with no reading at the given event', () => {
     const b = makeBiomarker({
+      // The top-level reading lives at a different event than the selected
+      // one — no reading exists at EVT_LATEST, so it must be dropped.
+      entry_id: 'evt-other',
       date: '2026-03-01T00:00:00',
-      history: [{ date: '2026-01-01T00:00:00', value: 140, status: 'normal' }],
+      history: [{ entry_id: 'evt-old', date: '2026-01-01T00:00:00', value: 140, status: 'normal' }],
     })
-    expect(biomarkersAtDate([b], '2026-07-15T00:00:00')).toHaveLength(0)
+    expect(biomarkersAtDate([b], EVT_LATEST)).toHaveLength(0)
   })
 
   it('uses the latest-reading merged flag for the latest event', () => {
@@ -45,10 +53,10 @@ describe('biomarkersAtDate', () => {
       merged: true,
       merged_source: { title: 'Evening Panel', clinic: 'Lab B', time: '18:30' },
       history: [
-        { date: '2026-01-01T00:00:00', value: 140, status: 'normal', merged: false },
+        { entry_id: 'evt-old', date: '2026-01-01T00:00:00', value: 140, status: 'normal', merged: false },
       ],
     })
-    const atLatest = biomarkersAtDate([b], '2026-07-15T00:00:00')[0]
+    const atLatest = biomarkersAtDate([b], EVT_LATEST)[0]
     expect(atLatest.merged).toBe(true)
     expect(atLatest.merged_source).toEqual({ title: 'Evening Panel', clinic: 'Lab B', time: '18:30' })
   })
@@ -59,15 +67,15 @@ describe('biomarkersAtDate', () => {
       merged: false,
       merged_source: null,
       history: [
-        { date: '2026-01-01T00:00:00', value: 140, status: 'normal', merged: true, merged_source: { title: 'Evening Panel', clinic: 'Lab B' } },
-        { date: '2026-02-01T00:00:00', value: 141, status: 'normal', merged: false, merged_source: null },
+        { entry_id: 'evt-old', date: '2026-01-01T00:00:00', value: 140, status: 'normal', merged: true, merged_source: { title: 'Evening Panel', clinic: 'Lab B' } },
+        { entry_id: 'evt-mid', date: '2026-02-01T00:00:00', value: 141, status: 'normal', merged: false, merged_source: null },
       ],
     })
-    const atMergedEvent = biomarkersAtDate([b], '2026-01-01T00:00:00')[0]
+    const atMergedEvent = biomarkersAtDate([b], 'evt-old')[0]
     expect(atMergedEvent.merged).toBe(true)
     expect(atMergedEvent.merged_source).toEqual({ title: 'Evening Panel', clinic: 'Lab B' })
 
-    const atNewerEvent = biomarkersAtDate([b], '2026-02-01T00:00:00')[0]
+    const atNewerEvent = biomarkersAtDate([b], 'evt-mid')[0]
     expect(atNewerEvent.merged).toBe(false)
     expect(atNewerEvent.merged_source).toBe(null)
   })
@@ -79,10 +87,10 @@ describe('biomarkersAtDate', () => {
       merged: true,
       merged_source: { title: 'Later Panel' },
       history: [
-        { date: '2026-01-01T00:00:00', value: 140, status: 'normal', merged: false, merged_source: null },
+        { entry_id: 'evt-old', date: '2026-01-01T00:00:00', value: 140, status: 'normal', merged: false, merged_source: null },
       ],
     })
-    const atOlderEvent = biomarkersAtDate([b], '2026-01-01T00:00:00')[0]
+    const atOlderEvent = biomarkersAtDate([b], 'evt-old')[0]
     expect(atOlderEvent.merged).toBe(false)
     expect(atOlderEvent.merged_source).toBe(null)
   })
@@ -90,11 +98,11 @@ describe('biomarkersAtDate', () => {
   it('keeps the remaining history when targeting a middle event', () => {
     const b = makeBiomarker({
       history: [
-        { date: '2026-01-01T00:00:00', value: 140, status: 'normal' },
-        { date: '2026-02-01T00:00:00', value: 141, status: 'normal' },
+        { entry_id: 'evt-first', date: '2026-01-01T00:00:00', value: 140, status: 'normal' },
+        { entry_id: 'evt-mid', date: '2026-02-01T00:00:00', value: 141, status: 'normal' },
       ],
     })
-    const atMiddle = biomarkersAtDate([b], '2026-02-01T00:00:00')[0]
+    const atMiddle = biomarkersAtDate([b], 'evt-mid')[0]
     expect(atMiddle.history?.map((h) => h.date)).toEqual([
       '2026-01-01T00:00:00',
       '2026-07-15T00:00:00',
@@ -110,6 +118,7 @@ describe('biomarkersAtDate', () => {
       reference: { kind: 'interval', low: 130, high: 170 },
       history: [
         {
+          entry_id: 'evt-old',
           date: '2026-01-01T00:00:00',
           value: 140,
           status: 'normal',
@@ -121,7 +130,7 @@ describe('biomarkersAtDate', () => {
         },
       ],
     })
-    const atOlderEvent = biomarkersAtDate([b], '2026-01-01T00:00:00')[0]
+    const atOlderEvent = biomarkersAtDate([b], 'evt-old')[0]
     expect(atOlderEvent.original_name).toBe('Hb (old doc)')
     expect(atOlderEvent.original_value).toBe('14.0')
     expect(atOlderEvent.original_unit).toBe('g/dl')
@@ -138,6 +147,7 @@ describe('biomarkersAtDate', () => {
       reference: { kind: 'interval', low: 130, high: 170 },
       history: [
         {
+          entry_id: 'evt-old',
           date: '2026-01-01T00:00:00',
           value: 140,
           status: 'normal',
@@ -149,7 +159,7 @@ describe('biomarkersAtDate', () => {
         },
       ],
     })
-    const atLatest = biomarkersAtDate([b], '2026-07-15T00:00:00')[0]
+    const atLatest = biomarkersAtDate([b], EVT_LATEST)[0]
     expect(atLatest.original_name).toBe('Hemoglobin (latest)')
     expect(atLatest.original_value).toBe('15.0')
     expect(atLatest.original_unit).toBe('g/dL')
@@ -163,6 +173,7 @@ describe('biomarkersAtDate', () => {
       reference: { kind: 'interval', low: 130, high: 170 },
       history: [
         {
+          entry_id: 'evt-first',
           date: '2026-01-01T00:00:00',
           value: 140,
           status: 'normal',
@@ -170,6 +181,7 @@ describe('biomarkersAtDate', () => {
           reference: { kind: 'interval', low: 120, high: 160 },
         },
         {
+          entry_id: 'evt-mid',
           date: '2026-02-01T00:00:00',
           value: 141,
           status: 'normal',
@@ -178,7 +190,7 @@ describe('biomarkersAtDate', () => {
         },
       ],
     })
-    const atMiddle = biomarkersAtDate([b], '2026-02-01T00:00:00')[0]
+    const atMiddle = biomarkersAtDate([b], 'evt-mid')[0]
     expect(atMiddle.original_name).toBe('Middle name')
     expect(atMiddle.reference).toEqual({ kind: 'interval', low: 125, high: 165 })
   })
@@ -187,10 +199,54 @@ describe('biomarkersAtDate', () => {
     const b = makeBiomarker({
       reference: { kind: 'interval', low: 130, high: 170 },
       history: [
-        { date: '2026-01-01T00:00:00', value: 140, status: 'normal', reference: null },
+        { entry_id: 'evt-old', date: '2026-01-01T00:00:00', value: 140, status: 'normal', reference: null },
       ],
     })
-    const atOlderEvent = biomarkersAtDate([b], '2026-01-01T00:00:00')[0]
+    const atOlderEvent = biomarkersAtDate([b], 'evt-old')[0]
     expect(atOlderEvent.reference).toBeNull()
+  })
+
+  it('matches the reading of the selected same-day event, not the first one', () => {
+    // Two unmerged tests on the SAME date (the issue-16 scenario): the second
+    // event must show its own value/merged flags, never the first event's.
+    const b = makeBiomarker({
+      value: 150,
+      date: '2026-07-15T00:00:00',
+      status: 'normal',
+      merged: false,
+      merged_source: null,
+      history: [
+        {
+          entry_id: 'evt-morning',
+          date: '2026-07-15T00:00:00',
+          value: 120,
+          status: 'low',
+          merged: true,
+          merged_source: { title: 'Morning Panel', clinic: 'Lab A', time: '09:00' },
+        },
+      ],
+    })
+    const atMorning = biomarkersAtDate([b], 'evt-morning')[0]
+    expect(atMorning.value).toBe(120)
+    expect(atMorning.status).toBe('low')
+    expect(atMorning.merged).toBe(true)
+    expect(atMorning.merged_source).toEqual({ title: 'Morning Panel', clinic: 'Lab A', time: '09:00' })
+
+    const atLatest = biomarkersAtDate([b], EVT_LATEST)[0]
+    expect(atLatest.value).toBe(150)
+    expect(atLatest.status).toBe('normal')
+    expect(atLatest.merged).toBe(false)
+    expect(atLatest.merged_source).toBe(null)
+  })
+
+  it('keeps both same-day readings in the remaining history when targeting one of them', () => {
+    const b = makeBiomarker({
+      history: [
+        { entry_id: 'evt-morning', date: '2026-07-15T00:00:00', value: 120, status: 'low' },
+        { entry_id: 'evt-other-day', date: '2026-07-01T00:00:00', value: 130, status: 'normal' },
+      ],
+    })
+    const atMorning = biomarkersAtDate([b], 'evt-morning')[0]
+    expect(atMorning.history?.map((h) => h.entry_id)).toEqual(['evt-other-day', EVT_LATEST])
   })
 })

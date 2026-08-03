@@ -123,6 +123,7 @@ describe('BloodTestDetails', () => {
           reference_source: 'global',
         },
         value: 150,
+        entry_id: 'evt-blood',
         date: 'Jan 15, 2027',
         status: 'normal',
         ...overrides,

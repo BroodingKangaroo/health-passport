@@ -73,6 +73,7 @@ def reading_schema(
     """Map a single BiomarkerReading to its Reading schema, using the
     definition for the effective reference when the reading has none."""
     return Reading(
+        entry_id=reading.entry_id,
         date=date_label,
         value=reading_value(reading),
         status=reading.status,
@@ -93,6 +94,7 @@ def result_schema(
     defn: BiomarkerDefinitionModel,
     reading,
     date_label: str,
+    entry_id: str,
     history: Optional[list[Reading]] = None,
     merged: bool = False,
     merged_source: Optional[MergedSource] = None,
@@ -102,6 +104,7 @@ def result_schema(
     merged/merged_source of the latest reading; flowsheet keeps the defaults."""
     return BiomarkerResult(
         id=id,
+        entry_id=entry_id,
         definition=definition_schema(defn),
         value=reading_value(reading),
         date=date_label,

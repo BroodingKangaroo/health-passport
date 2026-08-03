@@ -48,7 +48,11 @@ def _build_flowsheet(db: Session, patient_id: str):
             MedicalEntryModel.type == "blood_test",
             MedicalEntryModel.patient_id == patient_id,
         )
-        .order_by(MedicalEntryModel.date)
+        .order_by(
+            MedicalEntryModel.date,
+            MedicalEntryModel.created_at,
+            MedicalEntryModel.id,
+        )
         .all()
     )
 
@@ -71,19 +75,18 @@ def _build_flowsheet(db: Session, patient_id: str):
 
 
 def _build_date_headers(blood_tests) -> list[DateHeader]:
+    """Build one column header per blood test. Same-day tests are told apart
+    by their time sub-label; when two columns would otherwise be identical
+    (same label AND same sub — e.g. several untimed tests on one day), a
+    "(#n)" suffix disambiguates each occurrence of that colliding pair."""
     headers = [flowsheet_date_header(e.date) for e in blood_tests]
-    header_labels = [h[0] for h in headers]
-    label_counts = Counter(header_labels)
-
+    pair_counts = Counter(headers)
+    seen: dict[tuple[str, Optional[str]], int] = {}
     date_headers: list[DateHeader] = []
-    seen: dict[str, int] = {}
-    for i, _e in enumerate(blood_tests):
-        label, sub = headers[i]
-        if label_counts[label] > 1:
-            same_subs = {h[1] for h in headers if h[0] == label}
-            if len(same_subs) == 1:
-                seen[label] = seen.get(label, 0) + 1
-                label = f"{label} (#{seen[label]})"
+    for label, sub in headers:
+        if pair_counts[(label, sub)] > 1:
+            seen[(label, sub)] = seen.get((label, sub), 0) + 1
+            label = f"{label} (#{seen[(label, sub)]})"
         date_headers.append(DateHeader(label=label, sub=sub))
     return date_headers
 
@@ -204,20 +207,31 @@ def _build_biomarker_rows(
     defn_by_id: dict,
     defn_by_loinc: dict,
 ) -> list[BiomarkerResult]:
+    # The composite id suffix drops the year ("may-26"), so two tests from
+    # different years can share a label — every repeat occurrence gets a
+    # "-{n}" suffix so the emitted ids are unique per reading and stay
+    # resolvable by /api/biomarker/{id} (the resolver strips
+    # "{month}-{day}[-{n}]").
+    label_seen: dict[str, int] = {}
+
     biomarkers = []
     for bt in blood_tests:
+        label = short_date_label(bt.date).lower().replace(" ", "-")
+        label_seen[label] = label_seen.get(label, 0) + 1
+        # First occurrence keeps the legacy plain id; repeats get a suffix.
+        id_label = f"{label}-{label_seen[label]}" if label_seen[label] > 1 else label
         readings = biomarker_readings_map.get(bt.id, {})
         for def_id, reading in readings.items():
             defn = lookup_definition(defn_by_id, defn_by_loinc, def_id)
             if not defn:
                 logger.warning("Skipping flowsheet reading with unresolvable biomarker_id=%r", def_id)
                 continue
-            label = short_date_label(bt.date).lower().replace(" ", "-")
             biomarkers.append(result_schema(
-                id=f"{def_id}-{label}",
+                id=f"{def_id}-{id_label}",
                 defn=defn,
                 reading=reading,
                 date_label=bt.date.isoformat(),
+                entry_id=bt.id,
             ))
     return biomarkers
 

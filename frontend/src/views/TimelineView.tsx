@@ -26,8 +26,8 @@ export function TimelineView() {
   const selectedEventData = events.find((e) => e.id === effectiveSelected)
 
   const eventBiomarkers = useMemo(
-    () => biomarkersAtDate(biomarkers, selectedEventData?.date ?? ''),
-    [biomarkers, selectedEventData?.date],
+    () => biomarkersAtDate(biomarkers, selectedEventData?.id ?? ''),
+    [biomarkers, selectedEventData?.id],
   )
 
   if (isLoading) {
@@ -103,15 +103,15 @@ export function TimelineView() {
   )
 }
 
-export function biomarkersAtDate(biomarkers: BiomarkerResult[], date: string): BiomarkerResult[] {
-  if (!date) return biomarkers
+export function biomarkersAtDate(biomarkers: BiomarkerResult[], entryId: string): BiomarkerResult[] {
+  if (!entryId) return biomarkers
   return biomarkers
     .map((b): BiomarkerResult | null => {
       const all: Reading[] = [
         ...(b.history ?? []),
-        { date: b.date, value: b.value, status: b.status },
+        { entry_id: b.entry_id, date: b.date, value: b.value, status: b.status },
       ]
-      const idx = all.findIndex((r) => r.date === date)
+      const idx = all.findIndex((r) => r.entry_id === entryId)
       if (idx === -1) return null
       const current = all[idx]
       const isLatest = idx === all.length - 1

@@ -70,6 +70,55 @@ class TestTimeline:
         for b in biomarkers:
             assert b["date"] in ("2024-12-03T00:00:00", "2025-01-12T00:00:00")
 
+    async def test_timeline_biomarkers_carry_entry_ids(self, client):
+        # when
+        resp = await client.get("/api/timeline")
+        data = resp.json()
+        biomarkers = data["biomarkers"]
+        event_ids = {e["id"] for e in data["events"]}
+
+        # then: every reading — the top-level latest and each history entry —
+        # names the blood test it belongs to, so clients can match readings to
+        # events even when several tests share a date.
+        for b in biomarkers:
+            assert b["entry_id"] in event_ids
+            for h in b["history"]:
+                assert h["entry_id"] in event_ids
+
+    async def test_same_date_events_ordered_deterministically(self, client, db_session):
+        # given: two blood tests with the exact same date, different created_at
+        from datetime import datetime, timezone
+
+        from app.db.models import MedicalEntry
+
+        db_session.add(MedicalEntry(
+            id="same-day-b",
+            patient_id="testuser",
+            type="blood_test",
+            date=datetime(2025, 6, 1, tzinfo=timezone.utc),
+            title="Second Same-Day Test",
+            created_at=datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc),
+        ))
+        db_session.add(MedicalEntry(
+            id="same-day-a",
+            patient_id="testuser",
+            type="blood_test",
+            date=datetime(2025, 6, 1, tzinfo=timezone.utc),
+            title="First Same-Day Test",
+            created_at=datetime(2025, 6, 1, 9, 0, tzinfo=timezone.utc),
+        ))
+        db_session.commit()
+
+        # when
+        resp = await client.get("/api/timeline")
+        dates = [e["date"] for e in resp.json()["events"]]
+
+        # then: (date, created_at, id) order — the earlier-created test first,
+        # never a database-arbitrary order.
+        assert dates == sorted(dates)
+        ids = [e["id"] for e in resp.json()["events"]]
+        assert ids.index("same-day-a") < ids.index("same-day-b")
+
     async def test_timeline_visits_structure(self, client):
         # when
         resp = await client.get("/api/timeline")
@@ -137,6 +186,56 @@ class TestFlowsheet:
                 if row["id"] == "d":
                     assert row["cells"][0]["value"] == "—"
 
+    async def test_flowsheet_same_day_biomarkers_have_unique_ids(self, client):
+        # when: the seeded data has two tests on 2024-10-15 (blood-oct 09:00,
+        # blood-oct-eve 14:30), so each biomarker appears twice that day
+        resp = await client.get("/api/flowsheet")
+        biomarkers = resp.json()["biomarkers"]
+
+        # then: composite ids are unique per reading (no "wbc-oct-15" twice)
+        ids = [b["id"] for b in biomarkers]
+        assert len(ids) == len(set(ids))
+        oct_ids = [i for i in ids if i.endswith("-oct-15") or "-oct-15-" in i]
+        assert "wbc-oct-15" in oct_ids
+        assert "wbc-oct-15-2" in oct_ids
+
+    async def test_flowsheet_same_day_biomarkers_carry_entry_ids(self, client):
+        # when
+        resp = await client.get("/api/flowsheet")
+        biomarkers = resp.json()["biomarkers"]
+
+        # then: the two same-day tests are distinguishable by entry_id
+        wbc_oct = [b for b in biomarkers if b["id"].startswith("wbc-oct-15")]
+        assert {b["entry_id"] for b in wbc_oct} == {"blood-oct", "blood-oct-eve"}
+
+    async def test_flowsheet_headers_dedupe_colliding_subs(self, client, db_session):
+        # given: a third test on 2024-10-15 at the same 09:00 time as blood-oct
+        from datetime import datetime, timezone
+
+        from app.db.models import MedicalEntry
+
+        db_session.add(MedicalEntry(
+            id="blood-oct-dup",
+            patient_id="testuser",
+            type="blood_test",
+            date=datetime(2024, 10, 15, 9, 0, tzinfo=timezone.utc),
+            title="Duplicate Morning Panel",
+        ))
+        db_session.commit()
+
+        # when
+        resp = await client.get("/api/flowsheet")
+        headers = resp.json()["dates"]
+
+        # then: the two colliding 09:00 columns get (#1)/(#2) — no two columns
+        # are identically labeled
+        labels = [h["label"] for h in headers]
+        assert len(labels) == len(set(labels))
+        oct_labels = [h["label"] for h in headers if h["label"].startswith("Oct 15, 2024")]
+        assert len(oct_labels) == 3
+        assert any(label.endswith("(#1)") for label in oct_labels)
+        assert any(label.endswith("(#2)") for label in oct_labels)
+
 
 class TestBiomarkerDetail:
     async def test_get_biomarker_detail_returns_200(self, client):
@@ -145,6 +244,15 @@ class TestBiomarkerDetail:
 
         # then
         assert resp.status_code == 200
+
+    async def test_biomarker_detail_resolves_occurrence_suffixed_flow_sheet_id(self, client):
+        # when: the flowsheet emits "wbc-oct-15-2" for the SECOND test on
+        # 2024-10-15 — the resolver must strip the "{month}-{day}-{n}" suffix
+        resp = await client.get("/api/biomarker/wbc-oct-15-2")
+
+        # then
+        assert resp.status_code == 200
+        assert resp.json()["id"] == "wbc"
 
     async def test_biomarker_detail_structure(self, client):
         # when

@@ -16,6 +16,9 @@ class MergedSource(BaseModel):
 
 
 class Reading(BaseModel):
+    # The medical entry (blood test) the reading belongs to. Lets clients match
+    # readings to events unambiguously when several tests share a date.
+    entry_id: str
     date: str
     value: Union[float, str, None] = None
     status: str
@@ -54,6 +57,9 @@ class BiomarkerDefinition(BaseModel):
 
 class BiomarkerResult(BaseModel):
     id: str
+    # Entry the top-level (latest) reading belongs to; history readings carry
+    # their own entry_id.
+    entry_id: str
     definition: BiomarkerDefinition
     value: Union[float, str, None] = None
     date: str

@@ -54,7 +54,7 @@ export function ExpandedBiomarkerDetails({
   // (e.g. two panels on the same date) and diverge from biomarker-details.tsx.
   const chartData = [
     ...history,
-    { date: biomarker.date, value: biomarker.value, status: biomarker.status },
+    { entry_id: biomarker.entry_id, date: biomarker.date, value: biomarker.value, status: biomarker.status },
   ]
   const effRef = biomarker.reference ?? biomarker.definition.reference
   const unitDisplay = unitLabel(displayUnit(biomarker.definition), effRef)

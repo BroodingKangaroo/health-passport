@@ -44,20 +44,28 @@ from app.schemas import (
 logger = logging.getLogger(__name__)
 
 # Flowsheet composite ids look like "{biomarker_id}-{month}-{day}" (e.g.
-# "713-8-may-26"), where the suffix is short_date_label() lowercased. Used to
-# recover the underlying definition id when resolving /api/biomarker/{id}.
+# "713-8-may-26"), where the suffix is short_date_label() lowercased; tests
+# that share a date label append "-{n}" to disambiguate ("wbc-oct-15-2").
+# Used to recover the underlying definition id when resolving
+# /api/biomarker/{id}.
 _FLOW_SHEET_LABEL_RE = re.compile(
-    r"-(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)-\d{1,2}$"
+    r"-(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)-\d{1,2}(?:-\d+)?$"
 )
 
 router = APIRouter()
 
 
 def _events_from_db(db: Session, patient_id: str):
+    # Same-day tests are ordered by insertion time then id, so the event
+    # order (and therefore the timeline's default selection) is deterministic.
     entries = (
         db.query(MedicalEntryModel)
         .filter(MedicalEntryModel.patient_id == patient_id)
-        .order_by(MedicalEntryModel.date)
+        .order_by(
+            MedicalEntryModel.date,
+            MedicalEntryModel.created_at,
+            MedicalEntryModel.id,
+        )
         .all()
     )
     return [
@@ -89,7 +97,11 @@ def _readings_query(db: Session, patient_id: str, biomarker_id: str):
             MedicalEntryModel.type == "blood_test",
             MedicalEntryModel.patient_id == patient_id,
         )
-        .order_by(MedicalEntryModel.date)
+        .order_by(
+            MedicalEntryModel.date,
+            MedicalEntryModel.created_at,
+            MedicalEntryModel.id,
+        )
         .all()
     )
 
@@ -112,6 +124,7 @@ def _result_from_query(
         defn=defn,
         reading=latest_reading,
         date_label=latest_date.isoformat(),
+        entry_id=latest_reading.entry_id,
         history=_history_from_query(query, defn),
         merged=bool(latest_reading.merged),
         merged_source=reading_merged_source(latest_reading),

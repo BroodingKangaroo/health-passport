@@ -57,6 +57,9 @@ export interface MergedSource {
 }
 
 export interface Reading {
+  // The medical entry (blood test) the reading belongs to. Lets the client
+  // match readings to events unambiguously when several tests share a date.
+  entry_id: string
   date: string
   value: number | string | null
   status: Status
@@ -80,6 +83,9 @@ export interface Reading {
 
 export interface BiomarkerResult {
   id: string
+  // Entry the top-level (latest) reading belongs to; history readings carry
+  // their own entry_id.
+  entry_id: string
   definition: BiomarkerDefinition
   value: number | string | null
   date: string
