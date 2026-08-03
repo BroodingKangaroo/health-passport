@@ -164,6 +164,108 @@ development (wholesale file reads) and slow agent context loading.
 
 ---
 
+## Proposed features (not yet built)
+
+### 24. Extraction benchmark module + autoresearch loop
+
+A standalone, long-running quality/cost benchmark for the **live** extraction
+pipeline (OCR → LLM extraction → matcher), driven by a project-local
+autoresearch loop that autonomously improves recognition, stability, speed,
+and AI-request cost. It lives in its own module so normal development can
+continue while the loop runs for hours in the background.
+
+#### Motivation
+
+- Extraction is LLM/OCR-based and flaky (`backend/e2e/KNOWN_ISSUES.md` notes
+  ~5/8 pass rates, run-to-run variance). There is currently **no numeric
+  signal** for "how well does extraction recognize this document" — only
+  pass/fail per golden case on a 6-case corpus.
+- `validate_offline.py` skips OCR+LLM entirely (matcher-only), and
+  `run_e2e.py` requires a live server + per-run flakiness. Neither gives a
+  measurable, loopable metric over **many** documents.
+- Goal: many medical files + hand-verified goldens → a scalar metric
+  (recognition × stability) the autoresearch loop can push up, with cost
+  (tokens/calls/latency) tracked as a co-metric the loop must not regress.
+
+#### Module layout (new `backend/benchmark/`)
+
+```
+backend/benchmark/
+  README.md                # how to run, metric semantics, safety rules
+  corpus/<case>/           # source doc(s) + golden.json (e2e golden format)
+  metrics.py               # Mistral client wrapper: counts LLM calls, tokens,
+                           #   upload bytes, per-stage latency
+  scoring.py               # recognition / stability / cost aggregation
+  run_benchmark.py         # THE verify command (see Metrics)
+```
+
+- **Corpus seeding**: copy the 6 existing e2e cases (`backend/e2e/inputs/*` +
+  `backend/e2e/golden/*/standardized.json`) as the starting corpus; grow by
+  dropping more documents + goldens.
+- **Isolation**: `run_benchmark.py` is a pure library runner — no server, no
+  port, no HTTP — with its **own** LOINC-seeded DB and its **own** Mistral
+  client, like `validate_offline.py` but with the LLM enabled.
+
+#### Metrics (per run of the verify command)
+
+Each case is processed **N=3 times** (flakiness measurement), then:
+
+- **recognition** — fraction of golden biomarkers/visits/imaging items
+  recognized in the observed output (via `e2e/compare.py`), averaged over
+  cases; unexpected (extra) items penalize.
+- **stability** — fraction of golden items recognized in ALL N runs (the
+  flaky ones show up here).
+- **primary** — `recognition × stability`; the loop's keep/discard metric.
+- **cost** — total LLM calls, `usage.input_tokens` / `output_tokens` (the
+  Mistral SDK exposes them on every `chat.parse` response — matcher makes up
+  to 8 extra LLM calls beyond the main extraction), OCR upload bytes, total
+  wall time.
+
+Output is machine-readable, e.g.:
+
+```
+METRIC recognition=0.94
+METRIC stability=0.88
+METRIC primary=0.83
+METRIC llm_calls=9
+METRIC input_tokens=18430
+METRIC output_tokens=5210
+METRIC ocr_bytes=2415013
+METRIC wall_s=92.4
+```
+
+Exit code 0 on success, non-zero on hard failure (auth/quota) so the loop can
+distinguish "worse" from "broken".
+
+#### Autoresearch loop contract
+
+- `.opencode/skills/autoresearch/SKILL.md` — the loop procedure:
+  baseline → ONE focused change → run benchmark → keep if **primary strictly
+  improves** (ties broken by lower cost) else discard → guards → journal →
+  repeat, capped at `max_iterations` (default 10).
+- `.opencode/command/autoresearch.md` — start/resume entry point.
+- **Guards** (must stay green for a keep): `pytest tests/`, `ruff check .`,
+  and existing e2e goldens via `validate_offline.py`.
+- **Scope-locked**: only `extractor.py`, `matcher.py`, `ai.py`, and
+  `benchmark/`. **Off-limits**: `seed_loinc`, `Loinc.csv`, goldens, DB files.
+- **Git isolation**: runs on its own `autoresearch/extraction` branch; main
+  work is untouched. The loop **never commits to main and never pushes** —
+  every keep is presented for human review first.
+- State/journal: `.autoresearch/state.json` + `autoresearch.md` (gitignored),
+  resumable across sessions; session auto-compaction between iterations.
+
+#### Cost & verification notes
+
+- Each iteration ≈ 6 cases × 3 runs × (OCR + 1–9 LLM calls) — real Mistral
+  spend; `max_iterations` is a hard cap and should be tuned to a budget.
+- Validation before trusting the loop: sanity-check `run_benchmark.py` on 1
+  case × 3 runs against manual extraction, and dry-run the loop with a
+  deliberate no-op change to confirm it discards (primary unchanged).
+- Decisions made (2026-08-03): N=3 runs, strict primary improvement keep,
+  separate branch isolation, build everything in one pass.
+
+---
+
 ## Verified working (explicitly checked, no findings)
 
 - Auth round-trip (JWT ⇄ NextAuth), anonymous-session id, `fetchAuthedObjectUrl` /
