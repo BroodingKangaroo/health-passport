@@ -100,4 +100,97 @@ describe('biomarkersAtDate', () => {
       '2026-07-15T00:00:00',
     ])
   })
+
+  it('shows the metadata of the reading AT the event, not the newest doc, for an older event', () => {
+    const b = makeBiomarker({
+      original_name: 'Hemoglobin (latest)',
+      original_value: '15.0',
+      original_unit: 'g/dL',
+      original_range: '13-17',
+      reference: { kind: 'interval', low: 130, high: 170 },
+      history: [
+        {
+          date: '2026-01-01T00:00:00',
+          value: 140,
+          status: 'normal',
+          original_name: 'Hb (old doc)',
+          original_value: '14.0',
+          original_unit: 'g/dl',
+          original_range: '12-16',
+          reference: { kind: 'interval', low: 120, high: 160 },
+        },
+      ],
+    })
+    const atOlderEvent = biomarkersAtDate([b], '2026-01-01T00:00:00')[0]
+    expect(atOlderEvent.original_name).toBe('Hb (old doc)')
+    expect(atOlderEvent.original_value).toBe('14.0')
+    expect(atOlderEvent.original_unit).toBe('g/dl')
+    expect(atOlderEvent.original_range).toBe('12-16')
+    expect(atOlderEvent.reference).toEqual({ kind: 'interval', low: 120, high: 160 })
+  })
+
+  it('keeps the top-level metadata for the latest event', () => {
+    const b = makeBiomarker({
+      original_name: 'Hemoglobin (latest)',
+      original_value: '15.0',
+      original_unit: 'g/dL',
+      original_range: '13-17',
+      reference: { kind: 'interval', low: 130, high: 170 },
+      history: [
+        {
+          date: '2026-01-01T00:00:00',
+          value: 140,
+          status: 'normal',
+          original_name: 'Hb (old doc)',
+          original_value: '14.0',
+          original_unit: 'g/dl',
+          original_range: '12-16',
+          reference: { kind: 'interval', low: 120, high: 160 },
+        },
+      ],
+    })
+    const atLatest = biomarkersAtDate([b], '2026-07-15T00:00:00')[0]
+    expect(atLatest.original_name).toBe('Hemoglobin (latest)')
+    expect(atLatest.original_value).toBe('15.0')
+    expect(atLatest.original_unit).toBe('g/dL')
+    expect(atLatest.original_range).toBe('13-17')
+    expect(atLatest.reference).toEqual({ kind: 'interval', low: 130, high: 170 })
+  })
+
+  it('shows the metadata of the middle reading when targeting a middle event', () => {
+    const b = makeBiomarker({
+      original_name: 'Latest name',
+      reference: { kind: 'interval', low: 130, high: 170 },
+      history: [
+        {
+          date: '2026-01-01T00:00:00',
+          value: 140,
+          status: 'normal',
+          original_name: 'First name',
+          reference: { kind: 'interval', low: 120, high: 160 },
+        },
+        {
+          date: '2026-02-01T00:00:00',
+          value: 141,
+          status: 'normal',
+          original_name: 'Middle name',
+          reference: { kind: 'interval', low: 125, high: 165 },
+        },
+      ],
+    })
+    const atMiddle = biomarkersAtDate([b], '2026-02-01T00:00:00')[0]
+    expect(atMiddle.original_name).toBe('Middle name')
+    expect(atMiddle.reference).toEqual({ kind: 'interval', low: 125, high: 165 })
+  })
+
+  it('does not inherit the latest reference when the older reading has none', () => {
+    const b = makeBiomarker({
+      reference: { kind: 'interval', low: 130, high: 170 },
+      history: [
+        { date: '2026-01-01T00:00:00', value: 140, status: 'normal', reference: null },
+      ],
+    })
+    const atOlderEvent = biomarkersAtDate([b], '2026-01-01T00:00:00')[0]
+    expect(atOlderEvent.reference).toBeNull()
+  })
 })

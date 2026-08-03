@@ -46,7 +46,7 @@ export default function BiomarkerChartInner({
     })
     .filter((d) => d != null) as { date: string; value: number; status: string }[]
   const numericValues = data.map((d) => d.value)
-  const bounds = qual ? { low: 0, high: 1 } : intervalBounds(biomarker.definition.reference)
+  const bounds = qual ? { low: 0, high: 1 } : intervalBounds(effRef)
   const rm = bounds?.high ?? null
   const dataMax = rm != null ? Math.max(...numericValues, rm) : (numericValues.length > 0 ? Math.max(...numericValues) : 0)
   const yMax = rm != null ? Math.max(dataMax, rm * 1.2) : (numericValues.length > 0 ? dataMax * 1.2 : 1)

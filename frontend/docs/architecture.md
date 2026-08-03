@@ -84,7 +84,10 @@ Mirror of the backend's reference model (see `backend/docs/architecture.md`):
   on the same date"); the flowsheet and print editor don't show them.
 - `biomarkersAtDate` (`views/TimelineView.tsx`) copies `merged`/`merged_source`
   from the reading AT the selected event (`isLatest`-gated, per-reading
-  flags) — never a `??`-fallback to the latest reading's flags.
+  flags) — never a `??`-fallback to the latest reading's flags. The same
+  `isLatest`-gated copy applies to `original_name/value/unit/range` and
+  `reference`, so an older event shows the metadata of the reading at that
+  event (matching its save-time status), not the newest doc's.
 
 ## Settings tab
 

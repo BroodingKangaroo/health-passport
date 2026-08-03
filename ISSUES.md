@@ -1,8 +1,7 @@
 # HealthPassport — Bug / Inconsistency Log
 
-Convention: when an issue is resolved, mark its heading with `~~strikethrough~~`
-(or a `(resolved)` tag) rather than deleting the entry, so history stays
-traceable. When a fix makes a documented statement false (observable
+Convention: when an issue is resolved, delete its entry (the git history
+keeps the log traceable). When a fix makes a documented statement false (observable
 contract: API shape, data model, reference/status semantics, matcher/unit
 rules, proxy rewrites, merge/unit-conflict behavior, harness/safety), the
 affected docs (`backend/docs/architecture.md`, `frontend/docs/architecture.md`,
@@ -58,19 +57,6 @@ files as they stand now.
 ---
 
 ## MEDIUM
-
-### 14. Older entries show the newest reading's metadata
-
-- File: `backend/app/api/_serializers.py:108-114` — `result_schema` reads
-  `original_name/original_value/original_unit/original_range` from the **latest**
-  reading.
-- `frontend/src/views/TimelineView.tsx:117-134` (`biomarkersAtDate`) overrides
-  only `value/date/status/merged`, so the "Original Name" column
-  (`results-panel.tsx:186`) shows the newest doc's name while displaying the
-  older value. The chart reference band is drawn from
-  `definition.reference` (`BiomarkerChartInner.tsx:86`) whereas the shown text
-  and status use the per-reading reference (`results-panel.tsx:195`) — the green
-  band and a cell's "high/low" verdict can contradict when ranges changed.
 
 ### 15. "Insights & Correlation" delivers no correlation and drops common cases
 

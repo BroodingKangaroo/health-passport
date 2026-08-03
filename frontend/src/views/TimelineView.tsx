@@ -127,6 +127,16 @@ export function biomarkersAtDate(biomarkers: BiomarkerResult[], date: string): B
         // latest reading's live on the top-level BiomarkerResult.
         merged: isLatest ? b.merged : current.merged,
         merged_source: isLatest ? b.merged_source : current.merged_source,
+        // Same for the original-name/value/unit/range and the reference: an
+        // older entry must show the metadata of the reading at THAT event,
+        // not the newest doc's. History readings carry their own server-side
+        // effective reference; the latest reading's live on the top-level
+        // BiomarkerResult.
+        original_name: isLatest ? b.original_name : current.original_name,
+        original_value: isLatest ? b.original_value : current.original_value,
+        original_unit: isLatest ? b.original_unit : current.original_unit,
+        original_range: isLatest ? b.original_range : current.original_range,
+        reference: isLatest ? b.reference : current.reference,
         // Full history of the biomarker (all readings except the one at this
         // blood test), not just the readings that occurred before it — so the
         // inline graph and reading list show the complete trend regardless of
