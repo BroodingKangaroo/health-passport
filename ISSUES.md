@@ -2,10 +2,13 @@
 
 Convention: when an issue is resolved, mark its heading with `~~strikethrough~~`
 (or a `(resolved)` tag) rather than deleting the entry, so history stays
-traceable. When a fix changes behavior/architecture, the affected docs
-(`backend/docs/architecture.md`, `frontend/docs/architecture.md`,
+traceable. When a fix makes a documented statement false (observable
+contract: API shape, data model, reference/status semantics, matcher/unit
+rules, proxy rewrites, merge/unit-conflict behavior, harness/safety), the
+affected docs (`backend/docs/architecture.md`, `frontend/docs/architecture.md`,
 `backend/e2e/README.md`, AGENTS.md invariants) must be updated in the same
-change.
+change; cosmetic/mechanical and behavior-preserving fixes leave docs
+untouched.
 
 Audit date: 2026-08-02. Findings verified against the current working tree
 (the e2e refactor referenced below is committed as `feca353`: frontend

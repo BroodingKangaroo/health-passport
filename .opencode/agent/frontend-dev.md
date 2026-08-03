@@ -35,8 +35,11 @@ Before answering or editing, read the source of truth for frontend rules:
   Playwright suite — e2e lives in the backend golden harness.
 
 When suggesting changes, note the component(s) touched and call out any effect
-on the merge/units behavioral contracts above. When you change behavior or
-architecture (feature, refactor, semantic change), update the affected docs
-in the same change: `frontend/docs/architecture.md`, and AGENTS.md invariants
-if they change. Never leave docs stale — flag drift to the user rather than
-leaving it.
+on the merge/units behavioral contracts above. Update `frontend/docs/architecture.md`
+and AGENTS.md invariants in the same change **only when the change makes a
+documented statement false** (observable contract: proxy rewrites, reference
+formatting, merge/unit-conflict behavior, settings). Skip docs for
+cosmetic/mechanical changes without flagging; for behavior-preserving
+refactors skip doc edits but state in your report that no documented
+statement changed. When in doubt, flag drift to the user rather than editing
+docs.

@@ -10,13 +10,19 @@ Deep architecture details live in on-demand docs — read the relevant one first
 - `frontend/docs/architecture.md` — proxy rewrites, reference formatting, merge/unit-conflict UI contracts, settings tab.
 - `backend/e2e/README.md` — golden harness, isolated-server rules, add-case workflow.
 
-**Keep docs in sync**: when you change behavior or architecture (a feature,
-refactor, or semantic change), update the affected on-demand doc(s) —
-`backend/docs/architecture.md`, `frontend/docs/architecture.md`,
-`backend/e2e/README.md`, and the AGENTS.md invariants if they change — in
-the same change. Do not leave docs stale; AGENTS.md is the index, the
-architecture docs are the truth. If a doc entry no longer matches the code,
-fix the doc (or flag it to the user) rather than leaving drift.
+**Keep docs in sync — only for significant changes**: update the affected
+on-demand doc(s) — `backend/docs/architecture.md`,
+`frontend/docs/architecture.md`, `backend/e2e/README.md`, and the AGENTS.md
+invariants if they change — **in the same change, but only when the change
+makes a documented statement false** (an observable contract: API shape,
+persisted data model, reference/status semantics, matcher/unit rules, proxy
+rewrites, merge/unit-conflict UI behavior, harness/safety behavior). Skip
+doc updates for cosmetic or mechanical changes — typos, formatting, internal
+renames, tests, tooling/dependency bumps, log messages — without flagging
+them. For refactors that keep observable behavior identical, skip doc edits
+but state in your report that no documented statement changed. When in doubt,
+flag drift to the user rather than editing docs. AGENTS.md is the index, the
+architecture docs are the truth.
 
 ## Quick commands
 

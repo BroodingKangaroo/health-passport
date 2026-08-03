@@ -38,8 +38,11 @@ Before answering or editing, read the source of truth for backend rules:
   `backend/`). Lint: `backend/venv/bin/ruff check .`.
 
 When asked to change code, explain the change and its exact effect on status,
-units, and persisted definitions before editing. When you change behavior or
-architecture (feature, refactor, semantic change), update the affected docs
-in the same change: `backend/docs/architecture.md`, `backend/e2e/README.md`,
-and AGENTS.md invariants if they change. Never leave docs stale — flag drift
-to the user rather than leaving it.
+units, and persisted definitions before editing. Update `backend/docs/architecture.md`,
+`backend/e2e/README.md`, and AGENTS.md invariants in the same change **only
+when the change makes a documented statement false** (observable contract:
+API shape, data model, reference/status semantics, matcher/unit rules,
+harness/safety behavior). Skip docs for cosmetic/mechanical changes without
+flagging; for behavior-preserving refactors skip doc edits but state in your
+report that no documented statement changed. When in doubt, flag drift to the
+user rather than editing docs.

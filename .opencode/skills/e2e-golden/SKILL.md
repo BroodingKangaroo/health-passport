@@ -41,9 +41,10 @@ rules.
    `scale_function`/`needs_review`.
 4. Record any matcher mismatches in `KNOWN_ISSUES.md` instead of editing the
    golden to pass.
-5. If the case exposed a behavior/architecture change, update the affected
-   docs in the same change (`backend/docs/architecture.md`,
-   `backend/e2e/README.md`, AGENTS.md invariants) — never leave docs stale.
+5. If the case exposed a change to a documented contract (matcher rule,
+   reference semantics, new field), update the affected docs in the same
+   change (`backend/docs/architecture.md`, `backend/e2e/README.md`, AGENTS.md
+   invariants). Routine case additions leave docs untouched.
 6. Report results. **Never** `git add`/`git commit` yourself — wait for
    explicit user approval; unverified goldens stay pending and don't fail CI.
 
