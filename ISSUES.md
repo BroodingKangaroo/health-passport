@@ -38,17 +38,6 @@ files as they stand now.
   rows in `categories`, which are still persisted (`add-entry.tsx:518`), so an
   "Imaging" entry can silently carry invisible blood-test readings.
 
-### 9. Failed AI extraction still burns quota; no retry path
-
-- File: `backend/app/api/ai.py:112` — the extraction-count increment is written
-  with `db.commit()` right after file-format validation but *before* OCR
-  (lines 141-150) and LLM extraction. A document whose OCR/extraction fails
-  consumes 1 of the 5 anonymous (or 50 registered) extractions for nothing;
-  only file-validation failures (400) are refunded.
-- Frontend: `frontend/src/components/health-passport/add-entry.tsx:310-325`
-  shows "Switched to manual entry" with **no "Try again"** control, and the
-  failed file stays selected as if it will be attached on Save.
-
 ### 10. Print "AI translation" is cosmetic — de/fr/es/he output is English
 
 - Files: `frontend/src/components/health-passport/print-setup.tsx:59-61,43-46`

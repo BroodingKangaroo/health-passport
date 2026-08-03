@@ -61,6 +61,15 @@ Mirror of the backend's reference model (see `backend/docs/architecture.md`):
 - "Keep document unit" rewrites the form row back to `raw_value`/`raw_unit`;
   it does NOT change the stored definition's canonical unit.
 
+## Extraction failure retry
+
+- When `/api/extract` fails (OCR/LLM error), `AddEntry` falls back to manual
+  entry but keeps the selected file, showing a **"Try again"** button in the
+  error banner (`runExtraction(selectedFile)` re-runs the whole SSE flow) and
+  a **remove (✕)** control on the document preview so a failed file can't be
+  silently attached on Save. `removeFile()` clears both `selectedFile` and the
+  hidden `fileRef` input, else Save re-attaches via the `fileRef` fallback.
+
 ## Merge UI + merged-readings sections
 
 - `AddEntry` (`add-entry.tsx`) shows a merge checkbox when another blood test

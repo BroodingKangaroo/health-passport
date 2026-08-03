@@ -17,7 +17,7 @@ from app.db.models import Patient
 from app.db.session import SessionLocal, get_db
 from app.schemas.ai import RawImagingData, StandardizedMedicalRecord, StandardizedVisitData
 from app.services import extractor, matcher
-from app.services.usage_limits import check_and_record_ai_usage
+from app.services.usage_limits import check_and_record_ai_usage, refund_ai_extraction
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +130,7 @@ async def extract_medical_data(
 
     async def event_stream():
         error = None
+        markdown = None
         try:
             # Stage 1: OCR
             yield _sse("progress", {"stage": "ocr_scanning"})
@@ -139,23 +140,29 @@ async def extract_medical_data(
                     extractor.ocr_document, bytes_data, ext, client
                 )
             except extractor.OCRProcessingError as ocr_err:
-                yield _sse("error", {"message": ocr_err.message})
-                return
+                error = ocr_err.message
             elapsed = time.perf_counter() - t0
             logger.info("OCR took %.2fs — %d chars", elapsed, len(markdown) if markdown else 0)
 
-            if not markdown:
+            if not error and not markdown:
                 error = "The document was processed but no text content was found. It may contain only images or scanned signatures."
-                yield _sse("error", {"message": error})
-                return
 
             # Stage 2: LLM extraction
-            yield _sse("progress", {"stage": "extracting", "markdown_chars": len(markdown)})
-            t0 = time.perf_counter()
-            raw = await asyncio.to_thread(extractor.llm_extract, markdown, client)
-            elapsed = time.perf_counter() - t0
-            bm_count = len(raw.biomarkers) if raw.biomarkers else 0
-            logger.info("Extraction took %.2fs — type: %s, biomarkers: %d", elapsed, raw.entry_type, bm_count)
+            if not error:
+                yield _sse("progress", {"stage": "extracting", "markdown_chars": len(markdown)})
+                t0 = time.perf_counter()
+                raw = await asyncio.to_thread(extractor.llm_extract, markdown, client)
+                elapsed = time.perf_counter() - t0
+                bm_count = len(raw.biomarkers) if raw.biomarkers else 0
+                logger.info("Extraction took %.2fs — type: %s, biomarkers: %d", elapsed, raw.entry_type, bm_count)
+
+            if error:
+                # The extraction count was committed before OCR/LLM ran; refund
+                # it so a failed document doesn't burn one of the (limited)
+                # AI extractions for nothing.
+                refund_ai_extraction(db, user_id, is_anonymous)
+                yield _sse("error", {"message": error})
+                return
 
             if raw.entry_type == "unknown":
                 yield _sse(
@@ -210,6 +217,9 @@ async def extract_medical_data(
             error = str(e)
 
         if error:
+            # Same refund as the explicit failure paths above: the stream died
+            # before producing a result, so the charged extraction is refunded.
+            refund_ai_extraction(db, user_id, is_anonymous)
             yield _sse("error", {"message": error})
 
     return StreamingResponse(

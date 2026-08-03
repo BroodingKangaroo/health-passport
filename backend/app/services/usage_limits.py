@@ -117,6 +117,26 @@ def check_and_record_ai_usage(db: Session, user_id: str, is_anonymous: bool, com
     return (True, usage.ai_extraction_count, max_ai)
 
 
+def refund_ai_extraction(db: Session, user_id: str, is_anonymous: bool) -> None:
+    """
+    Give back one AI-extraction attempt that was charged but never completed
+    (e.g. OCR or LLM extraction failed after the increment was committed).
+
+    Decrement is a single conditional UPDATE so concurrent refunds can never
+    drive the counter negative. No-op when no UsageLimit row exists yet.
+    """
+    db.execute(
+        update(UsageLimit)
+        .where(
+            UsageLimit.user_id == user_id,
+            UsageLimit.is_anonymous == is_anonymous,
+            UsageLimit.ai_extraction_count > 0,
+        )
+        .values(ai_extraction_count=UsageLimit.ai_extraction_count - 1)
+    )
+    db.commit()
+
+
 def check_and_record_storage_usage(
     db: Session, user_id: str, size_bytes: int, is_anonymous: bool, commit: bool = True
 ) -> tuple[bool, int, int, int]:

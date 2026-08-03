@@ -83,6 +83,19 @@ Replaces the old `range_min`/`range_max` + qualitative-flag model:
 - Surface on the wire: `standard_unit`, `scale_function`, `needs_review`,
   `canonical_unit_inferred`.
 
+## AI extraction quota (`/api/extract`)
+
+- The extraction-count increment is committed (`db.commit()`) once the file
+  passes validation — before OCR/LLM run — so concurrent requests can't both
+  slip past the limit while a multi-second extraction is in flight.
+- A document whose OCR/extraction then FAILS (OCR error, empty OCR text, LLM
+  error, matcher error) gets its charged extraction refunded by
+  `refund_ai_extraction()` (`app/services/usage_limits.py`) before the error
+  SSE event is sent. File-validation failures (400) never burn quota at all.
+- An `entry_type: "unknown"` result is NOT refunded — the LLM genuinely ran
+  and the user gets the unknown-editor + notes. A client disconnect mid-stream
+  is also not refunded (work already ran; no DB writes in cancel paths).
+
 ## CRITICAL — `/api/extract` persists definitions
 
 Matching runs in a worker thread (`backend/app/api/ai.py`,

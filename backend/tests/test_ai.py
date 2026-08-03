@@ -323,6 +323,119 @@ class TestExtractEndpoint:
         ).first()
         assert usage is None or usage.ai_extraction_count == 0
 
+    def _seed_ai_usage(self, db_session, count: int) -> None:
+        from datetime import datetime, timezone
+
+        from app.db.models import UsageLimit
+        from tests.seed_data import TEST_USER_ID
+
+        db_session.add(
+            UsageLimit(
+                user_id=TEST_USER_ID,
+                is_anonymous=False,
+                ai_extraction_count=count,
+                total_upload_size_bytes=0,
+                last_activity=datetime.now(timezone.utc),
+            )
+        )
+        db_session.commit()
+
+    def _ai_usage_count(self, db_session) -> int:
+        from app.db.models import UsageLimit
+        from tests.seed_data import TEST_USER_ID
+
+        usage = db_session.query(UsageLimit).filter(
+            UsageLimit.user_id == TEST_USER_ID
+        ).first()
+        return usage.ai_extraction_count if usage else 0
+
+    def _assert_error_event(self, body: str) -> None:
+        for part in body.split("\n\n"):
+            if "event: error" in part:
+                return
+        raise AssertionError(f"Expected error event in SSE stream:\n{body}")
+
+    @patch("app.api.ai.extractor.ocr_document")
+    async def test_extract_refunds_quota_on_ocr_error(
+        self, mock_ocr, client, db_session, monkeypatch
+    ):
+        """An OCR failure must refund the charged extraction — a failed
+        document must not burn one of the limited AI extractions."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        self._seed_ai_usage(db_session, count=0)
+        mock_ocr.side_effect = OCRProcessingError("OCR failed", kind="ocr")
+
+        resp = await client.post(
+            "/api/extract",
+            files={"file": ("lab.pdf", b"fake content", "application/pdf")},
+        )
+
+        assert resp.status_code == 200
+        self._assert_error_event(resp.text)
+        assert self._ai_usage_count(db_session) == 0
+
+    @patch("app.api.ai.extractor.ocr_document")
+    async def test_extract_refunds_quota_on_empty_markdown(
+        self, mock_ocr, client, db_session, monkeypatch
+    ):
+        """A document that OCRs to nothing (images-only scan) is a failed
+        extraction and must be refunded."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        self._seed_ai_usage(db_session, count=0)
+        mock_ocr.return_value = ""
+
+        resp = await client.post(
+            "/api/extract",
+            files={"file": ("lab.pdf", b"fake content", "application/pdf")},
+        )
+
+        assert resp.status_code == 200
+        self._assert_error_event(resp.text)
+        assert self._ai_usage_count(db_session) == 0
+
+    @patch("app.api.ai.extractor.llm_extract")
+    @patch("app.api.ai.extractor.ocr_document")
+    async def test_extract_refunds_quota_on_llm_error(
+        self, mock_ocr, mock_llm, client, db_session, monkeypatch
+    ):
+        """An LLM-extraction failure (network, parse, provider quota) must
+        also refund the charged extraction."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        self._seed_ai_usage(db_session, count=0)
+        mock_ocr.return_value = "Some OCR text"
+        mock_llm.side_effect = RuntimeError("LLM exploded")
+
+        resp = await client.post(
+            "/api/extract",
+            files={"file": ("lab.pdf", b"fake content", "application/pdf")},
+        )
+
+        assert resp.status_code == 200
+        self._assert_error_event(resp.text)
+        assert self._ai_usage_count(db_session) == 0
+
+    @patch("app.api.ai.extractor.llm_extract")
+    @patch("app.api.ai.extractor.ocr_document")
+    async def test_extract_unknown_type_still_counts(
+        self, mock_ocr, mock_llm, client, db_session, monkeypatch
+    ):
+        """An 'unknown' classification is a completed extraction (the LLM ran),
+        not a failure — the charged extraction is NOT refunded."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        self._seed_ai_usage(db_session, count=0)
+        mock_ocr.return_value = "Some OCR text"
+        mock_llm.return_value = RawMedicalRecord(entry_type="unknown")
+
+        resp = await client.post(
+            "/api/extract",
+            files={"file": ("lab.pdf", b"fake content", "application/pdf")},
+        )
+
+        assert resp.status_code == 200
+        data = _parse_sse_result(resp.text)
+        assert data["entry_type"] == "unknown"
+        assert self._ai_usage_count(db_session) == 1
+
     @patch("app.api.ai.matcher.match_and_convert")
     @patch("app.api.ai.extractor.llm_extract")
     @patch("app.api.ai.extractor.ocr_document")

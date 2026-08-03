@@ -26,6 +26,7 @@ from app.services.usage_limits import (
     check_and_record_ai_usage,
     check_and_record_storage_usage,
     get_limits,
+    refund_ai_extraction,
 )
 from config import ANONYMOUS_LIMITS, REGISTERED_LIMITS
 from tests.seed_data import (
@@ -170,6 +171,32 @@ class TestUsageLimits:
         )
         assert allowed is False
         assert count == ANONYMOUS_LIMITS["ai_extractions"]
+
+    def test_refund_ai_extraction_decrements(self, anon_db_session):
+        """A refund gives back exactly one charged extraction."""
+        check_and_record_ai_usage(anon_db_session, TEST_ANON_ID, is_anonymous=True)
+        check_and_record_ai_usage(anon_db_session, TEST_ANON_ID, is_anonymous=True)
+        assert get_limits(anon_db_session, TEST_ANON_ID, True)["ai_extraction_count"] == 2
+
+        refund_ai_extraction(anon_db_session, TEST_ANON_ID, is_anonymous=True)
+
+        assert get_limits(anon_db_session, TEST_ANON_ID, True)["ai_extraction_count"] == 1
+
+    def test_refund_ai_extraction_floors_at_zero(self, anon_db_session):
+        """A refund can never drive the counter negative."""
+        check_and_record_ai_usage(anon_db_session, TEST_ANON_ID, is_anonymous=True)
+        refund_ai_extraction(anon_db_session, TEST_ANON_ID, is_anonymous=True)
+
+        # Two refunds for one charge: the second is a no-op.
+        refund_ai_extraction(anon_db_session, TEST_ANON_ID, is_anonymous=True)
+
+        assert get_limits(anon_db_session, TEST_ANON_ID, True)["ai_extraction_count"] == 0
+
+    def test_refund_ai_extraction_noop_without_row(self, anon_db_session):
+        """Refunding a user with no UsageLimit row is a safe no-op."""
+        refund_ai_extraction(anon_db_session, TEST_ANON_ID, is_anonymous=True)
+
+        assert get_limits(anon_db_session, TEST_ANON_ID, True)["ai_extraction_count"] == 0
 
     def test_check_and_record_storage_usage(self, anon_db_session):
         """Test storage usage tracking."""

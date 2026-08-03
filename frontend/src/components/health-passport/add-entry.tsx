@@ -11,6 +11,8 @@ import {
   ImagePlus,
   AlertCircle,
   CheckCircle2,
+  RefreshCw,
+  X,
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -532,6 +534,18 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     }
   }
 
+  function removeFile() {
+    if (objectUrl) URL.revokeObjectURL(objectUrl)
+    setObjectUrl(null)
+    setSelectedFile(null)
+    // Clear the hidden input too, or Save would silently re-attach the
+    // removed file via the fileRef fallback.
+    if (fileRef.current) fileRef.current.value = ''
+    setAiError(null)
+    setMultiFileNotice(null)
+    setDragActive(false)
+  }
+
   function updateRow(
     catId: string,
     rowId: string,
@@ -800,7 +814,18 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     <div className="mx-auto w-full max-w-[1600px] px-6 py-4">
       <div className="flex items-start gap-5">
         {/* LEFT COLUMN — Document Preview */}
-        <div className="sticky top-6 w-[45%] overflow-hidden rounded-xl border bg-card">
+        <div className="sticky top-6 relative w-[45%] overflow-hidden rounded-xl border bg-card">
+          {objectUrl && (
+            <button
+              type="button"
+              onClick={removeFile}
+              title="Remove document"
+              aria-label="Remove document"
+              className="absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded-full border border-border bg-background/90 text-muted-foreground shadow-sm transition-colors hover:text-foreground"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
           {objectUrl ? (
             selectedFile?.type === 'application/pdf' ? (
               <DocumentViewer key={objectUrl} url={objectUrl} />
@@ -885,6 +910,19 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                   <p className="mt-1 text-muted-foreground">{aiError}</p>
                   <p className="mt-1">Switched to manual entry. Fill in the details below.</p>
                 </div>
+                {selectedFile && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="ml-auto shrink-0"
+                    onClick={() => runExtraction(selectedFile)}
+                    disabled={uploadState === 'scanning'}
+                  >
+                    <RefreshCw className="size-3.5" />
+                    Try again
+                  </Button>
+                )}
               </div>
             )}
 
