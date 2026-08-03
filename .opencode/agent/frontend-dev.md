@@ -35,4 +35,8 @@ Before answering or editing, read the source of truth for frontend rules:
   Playwright suite — e2e lives in the backend golden harness.
 
 When suggesting changes, note the component(s) touched and call out any effect
-on the merge/units behavioral contracts above.
+on the merge/units behavioral contracts above. When you change behavior or
+architecture (feature, refactor, semantic change), update the affected docs
+in the same change: `frontend/docs/architecture.md`, and AGENTS.md invariants
+if they change. Never leave docs stale — flag drift to the user rather than
+leaving it.

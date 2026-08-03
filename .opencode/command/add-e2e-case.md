@@ -31,7 +31,12 @@ $1 is the intended case name (e.g. `оак_26.05`).
 4. **Record matcher mismatches** in `backend/e2e/KNOWN_ISSUES.md` rather than
    silently editing the golden to force a pass.
 
-5. **Report, never commit**: present the review to the user, flag anything
+5. **Docs in sync**: if the case exposes a behavior/architecture change
+   (matcher rule, reference semantics, new field), update the affected docs
+   (`backend/docs/architecture.md`, `backend/e2e/README.md`, AGENTS.md
+   invariants) in the same change — never leave them stale.
+
+6. **Report, never commit**: present the review to the user, flag anything
    pending/unreviewed, and give them the report — do **not** run `git add` /
    `git commit` yourself. Wait for explicit approval.
 
