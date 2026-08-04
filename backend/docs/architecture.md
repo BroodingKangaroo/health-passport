@@ -195,6 +195,32 @@ extractions "forget" units.
   whole day (tests with distinct times stay plain, tests with the same time —
   or no time — get numbered).
 
+## Auth & password reset (`/api/auth`)
+
+- Registration/login are credentials-based; the frontend proxies them through
+  NextAuth (`/api/auth/register`, `/api/auth/login`). Passwords are bcrypt
+  hashed (`app/auth.py`) and must be ≥ 8 chars (enforced on the backend for
+  both register and reset). JWTs are signed with `SECRET_KEY`/`.jwt_secret`.
+- Password recovery: `POST /api/auth/forgot-password {email}` and
+  `POST /api/auth/reset-password {token, new_password}`.
+  - `forgot-password` always returns 200 with the same body whether or not the
+    email exists (no user enumeration; a mailer failure is logged and also
+    returns 200). If the user exists it stores a 30-minute, single-use token —
+    only its SHA-256 hash is persisted in the `password_reset_tokens` table
+    (`token_hash`, `patient_id`, `expires_at`, `used_at`) — and emails the raw
+    token via `app/services/mailer.py` (sent off the event loop). Expired and
+    used tokens are purged on each request. The emailed link always uses the
+    configured `FRONTEND_URL` (default `http://localhost:3000`) — request
+    Origin/Referer headers are never trusted, since a direct API caller could
+    otherwise rewrite the link to a phishing domain holding a valid token. In
+    local dev (`SMTP_ENABLED` unset, the default) the reset link is logged
+    instead of emailed. Endpoint is rate-limited in-memory (5/hour per email,
+    20/hour per IP).
+  - `reset-password` validates the token (exists, unused, unexpired), enforces
+    a min 8-char password, replaces `patients.hashed_password`, and marks the
+    token used (replay → 400). Existing JWT sessions stay valid until their
+    normal expiry; the new password takes effect on the next login.
+
 ## DB migrations
 
 New model columns are added to existing DBs by `migrate_add_columns()` in

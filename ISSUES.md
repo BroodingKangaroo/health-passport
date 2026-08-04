@@ -19,13 +19,6 @@ files as they stand now.
 
 ## HIGH
 
-### 3. "Forgot password?" is a dead link; password reset not implemented
-
-- File: `frontend/src/app/login/page.tsx:87` links to `/forgot-password`
-- No such route exists (only `/login` and `/register` under `src/app`).
-- Backend has no reset endpoint (`grep -ri "forgot\|reset.password" backend` → nothing).
-- Clicking the link → 404 on a route that was never built.
-
 ### 10. Print "AI translation" is cosmetic — de/fr/es/he output is English
 
 Status: **decision (2026-08-03) — implement a real LLM translation feature

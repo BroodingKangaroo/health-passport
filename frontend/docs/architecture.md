@@ -137,6 +137,18 @@ Mirror of the backend's reference model (see `backend/docs/architecture.md`):
   `instrumental_test` events, fed from the timeline response's `instrumental`
   map keyed by entry id.
 
+## Auth pages & password reset
+
+- Public pages under `src/app/`: `login`, `register`, `forgot-password`,
+  `reset-password`. No middleware guards routes; auth is enforced server-side
+  via `get_current_user_or_anon` on data endpoints.
+- `/forgot-password` posts to `/api/auth/forgot-password` (proxied); on success
+  it shows a static confirmation (the backend never reveals whether the email
+  exists). `/reset-password` reads `?token=` from the URL, validates a new
+  password client-side (min 8 chars, mirroring register), posts to
+  `/api/auth/reset-password`, and offers a link back to `/login`. Both pages
+  follow the login/register Card layout and go through the server-side proxy.
+
 ## Settings tab
 
 - `frontend/src/components/health-passport/entry-settings.tsx` — third tab

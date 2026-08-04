@@ -158,6 +158,21 @@ class InstrumentalData(Base):
     entry = relationship("MedicalEntry", back_populates="instrumental_data")
 
 
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(String, primary_key=True)
+    patient_id = Column(String, ForeignKey("patients.id"), nullable=False)
+    # SHA-256 of the raw token (the raw value is only ever emailed/returned
+    # once); a DB leak must not allow replaying a reset.
+    token_hash = Column(String, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    patient = relationship("Patient")
+
+
 class UsageLimit(Base):
     __tablename__ = "usage_limits"
 
