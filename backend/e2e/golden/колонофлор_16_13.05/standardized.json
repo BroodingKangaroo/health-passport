@@ -1,7 +1,7 @@
 {
   "entry_type": "blood_test",
-  "date": "2026-05-16",
-  "time": "13:11",
+  "date": "2026-05-13",
+  "time": "",
   "clinic": "ИООО \"Независимая лаборатория ИНВИТРО\"",
   "provider": "Выдрицкий А.В",
   "title": "",
@@ -152,7 +152,7 @@
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 11",
       "standard_name_en": "Akkermansia muciniphila",
-      "standard_value": 1.0,
+      "standard_value": 0.0,
       "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
@@ -172,7 +172,7 @@
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 8",
       "standard_name_en": "Enterococcus spp",
-      "standard_value": 1.0,
+      "standard_value": 0.0,
       "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
@@ -192,7 +192,7 @@
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 5",
       "standard_name_en": "Enteropathogenic Escherichia coli",
-      "standard_value": 1.0,
+      "standard_value": 0.0,
       "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
@@ -212,7 +212,7 @@
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 5",
       "standard_name_en": "Klebsiella pneumoniae",
-      "standard_value": 1.0,
+      "standard_value": 0.0,
       "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
@@ -232,7 +232,7 @@
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 5",
       "standard_name_en": "Klebsiella oxytoca",
-      "standard_value": 1.0,
+      "standard_value": 0.0,
       "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
@@ -252,7 +252,7 @@
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 5",
       "standard_name_en": "Candida spp",
-      "standard_value": 1.0,
+      "standard_value": 0.0,
       "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
@@ -272,7 +272,7 @@
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 5",
       "standard_name_en": "Staphylococcus aureus",
-      "standard_value": 1.0,
+      "standard_value": 0.0,
       "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
@@ -330,7 +330,7 @@
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 5",
       "standard_name_en": "Proteus vulgaris/mirabilis",
-      "standard_value": 1.0,
+      "standard_value": 0.0,
       "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
@@ -350,7 +350,7 @@
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 5",
       "standard_name_en": "Citrobacter spp",
-      "standard_value": 1.0,
+      "standard_value": 0.0,
       "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
@@ -370,7 +370,7 @@
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 5",
       "standard_name_en": "Enterobacter spp",
-      "standard_value": 1.0,
+      "standard_value": 0.0,
       "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",

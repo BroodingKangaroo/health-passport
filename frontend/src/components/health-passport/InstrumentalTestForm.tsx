@@ -2,16 +2,27 @@
 
 import { useState, useEffect } from 'react'
 import { Field } from '@/components/shared/Field'
-import type { ExtractedImagingData } from '@/lib/types'
+import type { ExtractedInstrumentalData } from '@/lib/types'
 
-const MODALITIES = ['MRI', 'CT', 'X-Ray', 'Ultrasound', 'Mammography', 'PET Scan', 'Other']
+const MODALITIES = [
+  'MRI',
+  'CT',
+  'X-Ray',
+  'Ultrasound',
+  'Elastography',
+  'Mammography',
+  'PET Scan',
+  'ECG',
+  'Endoscopy',
+  'Other',
+]
 
-export function ImagingForm({
+export function InstrumentalTestForm({
   initialData,
   onDataChange,
 }: {
-  initialData?: ExtractedImagingData | null
-  onDataChange?: (data: ExtractedImagingData) => void
+  initialData?: ExtractedInstrumentalData | null
+  onDataChange?: (data: ExtractedInstrumentalData) => void
 }) {
   const [modality, setModality] = useState(initialData?.modality ?? '')
   const [findings, setFindings] = useState(initialData?.findings ?? '')
@@ -23,7 +34,7 @@ export function ImagingForm({
 
   return (
     <div className="mt-5 flex flex-col gap-4">
-      <h3 className="text-sm font-semibold text-foreground">Imaging Report</h3>
+      <h3 className="text-sm font-semibold text-foreground">Instrumental Test Report</h3>
 
       <Field label="Modality">
         <select
@@ -45,7 +56,7 @@ export function ImagingForm({
           value={findings}
           onChange={(e) => setFindings(e.target.value)}
           rows={4}
-          placeholder="Describe the imaging findings..."
+          placeholder="Describe the findings..."
           className="flex w-full rounded-lg border border-input bg-background px-2.5 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
         />
       </Field>

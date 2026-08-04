@@ -581,7 +581,7 @@
     "prescriptions": [],
     "recommendations": []
   },
-  "imaging_data": {
+  "instrumental_data": {
     "modality": "",
     "findings": "",
     "conclusion": ""

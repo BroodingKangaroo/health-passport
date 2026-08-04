@@ -48,3 +48,10 @@ class VisitData(BaseModel):
     prescriptions: list[Prescription]
     recommendations: list[TranslatedText]
     attachments: list[Attachment]
+
+
+class InstrumentalData(BaseModel):
+    modality: str = ""
+    findings: str = ""
+    conclusion: str = ""
+    attachments: list[Attachment] = []

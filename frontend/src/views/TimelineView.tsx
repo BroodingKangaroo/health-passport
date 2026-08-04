@@ -8,6 +8,7 @@ import { NavBar } from '@/components/shared/NavBar'
 import { HistoryList } from '@/components/health-passport/history-list'
 import { DoctorVisitDetails } from '@/components/health-passport/doctor-visit-details'
 import { BloodTestDetails } from '@/components/health-passport/blood-test-details'
+import { InstrumentalTestDetails } from '@/components/health-passport/instrumental-test-details'
 import { useTimelineData } from '@/hooks/useTimelineData'
 import type { MedicalEvent, BiomarkerResult, Reading } from '@/lib/types'
 
@@ -19,6 +20,7 @@ export function TimelineView() {
   const events: MedicalEvent[] = data?.events ?? []
   const biomarkers = useMemo(() => data?.biomarkers ?? [], [data?.biomarkers])
   const visits = data?.visits ?? {}
+  const instrumental = data?.instrumental ?? {}
   // Default to the most recent event (events are date-ascending, so the last
   // element is newest) until the user picks one; never a stale hardcoded id.
   const effectiveSelected =
@@ -92,6 +94,19 @@ export function TimelineView() {
                 refetch()
               }}
             />
+          ) : selectedEventData?.type === 'instrumental_test' && instrumental[selectedEventData.id] ? (
+            <InstrumentalTestDetails
+              event={selectedEventData}
+              data={instrumental[selectedEventData.id]}
+              onDeleted={() => {
+                setSelectedEvent(null)
+                refetch()
+              }}
+            />
+          ) : selectedEventData?.type === 'instrumental_test' ? (
+            <div className="flex h-full min-h-[300px] items-center justify-center text-sm text-muted-foreground">
+              <p>Instrumental test details not yet available.</p>
+            </div>
           ) : selectedEventData ? (
             <div className="flex h-full min-h-[300px] items-center justify-center text-sm text-muted-foreground">
               <p>No detailed view available for this event type.</p>

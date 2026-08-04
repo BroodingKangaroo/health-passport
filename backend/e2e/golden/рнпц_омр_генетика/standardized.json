@@ -1,6 +1,6 @@
 {
   "entry_type": "blood_test",
-  "date": "2026-04-10",
+  "date": "2026-04-06",
   "time": "",
   "clinic": "РНПЦ ОМР им. Н.Н. Александрова, Онкологическое отделение генетики",
   "provider": "Бодиловская А.А., Субоч Е.И.",
@@ -14,7 +14,7 @@
       "raw_range_string": "",
       "standard_name_en": "JAK2 gene mutation (12 exon",
       "standard_value": "Not detected",
-      "standard_unit": "ratio",
+      "standard_unit": "",
       "reference": {
         "kind": "qualitative",
         "expected": null
@@ -33,7 +33,7 @@
       "raw_range_string": "",
       "standard_name_en": "JAK2 gene mutation (14 exon; V617F",
       "standard_value": "Not detected",
-      "standard_unit": "ratio",
+      "standard_unit": "",
       "reference": {
         "kind": "qualitative",
         "expected": null
@@ -52,7 +52,7 @@
       "raw_range_string": "",
       "standard_name_en": "CALR gene mutation (9 exon",
       "standard_value": "Not detected",
-      "standard_unit": "ratio",
+      "standard_unit": "",
       "reference": {
         "kind": "qualitative",
         "expected": null
@@ -71,7 +71,7 @@
       "raw_range_string": "",
       "standard_name_en": "MPL gene mutation (10 exon",
       "standard_value": "Not detected",
-      "standard_unit": "ratio",
+      "standard_unit": "",
       "reference": {
         "kind": "qualitative",
         "expected": null
@@ -100,7 +100,7 @@
     "prescriptions": [],
     "recommendations": []
   },
-  "imaging_data": {
+  "instrumental_data": {
     "modality": "",
     "findings": "",
     "conclusion": ""

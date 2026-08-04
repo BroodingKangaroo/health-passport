@@ -298,6 +298,132 @@ class TestSaveDoctorVisit:
         assert len(v["recommendations"]) == 1
 
 
+class TestSaveInstrumentalTest:
+    async def test_save_instrumental_test_returns_200(self, client):
+        # given
+        instrumental_data = json.dumps({
+            "modality": "MRI",
+            "findings": "Mild disc degeneration at L4-L5",
+            "conclusion": "Minor age-related changes",
+        })
+
+        # when
+        resp = await client.post(
+            "/api/entry",
+            data={
+                "type": "instrumental_test",
+                "date": "2025-12-01",
+                "clinic": "Rad Center",
+                "provider": "Dr. Grey",
+                "title": "Lumbar MRI",
+                "instrumental_data": instrumental_data,
+            },
+        )
+
+        # then
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["message"] == "Entry saved"
+        assert data["id"]
+
+    async def test_saved_instrumental_test_appears_in_timeline(self, client):
+        # given
+        instrumental_data = json.dumps({
+            "modality": "Elastography",
+            "findings": "Liver stiffness 9.2 kPa",
+            "conclusion": "F2 fibrosis",
+        })
+
+        # when
+        resp = await client.post(
+            "/api/entry",
+            data={
+                "type": "instrumental_test",
+                "date": "2025-12-01",
+                "clinic": "Hepato Clinic",
+                "provider": "Dr. Liver",
+                "title": "Liver Elastometry",
+                "instrumental_data": instrumental_data,
+            },
+        )
+        entry_id = resp.json()["id"]
+        timeline = await client.get("/api/timeline")
+
+        # then
+        instrumental = timeline.json()["instrumental"]
+        assert entry_id in instrumental
+        assert instrumental[entry_id]["modality"] == "Elastography"
+        assert "9.2" in instrumental[entry_id]["findings"]
+
+    async def test_save_instrumental_test_without_biomarkers_has_no_readings(self, client, db_session):
+        # given — an instrumental-test save must not create biomarker readings,
+        # even if the form somehow still sent rows (stale extraction leftovers).
+        from app.db.models import BiomarkerReading
+
+        # when
+        resp = await client.post(
+            "/api/entry",
+            data={
+                "type": "instrumental_test",
+                "date": "2025-12-01",
+                "title": "ECG",
+                "biomarkers": json.dumps([
+                    {"name": "General", "rows": [{"name": "WBC", "value": "7.2"}]},
+                ]),
+            },
+        )
+        assert resp.status_code == 200
+        entry_id = resp.json()["id"]
+
+        # then
+        readings = db_session.query(BiomarkerReading).filter(BiomarkerReading.entry_id == entry_id).count()
+        assert readings == 0
+
+    async def test_save_instrumental_test_invalid_json_400(self, client):
+        # when
+        resp = await client.post(
+            "/api/entry",
+            data={
+                "type": "instrumental_test",
+                "date": "2025-12-01",
+                "instrumental_data": "{not valid json",
+            },
+        )
+
+        # then
+        assert resp.status_code == 400
+        assert "instrumental_data" in resp.json()["detail"]
+
+    async def test_delete_cascades_instrumental_data(self, client):
+        # given
+        instrumental_data = json.dumps({
+            "modality": "CT",
+            "findings": "Normal",
+            "conclusion": "No pathology",
+        })
+        resp = await client.post(
+            "/api/entry",
+            data={
+                "type": "instrumental_test",
+                "date": "2025-12-01",
+                "title": "Chest CT",
+                "instrumental_data": instrumental_data,
+            },
+        )
+        entry_id = resp.json()["id"]
+        timeline = await client.get("/api/timeline")
+        assert entry_id in timeline.json()["instrumental"]
+
+        # when
+        del_resp = await client.delete(f"/api/entry/{entry_id}")
+        assert del_resp.status_code == 200
+
+        # then
+        timeline2 = await client.get("/api/timeline")
+        assert entry_id not in timeline2.json()["instrumental"]
+
+
 class TestStatusFromReference:
     """Status computation against the structured reference model."""
 

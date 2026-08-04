@@ -1,6 +1,6 @@
 from .ai import (
     RawBiomarker,
-    RawImagingData,
+    RawInstrumentalData,
     RawMedicalRecord,
     RawPrescription,
     RawVisitData,
@@ -31,7 +31,14 @@ from .common import (
     TimelineResponse,
     UsageLimitsResponse,
 )
-from .medical_event import Attachment, MedicalEvent, Prescription, VisitData, VisitNote
+from .medical_event import (
+    Attachment,
+    InstrumentalData,
+    MedicalEvent,
+    Prescription,
+    VisitData,
+    VisitNote,
+)
 from .reference import Reference, ReferenceInterval, ReferenceQualitative
 
 __all__ = [
@@ -45,6 +52,7 @@ __all__ = [
     "EntryBiomarkerRef",
     "EntrySummary",
     "FlowsheetResponse",
+    "InstrumentalData",
     "MatrixCategory",
     "MatrixCell",
     "MatrixRow",
@@ -52,7 +60,7 @@ __all__ = [
     "MergedSource",
     "Prescription",
     "RawBiomarker",
-    "RawImagingData",
+    "RawInstrumentalData",
     "RawMedicalRecord",
     "RawPrescription",
     "RawVisitData",

@@ -3,7 +3,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 from .biomarker import BiomarkerResult, MatrixCategory
-from .medical_event import MedicalEvent, VisitData
+from .medical_event import InstrumentalData, MedicalEvent, VisitData
 
 
 class DateHeader(BaseModel):
@@ -15,6 +15,7 @@ class TimelineResponse(BaseModel):
     events: list[MedicalEvent]
     biomarkers: list[BiomarkerResult]
     visits: dict[str, VisitData] = {}
+    instrumental: dict[str, InstrumentalData] = {}
 
 
 class FlowsheetResponse(BaseModel):

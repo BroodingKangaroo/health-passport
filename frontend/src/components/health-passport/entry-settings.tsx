@@ -133,8 +133,8 @@ export function EntrySettings({
         return 'Blood Test'
       case 'doctor_visit':
         return 'Doctor Visit'
-      case 'imaging':
-        return 'Imaging'
+      case 'instrumental_test':
+        return 'Instrumental Test'
       case 'procedure':
         return 'Procedure'
       default:
@@ -205,16 +205,20 @@ export function EntrySettings({
                 : `${attachmentCount} (${formatBytes(totalSizeBytes)})`
             }
           />
-          <StatRow
-            icon={FlaskConical}
-            label="Biomarkers"
-            value={(biomarkers?.length ?? 0).toString()}
-            hint={
-              biomarkers && biomarkers.length > 0
-                ? `${biomarkerCounts.normal} normal · ${biomarkerCounts.low} low · ${biomarkerCounts.high} high · ${biomarkerCounts.abnormal} abnormal`
-                : undefined
-            }
-          />
+          {/* Blood tests are the only entry type that can carry biomarker
+              readings — visits and instrumental tests always have zero. */}
+          {event.type === 'blood_test' && (
+            <StatRow
+              icon={FlaskConical}
+              label="Biomarkers"
+              value={(biomarkers?.length ?? 0).toString()}
+              hint={
+                biomarkers && biomarkers.length > 0
+                  ? `${biomarkerCounts.normal} normal · ${biomarkerCounts.low} low · ${biomarkerCounts.high} high · ${biomarkerCounts.abnormal} abnormal`
+                  : undefined
+              }
+            />
+          )}
           {visitCounts && (
             <>
               <StatRow

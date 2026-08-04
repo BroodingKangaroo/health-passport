@@ -5,7 +5,7 @@ Comparison rules (from the e2e spec):
   - biomarkers: compared as a set keyed by raw_name. For each, standard_name_en,
     definition_id, standard_unit and scope must match EXACTLY; standard_value
     allows a float tolerance; status is recomputed (ignored); ordering ignored.
-  - visit_data / imaging_data: deep-compared with normalized whitespace;
+  - visit_data / instrumental_data: deep-compared with normalized whitespace;
     `original` must match exactly (it is frozen by extraction on the server),
     `translated_en` is allowed a similarity threshold (live translation is
     non-deterministic).
@@ -165,19 +165,19 @@ def _cmp_visit(gv, ov, diffs, thr):
         _cmp_tx(o, g, f"visit_data.recommendations[{i}]", diffs, thr)
 
 
-def _cmp_imaging(gi, oi, diffs, thr):
+def _cmp_instrumental(gi, oi, diffs, thr):
     if not gi:
         return
     oi = oi or {}
-    for f in ("modality",):
-        if gi.get(f) and _norm(oi.get(f, "")) != _norm(gi.get(f, "")):
-            diffs.append(f"imaging_data.{f}: expected {gi.get(f)!r}, got {oi.get(f)!r}")
-    for f in ("findings", "conclusion"):
+    # modality is LLM free-text (e.g. "Ультразвуковое исследование эластометрия"),
+    # not a fixed vocabulary, so it gets the same similarity treatment as
+    # findings/conclusion — an exact match would fail on harmless paraphrases.
+    for f in ("modality", "findings", "conclusion"):
         g = gi.get(f, "")
         o = oi.get(f, "")
         if _norm(g) and _sim(o, g) < thr:
             diffs.append(
-                f"imaging_data.{f}: similarity {_sim(o, g):.2f} < {thr} "
+                f"instrumental_data.{f}: similarity {_sim(o, g):.2f} < {thr} "
                 f"(expected {g!r}, got {o!r})"
             )
 
@@ -211,6 +211,6 @@ def compare_standardized(observed, golden, text_threshold=DEFAULT_TEXT_THRESHOLD
 
     _cmp_biomarkers(observed.get("biomarkers"), golden.get("biomarkers"), diffs, thr=text_threshold)
     _cmp_visit(golden.get("visit_data"), observed.get("visit_data"), diffs, text_threshold)
-    _cmp_imaging(golden.get("imaging_data"), observed.get("imaging_data"), diffs, text_threshold)
+    _cmp_instrumental(golden.get("instrumental_data"), observed.get("instrumental_data"), diffs, text_threshold)
 
     return diffs

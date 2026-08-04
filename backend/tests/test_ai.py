@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from app.schemas.ai import (
     RawBiomarker,
-    RawImagingData,
+    RawInstrumentalData,
     RawMedicalRecord,
     RawVisitData,
     StandardizedBiomarker,
@@ -153,7 +153,7 @@ class TestExtractEndpoint:
     @patch("app.api.ai.matcher.match_and_convert")
     @patch("app.api.ai.extractor.llm_extract")
     @patch("app.api.ai.extractor.ocr_document")
-    async def test_extract_imaging_success(
+    async def test_extract_instrumental_success(
         self, mock_ocr, mock_llm, mock_match, client, monkeypatch
     ):
         monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
@@ -161,11 +161,11 @@ class TestExtractEndpoint:
         mock_ocr.return_value = "OCR markdown text"
 
         raw = RawMedicalRecord(
-            entry_type="imaging",
+            entry_type="instrumental_test",
             date="2026-06-20",
             clinic="Radiology Center",
             provider="Dr. Jones",
-            imaging_data=RawImagingData(
+            instrumental_data=RawInstrumentalData(
                 modality="MRI",
                 findings="Mild disc degeneration at L4-L5",
                 conclusion="Minor age-related changes, no acute pathology",
@@ -174,11 +174,11 @@ class TestExtractEndpoint:
         mock_llm.return_value = raw
 
         std = StandardizedMedicalRecord(
-            entry_type="imaging",
+            entry_type="instrumental_test",
             date="2026-06-20",
             clinic="Radiology Center",
             provider="Dr. Jones",
-            imaging_data=raw.imaging_data,
+            instrumental_data=raw.instrumental_data,
         )
         mock_match.return_value = std
 
@@ -189,9 +189,9 @@ class TestExtractEndpoint:
 
         assert resp.status_code == 200
         data = _parse_sse_result(resp.text)
-        assert data["entry_type"] == "imaging"
-        assert data["imaging_data"]["modality"] == "MRI"
-        assert "L4-L5" in data["imaging_data"]["findings"]
+        assert data["entry_type"] == "instrumental_test"
+        assert data["instrumental_data"]["modality"] == "MRI"
+        assert "L4-L5" in data["instrumental_data"]["findings"]
 
     async def test_extract_unsupported_file_type(self, client, monkeypatch):
         monkeypatch.setenv("MISTRAL_API_KEY", "test-key")

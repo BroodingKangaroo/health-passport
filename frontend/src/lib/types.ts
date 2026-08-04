@@ -101,7 +101,7 @@ export interface BiomarkerResult {
 }
 
 /* ----- Events ----- */
-export type EventType = 'blood_test' | 'doctor_visit' | 'imaging' | 'procedure'
+export type EventType = 'blood_test' | 'doctor_visit' | 'instrumental_test' | 'procedure'
 
 export interface EventAttachment {
   id: string
@@ -155,6 +155,13 @@ export interface VisitData {
   notes: VisitNote[]
   prescriptions: VisitPrescription[]
   recommendations: TranslatedText[]
+  attachments: VisitAttachment[]
+}
+
+export interface InstrumentalData {
+  modality: string
+  findings: string
+  conclusion: string
   attachments: VisitAttachment[]
 }
 
@@ -262,14 +269,14 @@ export interface ExtractedVisitData {
   recommendations: TranslatedText[]
 }
 
-export interface ExtractedImagingData {
+export interface ExtractedInstrumentalData {
   modality: string
   findings: string
   conclusion: string
 }
 
 export interface StandardizedMedicalRecord {
-  entry_type: 'blood_test' | 'doctor_visit' | 'imaging' | 'unknown'
+  entry_type: 'blood_test' | 'doctor_visit' | 'instrumental_test' | 'unknown'
   date?: string | null
   time?: string | null
   clinic?: string | null
@@ -278,7 +285,7 @@ export interface StandardizedMedicalRecord {
   notes?: string | null
   biomarkers?: StandardizedBiomarker[] | null
   visit_data?: ExtractedVisitData | null
-  imaging_data?: ExtractedImagingData | null
+  instrumental_data?: ExtractedInstrumentalData | null
 }
 
 /* ----- Entries by Date (duplicate/merge detection) ----- */
@@ -315,6 +322,7 @@ export interface TimelineResponse {
   events: MedicalEvent[]
   biomarkers: BiomarkerResult[]
   visits: Record<string, VisitData>
+  instrumental: Record<string, InstrumentalData>
 }
 
 export interface DateHeader {

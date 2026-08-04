@@ -8,6 +8,7 @@ import type {
   ProgressEventPayload,
   EntriesByDateResponse,
   ExtractedVisitData,
+  ExtractedInstrumentalData,
   FormCategory,
   DeleteEntryResponse,
   UsageLimits,
@@ -218,6 +219,7 @@ export interface SaveEntryFormData {
   notes: string
   biomarkers: FormCategory[]
   visit_data?: ExtractedVisitData | null
+  instrumental_data?: ExtractedInstrumentalData | null
   file?: File | null
 }
 
@@ -237,6 +239,9 @@ export function buildSaveEntryFormData(f: SaveEntryFormData): FormData {
   fd.append('biomarkers', JSON.stringify(f.biomarkers))
   if (f.visit_data) {
     fd.append('visit_data', JSON.stringify(f.visit_data))
+  }
+  if (f.instrumental_data) {
+    fd.append('instrumental_data', JSON.stringify(f.instrumental_data))
   }
   if (f.file) {
     fd.append('file', f.file)

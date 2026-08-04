@@ -167,7 +167,7 @@ describe('AddEntry', () => {
         },
       ],
       visit_data: null,
-      imaging_data: null,
+      instrumental_data: null,
     }
     mockExtract.mockResolvedValue(aiResult)
 
@@ -206,7 +206,7 @@ describe('AddEntry', () => {
         prescriptions: [{ name: { original: 'Lisinopril', translated_en: 'Lisinopril' }, dosage: { original: '10mg', translated_en: '10mg' }, instructions: { original: 'Once daily', translated_en: 'Once daily' } }],
         recommendations: [{ original: 'Reduce sodium', translated_en: 'Reduce sodium' }, { original: 'Exercise daily', translated_en: 'Exercise daily' }],
       },
-      imaging_data: null,
+      instrumental_data: null,
     }
     mockExtract.mockResolvedValue(aiResult)
 
@@ -227,9 +227,9 @@ describe('AddEntry', () => {
     expect(screen.getByDisplayValue('Exercise daily')).toBeInTheDocument()
   })
 
-  it('pre-fills imaging form from AI data', async () => {
+  it('pre-fills instrumental test form from AI data', async () => {
     const aiResult: StandardizedMedicalRecord = {
-      entry_type: 'imaging',
+      entry_type: 'instrumental_test',
       date: '2026-07-20',
       clinic: 'Rad Center',
       provider: 'Dr. Grey',
@@ -237,7 +237,7 @@ describe('AddEntry', () => {
       notes: null,
       biomarkers: null,
       visit_data: null,
-      imaging_data: {
+      instrumental_data: {
         modality: 'MRI',
         findings: 'Mild degeneration L4-L5',
         conclusion: 'No acute pathology',
@@ -249,7 +249,7 @@ describe('AddEntry', () => {
     selectFile(container, createFile())
 
     await waitFor(() => {
-      expect(screen.getByText('MRI / Imaging Scan')).toBeInTheDocument()
+      expect(screen.getByText('Instrumental Test (MRI, Elastography, ECG...)')).toBeInTheDocument()
     }, { timeout: 3000 })
 
     const select = screen.getByDisplayValue('MRI') as HTMLSelectElement
@@ -360,7 +360,7 @@ describe('AddEntry', () => {
           },
         ],
         visit_data: null,
-        imaging_data: null,
+        instrumental_data: null,
       } satisfies StandardizedMedicalRecord)
       const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
       selectFile(container, createFile())
@@ -402,7 +402,7 @@ describe('AddEntry', () => {
         notes: null,
         biomarkers,
         visit_data: null,
-        imaging_data: null,
+        instrumental_data: null,
       }
     }
 

@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button'
 import { Field } from '@/components/shared/Field'
 import { DoctorVisitForm } from './DoctorVisitForm'
 import { LabResultForm } from './LabResultForm'
-import { ImagingForm } from './ImagingForm'
+import { InstrumentalTestForm } from './InstrumentalTestForm'
 import { saveMedicalEntry, mergeMedicalEntry, fetchEntriesByDate, extractMedicalData, UsageLimitError, buildSaveEntryFormData } from '@/services/api'
 import { toast } from 'sonner'
 import type {
@@ -36,7 +36,7 @@ import type {
   ProgressStage,
   EntrySummary,
   ExtractedVisitData,
-  ExtractedImagingData,
+  ExtractedInstrumentalData,
 } from '@/lib/types'
 import type { UnitConflict } from './unit-conflict-dialog'
 import { UnitConflictDialog } from './unit-conflict-dialog'
@@ -56,7 +56,7 @@ const DocumentViewer = dynamic(
 const docPills = [
   { emoji: '📄', label: 'Lab Results' },
   { emoji: '📝', label: 'Doctor Notes' },
-  { emoji: '🩻', label: 'MRI / Scans' },
+  { emoji: '🩻', label: 'Instrumental Tests' },
 ]
 
 function estimateExtractionTime(chars: number): number {
@@ -118,7 +118,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [visitFormData, setVisitFormData] = useState<ExtractedVisitData | null>(null)
-  const [imagingFormData, setImagingFormData] = useState<ExtractedImagingData | null>(null)
+  const [instrumentalTestFormData, setInstrumentalTestFormData] = useState<ExtractedInstrumentalData | null>(null)
   const [timeValue, setTimeValue] = useState('')
   const [dateValue, setDateValue] = useState('')
   const [dateError, setDateError] = useState<string | null>(null)
@@ -294,19 +294,19 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         }
         setUnitConflicts(conflicts)
         setVisitFormData(null)
-        setImagingFormData(null)
+        setInstrumentalTestFormData(null)
       } else if (result.entry_type === 'doctor_visit' && result.visit_data) {
         setVisitFormData(result.visit_data)
         setCategories(manualCategories())
-        setImagingFormData(null)
-      } else if (result.entry_type === 'imaging') {
-        setImagingFormData(result.imaging_data ?? null)
+        setInstrumentalTestFormData(null)
+      } else if (result.entry_type === 'instrumental_test') {
+        setInstrumentalTestFormData(result.instrumental_data ?? null)
         setCategories(manualCategories())
         setVisitFormData(null)
       } else {
         setCategories(manualCategories())
         setVisitFormData(null)
-        setImagingFormData(null)
+        setInstrumentalTestFormData(null)
       }
 
       setStage('completed')
@@ -526,6 +526,18 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     setDragActive(false)
   }
 
+  // Switching the document type must clear the companion form state, the same
+  // way a fresh AI extraction does: stale categories (extracted biomarker rows)
+  // would otherwise be persisted onto a doctor-visit / instrumental-test entry
+  // as invisible blood-test readings, and stale visit/instrumental data would
+  // leak into the wrong editor.
+  function handleDocumentTypeChange(type: string) {
+    setDocumentType(type)
+    setCategories(manualCategories())
+    setVisitFormData(null)
+    setInstrumentalTestFormData(null)
+  }
+
   function handleFileRefChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (file) {
@@ -608,11 +620,15 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         setSaveError('Add at least one biomarker with a name and value.')
         return
       }
-      const autoTitle = documentType === 'blood_test' ? 'Blood Test Panel' : documentType === 'doctor_visit' ? 'Doctor Visit' : documentType === 'imaging' ? 'Imaging Report' : 'Medical Record'
+      const autoTitle = documentType === 'blood_test' ? 'Blood Test Panel' : documentType === 'doctor_visit' ? 'Doctor Visit' : documentType === 'instrumental_test' ? 'Instrumental Test Report' : 'Medical Record'
       // When merging, send the title as typed (may be empty) so the merge
       // endpoint can fall back to the document filename for the merged section
       // header — the generic auto-title would be useless there. The entry's
       // own title stays untouched on merge anyway.
+      // Biomarker rows only exist for blood tests; doctor-visit and
+      // instrumental-test entries must not carry (possibly stale) reading
+      // rows, or an entry could silently accumulate invisible biomarkers.
+      const biomarkers = documentType === 'blood_test' ? categories : []
       const fd = buildSaveEntryFormData({
         type: documentType,
         date: dateStr,
@@ -621,8 +637,9 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         provider: providerRef.current?.value ?? '',
         title: merging ? (titleRef.current?.value ?? '') : (titleRef.current?.value || autoTitle),
         notes: notesRef.current?.value ?? '',
-        biomarkers: categories,
+        biomarkers,
         visit_data: documentType === 'doctor_visit' && visitFormData ? visitFormData : null,
+        instrumental_data: documentType === 'instrumental_test' && instrumentalTestFormData ? instrumentalTestFormData : null,
         file: selectedFile ?? fileRef.current?.files?.[0] ?? null,
       })
       const resp = merging && selectedMergeTarget
@@ -682,7 +699,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
             Add New Medical Record
           </h1>
           <p className="mx-auto mt-2 max-w-xl text-pretty text-sm text-muted-foreground">
-            Upload lab results, doctor notes, or imaging reports. Our AI will
+            Upload lab results, doctor notes, or instrumental test reports. Our AI will
             automatically extract and categorize the data.
           </p>
         </div>
@@ -931,7 +948,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                 <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
                 <p className="text-xs text-foreground">
                   <span className="font-semibold">AI successfully identified</span>{' '}
-                  a{documentType === 'blood_test' ? ' Blood Test Panel' : documentType === 'doctor_visit' ? ' Doctor Visit.' : documentType === 'imaging' ? 'n Imaging Report' : ' medical document'}
+                  a{documentType === 'blood_test' ? ' Blood Test Panel' : documentType === 'doctor_visit' ? ' Doctor Visit.' : documentType === 'instrumental_test' ? 'n Instrumental Test Report' : ' medical document'}
                   {documentType === 'blood_test' && categories.length > 0 && (
                     <> and extracted {categories.reduce((s, c) => s + c.rows.length, 0)} biomarkers.</>
                   )}
@@ -944,12 +961,12 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
               <Field label="Document Type">
                 <select
                   value={documentType}
-                  onChange={(e) => setDocumentType(e.target.value)}
+                  onChange={(e) => handleDocumentTypeChange(e.target.value)}
                   className="flex h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm shadow-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
                 >
                   <option value="blood_test">Blood Test Panel</option>
                   <option value="doctor_visit">Doctor Visit / Clinical Notes</option>
-                  <option value="imaging">MRI / Imaging Scan</option>
+                  <option value="instrumental_test">Instrumental Test (MRI, Elastography, ECG...)</option>
                 </select>
               </Field>
               <Field label="Date *">
@@ -1065,10 +1082,10 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                 initialData={visitFormData}
                 onDataChange={setVisitFormData}
               />
-            ) : documentType === 'imaging' ? (
-              <ImagingForm
-                initialData={imagingFormData}
-                onDataChange={setImagingFormData}
+            ) : documentType === 'instrumental_test' ? (
+              <InstrumentalTestForm
+                initialData={instrumentalTestFormData}
+                onDataChange={setInstrumentalTestFormData}
               />
             ) : (
               <LabResultForm

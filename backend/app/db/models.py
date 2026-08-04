@@ -75,6 +75,7 @@ class MedicalEntry(Base):
     biomarker_readings = relationship("BiomarkerReading", back_populates="entry", cascade="all, delete-orphan")
     attachments = relationship("Attachment", back_populates="entry", cascade="all, delete-orphan")
     visit_data = relationship("VisitData", back_populates="entry", uselist=False, cascade="all, delete-orphan")
+    instrumental_data = relationship("InstrumentalData", back_populates="entry", uselist=False, cascade="all, delete-orphan")
 
 
 class BiomarkerReading(Base):
@@ -144,6 +145,17 @@ class VisitData(Base):
     recommendations = Column(JSON, nullable=False)
 
     entry = relationship("MedicalEntry", back_populates="visit_data")
+
+
+class InstrumentalData(Base):
+    __tablename__ = "instrumental_data"
+
+    entry_id = Column(String, ForeignKey("medical_entries.id"), primary_key=True)
+    modality = Column(String, nullable=False, default="")
+    findings = Column(String, nullable=False, default="")
+    conclusion = Column(String, nullable=False, default="")
+
+    entry = relationship("MedicalEntry", back_populates="instrumental_data")
 
 
 class UsageLimit(Base):

@@ -22,6 +22,9 @@ from app.db.models import (
     Patient,
 )
 from app.db.models import (
+    InstrumentalData as InstrumentalDataModel,
+)
+from app.db.models import (
     MedicalEntry as MedicalEntryModel,
 )
 from app.db.models import (
@@ -33,6 +36,7 @@ from app.schemas import (
 )
 from app.schemas import (
     BiomarkerResult,
+    InstrumentalData,
     MedicalEvent,
     Prescription,
     Reading,
@@ -244,6 +248,28 @@ def _visits_from_db(db: Session, patient_id: str):
     return visits
 
 
+def _instrumental_from_db(db: Session, patient_id: str):
+    instrumental: dict[str, InstrumentalData] = {}
+    instrumental_data_rows = (
+        db.query(InstrumentalDataModel, MedicalEntryModel)
+        .join(MedicalEntryModel, InstrumentalDataModel.entry_id == MedicalEntryModel.id)
+        .filter(MedicalEntryModel.patient_id == patient_id)
+        .all()
+    )
+    for idd, entry in instrumental_data_rows:
+        entry_attachments = [
+            AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size, url=a.file_path)
+            for a in entry.attachments
+        ]
+        instrumental[entry.id] = InstrumentalData(
+            modality=idd.modality or "",
+            findings=idd.findings or "",
+            conclusion=idd.conclusion or "",
+            attachments=entry_attachments,
+        )
+    return instrumental
+
+
 @router.get("/api/timeline", response_model=TimelineResponse)
 async def get_timeline(
     request: Request,
@@ -256,6 +282,7 @@ async def get_timeline(
         events=_events_from_db(db, user_id),
         biomarkers=_biomarkers_from_db(db, user_id),
         visits=_visits_from_db(db, user_id),
+        instrumental=_instrumental_from_db(db, user_id),
     )
 
 

@@ -26,20 +26,6 @@ files as they stand now.
 - Backend has no reset endpoint (`grep -ri "forgot\|reset.password" backend` → nothing).
 - Clicking the link → 404 on a route that was never built.
 
-### 8. Imaging / MRI entries are saved without any imaging data and have no detail/delete view
-
-- `frontend/src/components/health-passport/add-entry.tsx:911-915` offers
-  "MRI / Imaging Scan" and collects `imagingFormData`, but
-  `buildSaveEntryFormData` (`api.ts:227-244`, used at `add-entry.tsx:510-521`)
-  never appends imaging data and backend `save_entry`
-  (`backend/app/api/entries.py:461-496`) has no imaging form field — no
-  `ImagingData` model exists at all.
-- Saved imaging entries render "No detailed view available for this event type."
-  (`frontend/src/views/TimelineView.tsx:94-97`) with no Settings/Delete tab.
-- Switching Document Type after an AI extraction leaves the extracted biomarker
-  rows in `categories`, which are still persisted (`add-entry.tsx:518`), so an
-  "Imaging" entry can silently carry invisible blood-test readings.
-
 ### 10. Print "AI translation" is cosmetic — de/fr/es/he output is English
 
 Status: **decision (2026-08-03) — implement a real LLM translation feature
@@ -175,8 +161,8 @@ backend/benchmark/
 
 Each case is processed **N=3 times** (flakiness measurement), then:
 
-- **recognition** — fraction of golden biomarkers/visits/imaging items
-  recognized in the observed output (via `e2e/compare.py`), averaged over
+- **recognition** — fraction of golden biomarkers/visits/instrumental-test
+  items recognized in the observed output (via `e2e/compare.py`), averaged over
   cases; unexpected (extra) items penalize.
 - **stability** — fraction of golden items recognized in ALL N runs (the
   flaky ones show up here).

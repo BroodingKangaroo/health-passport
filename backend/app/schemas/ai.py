@@ -39,14 +39,14 @@ class RawVisitData(BaseModel):
     recommendations: list[str] = []
 
 
-class RawImagingData(BaseModel):
+class RawInstrumentalData(BaseModel):
     modality: str = ""
     findings: str = ""
     conclusion: str = ""
 
 
 class RawMedicalRecord(BaseModel):
-    entry_type: Literal["blood_test", "doctor_visit", "imaging", "unknown"]
+    entry_type: Literal["blood_test", "doctor_visit", "instrumental_test", "unknown"]
     date: str = ""
     time: str = ""
     clinic: str = ""
@@ -55,7 +55,7 @@ class RawMedicalRecord(BaseModel):
     notes: str = ""
     biomarkers: list[RawBiomarker] = []
     visit_data: RawVisitData = RawVisitData()
-    imaging_data: RawImagingData = RawImagingData()
+    instrumental_data: RawInstrumentalData = RawInstrumentalData()
 
 
 # +++++ Zero-shot LOINC guess from LLM +++++
@@ -162,7 +162,7 @@ class StandardizedVisitData(BaseModel):
 
 
 class StandardizedMedicalRecord(BaseModel):
-    entry_type: Literal["blood_test", "doctor_visit", "imaging", "unknown"]
+    entry_type: Literal["blood_test", "doctor_visit", "instrumental_test", "unknown"]
     date: str = ""
     time: str = ""
     clinic: str = ""
@@ -171,4 +171,4 @@ class StandardizedMedicalRecord(BaseModel):
     notes: str = ""
     biomarkers: list[StandardizedBiomarker] = []
     visit_data: StandardizedVisitData = StandardizedVisitData()
-    imaging_data: RawImagingData = RawImagingData()
+    instrumental_data: RawInstrumentalData = RawInstrumentalData()

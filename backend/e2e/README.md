@@ -1,7 +1,7 @@
 # e2e golden harness
 
 A fixture-driven acceptance layer that proves a **real** medical document
-(PDF / image of a blood test, doctor visit, or imaging report) is converted
+(PDF / image of a blood test, doctor visit, or instrumental test) is converted
 into the **correct** structured `StandardizedMedicalRecord` JSON.
 
 The server (`POST /api/extract`) is the system under test. This folder only
@@ -131,7 +131,7 @@ Pending cases do not fail the run.
   `definition_id`, `standard_unit`, `scope` must match **exactly**;
   `standard_value` allows a `1e-6` float tolerance; `status` is recomputed by the
   server so it is **ignored**; ordering is ignored.
-* **visit_data / imaging_data** — deep-compared. `original` must match exactly
+* **visit_data / instrumental_data** — deep-compared. `original` must match exactly
   (frozen on the server); `translated_en` / `findings` / `conclusion` allow a
   similarity threshold (live translation is non-deterministic).
 * **top-level** — `entry_type` exact; `date`/`time` normalized; `clinic`/

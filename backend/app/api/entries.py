@@ -34,6 +34,9 @@ from app.db.models import (
     Patient,
 )
 from app.db.models import (
+    InstrumentalData as InstrumentalDataModel,
+)
+from app.db.models import (
     MedicalEntry as MedicalEntryModel,
 )
 from app.db.models import (
@@ -315,6 +318,17 @@ def _build_visit_data_model(
     )
 
 
+def _build_instrumental_data_model(entry_id: str, idv: dict) -> InstrumentalDataModel:
+    """Translate the parsed instrumental_data JSON payload into an
+    InstrumentalDataModel row."""
+    return InstrumentalDataModel(
+        entry_id=entry_id,
+        modality=str(idv.get("modality", "")),
+        findings=str(idv.get("findings", "")),
+        conclusion=str(idv.get("conclusion", "")),
+    )
+
+
 def _detect_merge_conflicts(db: Session, entry, specs: list[_ReadingSpec]) -> list[str]:
     """Return the display names of biomarkers already present in the target
     entry (by definition id OR LOINC code — a reading's biomarker_id may itself
@@ -489,6 +503,7 @@ async def save_entry(
     notes: str = Form(""),
     biomarkers: str = Form("[]"),
     visit_data: str = Form(""),
+    instrumental_data: str = Form(""),
     file: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
@@ -521,7 +536,12 @@ async def save_entry(
     if file and file.filename:
         await _save_attachment(db, entry_id, user_id, is_anonymous, file)
 
-    if biomarkers and biomarkers != "[]":
+    # Biomarker readings belong on blood-test entries only. A doctor-visit or
+    # instrumental-test save must never persist readings — even if the client
+    # sends stale rows (e.g. extraction leftovers after a document-type
+    # switch), they would be invisible everywhere (timeline/flowsheet read
+    # blood tests only) yet still create definitions and pollute matching.
+    if type == "blood_test" and biomarkers and biomarkers != "[]":
         try:
             categories_data = json.loads(biomarkers)
         except json.JSONDecodeError:
@@ -538,6 +558,16 @@ async def save_entry(
         if not isinstance(vd, dict):
             raise HTTPException(status_code=400, detail="visit_data must be a JSON object")
         db.add(_build_visit_data_model(entry_id, vd, title, provider, entry_date, clinic))
+        db.flush()
+
+    if instrumental_data and instrumental_data != "":
+        try:
+            idv = json.loads(instrumental_data)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid instrumental_data JSON: {e}") from e
+        if not isinstance(idv, dict):
+            raise HTTPException(status_code=400, detail="instrumental_data must be a JSON object")
+        db.add(_build_instrumental_data_model(entry_id, idv))
         db.flush()
 
     db.commit()

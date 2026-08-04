@@ -115,12 +115,17 @@ MIME_MAP = {
 
 RAW_EXTRACTION_PROMPT = (
     "You are a medical data extraction assistant. Given OCR output of a medical document, "
-    'classify the entry_type as "blood_test", "doctor_visit", "imaging", or "unknown".\n\n'
+    'classify the entry_type as "blood_test", "doctor_visit", "instrumental_test", or "unknown".\n\n'
     "Extract ALL text EXACTLY AS WRITTEN in the source document. "
     "Do NOT translate. Do NOT convert units. Do NOT interpret or standardize values. "
     "Preserve the original language, formatting, and content exactly.\n\n"
-    "Extract the date and time of the analysis, visit, or exam. "
-    "Output date in ISO format (YYYY-MM-DD). Output time in 24-hour format (HH:mm). "
+    "Extract the date and time of the event. For blood tests, prefer the date "
+    "when the blood/biomaterial sample was taken (collection date); only fall "
+    "back to the report/results date when no collection date is shown. For "
+    "visits and instrumental exams, use the date of the visit or exam. "
+    "Output date in ISO format (YYYY-MM-DD). Output time in 24-hour format (HH:mm), "
+    "and only when a time is shown next to that same collection/visit/exam date — "
+    "otherwise leave time empty. "
     "Look for time near the date field, in the document header, or footer.\n\n"
     "Extract the provider (ordering doctor or clinician name) whenever present.\n\n"
     "Notes should contain only clinically relevant information "
@@ -142,9 +147,11 @@ RAW_EXTRACTION_PROMPT = (
     "For doctor visits:\n"
     "- Extract the diagnosis, chief complaint, objective findings\n"
     "- List any prescriptions with name, dosage, and instructions\n\n"
-    "For imaging reports:\n"
-    "- Extract the modality (MRI, CT, X-Ray, Ultrasound, etc.)\n"
-    "- Summarize the findings and conclusion\n\n"
+    "For instrumental test reports (imaging, elastography, endoscopy, ECG, spirometry, etc.):\n"
+    "- Extract the modality — choose exactly ONE from this fixed list: "
+    "MRI, CT, X-Ray, Ultrasound, Elastography, Mammography, PET Scan, ECG, Endoscopy, Other\n"
+    "- Put the report content in findings and the conclusion in conclusion\n"
+    "- Leave notes empty for instrumental test reports (the content belongs in findings/conclusion)\n\n"
     "Return ONLY valid JSON matching the provided schema. Do not include any text outside the JSON."
 )
 

@@ -1794,7 +1794,7 @@ def _fallback_standardize(raw: RawMedicalRecord) -> StandardizedMedicalRecord:
         notes=raw.notes,
         biomarkers=biomarkers,
         visit_data=visit_data,
-        imaging_data=raw.imaging_data,
+        instrumental_data=raw.instrumental_data,
     )
 
 
@@ -1991,7 +1991,7 @@ def _match_and_convert_impl(
         notes=raw.notes,
         biomarkers=std_biomarkers,
         visit_data=visit_data,
-        imaging_data=raw.imaging_data,
+        instrumental_data=raw.instrumental_data,
     )
 
     _apply_status(result)

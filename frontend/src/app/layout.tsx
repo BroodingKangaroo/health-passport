@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'HealthPassport — Medical Flowsheet',
   description:
-    'Clinical-grade medical flowsheet and history dashboard for lab results, visits, and imaging.',
+    'Clinical-grade medical flowsheet and history dashboard for lab results, visits, and instrumental tests.',
   generator: 'v0.app',
   icons: {
     icon: [

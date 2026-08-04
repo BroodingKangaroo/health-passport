@@ -21,18 +21,18 @@ import type { MedicalEvent, EventType, BiomarkerResult } from '@/lib/types'
 const iconMap: Record<EventType, ComponentType<{ className?: string }>> = {
   blood_test: Droplet,
   doctor_visit: Stethoscope,
-  imaging: Brain,
+  instrumental_test: Brain,
   procedure: Syringe,
 }
 
 const typeLabels: Record<EventType, string> = {
   blood_test: 'Blood Tests',
   doctor_visit: 'Doctor Visits',
-  imaging: 'Imaging',
+  instrumental_test: 'Instrumental Tests',
   procedure: 'Procedures',
 }
 
-const ALL_TYPES: EventType[] = ['blood_test', 'doctor_visit', 'imaging', 'procedure']
+const ALL_TYPES: EventType[] = ['blood_test', 'doctor_visit', 'instrumental_test', 'procedure']
 
 interface HistoryListProps {
   events: MedicalEvent[]

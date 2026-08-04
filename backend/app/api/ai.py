@@ -15,7 +15,7 @@ from app.api.auth import get_current_user_or_anon
 from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
 from app.db.models import Patient
 from app.db.session import SessionLocal, get_db
-from app.schemas.ai import RawImagingData, StandardizedMedicalRecord, StandardizedVisitData
+from app.schemas.ai import RawInstrumentalData, StandardizedMedicalRecord, StandardizedVisitData
 from app.services import extractor, matcher
 from app.services.usage_limits import check_and_record_ai_usage, refund_ai_extraction
 
@@ -177,7 +177,7 @@ async def extract_medical_data(
                         notes=raw.notes,
                         biomarkers=[],
                         visit_data=StandardizedVisitData(),
-                        imaging_data=RawImagingData(),
+                        instrumental_data=RawInstrumentalData(),
                     ).model_dump(),
                 )
                 return
