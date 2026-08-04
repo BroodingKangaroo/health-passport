@@ -18,6 +18,7 @@ import { cn, splitDateLabel } from '@/lib/utils'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { intervalBounds, qualitativeToNumber } from '@/lib/reference'
+import { pairwiseCorrelations, type PairStats } from '@/lib/stats'
 import type { BiomarkerResult } from '@/lib/types'
 
 const CLINICAL_PALETTE = [
@@ -33,6 +34,71 @@ const CLINICAL_PALETTE = [
   '#6366f1',
 ]
 
+/** A biomarker is chartable when it has at least one reading (history or current). */
+export function hasReadings(b: BiomarkerResult): boolean {
+  return (b.history?.length ?? 0) > 0 || b.value != null
+}
+
+/**
+ * Normalize a numeric value to a 0–100 scale relative to its reference:
+ *   interval         -> (v - low) / (high - low) * 100   (100 = at the upper bound)
+ *   one-sided high   -> v / high * 100                   (100 = at the bound)
+ *   one-sided low    -> v / low * 100                    (100 = at the bound)
+ *   exact (low=high) -> v / low * 100                    (100 = at the expected value)
+ *   qualitative/other-> v * 100 on a 0/1 scale
+ */
+export function normalizedValue(
+  value: number,
+  ref: BiomarkerResult['reference'],
+): number | null {
+  const bounds = intervalBounds(ref) ?? { low: 0, high: 1 }
+  const { low, high } = bounds
+  if (low != null && high != null) {
+    const range = high - low
+    if (range === 0) return low === 0 ? null : (value / low) * 100
+    return ((value - low) / range) * 100
+  }
+  if (high != null) return (value / high) * 100
+  if (low != null) return (value / low) * 100
+  return null
+}
+
+/**
+ * Align a set of biomarkers on the union of their reading dates. Returns the
+ * sorted dates, the raw values per biomarker (for tooltips), and per-biomarker
+ * normalized series with one slot per date (null where the biomarker has no
+ * reading) — the input shape for pairwise correlation.
+ */
+function buildAlignedSeries(biomarkers: BiomarkerResult[]) {
+  const dates = new Set<string>()
+  const byId: Record<string, Map<string, number | string | null>> = {}
+  biomarkers.forEach((b) => {
+    const pts = new Map<string, number | string | null>()
+    const readings = [...(b.history ?? []), { date: b.date, value: b.value }]
+    readings.forEach((r) => {
+      if (r.value == null || pts.has(r.date)) return
+      pts.set(r.date, r.value)
+      dates.add(r.date)
+    })
+    byId[b.id] = pts
+  })
+  const sorted = Array.from(dates).sort(
+    (a, b) => new Date(a).getTime() - new Date(b).getTime(),
+  )
+  const series: Record<string, Array<number | null>> = {}
+  biomarkers.forEach((b) => {
+    series[b.id] = sorted.map((d) => {
+      const v = byId[b.id].get(d)
+      if (v == null) return null
+      const numericVal =
+        typeof v === 'number' && Number.isFinite(v) ? v : qualitativeToNumber(v)
+      if (numericVal == null) return null
+      return normalizedValue(numericVal, b.reference ?? b.definition.reference)
+    })
+  })
+  return { dates: sorted, byId, series }
+}
+
 function CustomTooltip({
   active,
   payload,
@@ -44,8 +110,11 @@ function CustomTooltip({
     const { label: mainLabel, sub } = splitDateLabel(labelText)
     const visible = payload.filter((entry) => {
       if (typeof entry.dataKey !== 'string') return false
-      return !entry.dataKey.startsWith('dash_')
+      if (entry.dataKey.startsWith('dash_')) return false
+      const name = entry.dataKey.replace('norm_', '')
+      return entry.payload[`raw_${name}`] != null
     })
+    if (visible.length === 0) return null
     return (
       <div className="rounded-md border border-border bg-white p-3 shadow-lg">
         <p className="text-sm font-semibold">{mainLabel}</p>
@@ -76,17 +145,223 @@ function CustomTooltip({
   return null
 }
 
+/** Plain-language strength of a correlation coefficient (r in [-1, 1]). */
+function strengthLabel(r: number): string {
+  const a = Math.abs(r)
+  const direction = r >= 0 ? 'positive' : 'negative'
+  if (a >= 0.7) return `Strong ${direction}`
+  if (a >= 0.4) return `Moderate ${direction}`
+  if (a >= 0.2) return `Weak ${direction}`
+  return 'Negligible'
+}
+
+/** Plain-language confidence, replacing raw p-value jargon. */
+function confidenceLabel(n: number, p: number): string {
+  if (n < 3 || !Number.isFinite(p)) return 'too few readings to tell'
+  return p < 0.05 ? 'likely a real relationship' : 'could still be chance'
+}
+
+function rColor(r: number): string {
+  const a = Math.abs(r)
+  if (a >= 0.7) return r >= 0 ? '#10b981' : '#f43f5e'
+  if (a >= 0.4) return r >= 0 ? '#3b82f6' : '#f97316'
+  return '#71717a'
+}
+
+function CorrelationStats({
+  pairStats,
+  selectedIds,
+  biomarkers,
+}: {
+  pairStats: Record<string, PairStats>
+  selectedIds: string[]
+  biomarkers: BiomarkerResult[]
+}) {
+  const nameOf = (id: string) =>
+    biomarkers.find((b) => b.id === id)?.definition.names.en ?? id
+  const entries = Object.entries(pairStats)
+
+  if (selectedIds.length < 2) {
+    return null
+  }
+
+  return (
+    <div className="border-b border-border px-4 py-3">
+      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Pairwise correlation
+      </p>
+      {entries.length > 0 ? (
+        <div className="grid max-h-[200px] gap-1.5 overflow-y-auto pr-1 md:grid-cols-2 [scrollbar-width:thin]">
+          {entries.map(([pairKey, s]) => {
+            const [a, b] = pairKey.split('|')
+            return (
+              <div
+                key={pairKey}
+                className="rounded-md border border-border bg-muted/10 px-2.5 py-1.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-[11px] font-medium">
+                    {nameOf(a)} × {nameOf(b)}
+                  </span>
+                  <span
+                    className="shrink-0 text-[11px] font-semibold"
+                    style={{ color: rColor(s.r) }}
+                  >
+                    r = {s.r.toFixed(2)}
+                  </span>
+                </div>
+                <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                  <span
+                    className="font-medium"
+                    style={{ color: rColor(s.r) }}
+                  >
+                    {strengthLabel(s.r)}
+                  </span>
+                  {' · '}{s.n} readings · {confidenceLabel(s.n, s.p)}
+                </p>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Need at least 2 paired readings on shared dates to compute correlation.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function TopCorrelatedPairs({
+  pairs,
+  biomarkers,
+  selectedIds,
+  onApply,
+}: {
+  pairs: [string, PairStats][]
+  biomarkers: BiomarkerResult[]
+  selectedIds: string[]
+  onApply: (pairKey: string) => void
+}) {
+  if (pairs.length === 0) return null
+  const nameOf = (id: string) =>
+    biomarkers.find((b) => b.id === id)?.definition.names.en ?? id
+  const maxAbsR = Math.max(...pairs.map(([, s]) => Math.abs(s.r)))
+  const selected = new Set(selectedIds)
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex justify-end px-4 pt-2.5">
+        <span className="text-[10px] text-muted-foreground/70">
+          by |r| · strongest first
+        </span>
+      </div>
+      <ul className="min-h-0 flex-1 overflow-y-auto py-1.5 [scrollbar-width:thin]">
+        {pairs.map(([pairKey, s], i) => {
+          const [a, b] = pairKey.split('|')
+          const isSelected =
+            selected.size === 2 && selected.has(a) && selected.has(b)
+          return (
+            <li key={pairKey}>
+              <button
+                type="button"
+                onClick={() => onApply(pairKey)}
+                title={`${nameOf(a)} × ${nameOf(b)} — ${strengthLabel(s.r)}, ${s.n} readings, ${confidenceLabel(s.n, s.p)}`}
+                className={cn(
+                  'flex w-full items-center gap-2 px-4 py-1.5 text-left transition-colors hover:bg-muted/30',
+                  isSelected && 'bg-primary/10 hover:bg-primary/10',
+                )}
+              >
+                <span className="w-4 shrink-0 text-right text-[11px] font-semibold tabular-nums text-muted-foreground/70">
+                  {i + 1}
+                </span>
+                <span className="flex min-w-0 flex-1 items-baseline gap-1 text-[11px] font-medium text-foreground">
+                  <span className="min-w-0 truncate">{nameOf(a)}</span>
+                  <span className="shrink-0 text-muted-foreground">×</span>
+                  <span className="min-w-0 truncate">{nameOf(b)}</span>
+                </span>
+                <span
+                  className="h-1 w-10 shrink-0 overflow-hidden rounded-full bg-muted"
+                  aria-hidden="true"
+                >
+                  <span
+                    className="block h-full rounded-full"
+                    style={{
+                      width: `${Math.round((Math.abs(s.r) / maxAbsR) * 100)}%`,
+                      backgroundColor: rColor(s.r),
+                    }}
+                  />
+                </span>
+                <span
+                  className="w-12 shrink-0 text-right text-[11px] font-semibold tabular-nums"
+                  style={{ color: rColor(s.r) }}
+                >
+                  {s.r.toFixed(2)}
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+function CorrelationLegend() {
+  return (
+    <div className="border-t border-border bg-muted/10 px-4 py-2">
+      <p className="text-[10px] leading-relaxed text-muted-foreground">
+        r (correlation) runs from −1 to +1: how closely two biomarkers move
+        together. <span className="font-medium">r = 1</span>: perfectly in sync
+        — they rise and fall together. <span className="font-medium">r = −1</span>:
+        perfect mirror — one rises while the other falls. “Likely a real
+        relationship” means there is less than a 5% chance this link is
+        coincidence.
+      </p>
+    </div>
+  )
+}
+
 export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: BiomarkerResult[] }) {
   const [query, setQuery] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [leftTab, setLeftTab] = useState<'pairs' | 'select'>('pairs')
   const userInteracted = useRef(false)
+
+  const allChartable = useMemo(
+    () => allBiomarkers.filter(hasReadings),
+    [allBiomarkers],
+  )
+
+  // Correlations across ALL chartable biomarkers (not just the selected
+  // ones), so high-correlation pairs can be surfaced automatically.
+  const allPairStats = useMemo(() => {
+    if (allChartable.length < 2) return {}
+    const { series } = buildAlignedSeries(allChartable)
+    return pairwiseCorrelations(series)
+  }, [allChartable])
+
+  // Pairs with enough shared readings to be meaningful. |r| >= 0.5 avoids
+  // surfacing noise; n >= 5 keeps tiny samples (where a perfect fit is trivial)
+  // from dominating the list with spurious r = ±1.
+  const suggestedPairs = useMemo(
+    () =>
+      Object.entries(allPairStats)
+        .filter(([, s]) => s.n >= 5 && Math.abs(s.r) >= 0.5)
+        .sort(
+          (a, b) =>
+            Math.abs(b[1].r) - Math.abs(a[1].r) || b[1].n - a[1].n,
+        ),
+    [allPairStats],
+  )
 
   useEffect(() => {
     if (userInteracted.current || allBiomarkers.length === 0) return
-    const withHistory = allBiomarkers.filter((b) => (b.history?.length ?? 0) > 0)
-    const pool = withHistory.length > 0 ? withHistory : allBiomarkers
-    setSelectedIds(pool.slice(0, 2).map((b) => b.id))
-  }, [allBiomarkers])
+    let next = allChartable.slice(0, 2).map((b) => b.id)
+    if (suggestedPairs.length > 0) {
+      next = suggestedPairs[0][0].split('|')
+    }
+    setSelectedIds(next)
+  }, [allBiomarkers, allChartable, suggestedPairs])
 
   const colorMap = useMemo(() => {
     const map: Record<string, string> = {}
@@ -98,15 +373,14 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
 
   const filteredBiomarkers = useMemo(() => {
     const q = query.trim().toLowerCase()
-    const available = allBiomarkers.filter((b) => b.history?.length)
-    if (!q) return available
-    return available.filter((b) => {
+    if (!q) return allChartable
+    return allChartable.filter((b) => {
       const names = b.definition.names
       return Object.keys(names).some((key) =>
         names[key].toLowerCase().includes(q),
       )
     })
-  }, [query, allBiomarkers])
+  }, [query, allChartable])
 
   const toggleBiomarker = (id: string) => {
     userInteracted.current = true
@@ -115,132 +389,181 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
     )
   }
 
+  const applyPair = (pairKey: string) => {
+    userInteracted.current = true
+    const [a, b] = pairKey.split('|')
+    setSelectedIds([a, b])
+  }
+
+  const selectedBiomarkers = useMemo(
+    () => allBiomarkers.filter((b) => selectedIds.includes(b.id) && hasReadings(b)),
+    [selectedIds, allBiomarkers],
+  )
+
   const chartData = useMemo(() => {
-    const selected = allBiomarkers.filter(
-      (b) => selectedIds.includes(b.id) && b.history?.length,
-    )
+    const selected = selectedBiomarkers
     if (selected.length === 0) return []
-
-    const dateSet = new Set<string>()
-    selected.forEach((b) => {
-      b.history!.forEach((r) => dateSet.add(r.date))
-      dateSet.add(b.date)
-    })
-    const dates = Array.from(dateSet).sort(
-      (a, b) => new Date(a).getTime() - new Date(b).getTime(),
-    )
-
-    const data = dates.map((date) => {
+    const { dates, byId } = buildAlignedSeries(selected)
+    return dates.map((date) => {
       const entry: Record<string, number | string | null> = { date }
       selected.forEach((b) => {
-        const reading =
-          b.history!.find((r) => r.date === date) ??
-          (b.date === date ? { date: b.date, value: b.value, status: b.status } : undefined)
-        if (reading) {
+        const point = byId[b.id].get(date)
+        if (point) {
           const numericVal =
-            typeof reading.value === 'number' && Number.isFinite(reading.value)
-              ? reading.value
-              : qualitativeToNumber(reading.value)
-          const bounds = intervalBounds(b.reference ?? b.definition.reference)
-            ?? (numericVal != null ? { low: 0, high: 1 } : null)
-          if (
-            numericVal != null
-            && bounds
-            && bounds.low != null
-            && bounds.high != null
-            && (bounds.high - bounds.low) !== 0
-          ) {
-            const range = (bounds.high - bounds.low) || 1
-            entry[`norm_${b.id}`] = ((numericVal - bounds.low) / range) * 100
-          } else {
-            entry[`norm_${b.id}`] = null
-          }
-          entry[`raw_${b.id}`] = reading.value ?? null
+            typeof point === 'number' && Number.isFinite(point)
+              ? point
+              : qualitativeToNumber(point)
+          const ref = b.reference ?? b.definition.reference
+          entry[`norm_${b.id}`] =
+            numericVal != null ? normalizedValue(numericVal, ref) : null
+          entry[`raw_${b.id}`] = point ?? null
         } else {
           entry[`norm_${b.id}`] = null
           entry[`raw_${b.id}`] = null
         }
-        entry[`dash_${b.id}`] = null
       })
       return entry
     })
+  }, [selectedBiomarkers])
 
-    selected.forEach((b) => {
-      const dataKey = `norm_${b.id}`
-      const dashKey = `dash_${b.id}`
-      let prevIdx = -1
-      data.forEach((row, i) => {
-        if (row[dataKey] !== null) {
-          if (prevIdx === -1 && i > 0) {
-            data[0][dashKey] = row[dataKey] as number
-            data[i][dashKey] = row[dataKey] as number
-          }
-          if (prevIdx >= 0 && prevIdx < i - 1) {
-            data[prevIdx][dashKey] = data[prevIdx][dataKey] as number
-            data[i][dashKey] = row[dataKey] as number
-          }
-          prevIdx = i
+  const pairStats = useMemo(() => {
+    const series: Record<string, Array<number | null>> = {}
+    chartData.forEach((row) => {
+      selectedBiomarkers.forEach((b) => {
+        const v = row[`norm_${b.id}`]
+        ;(series[b.id] ??= []).push(typeof v === 'number' ? v : null)
+      })
+    })
+    return pairwiseCorrelations(series)
+  }, [chartData, selectedBiomarkers])
+
+  const yDomain = useMemo(() => {
+    let min = Infinity
+    let max = -Infinity
+    chartData.forEach((row) => {
+      selectedBiomarkers.forEach((b) => {
+        const v = row[`norm_${b.id}`]
+        if (typeof v === 'number') {
+          min = Math.min(min, v)
+          max = Math.max(max, v)
         }
       })
-      if (prevIdx >= 0 && prevIdx < data.length - 1) {
-        data[prevIdx][dashKey] = data[prevIdx][dataKey] as number
-        data[data.length - 1][dashKey] = data[prevIdx][dataKey] as number
-      }
     })
+    if (!Number.isFinite(min)) return [0, 100] as [number, number]
+    const pad = Math.max((max - min) * 0.1, 5)
+    return [Math.min(0, min - pad), Math.max(100, max + pad)] as [number, number]
+  }, [chartData, selectedBiomarkers])
 
-    return data
-  }, [selectedIds, allBiomarkers])
+  const pointCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    selectedBiomarkers.forEach((b) => {
+      counts[b.id] = chartData.filter((row) => row[`norm_${b.id}`] != null).length
+    })
+    return counts
+  }, [chartData, selectedBiomarkers])
 
   return (
-    <div className="grid grid-cols-[300px_1fr] gap-6">
-      <Card className="border-border">
-        <div className="border-b border-border p-4">
-          <h3 className="mb-1 text-sm font-semibold text-foreground">
-            Select Biomarkers
-          </h3>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search..."
-              className="pl-8"
+    <div className="grid h-[calc(100vh-220px)] w-full grid-cols-[380px_1fr] gap-5">
+      <Card className="flex h-full min-h-0 flex-col border-border">
+        <div className="flex items-center gap-x-2 border-b border-border px-3 py-2.5">
+          <button
+            type="button"
+            onClick={() => setLeftTab('pairs')}
+            className={cn(
+              'whitespace-nowrap text-sm transition-colors',
+              leftTab === 'pairs'
+                ? 'font-semibold text-foreground'
+                : 'font-medium text-muted-foreground hover:text-foreground',
+            )}
+          >
+            Top correlated pairs
+          </button>
+          <span className="text-sm text-muted-foreground/20">|</span>
+          <button
+            type="button"
+            onClick={() => setLeftTab('select')}
+            className={cn(
+              'whitespace-nowrap text-sm transition-colors',
+              leftTab === 'select'
+                ? 'font-semibold text-foreground'
+                : 'font-medium text-muted-foreground hover:text-foreground',
+            )}
+          >
+            Select biomarkers
+          </button>
+        </div>
+        {leftTab === 'pairs' ? (
+          suggestedPairs.length > 0 ? (
+            <TopCorrelatedPairs
+              pairs={suggestedPairs}
+              biomarkers={allBiomarkers}
+              selectedIds={selectedIds}
+              onApply={applyPair}
             />
-          </div>
-        </div>
-        <div className="max-h-[500px] space-y-0.5 overflow-y-auto p-2">
-          {filteredBiomarkers.map((b) => {
-            const isSelected = selectedIds.includes(b.id)
-            return (
-              <label
-                key={b.id}
-                className={cn(
-                  'flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors hover:bg-muted/40',
-                  isSelected && 'bg-muted/20',
-                )}
-              >
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={() => toggleBiomarker(b.id)}
-                  className="accent-primary"
+          ) : (
+            <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6">
+              <p className="text-center text-xs leading-relaxed text-muted-foreground">
+                {allBiomarkers.length === 0
+                  ? 'No biomarker data yet — add a blood test to get started.'
+                  : 'No pairs with 5+ shared readings yet — check the Select biomarkers tab.'}
+              </p>
+            </div>
+          )
+        ) : (
+          <>
+            <div className="border-b border-border p-4">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search..."
+                  className="pl-8"
                 />
-                <span className="flex-1 truncate text-foreground">
-                  {b.definition.names.en}
-                </span>
-                {isSelected && (
-                  <span
-                    className="size-3 shrink-0 rounded-full"
-                    style={{ backgroundColor: colorMap[b.id] }}
-                  />
-                )}
-              </label>
-            )
-          })}
-        </div>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2">
+              {filteredBiomarkers.length === 0 && (
+                <p className="px-2 py-4 text-center text-xs text-muted-foreground">
+                  {allBiomarkers.length === 0
+                    ? 'No biomarker data yet — add a blood test to get started.'
+                    : 'No matching biomarkers.'}
+                </p>
+              )}
+              {filteredBiomarkers.map((b) => {
+                const isSelected = selectedIds.includes(b.id)
+                return (
+                  <label
+                    key={b.id}
+                    className={cn(
+                      'flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors hover:bg-muted/40',
+                      isSelected && 'bg-muted/20',
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleBiomarker(b.id)}
+                      className="accent-primary"
+                    />
+                    <span className="flex-1 truncate text-foreground">
+                      {b.definition.names.en}
+                    </span>
+                    {isSelected && (
+                      <span
+                        className="size-3 shrink-0 rounded-full"
+                        style={{ backgroundColor: colorMap[b.id] }}
+                      />
+                    )}
+                  </label>
+                )
+              })}
+            </div>
+          </>
+        )}
       </Card>
 
-      <Card className="min-h-[500px] border-border">
+      <Card className="flex h-full min-h-0 flex-col border-border">
         <div className="border-b border-border p-4">
           <h2 className="text-base font-semibold text-foreground">
             Biomarker Correlation Dynamics
@@ -249,9 +572,22 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
             Comparing normalized trends across selected biomarkers
           </p>
         </div>
-        <div className="p-4">
-          {chartData.length > 0 && selectedIds.length > 0 ? (
-            <ResponsiveContainer width="100%" height={450}>
+        <CorrelationStats
+          pairStats={pairStats}
+          selectedIds={selectedIds}
+          biomarkers={allBiomarkers}
+        />
+        <div className="min-h-0 flex-1 p-4">
+          {selectedIds.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              Select at least one biomarker to display the correlation chart.
+            </div>
+          ) : chartData.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              No numeric readings to chart for the selected biomarkers.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={chartData}
                 margin={{ top: 16, right: 16, bottom: 8, left: 8 }}
@@ -277,7 +613,7 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
                     )
                   }}
                 />
-                <YAxis hide domain={[-20, 120]} />
+                <YAxis hide domain={yDomain} />
                 <ReferenceArea
                   y1={0}
                   y2={100}
@@ -285,36 +621,26 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
                   fillOpacity={0.05}
                 />
                 <Tooltip content={<CustomTooltip biomarkers={allBiomarkers} />} />
-                {selectedIds.flatMap((id) => [
+                {selectedBiomarkers.map((b) => (
                   <Line
-                    key={`${id}-solid`}
+                    key={b.id}
                     type="monotone"
-                    dataKey={`norm_${id}`}
-                    stroke={colorMap[id]}
+                    dataKey={`norm_${b.id}`}
+                    stroke={colorMap[b.id]}
                     strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 5, fill: colorMap[id] }}
-                  />,
-                  <Line
-                    key={`${id}-dash`}
-                    type="linear"
-                    dataKey={`dash_${id}`}
-                    stroke={colorMap[id]}
-                    strokeWidth={1.5}
-                    strokeDasharray="5 3"
-                    dot={false}
-                    activeDot={false}
-                    connectNulls={true}
-                  />,
-                ])}
+                    dot={
+                      (pointCounts[b.id] ?? 0) <= 1
+                        ? { r: 4, strokeWidth: 2, fill: '#fff', stroke: colorMap[b.id] }
+                        : false
+                    }
+                    activeDot={{ r: 5, fill: colorMap[b.id] }}
+                  />
+                ))}
               </LineChart>
             </ResponsiveContainer>
-          ) : (
-            <div className="flex h-[450px] items-center justify-center text-sm text-muted-foreground">
-              Select at least one biomarker to display the correlation chart.
-            </div>
           )}
         </div>
+        {allChartable.length > 1 && <CorrelationLegend />}
       </Card>
     </div>
   )

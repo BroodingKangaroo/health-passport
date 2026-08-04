@@ -34,10 +34,10 @@ export function CorrelationView() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex h-screen flex-col bg-background">
       <HeaderBar />
       <NavBar activeTab="correlation" />
-      <main className="mx-auto max-w-[1400px] p-5">
+      <main className="mx-auto min-h-0 w-full max-w-[1400px] flex-1 p-5">
         <CorrelationChart biomarkers={biomarkers} />
       </main>
     </div>

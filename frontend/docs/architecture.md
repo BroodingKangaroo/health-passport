@@ -1,8 +1,8 @@
 # Frontend architecture (HealthPassport)
 
 On-demand companion to AGENTS.md — read this file before touching API
-proxying, reference formatting, merge/unit-conflict UI, the settings tab, or
-the add-entry editor.
+proxying, reference formatting, merge/unit-conflict UI, the settings tab,
+the add-entry editor, or the Insights & Correlation view.
 
 ## Stack & commands
 
@@ -40,8 +40,33 @@ Mirror of the backend's reference model (see `backend/docs/architecture.md`):
   string); `frontend/src/components/health-passport/reference-input.tsx` is
   its interval editor.
 
-## AI-guessed unit UI
+## Insights & Correlation view
 
+- `views/CorrelationView.tsx` → `components/health-passport/correlation-chart.tsx`.
+  The view is a full-height flex column (`h-screen`); the chart grid is
+  `h-[calc(100vh-220px)]`, so the two cards stay equal height with room to
+  breathe.
+- The left card has two tabs: **Top correlated pairs** (default) and
+  **Select biomarkers**. The pairs list is ranked by `|r|` (strongest first,
+  ties by sample size), scrolls to fill the card, and is auto-selected on
+  load; clicking a row applies that pair, highlighted in the list.
+- Correlation math lives in `frontend/src/lib/stats.ts` (pure, unit-tested):
+  Pearson `r`, two-sided p (t-test, n−2 df, via Lanczos lnΓ + incomplete
+  beta), `pairwiseCorrelations` over index-aligned normalized series (null
+  slots for missing dates; pairs with < 2 co-present points or zero variance
+  are omitted).
+- Values are normalized to a 0–100 scale in `correlation-chart.tsx`
+  (`normalizedValue`, exported for tests): interval → `(v−low)/(high−low)·100`,
+  one-sided → percent of the bound, exact (low=high) → percent of the expected
+  value, qualitative 0/1 → 0/100.
+- Suggested-pair threshold: **n ≥ 5 shared readings and |r| ≥ 0.5** — the
+  n≥5 floor keeps tiny samples (where a perfect fit is trivial) from flooding
+  the list with spurious r = ±1.
+- Confidence is shown in plain language, never p-values: p < 0.05 →
+  "likely a real relationship", else "could still be chance", n < 3 → "too
+  few readings to tell".
+
+## AI-guessed unit UI
 - A unit cell whose canonical unit was LLM-invented (`canonical_unit_inferred`)
   is flagged only in the **add-entry editor** (`LabResultForm.tsx`): blue
   ring/glow (`ring-2 ring-blue-400/80 bg-blue-50/60 shadow…`) plus an instant

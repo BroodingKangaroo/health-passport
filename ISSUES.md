@@ -56,24 +56,6 @@ cosmetic/UI-only fix.**
 
 ---
 
-## MEDIUM
-
-### 15. "Insights & Correlation" delivers no correlation and drops common cases
-
-- File: `frontend/src/components/health-passport/correlation-chart.tsx`
-- Single-measurement biomarkers — the common one-test onboarding case — are
-  excluded because `history` is `[]` for them (`timeline.py:90-93`), so the
-  picker is empty ("Select at least one biomarker…" shows while checkboxes stay
-  ticked; `correlation-chart.tsx:99-101,118-121`).
-- One-sided references (`≤ 0.7`) produce null bounds → the series is silently
-  dropped with no message (`:146-158`).
-- Fixed Y domain `[-20, 120]` clips values above 3× the upper bound (`:280`).
-- No correlation coefficient, p-value, or regression exists anywhere; the dashed
-  "bridge" (`:168-189`) invents a constant flat trend across gaps, and tooltips
-  render blank rows for dates without readings.
-
----
-
 ## Refactors / agentic-development (2026-08-03)
 
 Refactor candidates identified during an agentic-development audit. These are
