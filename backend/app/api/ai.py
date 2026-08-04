@@ -55,6 +55,45 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
 
+KEEPALIVE_INTERVAL_S = 15.0
+
+
+def _keepalive() -> str:
+    """SSE comment line (ignored by clients) that keeps the connection and any
+    buffering proxy alive during the long silent OCR/LLM/matching phases, so a
+    healthy-but-slow extraction is never mistaken for a dead one."""
+    return ": keep-alive\n\n"
+
+
+async def _wait_with_keepalive(awaitable: asyncio.Future) -> None:
+    """Wait on ``awaitable`` (a pending future), yielding an SSE keep-alive
+    comment every ``KEEPALIVE_INTERVAL_S`` seconds until it resolves.
+
+    Consume with ``async for`` inside the SSE stream; then read the result via
+    ``awaitable.result()``, which re-raises any exception the worker thread
+    produced. Cancellation of the waiting task is not swallowed.
+    """
+    while not awaitable.done():
+        done, _ = await asyncio.wait({awaitable}, timeout=KEEPALIVE_INTERVAL_S)
+        if done:
+            return
+        yield _keepalive()
+
+
+def _refund_on_abort(db: Session, user_id: str, is_anonymous: bool, reason: str) -> None:
+    """Best-effort quota refund for an extraction that never delivered a result
+    because the client disconnected mid-stream.
+
+    Never raises (the request session may already be tearing down), so the
+    original cancellation/GeneratorExit always propagates.
+    """
+    try:
+        refund_ai_extraction(db, user_id, is_anonymous)
+        logger.info("Extraction %s by client — quota refunded", reason)
+    except Exception:
+        logger.warning("Quota refund for %s extraction failed", reason, exc_info=True)
+
+
 @router.post("/api/extract")
 async def extract_medical_data(
     request: Request,
@@ -135,10 +174,13 @@ async def extract_medical_data(
             # Stage 1: OCR
             yield _sse("progress", {"stage": "ocr_scanning"})
             t0 = time.perf_counter()
+            ocr_future = asyncio.get_running_loop().run_in_executor(
+                None, extractor.ocr_document, bytes_data, ext, client
+            )
             try:
-                markdown = await asyncio.to_thread(
-                    extractor.ocr_document, bytes_data, ext, client
-                )
+                async for keepalive in _wait_with_keepalive(ocr_future):
+                    yield keepalive
+                markdown = ocr_future.result()
             except extractor.OCRProcessingError as ocr_err:
                 error = ocr_err.message
             elapsed = time.perf_counter() - t0
@@ -151,7 +193,12 @@ async def extract_medical_data(
             if not error:
                 yield _sse("progress", {"stage": "extracting", "markdown_chars": len(markdown)})
                 t0 = time.perf_counter()
-                raw = await asyncio.to_thread(extractor.llm_extract, markdown, client)
+                llm_future = asyncio.get_running_loop().run_in_executor(
+                    None, extractor.llm_extract, markdown, client
+                )
+                async for keepalive in _wait_with_keepalive(llm_future):
+                    yield keepalive
+                raw = llm_future.result()
                 elapsed = time.perf_counter() - t0
                 bm_count = len(raw.biomarkers) if raw.biomarkers else 0
                 logger.info("Extraction took %.2fs — type: %s, biomarkers: %d", elapsed, raw.entry_type, bm_count)
@@ -200,7 +247,10 @@ async def extract_medical_data(
                 finally:
                     thread_db.close()
 
-            result = await asyncio.to_thread(_match_in_thread)
+            match_future = asyncio.get_running_loop().run_in_executor(None, _match_in_thread)
+            async for keepalive in _wait_with_keepalive(match_future):
+                yield keepalive
+            result = match_future.result()
             elapsed = time.perf_counter() - t0
             std_count = len(result.biomarkers) if result.biomarkers else 0
             logger.info("Matching took %.2fs — biomarkers: %d", elapsed, std_count)
@@ -209,8 +259,15 @@ async def extract_medical_data(
             return
 
         except asyncio.CancelledError:
+            # Client disconnected mid-stream: the extraction never delivered a
+            # result, so refund the already-charged quota (best-effort — the
+            # request session may be tearing down).
+            _refund_on_abort(db, user_id, is_anonymous, "cancelled")
             raise
         except GeneratorExit:
+            # Generator closed while suspended (client went away before
+            # completion): same refund, then keep propagating.
+            _refund_on_abort(db, user_id, is_anonymous, "closed early")
             raise
         except Exception as e:
             logger.error("Extraction stream failed: %s", e, exc_info=True)

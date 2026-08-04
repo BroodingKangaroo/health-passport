@@ -93,8 +93,15 @@ Replaces the old `range_min`/`range_max` + qualitative-flag model:
   `refund_ai_extraction()` (`app/services/usage_limits.py`) before the error
   SSE event is sent. File-validation failures (400) never burn quota at all.
 - An `entry_type: "unknown"` result is NOT refunded — the LLM genuinely ran
-  and the user gets the unknown-editor + notes. A client disconnect mid-stream
-  is also not refunded (work already ran; no DB writes in cancel paths).
+  and the user gets the unknown-editor + notes.
+- A client disconnect mid-stream (`asyncio.CancelledError` / `GeneratorExit`)
+  IS refunded: the SSE stream never delivered a result event, so the user
+  shouldn't pay for an extraction they didn't get. The refund is best-effort
+  via `_refund_on_abort` (`app/api/ai.py`) — it never raises and the original
+  cancellation always propagates.
+- During the long silent OCR/LLM/matching phases the SSE stream emits
+  `: keep-alive` comment lines every 15s (ignored by SSE clients and the e2e
+  harness) so a healthy-but-slow extraction isn't mistaken for a dead one.
 
 ## Extraction output contract
 

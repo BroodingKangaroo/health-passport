@@ -92,3 +92,47 @@ describe('extractMedicalData error detail', () => {
     })
   })
 })
+
+describe('extractMedicalData SSE watchdog', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+  })
+
+  it('rejects with a timeout error when the stream stalls past the watchdog window', async () => {
+    vi.useFakeTimers()
+    // A stream that never emits a byte — exactly the "silent forever" case the
+    // watchdog exists for (dead connection, dropped SSE stream).
+    const stalled = new ReadableStream<Uint8Array>({})
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: true, status: 200, body: stalled } as unknown as Response)),
+    )
+
+    const promise = extractMedicalData(new File([''], 'a.pdf'))
+    const assertion = expect(promise).rejects.toThrow('AI extraction timed out')
+    await vi.advanceTimersByTimeAsync(90_000)
+    await assertion
+  })
+
+  it('resolves normally when the stream delivers a result before the watchdog fires', async () => {
+    const payload = JSON.stringify({ entry_type: 'blood_test' })
+    const sse = `event: result\ndata: ${payload}\n\n`
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(sse))
+        controller.close()
+      },
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: true, status: 200, body: stream } as unknown as Response)),
+    )
+
+    const result = await extractMedicalData(new File([''], 'a.pdf'))
+    expect(result.entry_type).toBe('blood_test')
+  })
+})

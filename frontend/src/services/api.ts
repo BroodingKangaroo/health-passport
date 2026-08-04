@@ -134,6 +134,28 @@ export async function extractMedicalData(
   let data = ''
   let result: StandardizedMedicalRecord | null = null
 
+  // Watchdog: the backend streams SSE events, but if the connection dies
+  // mid-stream (proxy drop, backend cancelled by a client disconnect) the
+  // stream can go silent forever — no result, no error, no end-of-stream. A
+  // stalled fetch would leave the UI frozen on the "estimating..." scan
+  // screen indefinitely, so if no bytes arrive within the window we cancel
+  // the stream and surface a timeout error the caller can act on. The backend
+  // sends keep-alive comments during its long silent phases, so this only
+  // fires on a genuinely dead/stalled connection, never during normal slow
+  // extraction.
+  const WATCHDOG_MS = 90_000
+  let watchdog: ReturnType<typeof setTimeout> | null = null
+  let timedOut = false
+  const armWatchdog = () => {
+    if (watchdog) clearTimeout(watchdog)
+    watchdog = setTimeout(() => {
+      timedOut = true
+      reader.cancel().catch(() => {})
+    }, WATCHDOG_MS)
+  }
+  const timeoutError = () =>
+    new Error('AI extraction timed out — the connection stalled. Please try again.')
+
   function processLine(line: string) {
     if (line.startsWith('event: ')) {
       eventType = line.slice(7)
@@ -170,13 +192,27 @@ export async function extractMedicalData(
   }
 
   try {
+    armWatchdog()
     while (true) {
       if (signal?.aborted) {
         throw new DOMException('Extraction aborted', 'AbortError')
       }
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
+      // A watchdog-fired reader.cancel() may surface as either a done read or
+      // an AbortError; both must become a timeout error (a plain Error so the
+      // caller doesn't mistake it for a superseded-extraction abort).
+      let chunk: ReadableStreamReadResult<Uint8Array>
+      try {
+        chunk = await reader.read()
+      } catch {
+        if (timedOut) throw timeoutError()
+        throw new DOMException('Extraction aborted', 'AbortError')
+      }
+      if (chunk.done) {
+        if (timedOut) throw timeoutError()
+        break
+      }
+      armWatchdog()
+      buffer += decoder.decode(chunk.value, { stream: true })
 
       const lines = buffer.split('\n')
       buffer = lines.pop() || ''
@@ -198,6 +234,7 @@ export async function extractMedicalData(
     if (result) return result
     throw new Error('Stream ended without result event')
   } finally {
+    if (watchdog) clearTimeout(watchdog)
     // Always release the reader so the underlying HTTP stream is closed,
     // even on error/abort. Safe to call after natural completion.
     try {
