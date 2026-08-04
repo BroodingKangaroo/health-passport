@@ -94,6 +94,24 @@ Mirror of the backend's reference model (see `backend/docs/architecture.md`):
   not the newest doc's. The history-list "abnormal only" filter matches the
   same way (`entry_id === event.id`).
 
+## Instrumental-test entries
+
+- `add-entry.tsx` offers the third AI document type, `instrumental_test`
+  ("Instrumental Test (MRI, Elastography, ECG...)"). Extracted
+  `instrumental_data` is edited in `InstrumentalTestForm.tsx`, whose
+  `MODALITIES` select is the **fixed** list — MRI, CT, X-Ray, Ultrasound,
+  Elastography, Mammography, PET Scan, ECG, Endoscopy, Other — the backend
+  extractor is constrained to the same values.
+- Biomarker rows belong to blood tests only: `buildSaveEntryFormData` sends
+  `biomarkers` only when `documentType === 'blood_test'`, and the Document
+  Type select's `handleDocumentTypeChange` clears stale extracted
+  categories/visit/instrumental state, so a switched entry can never persist
+  leftover readings or the wrong structured payload.
+- Timeline details: `TimelineView` renders `InstrumentalTestDetails.tsx`
+  (modality, findings, conclusion, attachments, Settings tab with Delete) for
+  `instrumental_test` events, fed from the timeline response's `instrumental`
+  map keyed by entry id.
+
 ## Settings tab
 
 - `frontend/src/components/health-passport/entry-settings.tsx` — third tab

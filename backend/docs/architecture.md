@@ -96,6 +96,16 @@ Replaces the old `range_min`/`range_max` + qualitative-flag model:
   and the user gets the unknown-editor + notes. A client disconnect mid-stream
   is also not refunded (work already ran; no DB writes in cancel paths).
 
+## Extraction output contract
+
+- Blood-test `date` prefers the biomaterial **collection date** when shown;
+  only falls back to the report/results date otherwise. `time` is emitted only
+  when a time appears next to that same date.
+- Instrumental reports: `modality` must be exactly one of the fixed list
+  `MRI, CT, X-Ray, Ultrasound, Elastography, Mammography, PET Scan, ECG,
+  Endoscopy, Other` (mirrors the frontend `MODALITIES`); content goes to
+  `findings`/`conclusion`; `notes` stays empty (no duplication).
+
 ## CRITICAL — `/api/extract` persists definitions
 
 Matching runs in a worker thread (`backend/app/api/ai.py`,
@@ -118,6 +128,23 @@ extractions "forget" units.
   concurrent deletes cannot drive the counter negative.
 - Scoped to `user_id`; unknown or other-user's ids return 404 (no info leak).
 - Schema: `DeleteEntryResponse` in `app/schemas/common.py`.
+
+## Entry types & `instrumental_data`
+
+- `save_entry` accepts four entry types: `blood_test`, `doctor_visit`,
+  `instrumental_test`, `procedure`. `/api/extract` classifies documents as
+  `blood_test` | `doctor_visit` | `instrumental_test` | `unknown`.
+- Biomarker readings are persisted **only** for `blood_test` entries — the
+  server ignores a `biomarkers` field sent with any other type (stale
+  extraction leftovers would otherwise create invisible definitions and
+  pollute matching).
+- `instrumental_test` entries carry an `instrumental_data` JSON payload
+  (`{modality, findings, conclusion}`) saved to the `instrumental_data` table
+  (1:1 with `medical_entries`, delete-orphan cascade) — the same pattern as
+  `visit_data`.
+- `GET /api/timeline` returns the payloads in an `instrumental: {entry_id:
+  {modality, findings, conclusion}}` map (same pattern as `visits`); reading
+  serialization stays blood-test-only.
 
 ## Merge same-date blood tests (`POST /api/entry/{id}/merge`)
 
