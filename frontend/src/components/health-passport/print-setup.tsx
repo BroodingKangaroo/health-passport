@@ -1,12 +1,15 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { Languages, FileOutput, ChevronDown } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
-import type { PrintLang } from '@/lib/types'
+import { fetchFlowsheetData, translateBiomarkerNames } from '@/services/api'
+import type { PrintLang, TranslateLang } from '@/lib/types'
 
 type Mode = 'original' | 'translate' | 'bilingual'
 
@@ -16,6 +19,7 @@ const TARGETS: { id: PrintLang; label: string }[] = [
   { id: 'fr', label: 'French' },
   { id: 'es', label: 'Spanish' },
   { id: 'he', label: 'Hebrew' },
+  { id: 'pl', label: 'Polish' },
 ]
 
 const MODES: { id: Mode; title: string; desc: string }[] = [
@@ -39,9 +43,41 @@ const MODES: { id: Mode; title: string; desc: string }[] = [
 export function PrintSetup() {
   const router = useRouter()
   const { mode, targetLanguage, setMode, setTargetLanguage } = usePrintConfig()
+  const [translating, setTranslating] = useState(false)
 
-  function handleGenerate() {
-    router.push('/print-editor')
+  async function handleGenerate() {
+    if (mode === 'original' || targetLanguage === 'en') {
+      router.push('/print-editor')
+      return
+    }
+    // The document promises an AI translation: actually perform it before
+    // navigating. The backend persists names[lang] on the definitions, so
+    // repeated generates of an already-translated document are free.
+    setTranslating(true)
+    try {
+      const data = await fetchFlowsheetData()
+      const unique = new Map<string, string>()
+      for (const cat of data.matrix) {
+        for (const row of cat.rows) {
+          const name = row.name.trim()
+          // Never ask the LLM to translate an empty name (a def without an
+          // English name) — it would hallucinate one.
+          if (name) unique.set(row.id, name)
+        }
+      }
+      const names = [...unique].map(([id, name]) => ({ id, name }))
+      if (names.length > 0) {
+        await translateBiomarkerNames(targetLanguage as TranslateLang, names)
+      }
+    } catch (err) {
+      // Best-effort translation: never block the export. Fall back to the
+      // English document (the pre-fix behavior) and explain why.
+      const reason = err instanceof Error ? err.message : 'unknown error'
+      toast.error(`AI translation failed (${reason}) — the document will use English names.`)
+    } finally {
+      setTranslating(false)
+      router.push('/print-editor')
+    }
   }
 
   return (
@@ -122,9 +158,9 @@ export function PrintSetup() {
         </div>
 
         <div className="border-t border-border px-6 py-4">
-          <Button className="h-11 w-full text-sm" onClick={handleGenerate}>
+          <Button className="h-11 w-full text-sm" onClick={handleGenerate} disabled={translating}>
             <Languages className="size-4" />
-            Generate Document
+            {translating ? 'Translating terminology\u2026' : 'Generate Document'}
           </Button>
         </div>
       </div>

@@ -13,6 +13,7 @@ import type {
   DeleteEntryResponse,
   UsageLimits,
   CurrentUser,
+  TranslateLang,
 } from '@/lib/types'
 
 // Re-exported for callers that historically imported these from the api module.
@@ -99,6 +100,40 @@ export async function fetchEntriesByDate(
 /* ----- Biomarker Definitions ----- */
 export async function fetchBiomarkerDefinitions(): Promise<BiomarkerDefinition[]> {
   return apiGet<BiomarkerDefinition[]>('/biomarkers/definitions')
+}
+
+/* ----- Biomarker name translation (print/export) ----- */
+export interface TranslateNameItem {
+  id: string
+  name: string
+}
+
+/**
+ * Translate biomarker definition names into a target language. The backend
+ * persists translations into each definition's `names[lang]`, so repeated
+ * calls for already-translated names are free (server-side short-circuit).
+ * Returns an id -> translated name map (English fallback for failures).
+ */
+export async function translateBiomarkerNames(
+  lang: TranslateLang,
+  names: TranslateNameItem[],
+): Promise<Map<string, string>> {
+  const res = await fetch(`${API_BASE}/translate-biomarkers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({ lang, names }),
+  })
+  if (!res.ok) {
+    if (res.status === 429) {
+      const detail = await res.json().catch(() => ({ detail: 'Usage limit reached' }))
+      throw new UsageLimitError(res.status, detail.detail || 'Usage limit reached')
+    }
+    const detail = await res.json().catch(() => ({ detail: 'POST /translate-biomarkers failed' }))
+    throw new ApiError(res.status, detail.detail || 'POST /translate-biomarkers failed')
+  }
+  const data = (await res.json()) as { translations: TranslateNameItem[] }
+  return new Map((data.translations || []).map((t) => [t.id, t.name]))
 }
 
 /* ----- AI Extraction (SSE stream) ----- */

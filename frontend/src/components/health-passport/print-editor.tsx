@@ -21,6 +21,7 @@ const LANG_NAME: Record<PrintLang, string> = {
   fr: 'French',
   es: 'Spanish',
   he: 'Hebrew',
+  pl: 'Polish',
 }
 
 const GENDER_RU: Record<string, string> = {
@@ -81,6 +82,11 @@ const TABLE_HEADINGS: Record<PrintLang, { biomarker: string; title: string; note
     biomarker: '\u05E1\u05DE\u05DF \u05D1\u05D9\u05D5\u05DC\u05D5\u05D2\u05D9',
     title: '\u05EA\u05D5\u05E6\u05D0\u05D5\u05EA \u05DE\u05E2\u05D1\u05D3\u05D4 \u05DC\u05D0\u05D5\u05E8\u05DA \u05D6\u05DE\u05DF',
     note: '* \u05E2\u05E8\u05DB\u05D9\u05DD \u05DE\u05D7\u05D5\u05E5 \u05DC\u05D8\u05D5\u05D5\u05D7 \u05D4\u05D9\u05D7\u05D9\u05E1',
+  },
+  pl: {
+    biomarker: 'Biomarker',
+    title: 'Wyniki bada\u0144 laboratoryjnych w czasie',
+    note: '* Warto\u015Bci poza zakresem referencyjnym',
   },
 }
 

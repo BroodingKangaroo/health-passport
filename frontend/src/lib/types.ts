@@ -198,7 +198,12 @@ export interface MatrixCategory {
 }
 
 /* ----- Print / Export ----- */
-export type PrintLang = 'ru' | 'en' | 'de' | 'fr' | 'es' | 'he'
+export type PrintLang = 'ru' | 'en' | 'de' | 'fr' | 'es' | 'he' | 'pl'
+
+// Languages a document can be translated into for print/export (English ->
+// target). `ru` is never a translation target: "original" mode renders the
+// Russian source name directly.
+export type TranslateLang = 'de' | 'fr' | 'es' | 'he' | 'pl'
 
 /* ----- Form Types ----- */
 export type UploadState = 'idle' | 'scanning' | 'editor'

@@ -122,6 +122,31 @@ class ScaleFunction(BaseModel):
     function: str = ""
 
 
+# +++++ Biomarker name translation (English -> de/fr/es/he/pl) +++++
+
+class BiomarkerNameItem(BaseModel):
+    id: str
+    name: str
+
+
+class TranslateRequest(BaseModel):
+    lang: Literal["de", "fr", "es", "he", "pl"]
+    names: list[BiomarkerNameItem] = []
+
+
+class TranslationItem(BaseModel):
+    id: str
+    name: str
+
+
+class TranslationBatch(BaseModel):
+    translations: list[TranslationItem]
+
+
+class TranslateResponse(BaseModel):
+    translations: list[TranslationItem]
+
+
 # +++++ Pass 2 — Standardized (normalized, matched, converted, translated) +++++
 
 class StandardizedBiomarker(BaseModel):

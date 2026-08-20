@@ -66,7 +66,7 @@ const mockBiomarkers: BiomarkerResult[] = [
     id: 'hb-aug-10-2024',
     definition: {
       id: 'hb',
-      names: { en: 'Hemoglobin', ru: 'Гемоглобин', es: 'Hemoglobina', de: 'Hämoglobin', fr: 'Hémoglobine', he: 'המוגלובין' },
+      names: { en: 'Hemoglobin', ru: 'Гемоглобин', es: 'Hemoglobina', de: 'Hämoglobin', fr: 'Hémoglobine', he: 'המוגלובין', pl: 'Hemoglobina' },
       synonyms: [],
       unit: 'g/dL',
       reference: { kind: 'interval', low: 12.0, high: 16.0 },
@@ -83,7 +83,7 @@ const mockBiomarkers: BiomarkerResult[] = [
     id: 'wbc-aug-10-2024',
     definition: {
       id: 'wbc',
-      names: { en: 'Leukocytes', ru: 'Лейкоциты', es: 'Leucocitos', de: 'Leukozyten', fr: 'Globules blancs', he: 'תאי דם לבנים' },
+      names: { en: 'Leukocytes', ru: 'Лейкоциты', es: 'Leucocitos', de: 'Leukozyten', fr: 'Globules blancs', he: 'תאי דם לבנים', pl: 'Leukocyty' },
       synonyms: [],
       unit: 'K/µL',
       reference: { kind: 'interval', low: 4.0, high: 11.0 },
@@ -100,7 +100,7 @@ const mockBiomarkers: BiomarkerResult[] = [
     id: 'ldl-aug-10-2024',
     definition: {
       id: 'ldl',
-      names: { en: 'LDL Cholesterol', ru: 'ЛПНП холестерин', es: 'Colesterol LDL', de: 'LDL-Cholesterin', fr: 'Cholestérol LDL', he: 'כולסטרול LDL' },
+      names: { en: 'LDL Cholesterol', ru: 'ЛПНП холестерин', es: 'Colesterol LDL', de: 'LDL-Cholesterin', fr: 'Cholestérol LDL', he: 'כולסטרול LDL', pl: 'Cholesterol LDL' },
       synonyms: [],
       unit: 'mg/dL',
       reference: { kind: 'interval', low: 0, high: 130 },
@@ -277,6 +277,12 @@ describe('PrintEditor', () => {
     renderEditor({ lang: 'he' })
     const rows = screen.getAllByRole('row')
     expect(rows.some((r) => r.textContent?.includes('המוגלובין'))).toBe(true)
+  })
+
+  it('translates biomarker names to Polish when lang is pl', () => {
+    renderEditor({ lang: 'pl' })
+    const rows = screen.getAllByRole('row')
+    expect(rows.some((r) => r.textContent?.includes('Hemoglobina'))).toBe(true)
   })
 
   it('renders category sub-headers', () => {

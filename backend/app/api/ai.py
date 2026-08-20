@@ -15,13 +15,37 @@ from app.api.auth import get_current_user_or_anon
 from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
 from app.db.models import Patient
 from app.db.session import SessionLocal, get_db
-from app.schemas.ai import RawInstrumentalData, StandardizedMedicalRecord, StandardizedVisitData
+from app.schemas.ai import (
+    RawInstrumentalData,
+    StandardizedMedicalRecord,
+    StandardizedVisitData,
+    TranslateRequest,
+    TranslateResponse,
+    TranslationBatch,
+    TranslationItem,
+)
 from app.services import extractor, matcher
 from app.services.usage_limits import check_and_record_ai_usage, refund_ai_extraction
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+TRANSLATE_BIOMARKER_PROMPT = """You are a professional medical translator for laboratory reports. Translate each English biomarker name into {lang}.
+
+Rules:
+- Use the standard medical term in {lang} used on laboratory reports.
+- Keep Latin acronyms, abbreviations, and numbers verbatim (e.g. "LDL Cholesterol" -> "Colesterol LDL", "Vitamin B12" -> "Vitamina B12", "TSH", "CRP", "HIV" stay unchanged).
+- Preserve clinical qualifiers verbatim — never drop or rephrase them (e.g. "Free T4", "Total", "Direct", "Indirect", "Estimated", "Urine" must survive in the translation).
+- If a name is untranslatable (Latin term, drug name, proper noun), return it unchanged.
+- If the input name is empty, return an empty string.
+- Translate the name only — never add interpretations, units, or reference ranges.
+- Echo each item's `id` back unchanged in the response.
+- Return exactly one translated name per input line, in the same order.
+
+Items (one per line: `id | name`):
+{items}
+"""
 
 
 def _get_client() -> Optional[Mistral]:
@@ -92,6 +116,75 @@ def _refund_on_abort(db: Session, user_id: str, is_anonymous: bool, reason: str)
         logger.info("Extraction %s by client — quota refunded", reason)
     except Exception:
         logger.warning("Quota refund for %s extraction failed", reason, exc_info=True)
+
+
+def _clean_translation_name(name: str) -> str:
+    """Normalize a biomarker name for the LLM prompt: collapse all whitespace
+    (including newlines — a name must never smuggle extra prompt lines) and
+    remove the ``|`` delimiter that separates id and name."""
+    return " ".join(name.replace("|", " ").split())
+
+
+def _translate_names_to_lang(items: list[tuple[str, str]], lang: str, client: Mistral) -> dict[str, str]:
+    """Translate English biomarker names into ``lang`` via LLM calls.
+
+    ``items`` is a list of ``(def id, english name)`` pairs. Returns a mapping
+    def id -> translated name. Best-effort: on any LLM failure an empty (or
+    partial) mapping is returned and callers fall back to the English names
+    per id. Names are sanitized before sending (empty or whitespace-only
+    names are skipped, so the model can never invent a translation for one).
+    Ids the model drops are retried once with a second, smaller call.
+    """
+    if not items or client is None:
+        return {}
+
+    pending: list[tuple[str, str]] = []
+    seen_ids: set[str] = set()
+    for def_id, name in items:
+        cleaned = _clean_translation_name(name)
+        if not cleaned or def_id in seen_ids:
+            continue
+        seen_ids.add(def_id)
+        pending.append((def_id, cleaned))
+
+    result: dict[str, str] = {}
+    for _attempt in (1, 2):
+        if not pending:
+            break
+        item_lines = "\n".join(f'- "{def_id} | {name}"' for def_id, name in pending)
+        system_prompt = TRANSLATE_BIOMARKER_PROMPT.format(lang=lang, items=item_lines)
+        try:
+            chat_response = client.chat.parse(
+                model="mistral-large-latest",
+                temperature=0,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": "Return the JSON array now."},
+                ],
+                response_format=TranslationBatch,
+                max_tokens=1000,
+            )
+        except Exception as e:
+            logger.error("Name translation LLM call failed (%s): %s", lang, e)
+            # Transient failure: keep whatever earlier attempts produced.
+            return result
+
+        content = chat_response.choices[0].message.content
+        try:
+            parsed = TranslationBatch(**json.loads(content)) if isinstance(content, str) else content
+        except Exception as e:
+            logger.error("Failed to parse name translation response (%s): %s", lang, e)
+            return result
+
+        for t in parsed.translations:
+            translated = (t.name or "").strip()
+            if translated:
+                result[t.id] = translated
+
+        # Retry only the ids the model dropped or failed to translate.
+        pending = [(def_id, name) for def_id, name in pending if def_id not in result]
+
+    return result
 
 
 @router.post("/api/extract")
@@ -289,4 +382,125 @@ async def extract_medical_data(
             "X-Accel-Buffering": "no",
             "Connection": "keep-alive",
         },
+    )
+
+
+@router.post("/api/translate-biomarkers", response_model=TranslateResponse)
+async def translate_biomarker_names(
+    payload: TranslateRequest,
+    db: Session = Depends(get_db),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+):
+    """Translate the English names of the user's biomarker definitions into a
+    target language and persist each translation into the definition's
+    ``names[lang]`` JSON column, so every later render (flowsheet, print
+    editor) reads it without another LLM call.
+
+    Best-effort: definitions that already carry ``names[lang]`` are returned
+    untouched (no LLM call, no quota charge); on LLM failure the request still
+    succeeds with the original English names and the charged quota is refunded.
+    """
+    _user, user_id, is_anonymous = user_data
+
+    if not payload.names:
+        return TranslateResponse(translations=[])
+
+    # Resolve only definitions visible to this user (global, system-shared, or
+    # their own); a foreign or unresolvable id is returned with its original
+    # name untouched and never written.
+    ids = list({item.id for item in payload.names})
+    defns = (
+        db.query(BiomarkerDefinitionModel)
+        .filter(
+            BiomarkerDefinitionModel.id.in_(ids),
+            (BiomarkerDefinitionModel.scope == "global")
+            | (BiomarkerDefinitionModel.user_id.is_(None))
+            | (BiomarkerDefinitionModel.user_id == user_id),
+        )
+        .all()
+    )
+    defn_by_id = {d.id: d for d in defns}
+
+    to_translate: list[tuple[str, str]] = []  # (def id, english name)
+    seen_ids: set[str] = set()
+    for item in payload.names:
+        defn = defn_by_id.get(item.id)
+        if defn is None or (defn.names or {}).get(payload.lang) or item.id in seen_ids:
+            continue
+        seen_ids.add(item.id)
+        to_translate.append((item.id, item.name))
+
+    if not to_translate:
+        # Nothing new to translate: return whatever is already known without
+        # burning quota (re-generates of an already-translated document are free).
+        return TranslateResponse(
+            translations=[
+                TranslationItem(
+                    id=item.id,
+                    name=(
+                        (defn_by_id[item.id].names or {}).get(payload.lang)
+                        if item.id in defn_by_id
+                        else item.name
+                    )
+                    or item.name,
+                )
+                for item in payload.names
+            ]
+        )
+
+    # The LLM call can never succeed without a key, so never charge quota for
+    # a request that would have to fall back to English anyway.
+    client = _get_client()
+    if client is None:
+        return TranslateResponse(
+            translations=[TranslationItem(id=item.id, name=item.name) for item in payload.names]
+        )
+
+    allowed, current_count, limit = check_and_record_ai_usage(db, user_id, is_anonymous, commit=False)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"AI translation limit reached ({current_count}/{limit}). "
+                "Please register for higher limits."
+            ),
+        )
+
+    unique_items = list({item_id: name for item_id, name in to_translate}.items())
+    translated = _translate_names_to_lang(unique_items, payload.lang, client)
+    if not translated:
+        # The LLM failed after the quota increment was flushed: refund it.
+        refund_ai_extraction(db, user_id, is_anonymous)
+        return TranslateResponse(
+            translations=[TranslationItem(id=item.id, name=item.name) for item in payload.names]
+        )
+
+    # Persist each translation into the definition's names JSON column so
+    # every later render reads it without another LLM call. Committing here
+    # also persists the quota increment.
+    for def_id, _en_name in to_translate:
+        defn = defn_by_id.get(def_id)
+        if defn is None:
+            continue
+        translated_name = translated.get(def_id)
+        if not translated_name:
+            continue
+        names = dict(defn.names or {})
+        names[payload.lang] = translated_name
+        defn.names = names
+    db.commit()
+
+    return TranslateResponse(
+        translations=[
+            TranslationItem(
+                id=item.id,
+                name=(
+                    (defn_by_id[item.id].names or {}).get(payload.lang)
+                    if item.id in defn_by_id
+                    else item.name
+                )
+                or item.name,
+            )
+            for item in payload.names
+        ]
     )

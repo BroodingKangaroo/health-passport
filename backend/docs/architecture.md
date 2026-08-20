@@ -103,6 +103,32 @@ Replaces the old `range_min`/`range_max` + qualitative-flag model:
   `: keep-alive` comment lines every 15s (ignored by SSE clients and the e2e
   harness) so a healthy-but-slow extraction isn't mistaken for a dead one.
 
+## Biomarker name translation (`POST /api/translate-biomarkers`)
+
+- Translates the English names of biomarker definitions into a target language
+  (`de`|`fr`|`es`|`he`|`pl`) and persists each translation into the definition's
+  `names[lang]` JSON column, so every later render (flowsheet, print editor)
+  reads it without another LLM call. `en`/`ru` are not targets: `en` names
+  already exist and `ru` prints the source name directly.
+- Request `{lang, names: [{id, name}]}`; response `{translations: [{id,
+  name}]}` — every requested id comes back, in request order, with the
+  persisted translation when one exists, else the requested (English) name.
+- Definitions already carrying `names[lang]` short-circuit: no LLM call, no
+  quota charge (re-generates of a translated document are free). Unresolvable
+  or other-user's ids are returned untouched and never written.
+- The LLM call is one batched `chat.parse` (`mistral-large-latest`,
+  temperature 0) covering all unique ids; names are sanitized before sending
+  (empty/whitespace-only names are skipped so the model can never invent a
+  translation for one), and ids the model dropped are retried once with a
+  second, smaller call. Without `MISTRAL_API_KEY` the request succeeds with
+  English names and never charges quota. On LLM failure the charged quota is
+  refunded (`refund_ai_extraction`) and English names are returned —
+  best-effort, same refund semantics as `/api/extract`.
+- Translations are quota-gated like extractions
+  (`check_and_record_ai_usage`): a 429 is raised when the shared AI counter is
+  exhausted, so repeated translation of a large dictionary cannot silently
+  burn the user's quota.
+
 ## Extraction output contract
 
 - Blood-test `date` prefers the biomaterial **collection date** when shown;

@@ -30,6 +30,23 @@ incrementally (verified on Next 16 dev + standalone), so `streamApiBase()` in
 explicitly set (direct-origin escape hatch; requires `CORS_ORIGINS` on the
 backend to include the site).
 
+## Print/export translation flow
+
+- `print-setup.tsx` "Generate Document" actually performs its promised AI
+  translation: in `translate`/`bilingual` mode with a non-`en` target it
+  fetches the flowsheet matrix and calls `POST /api/translate-biomarkers`
+  (one batched LLM call per language) BEFORE navigating to `/print-editor`;
+  the button shows "Translating terminology…" while it runs.
+- The backend persists translations into the definition's `names[lang]`
+  column (see `backend/docs/architecture.md`), so `print-editor.tsx`'s
+  `translatedName()` — which reads `def.names[lang]` via the flowsheet's
+  per-definition `names` — renders them with no renderer changes. Repeated
+  generates are free (server-side short-circuit; the backend never re-charges
+  quota for already-translated names).
+- Translation failures never block export: the document proceeds with English
+  names and a toast explains why. The `original` mode and `en` target skip the
+  translation call entirely.
+
 ## Reference formatting / stats
 
 Mirror of the backend's reference model (see `backend/docs/architecture.md`):

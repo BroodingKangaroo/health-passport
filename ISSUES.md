@@ -15,40 +15,6 @@ Playwright e2e removed, backend serializers hoisted into
 `app/api/_serializers.py`, several scripts deleted). Line numbers refer to
 files as they stand now.
 
----
-
-## HIGH
-
-### 10. Print "AI translation" is cosmetic — de/fr/es/he output is English
-
-Status: **decision (2026-08-03) — implement a real LLM translation feature
-(option C). Deferred, not implemented. Do NOT close this with a
-cosmetic/UI-only fix.**
-
-- Files: `frontend/src/components/health-passport/print-setup.tsx:59-61,43-46`
-- "AI translation of medical terminology may take a few moments." is printed,
-  but "Generate Document" only does `router.push('/print-editor')` — no
-  translation API call, no backend translation endpoint.
-- Production definitions carry only `en` names
-  (`backend/app/db/seed_loinc.py:233` seeds `{"en": …}`; `matcher.py` local
-  defs are `en`-only), yet `translatedName()` (`print-editor.tsx:229-235`)
-  looks up `def.names[lang]`. The unit tests pass only because fixtures
-  (`backend/tests/seed_data.py`) carry full multilingual names maps. Result:
-  selecting German/French/Spanish/Hebrew renders English biomarker names, and
-  `he` has no translation data anywhere.
-- Chosen design (2026-08-03 analysis): new Mistral-backed translation
-  endpoint; frontend awaits the call before navigating to `/print-editor`;
-  cache results by `(def.id, lang)`. Rejected cheaper paths: dropping `he` /
-  restricting the dropdown (hides the feature instead of fixing it); wiring
-  `backend/data/multilingual_synonyms.json` into `names[lang]` (it is flat,
-  language-untagged synonyms, ru/es/de/fr only — no `he`). Facts shaping the
-  fix: the `names` JSON column and `entries.py:125-129` already anticipate
-  `names[lang]`; `_serializers.py` already ships `names` + `synonyms` on every
-  definition; e2e goldens carry only `standard_name_en`/`definition_id`, so
-  seed/name changes do not break them.
-
----
-
 ## Refactors / agentic-development (2026-08-03)
 
 Refactor candidates identified during an agentic-development audit. These are
@@ -189,6 +155,91 @@ distinguish "worse" from "broken".
   deliberate no-op change to confirm it discards (primary unchanged).
 - Decisions made (2026-08-03): N=3 runs, strict primary improvement keep,
   separate branch isolation, build everything in one pass.
+
+### 26. Category translation in print/export (deferred)
+
+- The print/export document translates biomarker names into the target
+  language, but the category/panel headings (e.g. "Complete Blood Count",
+  "Lipid Panel") are **not** translated — they render in English in every
+  language.
+- Considered translating them (categories are LOINC system classes); removed
+  from scope for now — it's not clear how translated categories would be
+  useful (they are structural groupings, not patient-facing terms), and it
+  would need a new persisted `category_names[lang]`-style field plus its own
+  LLM batch. Leave for later; no code changes planned.
+
+### 27. Translation stability enhancements (`POST /api/translate-biomarkers`)
+
+All changes must keep the observable contract (`backend/docs/architecture.md`
+"Biomarker name translation") identical; the golden harness doesn't cover this
+endpoint — verify via `backend/tests/test_translate_biomarkers.py`.
+
+- **Chunking**: all names go into ONE LLM call with `max_tokens=1000`
+  (`app/api/ai.py`, `_translate_names_to_lang`) — a large flowsheet risks
+  output truncation → malformed JSON → whole document falls back to English.
+  Chunk into batches of ~40–50 names, keep successful chunks, translate only
+  the missing ids on a re-run.
+- **Coverage validation**: the response is trusted blindly — ids the LLM
+  drops, mangles, or duplicates silently fall back to English. Validate that
+  every requested id came back; retry once with only the missing ones.
+- **Parse hardening + retry**: `json.loads(content)` fails on
+  code-fence-wrapped or verbose output with no retry. Strip fences and retry
+  once on parse/network error before falling back to English.
+- **Stable id matching**: the prompt asks the LLM to "echo each id back";
+  opaque def ids are easy to rewrite. Consider positional tokens
+  (`name_1`, `name_2`, …) instead — matches positionally, immune to id
+  mangling.
+- **Rate-limit awareness**: a Mistral 429 is currently indistinguishable from
+  a language failure (both → refund + English fallback). Distinguish
+  transient API errors and retry with backoff instead of refunding
+  immediately.
+- **Cross-batch glossary consistency**: at temperature 0 a single call is
+  deterministic, but a def translated later in a new batch can diverge
+  stylistically. Seed the prompt with previously translated pairs as a
+  glossary.
+
+### 28. Translation user-experience enhancements (print/export)
+
+- **Silent English fallback is invisible**: when the LLM returns nothing, the
+  endpoint answers 200 with English names, so the user opens an
+  untranslated document without knowing why. Compare the response against the
+  requested names and surface "translation failed for N names — showing
+  English" instead of toasting only on HTTP errors.
+- **No progress/ETA**: the Generate button is disabled with static text for a
+  5–30 s call. Show a spinner + elapsed time, or per-chunk progress
+  ("Translating 23 of 87…") once chunking (#27) lands.
+- **No timeout**: the fetch in `frontend/src/services/api.ts`
+  (`translateBiomarkerNames`) has none — a hung Mistral request leaves the
+  button stuck forever. Add a client-side timeout (~60 s) with a clear error.
+- **No review step**: translations are committed and the user is pushed into
+  the editor. A preview ("Verify translations → Generate") would catch wrong
+  medical terms before they land in the document; alternatively, an inline
+  edit affordance for per-definition translated names in the print editor.
+- **Cost/status transparency**: re-generating an already-translated document
+  is instant and free — a subtle "already translated" note would prevent
+  users from thinking it's broken when the wait is skipped.
+
+---
+
+## Stashed / removed features
+
+### 25. Navigation leave-guard during AI processes (stashed 2026-08-20)
+
+- Feature: styled "Leave while AI is working?" confirmation when the user
+  navigates back while AI extraction (add-entry) or print translation
+  (print-setup) is running — blocks the browser Back button (history marker +
+  `popstate` interception), reload/close (`beforeunload`), and in-app nav;
+  abort-on-leave so a stale completion can't hijack navigation.
+- Status: implemented and verified (189 frontend tests pass, `pnpm lint`
+  clean), then removed from the working tree on request so the tree stays
+  focused on the biomarker-translation feature. Fully recoverable:
+  - `git stash list` → `stash@{0}` (e23d908) — snapshot of the full working
+    tree (translation + leave-guard) at removal time.
+  - `/tmp/leave-guard.patch` — leave-guard-only delta (13 frontend files);
+    applies cleanly with `git apply` on top of the translation-only tree.
+- Re-apply: `git apply /tmp/leave-guard.patch` then `pnpm test` / `pnpm lint`,
+  or `git stash apply stash@{0}` for the full snapshot (conflicts if the
+  translation feature has been committed by then).
 
 ---
 
