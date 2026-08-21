@@ -116,12 +116,20 @@ Replaces the old `range_min`/`range_max` + qualitative-flag model:
 - Definitions already carrying `names[lang]` short-circuit: no LLM call, no
   quota charge (re-generates of a translated document are free). Unresolvable
   or other-user's ids are returned untouched and never written.
-- The LLM call is one batched `chat.parse` (`mistral-large-latest`,
-  temperature 0) covering all unique ids; names are sanitized before sending
+- Translation runs in chunked `chat.parse` calls (`mistral-large-latest`,
+  temperature 0), at most 45 unique ids per call (`TRANSLATE_CHUNK_SIZE`),
+  each bounded by `max_tokens=1000` so a large flowsheet cannot truncate
+  into a silent English fallback. Names are sanitized before sending
   (empty/whitespace-only names are skipped so the model can never invent a
-  translation for one), and ids the model dropped are retried once with a
-  second, smaller call. Without `MISTRAL_API_KEY` the request succeeds with
-  English names and never charges quota. On LLM failure the charged quota is
+  translation for one). Items are identified to the model by positional
+  tokens (`t1..tN`, restarting per chunk) and mapped back to the real ids
+  server-side — immune to the model mangling opaque def ids. Ids the model
+  drops are retried once with a smaller call; a response that fails to parse
+  (truncation, code fences) is retried once; ids still missing after all
+  chunks get one final straggler pass. A glossary of already-persisted
+  translations seeds every prompt so later batches stay stylistically
+  consistent. Without `MISTRAL_API_KEY` the request succeeds with English
+  names and never charges quota. On LLM failure the charged quota is
   refunded (`refund_ai_extraction`) and English names are returned —
   best-effort, same refund semantics as `/api/extract`.
 - Translations are quota-gated like extractions

@@ -168,36 +168,6 @@ distinguish "worse" from "broken".
   would need a new persisted `category_names[lang]`-style field plus its own
   LLM batch. Leave for later; no code changes planned.
 
-### 27. Translation stability enhancements (`POST /api/translate-biomarkers`)
-
-All changes must keep the observable contract (`backend/docs/architecture.md`
-"Biomarker name translation") identical; the golden harness doesn't cover this
-endpoint — verify via `backend/tests/test_translate_biomarkers.py`.
-
-- **Chunking**: all names go into ONE LLM call with `max_tokens=1000`
-  (`app/api/ai.py`, `_translate_names_to_lang`) — a large flowsheet risks
-  output truncation → malformed JSON → whole document falls back to English.
-  Chunk into batches of ~40–50 names, keep successful chunks, translate only
-  the missing ids on a re-run.
-- **Coverage validation**: the response is trusted blindly — ids the LLM
-  drops, mangles, or duplicates silently fall back to English. Validate that
-  every requested id came back; retry once with only the missing ones.
-- **Parse hardening + retry**: `json.loads(content)` fails on
-  code-fence-wrapped or verbose output with no retry. Strip fences and retry
-  once on parse/network error before falling back to English.
-- **Stable id matching**: the prompt asks the LLM to "echo each id back";
-  opaque def ids are easy to rewrite. Consider positional tokens
-  (`name_1`, `name_2`, …) instead — matches positionally, immune to id
-  mangling.
-- **Rate-limit awareness**: a Mistral 429 is currently indistinguishable from
-  a language failure (both → refund + English fallback). Distinguish
-  transient API errors and retry with backoff instead of refunding
-  immediately.
-- **Cross-batch glossary consistency**: at temperature 0 a single call is
-  deterministic, but a def translated later in a new batch can diverge
-  stylistically. Seed the prompt with previously translated pairs as a
-  glossary.
-
 ### 28. Translation user-experience enhancements (print/export)
 
 - **Silent English fallback is invisible**: when the LLM returns nothing, the

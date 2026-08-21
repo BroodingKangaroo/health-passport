@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from typing import Optional
 
@@ -40,12 +41,17 @@ Rules:
 - If a name is untranslatable (Latin term, drug name, proper noun), return it unchanged.
 - If the input name is empty, return an empty string.
 - Translate the name only — never add interpretations, units, or reference ranges.
-- Echo each item's `id` back unchanged in the response.
+- Each item carries a short token (`t1`, `t2`, ...). Echo the exact token back unchanged in the response — never invent, renumber, or merge tokens.
 - Return exactly one translated name per input line, in the same order.
 
-Items (one per line: `id | name`):
+{glossary}Items (one per line: `token | name`):
 {items}
 """
+
+# At most this many names per LLM call: keeps each response comfortably under
+# ``max_tokens=1000`` so a large dictionary cannot truncate into a silent
+# English fallback.
+TRANSLATE_CHUNK_SIZE = 45
 
 
 def _get_client() -> Optional[Mistral]:
@@ -120,20 +126,151 @@ def _refund_on_abort(db: Session, user_id: str, is_anonymous: bool, reason: str)
 
 def _clean_translation_name(name: str) -> str:
     """Normalize a biomarker name for the LLM prompt: collapse all whitespace
-    (including newlines — a name must never smuggle extra prompt lines) and
-    remove the ``|`` delimiter that separates id and name."""
-    return " ".join(name.replace("|", " ").split())
+    (including newlines — a name must never smuggle extra prompt lines),
+    remove the ``|`` delimiter that separates id and name, and neutralize
+    ``{``/``}`` so a name can never break the prompt's ``str.format``."""
+    return " ".join(name.replace("|", " ").replace("{", " ").replace("}", " ").split())
 
 
-def _translate_names_to_lang(items: list[tuple[str, str]], lang: str, client: Mistral) -> dict[str, str]:
-    """Translate English biomarker names into ``lang`` via LLM calls.
+def _chunks(seq: list, size: int):
+    """Yield ``seq`` in slices of at most ``size`` items."""
+    for i in range(0, len(seq), size):
+        yield seq[i : i + size]
+
+
+def _extract_translation_json(content) -> Optional[TranslationBatch]:
+    """Parse the LLM's raw response content into a TranslationBatch.
+
+    Tolerates code-fence wrapping and verbose prose around the JSON (the SDK
+    may return the stringified JSON even with ``response_format`` set).
+    Returns ``None`` when no usable JSON can be recovered.
+    """
+    if not isinstance(content, str):
+        return content
+    text = content.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z]*\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    try:
+        return TranslationBatch(**json.loads(text))
+    except (ValueError, TypeError):
+        pass
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        return None
+    try:
+        return TranslationBatch(**json.loads(text[start : end + 1]))
+    except (ValueError, TypeError):
+        return None
+
+
+def _chat_parse_translation(
+    chunk: list[tuple[str, str]], lang: str, client: Mistral, glossary: dict[str, str]
+) -> tuple[Optional[TranslationBatch], Optional[dict[str, str]]]:
+    """One LLM call for ``chunk`` (token-tagged items).
+
+    Returns ``(parsed batch, token -> def id map)``, or ``(None, None)`` when
+    the call or the parse failed. ``glossary`` (en -> translated) seeds the
+    prompt so the model keeps the style of already-translated names.
+    """
+    id_by_token = {f"t{i + 1}": def_id for i, (def_id, _name) in enumerate(chunk)}
+    item_lines = "\n".join(
+        f'- "{token} | {name}"' for token, (_def_id, name) in zip(id_by_token, chunk)
+    )
+    glossary_block = ""
+    if glossary:
+        pairs = "\n".join(
+            f'- "{_clean_translation_name(en)}" -> "{translated}"'
+            for en, translated in glossary.items()
+        )
+        glossary_block = (
+            "Reference translations already in use (match their style exactly):\n"
+            f"{pairs}\n\n"
+        )
+    system_prompt = TRANSLATE_BIOMARKER_PROMPT.format(
+        lang=lang, items=item_lines, glossary=glossary_block
+    )
+    try:
+        chat_response = client.chat.parse(
+            model="mistral-large-latest",
+            temperature=0,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "Return the JSON array now."},
+            ],
+            response_format=TranslationBatch,
+            max_tokens=1000,
+        )
+    except Exception as e:
+        logger.error("Name translation LLM call failed (%s): %s", lang, e)
+        return None, None
+    parsed = _extract_translation_json(chat_response.choices[0].message.content)
+    if parsed is None:
+        logger.error("Failed to parse name translation response (%s)", lang)
+        return None, None
+    return parsed, id_by_token
+
+
+def _merge_translation_chunk(
+    parsed: TranslationBatch, id_by_token: dict[str, str], result: dict[str, str]
+) -> None:
+    """Merge a parsed batch into ``result`` via the token map: unknown tokens
+    are skipped, duplicate tokens are last-wins, empty translations ignored."""
+    for t in parsed.translations:
+        def_id = id_by_token.get((t.id or "").strip())
+        if def_id is None:
+            continue
+        translated = (t.name or "").strip()
+        if translated:
+            result[def_id] = translated
+
+
+def _translate_chunk(
+    chunk: list[tuple[str, str]],
+    lang: str,
+    client: Mistral,
+    glossary: dict[str, str],
+    result: dict[str, str],
+    retry: bool,
+) -> list[tuple[str, str]]:
+    """Translate one chunk, merging into ``result``; returns the ids still
+    missing. When ``retry``, a failed call/parse or dropped ids trigger ONE
+    smaller retry call."""
+    if not chunk:
+        return []
+    parsed, id_by_token = _chat_parse_translation(chunk, lang, client, glossary)
+    if parsed is not None:
+        _merge_translation_chunk(parsed, id_by_token, result)
+    missing = [(def_id, name) for def_id, name in chunk if def_id not in result]
+    if retry and missing:
+        parsed, id_by_token = _chat_parse_translation(missing, lang, client, glossary)
+        if parsed is not None:
+            _merge_translation_chunk(parsed, id_by_token, result)
+    return [(def_id, name) for def_id, name in chunk if def_id not in result]
+
+
+def _translate_names_to_lang(
+    items: list[tuple[str, str]],
+    lang: str,
+    client: Mistral,
+    glossary: Optional[dict[str, str]] = None,
+) -> dict[str, str]:
+    """Translate English biomarker names into ``lang`` via chunked LLM calls.
 
     ``items`` is a list of ``(def id, english name)`` pairs. Returns a mapping
     def id -> translated name. Best-effort: on any LLM failure an empty (or
     partial) mapping is returned and callers fall back to the English names
-    per id. Names are sanitized before sending (empty or whitespace-only
-    names are skipped, so the model can never invent a translation for one).
-    Ids the model drops are retried once with a second, smaller call.
+    per id.
+
+    Names are sanitized before sending (empty or whitespace-only names are
+    skipped, so the model can never invent a translation for one). Items are
+    split into chunks of at most ``TRANSLATE_CHUNK_SIZE`` (each call is
+    bounded by ``max_tokens=1000`` so a large dictionary cannot truncate into
+    a silent English fallback); within a chunk the model is given positional
+    tokens ``t1..tN`` (immune to the model mangling opaque def ids) and ids
+    the model drops are retried once with a smaller call. A response that
+    fails to parse (truncation, code fences) is retried once. Ids still
+    missing after all chunks get one final straggler pass.
     """
     if not items or client is None:
         return {}
@@ -148,41 +285,16 @@ def _translate_names_to_lang(items: list[tuple[str, str]], lang: str, client: Mi
         pending.append((def_id, cleaned))
 
     result: dict[str, str] = {}
-    for _attempt in (1, 2):
-        if not pending:
-            break
-        item_lines = "\n".join(f'- "{def_id} | {name}"' for def_id, name in pending)
-        system_prompt = TRANSLATE_BIOMARKER_PROMPT.format(lang=lang, items=item_lines)
-        try:
-            chat_response = client.chat.parse(
-                model="mistral-large-latest",
-                temperature=0,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": "Return the JSON array now."},
-                ],
-                response_format=TranslationBatch,
-                max_tokens=1000,
-            )
-        except Exception as e:
-            logger.error("Name translation LLM call failed (%s): %s", lang, e)
-            # Transient failure: keep whatever earlier attempts produced.
-            return result
 
-        content = chat_response.choices[0].message.content
-        try:
-            parsed = TranslationBatch(**json.loads(content)) if isinstance(content, str) else content
-        except Exception as e:
-            logger.error("Failed to parse name translation response (%s): %s", lang, e)
-            return result
+    # Pass 1: one call per chunk, with one drop/parse retry per chunk.
+    leftovers: list[tuple[str, str]] = []
+    for chunk in _chunks(pending, TRANSLATE_CHUNK_SIZE):
+        leftovers.extend(_translate_chunk(chunk, lang, client, glossary, result, retry=True))
 
-        for t in parsed.translations:
-            translated = (t.name or "").strip()
-            if translated:
-                result[t.id] = translated
-
-        # Retry only the ids the model dropped or failed to translate.
-        pending = [(def_id, name) for def_id, name in pending if def_id not in result]
+    # Pass 2 (stragglers): one final bounded call per leftover chunk; ids that
+    # still fail here just fall back to English (best-effort contract).
+    for chunk in _chunks(leftovers, TRANSLATE_CHUNK_SIZE):
+        _translate_chunk(chunk, lang, client, glossary, result, retry=False)
 
     return result
 
@@ -466,8 +578,21 @@ async def translate_biomarker_names(
             ),
         )
 
+    # Seed the prompts with translations already persisted for this language
+    # (short-circuited defs that never reach ``to_translate``) so the new
+    # batch stays stylistically consistent with them.
+    glossary: dict[str, str] = {}
+    for item in payload.names:
+        defn = defn_by_id.get(item.id)
+        if defn is None:
+            continue
+        existing = (defn.names or {}).get(payload.lang)
+        en_name = (defn.names or {}).get("en") or item.name
+        if existing and en_name and existing != en_name:
+            glossary[en_name] = existing
+
     unique_items = list({item_id: name for item_id, name in to_translate}.items())
-    translated = _translate_names_to_lang(unique_items, payload.lang, client)
+    translated = _translate_names_to_lang(unique_items, payload.lang, client, glossary=glossary)
     if not translated:
         # The LLM failed after the quota increment was flushed: refund it.
         refund_ai_extraction(db, user_id, is_anonymous)
