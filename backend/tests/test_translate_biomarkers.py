@@ -55,7 +55,9 @@ class TestTranslateBiomarkersEndpoint:
             json={"lang": "de", "names": [{"id": "wbc", "name": "WBC"}]},
         )
         assert resp.status_code == 200
-        assert resp.json()["translations"] == [{"id": "wbc", "name": "Leukozyten"}]
+        assert resp.json()["translations"] == [
+            {"id": "wbc", "name": "Leukozyten", "source": "cached"}
+        ]
         assert _usage_count(db_session) == 0
 
     async def test_without_api_key_returns_english_names_without_charge(
@@ -71,7 +73,7 @@ class TestTranslateBiomarkersEndpoint:
         )
         assert resp.status_code == 200
         assert resp.json()["translations"] == [
-            {"id": "local-test-1", "name": "Test Biomarker"}
+            {"id": "local-test-1", "name": "Test Biomarker", "source": "fallback"}
         ]
         assert _usage_count(db_session) == 0
         defn = db_session.query(BiomarkerDefinition).filter(
@@ -92,7 +94,7 @@ class TestTranslateBiomarkersEndpoint:
 
         assert resp.status_code == 200
         assert resp.json()["translations"] == [
-            {"id": "local-test-1", "name": "Test-Biomarker"}
+            {"id": "local-test-1", "name": "Test-Biomarker", "source": "translated"}
         ]
         assert _usage_count(db_session) == 1
         defn = db_session.query(BiomarkerDefinition).filter(
@@ -114,7 +116,7 @@ class TestTranslateBiomarkersEndpoint:
 
         assert resp.status_code == 200
         assert resp.json()["translations"] == [
-            {"id": "local-test-1", "name": "Test-Biomarker"}
+            {"id": "local-test-1", "name": "Test-Biomarker", "source": "translated"}
         ]
         defn = db_session.query(BiomarkerDefinition).filter(
             BiomarkerDefinition.id == "local-test-1"
@@ -134,7 +136,7 @@ class TestTranslateBiomarkersEndpoint:
 
         assert resp.status_code == 200
         assert resp.json()["translations"] == [
-            {"id": "local-test-1", "name": "Test Biomarker"}
+            {"id": "local-test-1", "name": "Test Biomarker", "source": "fallback"}
         ]
         assert _usage_count(db_session) == 0
         defn = db_session.query(BiomarkerDefinition).filter(
@@ -206,9 +208,10 @@ class TestTranslateBiomarkersEndpoint:
 
         assert resp.status_code == 200
         # First call carries only the sanitized, non-empty name; the retry
-        # still never sees the empty name (the straggler pass makes a third
-        # call since the model returned nothing twice).
-        assert fake.chat.parse.call_count == 3
+        # still never sees the empty name. The model returns nothing, so the
+        # straggler pass makes TWO more calls (call + drop-retry) before
+        # giving up on it.
+        assert fake.chat.parse.call_count == 4
         for call in fake.chat.parse.call_args_list:
             prompt = call.kwargs["messages"][0]["content"]
             assert "Line1\nLine2" not in prompt
@@ -251,7 +254,7 @@ class TestTranslateBiomarkersEndpoint:
 
         assert resp.status_code == 200
         assert resp.json()["translations"] == [
-            {"id": "local-other", "name": "Other Biomarker"}
+            {"id": "local-other", "name": "Other Biomarker", "source": "fallback"}
         ]
         defn = db_session.query(BiomarkerDefinition).filter(
             BiomarkerDefinition.id == "local-other"
@@ -267,7 +270,9 @@ class TestTranslateBiomarkersEndpoint:
         )
 
         assert resp.status_code == 200
-        assert resp.json()["translations"] == [{"id": "no-such-id", "name": "Ghost"}]
+        assert resp.json()["translations"] == [
+            {"id": "no-such-id", "name": "Ghost", "source": "fallback"}
+        ]
 
     async def test_empty_names_returns_empty(self, client, db_session):
         resp = await client.post(
@@ -396,6 +401,47 @@ class TestTranslateBiomarkersEndpoint:
             ).first()
             assert defn.names["de"] == translated
 
+    async def test_straggler_pass_retries_before_falling_back(
+        self, client, db_session, monkeypatch
+    ):
+        """The straggler pass (last chance before English fallback) now has
+        its own drop-retry: an id the straggler's first call missed is retried
+        once in a smaller call instead of falling back to English."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        _seed_plain_def(db_session, id="a")
+        _seed_plain_def(db_session, id="b")
+        fake = Mock()
+        fake.chat.parse.side_effect = [
+            # Pass 1 chunk (a, b): model answers only a.
+            Mock(choices=[Mock(message=Mock(content=json.dumps(
+                {"translations": [{"id": "t1", "name": "A-de"}]}
+            )))]),
+            # Pass 1 drop-retry for b: fails outright.
+            RuntimeError("LLM down"),
+            # Straggler call for b: model returns nothing usable.
+            Mock(choices=[Mock(message=Mock(content=json.dumps(
+                {"translations": []}
+            )))]),
+            # Straggler drop-retry recovers b — no English fallback.
+            Mock(choices=[Mock(message=Mock(content=json.dumps(
+                {"translations": [{"id": "t1", "name": "B-de"}]}
+            )))]),
+        ]
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={"lang": "de", "names": [{"id": "a", "name": "A"}, {"id": "b", "name": "B"}]},
+        )
+
+        assert resp.status_code == 200
+        assert fake.chat.parse.call_count == 4
+        assert {t["id"]: t["name"] for t in resp.json()["translations"]} == {"a": "A-de", "b": "B-de"}
+        defn_b = db_session.query(BiomarkerDefinition).filter(
+            BiomarkerDefinition.id == "b"
+        ).first()
+        assert defn_b.names["de"] == "B-de"
+
     async def test_glossary_seeds_translation_prompts(self, client, db_session, monkeypatch):
         """A def already translated (short-circuited) seeds the glossary so
         the new batch matches its style."""
@@ -423,6 +469,56 @@ class TestTranslateBiomarkersEndpoint:
         prompt = fake.chat.parse.call_args.kwargs["messages"][0]["content"]
         assert "Reference translations" in prompt
         assert "Leukozyten" in prompt
+
+    async def test_empty_response_for_known_token_keeps_input_name(
+        self, client, db_session, monkeypatch
+    ):
+        """A known token answered with an empty string means 'untranslatable':
+        the input name is kept and the id is NOT dropped into retry/straggler
+        (which previously surfaced a false English fallback for Latin names
+        like 'Escherichia coli')."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        _seed_plain_def(db_session, id="eco")
+        fake = Mock()
+        fake.chat.parse.return_value = Mock(choices=[Mock(message=Mock(content=json.dumps(
+            {"translations": [{"id": "t1", "name": ""}]}
+        )))])
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={"lang": "de", "names": [{"id": "eco", "name": "Escherichia coli"}]},
+        )
+
+        assert resp.status_code == 200
+        # Kept as-is in ONE call — no drop-retry, no straggler pass.
+        assert fake.chat.parse.call_count == 1
+        assert resp.json()["translations"] == [
+            {"id": "eco", "name": "Escherichia coli", "source": "translated"}
+        ]
+        defn = db_session.query(BiomarkerDefinition).filter(
+            BiomarkerDefinition.id == "eco"
+        ).first()
+        assert defn.names["de"] == "Escherichia coli"
+
+    async def test_prompt_forbids_omitting_unchanged_items(
+        self, client, db_session, monkeypatch
+    ):
+        """The prompt explicitly requires echoing every token, even when the
+        name stays unchanged (Latin terms) — omission caused false fallbacks."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        _seed_plain_def(db_session)
+        fake = _fake_client({"translations": [{"id": "t1", "name": "Test-Biomarker"}]})
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={"lang": "de", "names": [{"id": "local-test-1", "name": "Test Biomarker"}]},
+        )
+
+        assert resp.status_code == 200
+        prompt = fake.chat.parse.call_args.kwargs["messages"][0]["content"]
+        assert "NEVER omit an item" in prompt
 
     async def test_mangled_and_duplicate_tokens_are_handled(self, client, db_session, monkeypatch):
         """Unknown tokens are skipped, duplicate tokens are last-wins, and a
@@ -463,3 +559,173 @@ class TestTranslateBiomarkersEndpoint:
         ).first()
         assert defn_a.names["de"] == "A-de"
         assert defn_b.names["de"] == "B-de"
+
+    async def test_source_classification_mixed_batch(self, client, db_session, monkeypatch):
+        """One response classifies each item: newly translated, already
+        persisted (cached), and unresolvable (fallback)."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        _seed_plain_def(db_session, id="new-def")
+        fake = _fake_client({"translations": [{"id": "t1", "name": "Neu-Biomarker"}]})
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={
+                "lang": "de",
+                "names": [
+                    {"id": "wbc", "name": "WBC"},  # seed def: names.de already set
+                    {"id": "new-def", "name": "Test Biomarker"},
+                    {"id": "no-such-id", "name": "Ghost"},
+                ],
+            },
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["translations"] == [
+            {"id": "wbc", "name": "Leukozyten", "source": "cached"},
+            {"id": "new-def", "name": "Neu-Biomarker", "source": "translated"},
+            {"id": "no-such-id", "name": "Ghost", "source": "fallback"},
+        ]
+
+    async def test_rate_limit_aborts_remaining_chunks(self, client, db_session, monkeypatch):
+        """A Mistral 429 that surfaces after the SDK's own retries aborts the
+        remaining chunks (no retry/straggler calls): earlier chunks keep their
+        translations, the rest fall back to English, quota stays charged."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        monkeypatch.setattr("app.api.ai.TRANSLATE_CHUNK_SIZE", 1)
+        _seed_plain_def(db_session, id="a")
+        _seed_plain_def(db_session, id="b")
+        _seed_plain_def(db_session, id="c")
+
+        class _FakeRateLimitError(Exception):
+            status_code = 429
+
+        fake = Mock()
+        fake.chat.parse.side_effect = [
+            Mock(choices=[Mock(message=Mock(content=json.dumps(
+                {"translations": [{"id": "t1", "name": "A-de"}]}
+            )))]),
+            _FakeRateLimitError("Status 429: rate limited"),
+        ]
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={
+                "lang": "de",
+                "names": [{"id": "a", "name": "A"}, {"id": "b", "name": "B"}, {"id": "c", "name": "C"}],
+            },
+        )
+
+        assert resp.status_code == 200
+        # Chunk a succeeded; the 429 on chunk b aborted everything after it
+        # (no drop-retry for b, no straggler pass for b/c).
+        assert fake.chat.parse.call_count == 2
+        by_id = {t["id"]: t for t in resp.json()["translations"]}
+        assert by_id["a"] == {"id": "a", "name": "A-de", "source": "translated"}
+        assert by_id["b"] == {"id": "b", "name": "B", "source": "fallback"}
+        assert by_id["c"] == {"id": "c", "name": "C", "source": "fallback"}
+        # Partial success is kept and persisted — no refund (the LLM ran).
+        assert _usage_count(db_session) == 1
+        defn_a = db_session.query(BiomarkerDefinition).filter(
+            BiomarkerDefinition.id == "a"
+        ).first()
+        assert defn_a.names["de"] == "A-de"
+
+    async def test_generic_llm_error_is_not_treated_as_rate_limit(
+        self, client, db_session, monkeypatch
+    ):
+        """A non-429 LLM error keeps the existing behavior: chunk retry +
+        straggler pass still run instead of aborting early."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        monkeypatch.setattr("app.api.ai.TRANSLATE_CHUNK_SIZE", 1)
+        _seed_plain_def(db_session, id="a")
+        _seed_plain_def(db_session, id="b")
+        fake = Mock()
+        fake.chat.parse.side_effect = [
+            Mock(choices=[Mock(message=Mock(content=json.dumps(
+                {"translations": [{"id": "t1", "name": "A-de"}]}
+            )))]),
+            RuntimeError("LLM down"),  # b first call
+            RuntimeError("LLM down"),  # b retry
+            Mock(choices=[Mock(message=Mock(content=json.dumps(
+                {"translations": [{"id": "t1", "name": "B-de"}]}
+            )))]),  # straggler recovers b
+        ]
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={"lang": "de", "names": [{"id": "a", "name": "A"}, {"id": "b", "name": "B"}]},
+        )
+
+        assert resp.status_code == 200
+        assert fake.chat.parse.call_count == 4
+        assert {t["id"]: t["name"] for t in resp.json()["translations"]} == {"a": "A-de", "b": "B-de"}
+
+
+class TestTranslationReviewFlow:
+    async def test_persist_false_returns_translations_without_saving(
+        self, client, db_session, monkeypatch
+    ):
+        """persist=False (review flow): fresh translations come back in the
+        response but names[lang] is NOT written; quota stays charged (the LLM
+        ran)."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        _seed_plain_def(db_session)
+        fake = _fake_client({"translations": [{"id": "t1", "name": "Test-Biomarker"}]})
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={
+                "lang": "de",
+                "names": [{"id": "local-test-1", "name": "Test Biomarker"}],
+                "persist": False,
+            },
+        )
+
+        assert resp.status_code == 200
+        # Response carries the FRESH translation even though nothing persisted.
+        assert resp.json()["translations"] == [
+            {"id": "local-test-1", "name": "Test-Biomarker", "source": "translated"}
+        ]
+        assert _usage_count(db_session) == 1
+        defn = db_session.query(BiomarkerDefinition).filter(
+            BiomarkerDefinition.id == "local-test-1"
+        ).first()
+        assert defn.names.get("de") is None
+
+    async def test_commit_persists_accepted_names_without_llm_or_quota(
+        self, client, db_session, monkeypatch
+    ):
+        """The commit endpoint writes the reviewed names verbatim: no LLM
+        client, no quota charge, foreign/unresolvable ids skipped."""
+        monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+        _seed_plain_def(db_session, id="a")
+        _seed_plain_def(db_session, id="local-other", user_id="someone-else")
+
+        resp = await client.post(
+            "/api/translate-biomarkers/commit",
+            json={
+                "lang": "pl",
+                "items": [
+                    {"id": "a", "name": "Test-Biomarker-PL"},
+                    {"id": "local-other", "name": "Foreign-PL"},  # foreign: skipped
+                    {"id": "no-such-id", "name": "Ghost-PL"},  # unknown: skipped
+                    {"id": "a", "name": ""},  # duplicate id, empty name: skipped
+                ],
+            },
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"saved": 1}
+        assert _usage_count(db_session) == 0
+        defn = db_session.query(BiomarkerDefinition).filter(
+            BiomarkerDefinition.id == "a"
+        ).first()
+        assert defn.names["pl"] == "Test-Biomarker-PL"
+        other = db_session.query(BiomarkerDefinition).filter(
+            BiomarkerDefinition.id == "local-other"
+        ).first()
+        assert other.names.get("pl") is None

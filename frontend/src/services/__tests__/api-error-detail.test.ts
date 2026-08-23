@@ -3,6 +3,7 @@ import {
   UsageLimitError,
   extractMedicalData,
   saveMedicalEntry,
+  translateBiomarkerNames,
 } from '@/services/api'
 
 function mockFetch(ok: boolean, status: number, body: unknown): void {
@@ -89,6 +90,59 @@ describe('extractMedicalData error detail', () => {
     await expect(extractMedicalData(new File([''], 'a.pdf'))).rejects.toMatchObject({
       status: 500,
       message: 'POST /extract failed',
+    })
+  })
+})
+
+describe('translateBiomarkerNames error detail', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('formats FastAPI 422 validation arrays into readable text, never [object Object]', async () => {
+    mockFetch(false, 422, {
+      detail: [
+        {
+          type: 'literal_error',
+          loc: ['body', 'lang'],
+          msg: "Input should be 'de', 'fr', 'es' or 'he'",
+          input: 'pl',
+          ctx: { expected: "'de', 'fr', 'es' or 'he'" },
+        },
+      ],
+    })
+    await expect(
+      translateBiomarkerNames('pl', [{ id: 'a', name: 'A' }]),
+    ).rejects.toMatchObject({
+      status: 422,
+      message: "body.lang: Input should be 'de', 'fr', 'es' or 'he'",
+    })
+  })
+
+  it('falls back to a generic message when the body is not JSON', async () => {
+    const res = {
+      ok: false,
+      status: 500,
+      json: () => Promise.reject(new Error('not json')),
+      body: null,
+    } as unknown as Response
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(res)))
+    await expect(translateBiomarkerNames('de', [])).rejects.toMatchObject({
+      status: 500,
+      message: 'POST /translate-biomarkers failed',
+    })
+  })
+
+  it('keeps string details and throws UsageLimitError on 429', async () => {
+    mockFetch(false, 429, { detail: 'AI translation limit reached (5/5).' })
+    await expect(
+      translateBiomarkerNames('de', [{ id: 'a', name: 'A' }]),
+    ).rejects.toMatchObject({
+      status: 429,
+      message: 'AI translation limit reached (5/5).',
     })
   })
 })

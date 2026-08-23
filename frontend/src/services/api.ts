@@ -58,6 +58,34 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
+/**
+ * Extract a human-readable message from an error-response body. FastAPI
+ * returns `detail` as a string on HTTPException but as an ARRAY of
+ * validation-error objects on 422 — those must become readable text, never
+ * "[object Object]".
+ */
+function extractDetail(body: unknown, fallback: string): string {
+  const detail = (body as { detail?: unknown } | null)?.detail
+  if (typeof detail === 'string' && detail) return detail
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((item) => {
+        if (typeof item === 'string') return item
+        if (item && typeof item === 'object') {
+          const e = item as { msg?: unknown; loc?: unknown }
+          const msg = typeof e.msg === 'string' ? e.msg : ''
+          const loc = Array.isArray(e.loc) ? e.loc.join('.') : ''
+          if (msg && loc) return `${loc}: ${msg}`
+          return msg || JSON.stringify(item)
+        }
+        return String(item)
+      })
+      .filter(Boolean)
+    if (parts.length > 0) return parts.join('; ')
+  }
+  return fallback
+}
+
 async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { ...authHeaders() },
@@ -108,32 +136,95 @@ export interface TranslateNameItem {
   name: string
 }
 
+export type TranslationSource = 'translated' | 'cached' | 'fallback'
+
+export interface TranslatedName {
+  name: string
+  source: TranslationSource
+}
+
+// A hung Mistral request must not leave the Generate button stuck forever;
+// the backend short-circuits already-translated names, so a retry after a
+// timeout is cheap.
+const TRANSLATE_TIMEOUT_MS = 60_000
+
 /**
- * Translate biomarker definition names into a target language. The backend
- * persists translations into each definition's `names[lang]`, so repeated
- * calls for already-translated names are free (server-side short-circuit).
- * Returns an id -> translated name map (English fallback for failures).
+ * Translate biomarker definition names into a target language. By default the
+ * backend persists translations into each definition's `names[lang]` (free
+ * short-circuit for already-translated names). With `{ persist: false }`
+ * (review flow) nothing is written — confirm via `commitTranslatedNames`.
+ * Returns an id -> {name, source} map; `source` distinguishes newly
+ * translated names from cached ones and silent English fallbacks.
  */
 export async function translateBiomarkerNames(
   lang: TranslateLang,
   names: TranslateNameItem[],
-): Promise<Map<string, string>> {
-  const res = await fetch(`${API_BASE}/translate-biomarkers`, {
+  opts?: { persist?: boolean },
+): Promise<Map<string, TranslatedName>> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TRANSLATE_TIMEOUT_MS)
+  try {
+    const res = await fetch(`${API_BASE}/translate-biomarkers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      credentials: 'include',
+      body: JSON.stringify({ lang, names, persist: opts?.persist ?? true }),
+      signal: controller.signal,
+    })
+    if (!res.ok) {
+      if (res.status === 429) {
+        const body = await res.json().catch(() => null)
+        throw new UsageLimitError(res.status, extractDetail(body, 'Usage limit reached'))
+      }
+      const body = await res.json().catch(() => null)
+      throw new ApiError(
+        res.status,
+        extractDetail(body, 'POST /translate-biomarkers failed'),
+      )
+    }
+    const data = (await res.json()) as {
+      translations: (TranslateNameItem & { source?: TranslationSource })[]
+    }
+    return new Map(
+      (data.translations || []).map((t) => [
+        t.id,
+        { name: t.name, source: t.source ?? 'fallback' },
+      ]),
+    )
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error(
+        'Translation timed out — the AI service did not respond in time. Please try again.',
+      )
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Persist the translations the user accepted in the review dialog. No LLM
+ * call and no quota — the LLM already ran in the preceding
+ * `translateBiomarkerNames(..., { persist: false })` request. Returns the
+ * number of definitions written.
+ */
+export async function commitTranslatedNames(
+  lang: TranslateLang,
+  items: TranslateNameItem[],
+): Promise<number> {
+  const res = await fetch(`${API_BASE}/translate-biomarkers/commit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     credentials: 'include',
-    body: JSON.stringify({ lang, names }),
+    body: JSON.stringify({ lang, items }),
   })
   if (!res.ok) {
-    if (res.status === 429) {
-      const detail = await res.json().catch(() => ({ detail: 'Usage limit reached' }))
-      throw new UsageLimitError(res.status, detail.detail || 'Usage limit reached')
-    }
-    const detail = await res.json().catch(() => ({ detail: 'POST /translate-biomarkers failed' }))
-    throw new ApiError(res.status, detail.detail || 'POST /translate-biomarkers failed')
+    const body = await res.json().catch(() => null)
+    throw new ApiError(res.status, extractDetail(body, 'POST /translate-biomarkers/commit failed'))
   }
-  const data = (await res.json()) as { translations: TranslateNameItem[] }
-  return new Map((data.translations || []).map((t) => [t.id, t.name]))
+  const data = (await res.json()) as { saved?: number }
+  return data.saved ?? 0
 }
 
 /* ----- AI Extraction (SSE stream) ----- */
@@ -153,11 +244,11 @@ export async function extractMedicalData(
   })
   if (!res.ok) {
     if (res.status === 429) {
-      const detail = await res.json().catch(() => ({ detail: 'Usage limit reached' }))
-      throw new UsageLimitError(res.status, detail.detail || 'Usage limit reached')
+      const body = await res.json().catch(() => null)
+      throw new UsageLimitError(res.status, extractDetail(body, 'Usage limit reached'))
     }
-    const detail = await res.json().catch(() => ({ detail: 'POST /extract failed' }))
-    throw new ApiError(res.status, detail.detail || 'POST /extract failed')
+    const body = await res.json().catch(() => null)
+    throw new ApiError(res.status, extractDetail(body, 'POST /extract failed'))
   }
 
   if (!res.body) throw new Error('Response body is missing — cannot read extraction stream')
@@ -330,11 +421,11 @@ export async function saveMedicalEntry(formData: FormData): Promise<SaveEntryRes
   })
   if (!res.ok) {
     if (res.status === 429) {
-      const detail = await res.json().catch(() => ({ detail: 'Usage limit reached' }))
-      throw new UsageLimitError(res.status, detail.detail || 'Usage limit reached')
+      const body = await res.json().catch(() => null)
+      throw new UsageLimitError(res.status, extractDetail(body, 'Usage limit reached'))
     }
-    const detail = await res.json().catch(() => ({ detail: 'POST /entry failed' }))
-    throw new ApiError(res.status, detail.detail || 'POST /entry failed')
+    const body = await res.json().catch(() => null)
+    throw new ApiError(res.status, extractDetail(body, 'POST /entry failed'))
   }
   return res.json()
 }
@@ -352,11 +443,11 @@ export async function mergeMedicalEntry(
   })
   if (!res.ok) {
     if (res.status === 429) {
-      const detail = await res.json().catch(() => ({ detail: 'Usage limit reached' }))
-      throw new UsageLimitError(res.status, detail.detail || 'Usage limit reached')
+      const body = await res.json().catch(() => null)
+      throw new UsageLimitError(res.status, extractDetail(body, 'Usage limit reached'))
     }
-    const detail = await res.json().catch(() => ({ detail: 'POST /entry/merge failed' }))
-    throw new ApiError(res.status, detail.detail || 'POST /entry/merge failed')
+    const body = await res.json().catch(() => null)
+    throw new ApiError(res.status, extractDetail(body, 'POST /entry/merge failed'))
   }
   return res.json()
 }
@@ -369,8 +460,8 @@ export async function deleteEntry(id: string): Promise<DeleteEntryResponse> {
     credentials: 'include',
   })
   if (!res.ok) {
-    const detail = await res.json().catch(() => ({ detail: 'Delete failed' }))
-    throw new ApiError(res.status, detail.detail || 'DELETE /entry failed')
+    const body = await res.json().catch(() => null)
+    throw new ApiError(res.status, extractDetail(body, 'DELETE /entry failed'))
   }
   return res.json() as Promise<DeleteEntryResponse>
 }

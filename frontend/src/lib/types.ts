@@ -202,7 +202,8 @@ export type PrintLang = 'ru' | 'en' | 'de' | 'fr' | 'es' | 'he' | 'pl'
 
 // Languages a document can be translated into for print/export (English ->
 // target). `ru` is never a translation target: "original" mode renders the
-// Russian source name directly.
+// source-document name directly (see ISSUES.md #29 — it lives under the
+// `ru` key regardless of the document's real language).
 export type TranslateLang = 'de' | 'fr' | 'es' | 'he' | 'pl'
 
 /* ----- Form Types ----- */

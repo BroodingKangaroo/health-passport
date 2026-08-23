@@ -17,6 +17,7 @@ from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
 from app.db.models import Patient
 from app.db.session import SessionLocal, get_db
 from app.schemas.ai import (
+    CommitTranslationRequest,
     RawInstrumentalData,
     StandardizedMedicalRecord,
     StandardizedVisitData,
@@ -38,8 +39,9 @@ Rules:
 - Use the standard medical term in {lang} used on laboratory reports.
 - Keep Latin acronyms, abbreviations, and numbers verbatim (e.g. "LDL Cholesterol" -> "Colesterol LDL", "Vitamin B12" -> "Vitamina B12", "TSH", "CRP", "HIV" stay unchanged).
 - Preserve clinical qualifiers verbatim — never drop or rephrase them (e.g. "Free T4", "Total", "Direct", "Indirect", "Estimated", "Urine" must survive in the translation).
-- If a name is untranslatable (Latin term, drug name, proper noun), return it unchanged.
-- If the input name is empty, return an empty string.
+- If a name is untranslatable (Latin term like "Escherichia coli" or "Bacteroides spp", drug name, proper noun), return it unchanged.
+- NEVER omit an item from the response: even when the name stays unchanged, echo its token with the identical name.
+- If the input name is empty, return an empty string for its token.
 - Translate the name only — never add interpretations, units, or reference ranges.
 - Each item carries a short token (`t1`, `t2`, ...). Echo the exact token back unchanged in the response — never invent, renumber, or merge tokens.
 - Return exactly one translated name per input line, in the same order.
@@ -48,10 +50,16 @@ Rules:
 {items}
 """
 
-# At most this many names per LLM call: keeps each response comfortably under
-# ``max_tokens=1000`` so a large dictionary cannot truncate into a silent
-# English fallback.
+# At most this many names per LLM call: keeps each response comfortably
+# within its ``max_tokens`` budget so a large dictionary cannot truncate into
+# a silent English fallback.
 TRANSLATE_CHUNK_SIZE = 45
+TRANSLATE_MAX_TOKENS = 2000
+
+# Last-chance straggler calls use smaller chunks: they carry only the ids
+# earlier passes dropped, and maximizing their success rate is worth the
+# extra call.
+TRANSLATE_STRAGGLER_CHUNK_SIZE = 20
 
 
 def _get_client() -> Optional[Mistral]:
@@ -138,6 +146,21 @@ def _chunks(seq: list, size: int):
         yield seq[i : i + size]
 
 
+class _TranslationRateLimited(Exception):
+    """Raised inside ``_translate_names_to_lang`` when Mistral answers 429 even
+    after the SDK's own retry/backoff: further calls would be doomed, so the
+    remaining chunks are skipped and partial results are returned."""
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """True when ``exc`` looks like a Mistral 429 (rate limit). The SDK raises
+    ``MistralError`` subclasses carrying ``status_code``; message/type-name
+    matching covers unexpected wrappers (and test doubles)."""
+    if getattr(exc, "status_code", None) == 429:
+        return True
+    return "429" in type(exc).__name__ or "status 429" in str(exc).lower()
+
+
 def _extract_translation_json(content) -> Optional[TranslationBatch]:
     """Parse the LLM's raw response content into a TranslationBatch.
 
@@ -166,16 +189,17 @@ def _extract_translation_json(content) -> Optional[TranslationBatch]:
 
 def _chat_parse_translation(
     chunk: list[tuple[str, str]], lang: str, client: Mistral, glossary: dict[str, str]
-) -> tuple[Optional[TranslationBatch], Optional[dict[str, str]]]:
+) -> tuple[Optional[TranslationBatch], Optional[dict[str, tuple[str, str]]]]:
     """One LLM call for ``chunk`` (token-tagged items).
 
-    Returns ``(parsed batch, token -> def id map)``, or ``(None, None)`` when
-    the call or the parse failed. ``glossary`` (en -> translated) seeds the
-    prompt so the model keeps the style of already-translated names.
+    Returns ``(parsed batch, token -> (def id, cleaned input name) map)``, or
+    ``(None, None)`` when the call or the parse failed. ``glossary``
+    (en -> translated) seeds the prompt so the model keeps the style of
+    already-translated names.
     """
-    id_by_token = {f"t{i + 1}": def_id for i, (def_id, _name) in enumerate(chunk)}
+    id_by_token = {f"t{i + 1}": (def_id, name) for i, (def_id, name) in enumerate(chunk)}
     item_lines = "\n".join(
-        f'- "{token} | {name}"' for token, (_def_id, name) in zip(id_by_token, chunk)
+        f'- "{token} | {name}"' for token, (_def_id, name) in id_by_token.items()
     )
     glossary_block = ""
     if glossary:
@@ -199,9 +223,15 @@ def _chat_parse_translation(
                 {"role": "user", "content": "Return the JSON array now."},
             ],
             response_format=TranslationBatch,
-            max_tokens=1000,
+            max_tokens=TRANSLATE_MAX_TOKENS,
         )
     except Exception as e:
+        if _is_rate_limit_error(e):
+            # The SDK's retry_config has already retried with backoff by the
+            # time this surfaces — sustained rate limiting, not a blip. Abort
+            # the remaining work instead of burning minutes on doomed calls.
+            logger.error("Name translation rate-limited by Mistral (%s)", lang)
+            raise _TranslationRateLimited() from e
         logger.error("Name translation LLM call failed (%s): %s", lang, e)
         return None, None
     parsed = _extract_translation_json(chat_response.choices[0].message.content)
@@ -212,17 +242,23 @@ def _chat_parse_translation(
 
 
 def _merge_translation_chunk(
-    parsed: TranslationBatch, id_by_token: dict[str, str], result: dict[str, str]
+    parsed: TranslationBatch,
+    id_by_token: dict[str, tuple[str, str]],
+    result: dict[str, str],
 ) -> None:
-    """Merge a parsed batch into ``result`` via the token map: unknown tokens
-    are skipped, duplicate tokens are last-wins, empty translations ignored."""
+    """Merge a parsed batch into ``result`` via the token map. Unknown tokens
+    are skipped, duplicate tokens are last-wins. A known token answered with
+    an EMPTY string means the model deemed the name untranslatable — keep the
+    input name (kept-as-is) instead of dropping the id into the retry/
+    straggler path, which would end in a false "English fallback"."""
     for t in parsed.translations:
-        def_id = id_by_token.get((t.id or "").strip())
-        if def_id is None:
+        token = (t.id or "").strip()
+        entry = id_by_token.get(token)
+        if entry is None:
             continue
+        def_id, input_name = entry
         translated = (t.name or "").strip()
-        if translated:
-            result[def_id] = translated
+        result[def_id] = translated or input_name
 
 
 def _translate_chunk(
@@ -265,12 +301,15 @@ def _translate_names_to_lang(
     Names are sanitized before sending (empty or whitespace-only names are
     skipped, so the model can never invent a translation for one). Items are
     split into chunks of at most ``TRANSLATE_CHUNK_SIZE`` (each call is
-    bounded by ``max_tokens=1000`` so a large dictionary cannot truncate into
-    a silent English fallback); within a chunk the model is given positional
-    tokens ``t1..tN`` (immune to the model mangling opaque def ids) and ids
-    the model drops are retried once with a smaller call. A response that
-    fails to parse (truncation, code fences) is retried once. Ids still
-    missing after all chunks get one final straggler pass.
+    bounded by ``TRANSLATE_MAX_TOKENS`` so a large dictionary cannot truncate
+    into a silent English fallback); within a chunk the model is given
+    positional tokens ``t1..tN`` (immune to the model mangling opaque def ids)
+    and ids the model drops are retried once with a smaller call. A response
+    that fails to parse (truncation, code fences) is retried once. Ids still
+    missing after all chunks get final smaller straggler calls (with their
+    own drop-retry) — every extra call is spent before an id is allowed to
+    fall back to English. A sustained Mistral 429 aborts the remaining chunks
+    and returns what translated so far.
     """
     if not items or client is None:
         return {}
@@ -286,15 +325,30 @@ def _translate_names_to_lang(
 
     result: dict[str, str] = {}
 
-    # Pass 1: one call per chunk, with one drop/parse retry per chunk.
-    leftovers: list[tuple[str, str]] = []
-    for chunk in _chunks(pending, TRANSLATE_CHUNK_SIZE):
-        leftovers.extend(_translate_chunk(chunk, lang, client, glossary, result, retry=True))
+    try:
+        # Pass 1: one call per chunk, with one drop/parse retry per chunk.
+        leftovers: list[tuple[str, str]] = []
+        for chunk in _chunks(pending, TRANSLATE_CHUNK_SIZE):
+            leftovers.extend(_translate_chunk(chunk, lang, client, glossary, result, retry=True))
 
-    # Pass 2 (stragglers): one final bounded call per leftover chunk; ids that
-    # still fail here just fall back to English (best-effort contract).
-    for chunk in _chunks(leftovers, TRANSLATE_CHUNK_SIZE):
-        _translate_chunk(chunk, lang, client, glossary, result, retry=False)
+        # Pass 2 (stragglers): smaller chunks and a drop/parse retry each —
+        # this is the last chance before an id falls back to English.
+        for chunk in _chunks(leftovers, TRANSLATE_STRAGGLER_CHUNK_SIZE):
+            _translate_chunk(chunk, lang, client, glossary, result, retry=True)
+    except _TranslationRateLimited:
+        # Sustained rate limiting: skip the remaining chunks instead of
+        # stacking more doomed calls on top of the SDK's own retries;
+        # untranslated ids fall back to English upstream.
+        pass
+
+    missed = [def_id for def_id, _name in pending if def_id not in result]
+    if missed:
+        logger.warning(
+            "Name translation (%s): %d/%d ids fell back to English after all passes",
+            lang,
+            len(missed),
+            len(pending),
+        )
 
     return result
 
@@ -497,6 +551,35 @@ async def extract_medical_data(
     )
 
 
+def _translation_response(
+    payload: TranslateRequest,
+    defn_by_id: dict,
+    translated: dict[str, str],
+) -> TranslateResponse:
+    """Build the response in request order: every requested id comes back with
+    its persisted translation when one exists, else the requested (English)
+    name, plus a per-item ``source`` classification — ``translated`` (newly
+    LLM-translated this request), ``cached`` (definition already carried
+    ``names[lang]``), or ``fallback`` (LLM failure, unresolvable/foreign id,
+    or empty name)."""
+    translations: list[TranslationItem] = []
+    for item in payload.names:
+        defn = defn_by_id.get(item.id)
+        persisted = (defn.names or {}).get(payload.lang) if defn is not None else None
+        if item.id in translated:
+            source = "translated"
+        elif persisted:
+            source = "cached"
+        else:
+            source = "fallback"
+        # A freshly translated name wins over the (stale or absent) persisted
+        # one — with persist=False nothing was written, so this is the only
+        # place the new translation exists.
+        name = translated.get(item.id) or persisted or item.name
+        translations.append(TranslationItem(id=item.id, name=name, source=source))
+    return TranslateResponse(translations=translations)
+
+
 @router.post("/api/translate-biomarkers", response_model=TranslateResponse)
 async def translate_biomarker_names(
     payload: TranslateRequest,
@@ -511,6 +594,8 @@ async def translate_biomarker_names(
     Best-effort: definitions that already carry ``names[lang]`` are returned
     untouched (no LLM call, no quota charge); on LLM failure the request still
     succeeds with the original English names and the charged quota is refunded.
+    Every returned item carries a ``source`` classification (``translated`` /
+    ``cached`` / ``fallback``) so clients can surface silent fallbacks.
     """
     _user, user_id, is_anonymous = user_data
 
@@ -545,28 +630,13 @@ async def translate_biomarker_names(
     if not to_translate:
         # Nothing new to translate: return whatever is already known without
         # burning quota (re-generates of an already-translated document are free).
-        return TranslateResponse(
-            translations=[
-                TranslationItem(
-                    id=item.id,
-                    name=(
-                        (defn_by_id[item.id].names or {}).get(payload.lang)
-                        if item.id in defn_by_id
-                        else item.name
-                    )
-                    or item.name,
-                )
-                for item in payload.names
-            ]
-        )
+        return _translation_response(payload, defn_by_id, translated={})
 
     # The LLM call can never succeed without a key, so never charge quota for
     # a request that would have to fall back to English anyway.
     client = _get_client()
     if client is None:
-        return TranslateResponse(
-            translations=[TranslationItem(id=item.id, name=item.name) for item in payload.names]
-        )
+        return _translation_response(payload, defn_by_id, translated={})
 
     allowed, current_count, limit = check_and_record_ai_usage(db, user_id, is_anonymous, commit=False)
     if not allowed:
@@ -596,36 +666,67 @@ async def translate_biomarker_names(
     if not translated:
         # The LLM failed after the quota increment was flushed: refund it.
         refund_ai_extraction(db, user_id, is_anonymous)
-        return TranslateResponse(
-            translations=[TranslationItem(id=item.id, name=item.name) for item in payload.names]
-        )
+        return _translation_response(payload, defn_by_id, translated={})
 
-    # Persist each translation into the definition's names JSON column so
-    # every later render reads it without another LLM call. Committing here
-    # also persists the quota increment.
-    for def_id, _en_name in to_translate:
-        defn = defn_by_id.get(def_id)
-        if defn is None:
-            continue
-        translated_name = translated.get(def_id)
-        if not translated_name:
-            continue
-        names = dict(defn.names or {})
-        names[payload.lang] = translated_name
-        defn.names = names
+    if payload.persist:
+        # Persist each translation into the definition's names JSON column so
+        # every later render reads it without another LLM call. Committing here
+        # also persists the quota increment.
+        for def_id, _en_name in to_translate:
+            defn = defn_by_id.get(def_id)
+            if defn is None:
+                continue
+            translated_name = translated.get(def_id)
+            if not translated_name:
+                continue
+            names = dict(defn.names or {})
+            names[payload.lang] = translated_name
+            defn.names = names
+    # With persist=False (review flow) the names are NOT written — the client
+    # confirms them via /translate-biomarkers/commit. The quota increment IS
+    # committed either way: the LLM genuinely ran.
     db.commit()
 
-    return TranslateResponse(
-        translations=[
-            TranslationItem(
-                id=item.id,
-                name=(
-                    (defn_by_id[item.id].names or {}).get(payload.lang)
-                    if item.id in defn_by_id
-                    else item.name
-                )
-                or item.name,
-            )
-            for item in payload.names
-        ]
+    return _translation_response(payload, defn_by_id, translated=translated)
+
+
+@router.post("/api/translate-biomarkers/commit")
+async def commit_translated_names(
+    payload: CommitTranslationRequest,
+    db: Session = Depends(get_db),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+):
+    """Persist reviewed translations (``{id, name}``) chosen in the print-setup
+    review dialog into the definitions' ``names[lang]`` column. No LLM call and
+    no quota charge — the LLM already ran in the preceding
+    ``persist:false /translate-biomarkers`` request; this only writes the terms
+    the user accepted. Unresolvable or foreign ids are skipped silently."""
+    _user, user_id, _is_anonymous = user_data
+
+    ids = [item.id for item in payload.items]
+    defns = (
+        db.query(BiomarkerDefinitionModel)
+        .filter(
+            BiomarkerDefinitionModel.id.in_(ids),
+            (BiomarkerDefinitionModel.scope == "global")
+            | (BiomarkerDefinitionModel.user_id.is_(None))
+            | (BiomarkerDefinitionModel.user_id == user_id),
+        )
+        .all()
+        if ids
+        else []
     )
+    defn_by_id = {d.id: d for d in defns}
+
+    saved = 0
+    for item in payload.items:
+        name = (item.name or "").strip()
+        defn = defn_by_id.get(item.id)
+        if defn is None or not name:
+            continue
+        names = dict(defn.names or {})
+        names[payload.lang] = name
+        defn.names = names
+        saved += 1
+    db.commit()
+    return {"saved": saved}

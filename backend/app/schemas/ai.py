@@ -132,11 +132,30 @@ class BiomarkerNameItem(BaseModel):
 class TranslateRequest(BaseModel):
     lang: Literal["de", "fr", "es", "he", "pl"]
     names: list[BiomarkerNameItem] = []
+    # When False (review flow), translations are returned but NOT persisted —
+    # the client confirms them afterwards via /translate-biomarkers/commit.
+    persist: bool = True
+
+
+class CommitTranslationItem(BaseModel):
+    id: str
+    name: str
+
+
+class CommitTranslationRequest(BaseModel):
+    """Reviewed translations chosen by the user in the print-setup review
+    dialog; written verbatim into the definitions' ``names[lang]``."""
+    lang: Literal["de", "fr", "es", "he", "pl"]
+    items: list[CommitTranslationItem] = []
 
 
 class TranslationItem(BaseModel):
     id: str
     name: str
+    # How ``name`` was produced: newly LLM-translated this request, already
+    # persisted on the definition (no LLM call), or English fallback (LLM
+    # failure, unresolvable/foreign id, or empty name).
+    source: Literal["translated", "cached", "fallback"] = "fallback"
 
 
 class TranslationBatch(BaseModel):

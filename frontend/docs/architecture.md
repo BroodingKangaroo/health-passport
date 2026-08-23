@@ -35,17 +35,39 @@ backend to include the site).
 - `print-setup.tsx` "Generate Document" actually performs its promised AI
   translation: in `translate`/`bilingual` mode with a non-`en` target it
   fetches the flowsheet matrix and calls `POST /api/translate-biomarkers`
-  (one batched LLM call per language) BEFORE navigating to `/print-editor`;
-  the button shows "Translating terminology…" while it runs.
+  (one batched LLM call per language). While it runs, the button shows a
+  spinner with live elapsed seconds ("Translating terminology… Ns") so the
+  5–30 s AI call never feels stuck; `translateBiomarkerNames` in
+  `services/api.ts` aborts with a clear error after 60 s (a retry is cheap —
+  already-translated names short-circuit server-side).
+- The response's per-item `source` (`translated`/`cached`/`fallback`, see
+  `backend/docs/architecture.md`) drives the UX: any fresh translations open
+  a review dialog (`translation-preview-dialog.tsx`) listing each English →
+  translated pair under a "Name used in document" header, with a per-term
+  `Translation | English` toggle — active on fresh translations, rendered
+  locked on cached/kept-as-is rows (locked to Translation); fallback rows
+  have no toggle — the amber "English fallback" label sits in the choice
+  column instead; the row always shows the name that will actually print. The dialog is naming-only — it never removes a biomarker from the
+  document (exclusion lives in the print editor filter), and a footer hint says
+  so. Confirming commits ONLY the terms left on `Translation`
+  (`commitTranslatedNames` → `POST /translate-biomarkers/commit`, no LLM/quota)
+  and navigates to `/print-editor`; "Back" discards the whole run without
+  saving anything (a re-generate then re-translates at LLM cost). A success
+  toast states how many terms were saved for future documents. Badges
+  distinguish `cached` ("already translated"), `fallback` ("English fallback"
+  — a failure), and names the model deliberately returned unchanged — Latin
+  terms, acronyms, proper nouns (`translated` but identical to the input,
+  badged "kept as-is"); a two-row legend explains both. An all-`cached`
+  response skips the dialog entirely — re-generates of an already-translated
+  document are instant and free.
 - The backend persists translations into the definition's `names[lang]`
   column (see `backend/docs/architecture.md`), so `print-editor.tsx`'s
   `translatedName()` — which reads `def.names[lang]` via the flowsheet's
-  per-definition `names` — renders them with no renderer changes. Repeated
-  generates are free (server-side short-circuit; the backend never re-charges
-  quota for already-translated names).
+  per-definition `names` — renders them with no renderer changes.
 - Translation failures never block export: the document proceeds with English
-  names and a toast explains why. The `original` mode and `en` target skip the
-  translation call entirely.
+  names and a toast explains why. The `original` mode (labeled neutrally
+  "Keep Original" — source documents are not necessarily Russian) and the
+  `en` target skip the translation call entirely.
 
 ## Reference formatting / stats
 

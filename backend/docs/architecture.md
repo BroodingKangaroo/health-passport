@@ -110,28 +110,52 @@ Replaces the old `range_min`/`range_max` + qualitative-flag model:
   `names[lang]` JSON column, so every later render (flowsheet, print editor)
   reads it without another LLM call. `en`/`ru` are not targets: `en` names
   already exist and `ru` prints the source name directly.
-- Request `{lang, names: [{id, name}]}`; response `{translations: [{id,
-  name}]}` — every requested id comes back, in request order, with the
-  persisted translation when one exists, else the requested (English) name.
+- Request `{lang, names: [{id, name}], persist?}`; response `{translations:
+  [{id, name, source}]}` — every requested id comes back, in request order,
+  with the persisted translation when one exists, else the requested
+  (English) name. Each item's `source` classifies how `name` was produced:
+  `translated` (newly LLM-translated this request), `cached` (the definition
+  already carried `names[lang]`), or `fallback` (LLM failure/drop,
+  unresolvable or foreign id, or empty name) — so clients can surface silent
+  English fallbacks instead of trusting every response blindly.
+- **Two-phase review flow**: with `persist: false` the translations are
+  returned but NOT written — the print-setup review dialog lets the user
+  accept/reject each term and then commits only the accepted ones via
+  `POST /api/translate-biomarkers/commit` (`{lang, items: [{id, name}]}` →
+  `{saved: n}`). The commit endpoint writes names verbatim into visible
+  definitions' `names[lang]`: no LLM call, no quota charge (the LLM already
+  ran in the phase-1 request; its quota increment is committed either way).
+  Unresolvable/foreign ids are skipped by both endpoints. Default is
+  `persist: true` (translate-and-save in one shot).
 - Definitions already carrying `names[lang]` short-circuit: no LLM call, no
   quota charge (re-generates of a translated document are free). Unresolvable
   or other-user's ids are returned untouched and never written.
 - Translation runs in chunked `chat.parse` calls (`mistral-large-latest`,
   temperature 0), at most 45 unique ids per call (`TRANSLATE_CHUNK_SIZE`),
-  each bounded by `max_tokens=1000` so a large flowsheet cannot truncate
+  each bounded by `TRANSLATE_MAX_TOKENS` so a large flowsheet cannot truncate
   into a silent English fallback. Names are sanitized before sending
   (empty/whitespace-only names are skipped so the model can never invent a
   translation for one). Items are identified to the model by positional
   tokens (`t1..tN`, restarting per chunk) and mapped back to the real ids
-  server-side — immune to the model mangling opaque def ids. Ids the model
-  drops are retried once with a smaller call; a response that fails to parse
-  (truncation, code fences) is retried once; ids still missing after all
-  chunks get one final straggler pass. A glossary of already-persisted
-  translations seeds every prompt so later batches stay stylistically
-  consistent. Without `MISTRAL_API_KEY` the request succeeds with English
-  names and never charges quota. On LLM failure the charged quota is
-  refunded (`refund_ai_extraction`) and English names are returned —
-  best-effort, same refund semantics as `/api/extract`.
+  server-side — immune to the model mangling opaque def ids. A known token
+  answered with an empty string keeps the input name (kept-as-is), and the
+  prompt explicitly forbids omitting items whose name stays unchanged —
+  Latin terms/acronyms were previously dropped by the model into false
+  English fallbacks. Ids the model drops are retried once with a smaller
+  call; a response that fails to parse (truncation, code fences) is retried
+  once; ids still missing after all chunks get final smaller straggler calls
+  (`TRANSLATE_STRAGGLER_CHUNK_SIZE`, with their own drop-retry) — every
+  extra call is spent before an id is allowed to fall back to English, and
+  anything that still falls back is logged as a warning. A
+  glossary of already-persisted translations seeds every prompt so later batches stay stylistically
+  consistent. A sustained Mistral 429 (one that surfaces even after the
+  client's own retry/backoff config) aborts the remaining chunks instead of
+  stacking more doomed calls: earlier chunks keep their translations, the
+  rest fall back to English, and quota is NOT refunded when anything
+  translated (partial success is persisted). Without `MISTRAL_API_KEY` the
+  request succeeds with English names and never charges quota. On total LLM
+  failure the charged quota is refunded (`refund_ai_extraction`) and English
+  names are returned — best-effort, same refund semantics as `/api/extract`.
 - Translations are quota-gated like extractions
   (`check_and_record_ai_usage`): a 429 is raised when the shared AI counter is
   exhausted, so repeated translation of a large dictionary cannot silently

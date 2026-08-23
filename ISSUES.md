@@ -168,26 +168,26 @@ distinguish "worse" from "broken".
   would need a new persisted `category_names[lang]`-style field plus its own
   LLM batch. Leave for later; no code changes planned.
 
-### 28. Translation user-experience enhancements (print/export)
+### 29. Source-language modeling: `names['ru']` doubles as the "source name" slot (deferred)
 
-- **Silent English fallback is invisible**: when the LLM returns nothing, the
-  endpoint answers 200 with English names, so the user opens an
-  untranslated document without knowing why. Compare the response against the
-  requested names and surface "translation failed for N names — showing
-  English" instead of toasting only on HTTP errors.
-- **No progress/ETA**: the Generate button is disabled with static text for a
-  5–30 s call. Show a spinner + elapsed time, or per-chunk progress
-  ("Translating 23 of 87…") once chunking (#27) lands.
-- **No timeout**: the fetch in `frontend/src/services/api.ts`
-  (`translateBiomarkerNames`) has none — a hung Mistral request leaves the
-  button stuck forever. Add a client-side timeout (~60 s) with a clear error.
-- **No review step**: translations are committed and the user is pushed into
-  the editor. A preview ("Verify translations → Generate") would catch wrong
-  medical terms before they land in the document; alternatively, an inline
-  edit affordance for per-definition translated names in the print editor.
-- **Cost/status transparency**: re-generating an already-translated document
-  is instant and free — a subtle "already translated" note would prevent
-  users from thinking it's broken when the wait is skipped.
+- The data model has **no persisted source language**. `BiomarkerDefinition.names['ru']`
+  doubles as the slot for the name exactly as printed in the source document
+  (whatever its language), `reading.original_name` carries the same per
+  reading, and several consumers rely on that conflation:
+  - `app/api/entries.py` resolves manually-typed rows by matching against
+    `names['ru']`.
+  - `app/api/flowsheet.py` falls back to `names.get("ru")` when building the
+    matrix `original` column.
+  - `print-editor.tsx` renders `row.original` for the `ru` output language.
+- Consequence: a non-Russian document stores e.g. German text under the
+  `ru` key. Everything works today because the same string is meant
+  throughout, but the semantics are wrong and block honest features like
+  "translate from source → X for any X" or per-document language stats.
+- A real fix needs a dedicated field (e.g. `names[src]` or a
+  `source_language` column + migration), matcher/serializer/entry-resolution
+  updates, and backfill for existing rows. Deferred — no code changes
+  planned; the user-facing label was neutralized instead ("Keep Original",
+  no "(Russian)").
 
 ---
 
