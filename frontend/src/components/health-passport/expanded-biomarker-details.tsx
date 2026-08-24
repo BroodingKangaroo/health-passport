@@ -2,12 +2,12 @@
 
 import { ArrowRight } from 'lucide-react'
 
-import { cn, formatDate, formatNumber } from '@/lib/utils'
+import { cn, formatDate, formatNumber, sortReadingsByDate } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { BiomarkerChart } from '@/components/shared/BiomarkerChart'
 import { ScaleNote } from '@/components/shared/ScaleNote'
 import { formatReference, unitLabel, displayUnit } from '@/lib/reference'
-import type { BiomarkerResult, Status } from '@/lib/types'
+import type { BiomarkerResult, Reading, Status } from '@/lib/types'
 
 const statusText: Record<Status, string> = {
   normal: 'text-status-normal',
@@ -48,14 +48,21 @@ export function ExpandedBiomarkerDetails({
   onViewDetails?: () => void
 }) {
   const history = biomarker.history ?? []
-  // The backend `history` already excludes the latest reading, so the full
-  // series is history + the current reading. Do NOT filter by date here: that
-  // would silently drop an older reading that happens to share the latest day
-  // (e.g. two panels on the same date) and diverge from biomarker-details.tsx.
-  const chartData = [
-    ...history,
-    { entry_id: biomarker.entry_id, date: biomarker.date, value: biomarker.value, status: biomarker.status },
-  ]
+  const current: Reading = {
+    entry_id: biomarker.entry_id,
+    date: biomarker.date,
+    value: biomarker.value,
+    status: biomarker.status,
+  }
+  // `history` excludes the reading at the selected event, which arrives as the
+  // top-level fields. TimelineView.biomarkersAtDate promotes ANY selected
+  // event's reading to that slot, so appending it after history can place a
+  // mid-series reading last — sort chronologically so the chart x-axis and the
+  // reversed reading-history chips below stay time-ordered. Do NOT filter by
+  // date here: that would silently drop an older reading that happens to share
+  // the selected day (e.g. two panels on the same date) and diverge from
+  // biomarker-details.tsx.
+  const chartData = sortReadingsByDate([...history, current])
   const effRef = biomarker.reference ?? biomarker.definition.reference
   const unitDisplay = unitLabel(displayUnit(biomarker.definition), effRef)
   const numericValues = chartData
@@ -108,18 +115,15 @@ export function ExpandedBiomarkerDetails({
           </h4>
           <ul className="flex flex-wrap gap-2">
             {(() => {
-              // The history (most-recent at the end) carries
-              // scale_function / needs_review per entry. chartData is
-              // chronological and includes the latest, which is NOT in
-              // history. Walk chartData reversed; for each item past the
-              // latest (i >= 1) the corresponding history entry is
-              // hist[hist.length - i].
-              const hist = biomarker.history ?? []
+              // chartData is chronological, so reversed walks newest →
+              // oldest. The selected event's reading is the `current` object,
+              // not part of history; every other item IS its own history
+              // entry, which carries scale_function / needs_review /
+              // original_* on the reading. Match by identity — positional
+              // indexing into `history` would break once chartData is sorted.
               const reversed = [...chartData].reverse()
               return reversed.map((reading, i) => {
-                // i == 0 → latest, not in history.
-                // i >= 1 → hist[hist.length - i]
-                const corresponding = i === 0 ? undefined : hist[hist.length - i]
+                const corresponding = reading === current ? undefined : reading
                 return (
                   <li
                     key={`${reading.date}-${i}`}

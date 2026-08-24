@@ -170,6 +170,23 @@ function _groupIntegerPart(s: string): string {
   return int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + rest
 }
 
+/**
+ * Sort readings oldest → newest by their ISO `date`. Stable: equal or
+ * unparseable timestamps keep their original relative order (unparseable sort
+ * first). Returns a new array; the input is not mutated. Recharts plots chart
+ * points in array order, so every chart series must pass through this —
+ * TimelineView.biomarkersAtDate promotes a non-latest event's reading to the
+ * "current" slot, which otherwise lands after newer history readings.
+ */
+export function sortReadingsByDate<T extends { date: string }>(
+  readings: readonly T[],
+): T[] {
+  return readings
+    .map((reading, index) => ({ reading, index, time: Date.parse(reading.date) || 0 }))
+    .sort((a, b) => a.time - b.time || a.index - b.index)
+    .map((entry) => entry.reading)
+}
+
 export function splitDateLabel(dateStr: string): { label: string; sub?: string } {
   const d = new Date(dateStr)
   if (!isNaN(d.getTime())) {

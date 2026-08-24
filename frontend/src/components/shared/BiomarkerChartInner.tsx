@@ -13,7 +13,7 @@ import {
 } from 'recharts'
 
 import type { BiomarkerResult, Reading } from '@/lib/types'
-import { splitDateLabel } from '@/lib/utils'
+import { sortReadingsByDate, splitDateLabel } from '@/lib/utils'
 import { intervalBounds, isQualitative, qualitativeToNumber } from '@/lib/reference'
 
 interface BiomarkerChartProps {
@@ -35,16 +35,22 @@ export default function BiomarkerChartInner({
   ]
   const effRef = biomarker.reference ?? biomarker.definition.reference
   const qual = isQualitative(effRef)
-  const data = rawData
-    .map((d) => {
-      if (typeof d.value === 'number' && Number.isFinite(d.value)) return { ...d, value: d.value as number }
-      if (qual) {
-        const qn = qualitativeToNumber(d.value)
-        if (qn != null) return { ...d, value: qn }
-      }
-      return null
-    })
-    .filter((d) => d != null) as { date: string; value: number; status: string }[]
+  // Recharts plots points in array order (categorical x-axis), so the series
+  // must be chronological. Callers may hand over a series whose "current"
+  // reading is a mid-series event promoted by biomarkersAtDate; sort here as
+  // the single choke point so the x-axis is always oldest → newest.
+  const data = sortReadingsByDate(
+    rawData
+      .map((d) => {
+        if (typeof d.value === 'number' && Number.isFinite(d.value)) return { ...d, value: d.value as number }
+        if (qual) {
+          const qn = qualitativeToNumber(d.value)
+          if (qn != null) return { ...d, value: qn }
+        }
+        return null
+      })
+      .filter((d) => d != null),
+  ) as { date: string; value: number; status: string }[]
   const numericValues = data.map((d) => d.value)
   const bounds = qual ? { low: 0, high: 1 } : intervalBounds(effRef)
   const rm = bounds?.high ?? null
