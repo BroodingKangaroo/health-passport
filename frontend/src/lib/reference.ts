@@ -23,13 +23,20 @@ export const QUALITATIVE_VALUES = [
  *   {kind:'interval', low:1e9, high:1e10}    -> '1B – 10B'
  *   {kind:'interval', low:null, high:1e11}   -> '≤ 100B'
  *   {kind:'interval', low:4, high:11}, 'mg'  -> '4 – 11 mg'
+ *   {kind:'interval', low:null, high:null}, 'mg' -> '—'
  *   {kind:'qualitative', expected:'Negative'} -> 'Negative'
+ *   {kind:'qualitative', expected:'Negative'}, 'copies/mL' -> 'Negative'
  *   {kind:'qualitative', expected:'отсутствуют'} -> 'отсутствуют'
  *   {kind:'qualitative', expected:null}       -> '—'
  *   null                                       -> '—'
  *
+ * Qualitative references never take a unit suffix (the expected text IS the
+ * reference — appending one would read "Not detected copies/mL"), and an
+ * interval without bounds renders as bare '—' with no unit.
+ *
  * Pass `{ full: true }` for official exports (print editor): bounds render at
- * full precision (e.g. `1250000`) instead of compact form (`1.25M`).
+ * full precision with thousands separators (e.g. `1,250,000`) instead of
+ * compact form (`1.25M`).
  */
 export function formatReference(
   ref: Reference | null | undefined,
@@ -40,25 +47,23 @@ export function formatReference(
   if (ref.kind === 'interval') {
     return formatInterval(ref, unit, opts?.full ?? false)
   }
-  // qualitative
+  // qualitative: the expected text IS the reference — no unit suffix.
   const q = ref as ReferenceQualitative
-  const text = q.expected && q.expected.trim() ? q.expected.trim() : '—'
-  return unit ? `${text} ${unit}`.trim() : text
+  return q.expected && q.expected.trim() ? q.expected.trim() : '—'
 }
 
 function formatInterval(ref: ReferenceInterval, unit?: string | null, full = false): string {
   const fmt = (n: number | null) =>
     n == null ? '' : full ? formatNumberFull(n) : formatNumber(n)
   const { low, high } = ref
+  if (low == null && high == null) return '—'
   let body: string
   if (low != null && high != null) {
     body = `${fmt(low)} – ${fmt(high)}`
   } else if (low != null) {
     body = `≥ ${fmt(low)}`
-  } else if (high != null) {
-    body = `≤ ${fmt(high)}`
   } else {
-    body = '—'
+    body = `≤ ${fmt(high)}`
   }
   return unit ? `${body} ${unit}`.trim() : body
 }

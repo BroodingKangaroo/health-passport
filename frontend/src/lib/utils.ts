@@ -141,13 +141,15 @@ function _stripTrailingZeros(s: string): string {
 
 /**
  * Full-precision number formatting for official exports (print editor). Unlike
- * `formatNumber`, large magnitudes are NOT compacted into K/M/B/T suffixes, so
- * a lab value such as 1,250,000 prints as "1250000" — never "1.25M".
+ * `formatNumber`, large magnitudes are NOT compacted into K/M/B/T suffixes;
+ * thousands separators are added for readability, so a lab value such as
+ * 1250000 prints as "1,250,000" — never "1.25M".
  *
  *   0             -> "0"
  *   8.75          -> "8.75"
- *   1234          -> "1234"
- *   1250000       -> "1250000"
+ *   1234          -> "1,234"
+ *   1250000       -> "1,250,000"
+ *   -1234567.5    -> "-1,234,567.5"
  *   "Not detected"-> "Not detected"
  *   null / ""     -> ""
  */
@@ -158,7 +160,14 @@ export function formatNumberFull(
   const n = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(n)) return String(value)
   if (n === 0) return '0'
-  return _stripTrailingZeros(n.toString())
+  return _groupIntegerPart(_stripTrailingZeros(n.toString()))
+}
+
+function _groupIntegerPart(s: string): string {
+  const dot = s.indexOf('.')
+  const int = dot === -1 ? s : s.slice(0, dot)
+  const rest = dot === -1 ? '' : s.slice(dot)
+  return int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + rest
 }
 
 export function splitDateLabel(dateStr: string): { label: string; sub?: string } {

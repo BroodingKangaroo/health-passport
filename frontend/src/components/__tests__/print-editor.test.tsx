@@ -127,14 +127,17 @@ function PrintEditorInit(props: {
   bilingual: boolean
   onBack: () => void
   patient?: CurrentUser | null
+  compactNumbers?: boolean
 }) {
-  const { initFilters } = usePrintConfig()
+  const { initFilters, setCompactNumbers } = usePrintConfig()
+  const { compactNumbers: compact, ...editorProps } = props
   useEffect(() => {
-    const allDateLabels = props.dates.map((d) => dateId(d))
-    const allRowIds = props.matrix.flatMap((cat) => cat.rows.map((r) => r.id))
+    const allDateLabels = editorProps.dates.map((d) => dateId(d))
+    const allRowIds = editorProps.matrix.flatMap((cat) => cat.rows.map((r) => r.id))
     initFilters(allDateLabels, allRowIds)
-  }, [props.dates, props.matrix, initFilters])
-  return <PrintEditor {...props} />
+    if (compact) setCompactNumbers(true)
+  }, [editorProps.dates, editorProps.matrix, compact, initFilters, setCompactNumbers])
+  return <PrintEditor {...editorProps} />
 }
 
 function renderEditor(props?: {
@@ -144,6 +147,7 @@ function renderEditor(props?: {
   matrix?: MatrixCategory[]
   biomarkers?: BiomarkerResult[]
   patient?: CurrentUser | null
+  compactNumbers?: boolean
 }) {
   const dates = props?.dates ?? mockDates
   const matrix = props?.matrix ?? mockMatrix
@@ -157,6 +161,7 @@ function renderEditor(props?: {
         lang={props?.lang ?? 'en'}
         bilingual={props?.bilingual ?? false}
         patient={props?.patient ?? null}
+        compactNumbers={props?.compactNumbers}
         onBack={vi.fn()}
       />
     </PrintConfigProvider>,
@@ -205,10 +210,33 @@ describe('PrintEditor', () => {
       },
     ]
     renderEditor({ matrix: matrixWithLarge })
-    expect(screen.getAllByText(/1250000/).length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText(/9999/)).toBeTruthy()
+    expect(screen.getAllByText(/1,250,000/).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText(/9,999/)).toBeTruthy()
     expect(screen.queryByText(/1\.25M/)).toBeNull()
     expect(screen.queryByText(/10K/)).toBeNull()
+  })
+
+  it('renders compact K/M/B numbers when compactNumbers is on', () => {
+    const matrixWithLarge: MatrixCategory[] = [
+      {
+        category: 'Viral Load',
+        rows: [
+          {
+            id: 'vload',
+            name: 'HBV DNA',
+            original: 'ДНК HBV',
+            unit: 'copies/mL',
+            reference: { kind: 'interval', low: 10, high: 1250000 },
+            cells: [{ value: '1250000', status: 'high' }, { value: '9999', status: 'normal' }, { value: '—', status: 'normal' }],
+          },
+        ],
+      },
+    ]
+    renderEditor({ matrix: matrixWithLarge, compactNumbers: true })
+    expect(screen.getAllByText(/1\.25M/).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('10K')).toBeTruthy()
+    expect(screen.queryByText(/1,250,000/)).toBeNull()
+    expect(screen.queryByText('9,999')).toBeNull()
   })
 
   it('shows range below biomarker name when showRanges is on', () => {

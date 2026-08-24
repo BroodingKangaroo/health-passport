@@ -6,9 +6,10 @@ import {
   GripVertical,
   ChevronDown,
   Filter,
+  Hash,
 } from 'lucide-react'
 
-import { cn, formatNumberFull } from '@/lib/utils'
+import { cn, formatNumber, formatNumberFull } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
 import { formatReference } from '@/lib/reference'
@@ -139,6 +140,8 @@ export function PrintEditor({
     setShowAbnormalOnly,
     showReferences,
     setShowReferences,
+    compactNumbers,
+    setCompactNumbers,
   } = usePrintConfig()
 
   const [openCats, setOpenCats] = useState<string[]>(matrix.map((c) => c.category))
@@ -445,6 +448,41 @@ export function PrintEditor({
                 </span>
               </button>
 
+              <button
+                onClick={() => setCompactNumbers(!compactNumbers)}
+                className={cn(
+                  'mb-3 flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors',
+                  compactNumbers
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border hover:bg-accent',
+                )}
+              >
+                <span className="flex items-center gap-2">
+                  <Hash className="size-4 text-muted-foreground" />
+                  <span>
+                    <span className="block text-sm font-medium text-foreground">
+                      Compact Large Numbers
+                    </span>
+                    <span className="block text-[11px] text-muted-foreground">
+                      Show 10M, 1B instead of 10,000,000
+                    </span>
+                  </span>
+                </span>
+                <span
+                  className={cn(
+                    'relative h-5 w-9 shrink-0 rounded-full transition-colors',
+                    compactNumbers ? 'bg-primary' : 'bg-muted-foreground/30',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'absolute top-0.5 size-4 rounded-full bg-background transition-all',
+                      compactNumbers ? 'left-4' : 'left-0.5',
+                    )}
+                  />
+                </span>
+              </button>
+
               <div className="space-y-2">
                 {matrix.map((cat) => {
                   const open = openCats.includes(cat.category)
@@ -616,7 +654,7 @@ export function PrintEditor({
                             <span className="font-medium">{rowLabel(row)}</span>
                             {showReferences && row.reference && (
                               <span className="block text-[0.75em] text-gray-400 leading-tight">
-                                {formatReference(row.reference, row.unit, { full: true })}
+                                {formatReference(row.reference, row.unit, { full: !compactNumbers })}
                               </span>
                             )}
                           </td>
@@ -640,8 +678,8 @@ export function PrintEditor({
                                   cell.status !== 'normal' && 'font-semibold text-red-600',
                                 )}
                               >
-                                {formatNumberFull(cell.value)}
-                                {cell.status !== 'normal' ? ' *' : ''}
+                                {compactNumbers ? formatNumber(cell.value) : formatNumberFull(cell.value)}
+                                {cell.status !== 'normal' ? '\u00A0*' : ''}
                               </td>
                             )
                           })}

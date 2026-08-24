@@ -16,12 +16,14 @@ function TestConsumer() {
       <div data-testid="selectedBiomarkers">{ctx.selectedBiomarkers.join(',')}</div>
       <div data-testid="showAbnormalOnly">{String(ctx.showAbnormalOnly)}</div>
       <div data-testid="showReferences">{String(ctx.showReferences)}</div>
+      <div data-testid="compactNumbers">{String(ctx.compactNumbers)}</div>
       <button data-testid="setTranslate" onClick={() => ctx.setMode('translate')} />
       <button data-testid="setTarget" onClick={() => ctx.setTargetLanguage('de')} />
       <button data-testid="setLandscape" onClick={() => ctx.setLayout('landscape')} />
       <button data-testid="setTextSize14" onClick={() => ctx.setTextSize(14)} />
       <button data-testid="toggleAbnormal" onClick={() => ctx.setShowAbnormalOnly(!ctx.showAbnormalOnly)} />
       <button data-testid="toggleReferences" onClick={() => ctx.setShowReferences(!ctx.showReferences)} />
+      <button data-testid="toggleCompactNumbers" onClick={() => ctx.setCompactNumbers(!ctx.compactNumbers)} />
       <button data-testid="initFilters" onClick={() => ctx.initFilters(['a', 'b'], ['x', 'y'])} />
     </div>
   )
@@ -46,6 +48,7 @@ describe('PrintConfigProvider', () => {
     expect(screen.getByTestId('selectedBiomarkers').textContent).toBe('')
     expect(screen.getByTestId('showAbnormalOnly').textContent).toBe('false')
     expect(screen.getByTestId('showReferences').textContent).toBe('true')
+    expect(screen.getByTestId('compactNumbers').textContent).toBe('false')
   })
 
   it('updates mode via setMode', () => {
@@ -83,6 +86,13 @@ describe('PrintConfigProvider', () => {
     expect(screen.getByTestId('showReferences').textContent).toBe('true')
     fireEvent.click(screen.getByTestId('toggleReferences'))
     expect(screen.getByTestId('showReferences').textContent).toBe('false')
+  })
+
+  it('toggles compactNumbers', () => {
+    renderWithProvider()
+    expect(screen.getByTestId('compactNumbers').textContent).toBe('false')
+    fireEvent.click(screen.getByTestId('toggleCompactNumbers'))
+    expect(screen.getByTestId('compactNumbers').textContent).toBe('true')
   })
 
   it('initFilters populates selectedDates and selectedBiomarkers', () => {

@@ -66,13 +66,13 @@ describe('formatNumberFull (full precision for exports)', () => {
     expect(formatNumberFull('')).toBe('')
   })
 
-  it('keeps large values full-precision, never compacted', () => {
-    expect(formatNumberFull(1234)).toBe('1234')
-    expect(formatNumberFull(9999)).toBe('9999')
-    expect(formatNumberFull(1_250_000)).toBe('1250000')
-    expect(formatNumberFull(10_000_000)).toBe('10000000')
-    expect(formatNumberFull(1_000_000_000)).toBe('1000000000')
-    expect(formatNumberFull(2_500_000_000_000)).toBe('2500000000000')
+  it('keeps large values full-precision, never compacted, with grouping', () => {
+    expect(formatNumberFull(1234)).toBe('1,234')
+    expect(formatNumberFull(9999)).toBe('9,999')
+    expect(formatNumberFull(1_250_000)).toBe('1,250,000')
+    expect(formatNumberFull(10_000_000)).toBe('10,000,000')
+    expect(formatNumberFull(1_000_000_000)).toBe('1,000,000,000')
+    expect(formatNumberFull(2_500_000_000_000)).toBe('2,500,000,000,000')
   })
 
   it('keeps small decimal values and zero', () => {
@@ -82,8 +82,13 @@ describe('formatNumberFull (full precision for exports)', () => {
     expect(formatNumberFull(0.5)).toBe('0.5')
   })
 
+  it('groups integer part only, preserving sign and decimals', () => {
+    expect(formatNumberFull(-1_234_567)).toBe('-1,234,567')
+    expect(formatNumberFull(1_234_567.891)).toBe('1,234,567.891')
+  })
+
   it('parses numeric strings without compacting', () => {
-    expect(formatNumberFull('1250000')).toBe('1250000')
+    expect(formatNumberFull('1250000')).toBe('1,250,000')
     expect(formatNumberFull('8.75')).toBe('8.75')
   })
 
@@ -139,6 +144,21 @@ describe('formatReference (compact number formatting)', () => {
     ).toBe('Not detected')
     expect(
       formatReference({ kind: 'qualitative', expected: null }),
+    ).toBe('—')
+  })
+
+  it('never appends the unit to qualitative refs', () => {
+    expect(
+      formatReference(
+        { kind: 'qualitative', expected: 'Not detected' },
+        'copies/mL',
+      ),
+    ).toBe('Not detected')
+  })
+
+  it('renders unbounded interval as bare em-dash, no unit', () => {
+    expect(
+      formatReference({ kind: 'interval', low: null, high: null }, 'copies/mL'),
     ).toBe('—')
   })
 

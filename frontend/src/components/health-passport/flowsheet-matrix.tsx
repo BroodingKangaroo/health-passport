@@ -105,7 +105,7 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
             <span className="text-left">TREND</span>
             {dates.map((date, i) => (
               <span key={`${date.label}-${i}`} className="text-right leading-tight">
-                <span>
+                <span className="block whitespace-nowrap">
                   {date.label}
                   {i === dates.length - 1 && (
                     <span className="ml-1 text-primary">(Latest)</span>

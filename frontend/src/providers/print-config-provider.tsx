@@ -14,6 +14,7 @@ interface PrintConfigState {
   selectedBiomarkers: string[]
   showAbnormalOnly: boolean
   showReferences: boolean
+  compactNumbers: boolean
 }
 
 interface PrintConfigContextValue extends PrintConfigState {
@@ -25,6 +26,7 @@ interface PrintConfigContextValue extends PrintConfigState {
   setSelectedBiomarkers: (biomarkers: string[]) => void
   setShowAbnormalOnly: (v: boolean) => void
   setShowReferences: (v: boolean) => void
+  setCompactNumbers: (v: boolean) => void
   initFilters: (dates: string[], biomarkers: string[]) => void
 }
 
@@ -39,6 +41,7 @@ export function PrintConfigProvider({ children }: { children: ReactNode }) {
   const [selectedBiomarkers, setSelectedBiomarkers] = useState<string[]>([])
   const [showAbnormalOnly, setShowAbnormalOnly] = useState(false)
   const [showReferences, setShowReferences] = useState(true)
+  const [compactNumbers, setCompactNumbers] = useState(false)
 
   const initFilters = useCallback((dates: string[], biomarkers: string[]) => {
     setSelectedDates(dates)
@@ -56,6 +59,7 @@ export function PrintConfigProvider({ children }: { children: ReactNode }) {
         selectedBiomarkers,
         showAbnormalOnly,
         showReferences,
+        compactNumbers,
         setMode,
         setTargetLanguage,
         setLayout,
@@ -64,6 +68,7 @@ export function PrintConfigProvider({ children }: { children: ReactNode }) {
         setSelectedBiomarkers,
         setShowAbnormalOnly,
         setShowReferences,
+        setCompactNumbers,
         initFilters,
       }}
     >
