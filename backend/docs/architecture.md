@@ -37,6 +37,11 @@ code, `/api/extract`, entry persistence, merge/delete, or DB migrations.
 - Ungrounded biomarkers extracted from a document are created dynamically as
   `scope=local` definitions at extraction time (id
   `local-{md5(name)[:12]}`), never pre-seeded.
+- Seeding also writes `data/loinc_aliases.json` (folded-code → survivor-code
+  map from the dedupe step). It is **committed** and load-bearing: the
+  matcher's curated-code redirect (`matcher/loinc_store.py`) silently degrades
+  without it (folded codes get promoted as duplicate globals). The file is
+  deterministic from the tracked inputs — recomputed aliases always match.
 - Run `seed_loinc` once (required for realistic `/api/extract` and e2e). Keep
   the dictionary stable while a golden is in use or mappings drift.
 

@@ -33,7 +33,9 @@ app.log
 *.tsbuildinfo
 
 # Generated / secrets (do not commit)
-backend/data/loinc_aliases.json
+# (backend/data/loinc_aliases.json is committed: it is seed-derived but
+# load-bearing — the matcher's folded-code redirect silently degrades
+# without it, see backend/docs/architecture.md "Seeder & LOINC dictionary")
 backend/.jwt_secret
 
 # opencode: share config/commands/agents/skills, keep personal state local
