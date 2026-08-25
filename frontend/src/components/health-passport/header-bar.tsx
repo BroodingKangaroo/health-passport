@@ -18,6 +18,7 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { useTheme } from '@/providers/theme-provider'
+import { useLeaveGuard } from '@/providers/leave-guard-provider'
 
 function formatDob(dob: string | undefined): string {
   if (!dob) return ''
@@ -29,6 +30,7 @@ function formatDob(dob: string | undefined): string {
 
 export function HeaderBar() {
   const router = useRouter()
+  const { confirmLeave } = useLeaveGuard()
   const { status, user, anonId } = useAuthStatus()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const { theme, toggleTheme } = useTheme()
@@ -43,6 +45,13 @@ export function HeaderBar() {
     document.addEventListener('mousedown', onClick)
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
+
+  // Navigating away mid-process (AI extraction / translation) cancels it.
+  function navigate(path: string) {
+    void confirmLeave().then((ok) => {
+      if (ok) router.push(path)
+    })
+  }
 
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border bg-card px-5 py-3 print:hidden">
@@ -78,7 +87,7 @@ export function HeaderBar() {
       </div>
 
       <div className="flex items-center gap-2">
-        <Button size="sm" onClick={() => router.push('/add-entry')}>
+        <Button size="sm" onClick={() => navigate('/add-entry')}>
           <Plus className="size-3.5" />
           Add New Entry
         </Button>
@@ -87,7 +96,7 @@ export function HeaderBar() {
           {theme === 'light' ? <Moon className="size-3.5" /> : <Sun className="size-3.5" />}
         </Button>
 
-        <Button variant="outline" size="sm" onClick={() => router.push('/print-setup')}>
+        <Button variant="outline" size="sm" onClick={() => navigate('/print-setup')}>
           <Printer className="size-3.5" />
           Print
         </Button>

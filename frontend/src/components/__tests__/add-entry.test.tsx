@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SessionProvider } from 'next-auth/react'
 import { AddEntry } from '../health-passport/add-entry'
+import { LeaveGuardProvider } from '@/providers/leave-guard-provider'
 import type { StandardizedMedicalRecord, EntriesByDateResponse } from '@/lib/types'
 
 const mockExtract = vi.fn()
@@ -50,7 +51,9 @@ function renderWithProviders(ui: React.ReactElement) {
   })
   return render(
     <SessionProvider session={null}>
-      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <LeaveGuardProvider>{ui}</LeaveGuardProvider>
+      </QueryClientProvider>
     </SessionProvider>,
   )
 }

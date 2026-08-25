@@ -15,6 +15,32 @@ Playwright e2e removed, backend serializers hoisted into
 `app/api/_serializers.py`, several scripts deleted). Line numbers refer to
 files as they stand now.
 
+## Known gaps
+
+### 30. add-entry arms the leave-guard without an `onLeave` abort callback
+
+- `add-entry.tsx` arms the navigation guard with `arm(EXTRACTING_MESSAGE)` —
+  no second argument — while `print-setup.tsx:96` wires
+  `arm(TRANSLATING_MESSAGE, () => controller.abort())`. Consequence: when the
+  user confirms "Leave anyway" during AI extraction, the in-flight
+  `/api/extract` SSE fetch (`extractionAbortRef`) is never aborted
+  client-side.
+- What still protects correctness today: the `AddEntry` component unmounts on
+  the confirmed leave, and React ignores late `setState` from the detached
+  stream promise — so a stale completion cannot hijack navigation or clobber
+  state (no data corruption, nothing saved).
+- What it costs: with no client abort, the browser keeps the SSE connection
+  open, the server runs OCR + LLM to completion, and the quota charge stands —
+  `ai.py` refunds only on client disconnect / early close
+  (`_refund_on_abort`, lines ~521-529). An abandoned extraction burns a full
+  extraction quota for a result nobody sees (matched definitions may still be
+  persisted as a side effect).
+- Fix sketch: pass an `onLeave` that calls
+  `extractionAbortRef.current?.abort()` — mirroring print-setup; the backend
+  then takes its existing disconnect path and refunds. Also worth a provider
+  test asserting `onLeave` fires before unmount completes (the harness already
+  covers the callback contract).
+
 ## Refactors / agentic-development (2026-08-03)
 
 Refactor candidates identified during an agentic-development audit. These are
@@ -178,28 +204,6 @@ distinguish "worse" from "broken".
   updates, and backfill for existing rows. Deferred — no code changes
   planned; the user-facing label was neutralized instead ("Keep Original",
   no "(Russian)").
-
----
-
-## Stashed / removed features
-
-### 25. Navigation leave-guard during AI processes (stashed 2026-08-20)
-
-- Feature: styled "Leave while AI is working?" confirmation when the user
-  navigates back while AI extraction (add-entry) or print translation
-  (print-setup) is running — blocks the browser Back button (history marker +
-  `popstate` interception), reload/close (`beforeunload`), and in-app nav;
-  abort-on-leave so a stale completion can't hijack navigation.
-- Status: implemented and verified (189 frontend tests pass, `pnpm lint`
-  clean), then removed from the working tree on request so the tree stays
-  focused on the biomarker-translation feature. Fully recoverable:
-  - `git stash list` → `stash@{0}` (e23d908) — snapshot of the full working
-    tree (translation + leave-guard) at removal time.
-  - `/tmp/leave-guard.patch` — leave-guard-only delta (13 frontend files);
-    applies cleanly with `git apply` on top of the translation-only tree.
-- Re-apply: `git apply /tmp/leave-guard.patch` then `pnpm test` / `pnpm lint`,
-  or `git stash apply stash@{0}` for the full snapshot (conflicts if the
-  translation feature has been committed by then).
 
 ---
 

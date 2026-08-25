@@ -101,11 +101,14 @@ export async function fetchTimelineEvents(): Promise<TimelineResponse> {
 }
 
 /* ----- Flowsheet ----- */
-export async function fetchFlowsheetData(): Promise<FlowsheetResponse> {
+export async function fetchFlowsheetData(
+  opts?: { signal?: AbortSignal },
+): Promise<FlowsheetResponse> {
   const res = await fetch(`${API_BASE}/flowsheet`, {
     cache: 'no-store',
     headers: { ...authHeaders() },
     credentials: 'include',
+    signal: opts?.signal,
   })
   if (!res.ok) throw new ApiError(res.status, 'GET /flowsheet failed')
   return res.json()
@@ -153,16 +156,19 @@ const TRANSLATE_TIMEOUT_MS = 60_000
  * backend persists translations into each definition's `names[lang]` (free
  * short-circuit for already-translated names). With `{ persist: false }`
  * (review flow) nothing is written — confirm via `commitTranslatedNames`.
- * Returns an id -> {name, source} map; `source` distinguishes newly
- * translated names from cached ones and silent English fallbacks.
+ * An external `signal` aborts the in-flight request (leave-guard). Returns
+ * an id -> {name, source} map; `source` distinguishes newly translated names
+ * from cached ones and silent English fallbacks.
  */
 export async function translateBiomarkerNames(
   lang: TranslateLang,
   names: TranslateNameItem[],
-  opts?: { persist?: boolean },
+  opts?: { persist?: boolean; signal?: AbortSignal },
 ): Promise<Map<string, TranslatedName>> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TRANSLATE_TIMEOUT_MS)
+  const onExternalAbort = () => controller.abort()
+  opts?.signal?.addEventListener('abort', onExternalAbort)
   try {
     const res = await fetch(`${API_BASE}/translate-biomarkers`, {
       method: 'POST',
@@ -200,6 +206,7 @@ export async function translateBiomarkerNames(
     throw err
   } finally {
     clearTimeout(timer)
+    opts?.signal?.removeEventListener('abort', onExternalAbort)
   }
 }
 

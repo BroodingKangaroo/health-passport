@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { PrintSetup } from '@/components/health-passport/print-setup'
 import { PrintConfigProvider } from '@/providers/print-config-provider'
+import { LeaveGuardProvider } from '@/providers/leave-guard-provider'
 import type { FlowsheetResponse } from '@/lib/types'
 import type { TranslatedName } from '@/services/api'
 
@@ -56,9 +57,11 @@ function translatedMap(
 
 function renderComponent() {
   return render(
-    <PrintConfigProvider>
-      <PrintSetup />
-    </PrintConfigProvider>,
+    <LeaveGuardProvider>
+      <PrintConfigProvider>
+        <PrintSetup />
+      </PrintConfigProvider>
+    </LeaveGuardProvider>,
   )
 }
 
@@ -182,7 +185,7 @@ describe('PrintSetup', () => {
           { id: 'wbc', name: 'WBC' },
           { id: 'hb', name: 'Hemoglobin' },
         ],
-        { persist: false },
+        { persist: false, signal: expect.any(AbortSignal) },
       ),
     )
     expect(await screen.findByText('Verify Translations')).toBeTruthy()
@@ -509,5 +512,54 @@ describe('PrintSetup', () => {
     expect(await screen.findByText('Verify Translations')).toBeTruthy()
     confirmPreview()
     expect(mockPush).toHaveBeenCalledWith('/print-editor')
+  })
+
+  it('asks before leaving mid-translation and does not navigate when the user stays', async () => {
+    mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
+    mockTranslate.mockImplementation(
+      () => new Promise(() => {}), // never resolves while translating
+    )
+    renderComponent()
+    selectTranslateModeAndLang('de')
+    fireEvent.click(screen.getByText('Generate Document'))
+    await waitFor(() => expect(mockTranslate).toHaveBeenCalled())
+
+    // User presses the browser Back button mid-translation.
+    act(() => {
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    expect(await screen.findByRole('alertdialog')).toBeTruthy()
+    fireEvent.click(screen.getByText('Stay'))
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(mockPush).not.toHaveBeenCalled()
+  })
+
+  it('leaving mid-translation aborts the request and skips navigation', async () => {
+    mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
+    mockTranslate.mockImplementation(
+      (_lang: string, _names: unknown, opts: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          opts.signal?.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError')),
+          )
+        }),
+    )
+    const { unmount } = renderComponent()
+    selectTranslateModeAndLang('de')
+    fireEvent.click(screen.getByText('Generate Document'))
+    await waitFor(() => expect(mockTranslate).toHaveBeenCalled())
+
+    // User presses the browser Back button mid-translation and confirms.
+    act(() => {
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    fireEvent.click(await screen.findByText('Leave anyway'))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+
+    // Leaving unmounts the page: the in-flight request is aborted and the
+    // completion cannot hijack navigation into /print-editor.
+    unmount()
+    await waitFor(() => expect(mockPush).not.toHaveBeenCalled())
   })
 })

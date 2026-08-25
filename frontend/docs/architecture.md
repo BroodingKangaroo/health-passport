@@ -69,6 +69,29 @@ backend to include the site).
   "Keep Original" — source documents are not necessarily Russian) and the
   `en` target skip the translation call entirely.
 
+## Navigation leave-guard during AI processes
+
+- `LeaveGuardProvider` (mounted in `app/layout.tsx`) prevents accidentally
+  abandoning a running AI process. Two call sites arm it: add-entry while
+  `uploadState === 'scanning'` (extraction), and print-setup during the
+  in-flight translation network call only — once results are back, leaving
+  during the review dialog loses nothing (nothing is persisted until
+  confirm), so the guard is disarmed there.
+- While armed, the browser Back button pops an invisible same-URL history
+  marker (`popstate` interception) instead of leaving, reload/close goes
+  through `beforeunload`, and every in-app navigation (NavBar tabs,
+  HeaderBar buttons, view Back buttons) routes through `confirmLeave()`,
+  which shows a styled "Leave while AI is working?" alertdialog.
+- Confirming leave fires the process's `arm(message, onLeave)` callback,
+  which aborts the in-flight request (AbortController) BEFORE navigating so
+  a stale completion can never hijack navigation (e.g. into
+  `/print-editor`); the   aborted path stays silent — no toast, no push.
+  Choosing "Stay" — or clicking the dimmed backdrop outside the dialog
+  panel; clicks inside the panel are ignored — keeps the marker pushed for
+  the next Back press.
+  `disarm()` is idempotent and pops the marker; both confirmed-leave and
+  natural completion converge through it.
+
 ## Reference formatting / stats
 
 Mirror of the backend's reference model (see `backend/docs/architecture.md`):

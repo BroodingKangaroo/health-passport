@@ -6,9 +6,17 @@ import { ArrowLeft } from 'lucide-react'
 import { HeaderBar } from '@/components/health-passport/header-bar'
 import { PrintSetup } from '@/components/health-passport/print-setup'
 import { Button } from '@/components/ui/button'
+import { useLeaveGuard } from '@/providers/leave-guard-provider'
 
 export function PrintSetupView() {
   const router = useRouter()
+  const { confirmLeave } = useLeaveGuard()
+
+  async function handleBack() {
+    // While the AI translation is running, leaving cancels it — ask first.
+    if (!(await confirmLeave())) return
+    router.push('/')
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -18,7 +26,7 @@ export function PrintSetupView() {
         <div className="flex items-center py-2">
           <Button
             variant="ghost"
-            onClick={() => router.push('/')}
+            onClick={handleBack}
             className="gap-1.5 text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="size-4" />

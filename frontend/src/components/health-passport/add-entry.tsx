@@ -25,6 +25,10 @@ import { DoctorVisitForm } from './DoctorVisitForm'
 import { LabResultForm } from './LabResultForm'
 import { InstrumentalTestForm } from './InstrumentalTestForm'
 import { saveMedicalEntry, mergeMedicalEntry, fetchEntriesByDate, extractMedicalData, UsageLimitError, buildSaveEntryFormData } from '@/services/api'
+import { useLeaveGuard } from '@/providers/leave-guard-provider'
+
+const EXTRACTING_MESSAGE =
+  'AI extraction is in progress. If you leave now, the extraction will be cancelled and no data will be saved.'
 import { toast } from 'sonner'
 import type {
   UploadState,
@@ -192,6 +196,15 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   // read it to draw the progress bar — React 19 forbids ref reads during render.
   const [stageStart, setStageStart] = useState(0)
   const [stageEstimate, setStageEstimate] = useState(0)
+
+  // Guard against accidental back-navigation while the AI extraction is
+  // running: leaving cancels the extraction and nothing gets saved.
+  const { arm, disarm } = useLeaveGuard()
+  useEffect(() => {
+    if (uploadState !== 'scanning') return
+    arm(EXTRACTING_MESSAGE)
+    return () => disarm()
+  }, [uploadState, arm, disarm])
 
   const runExtraction = useCallback(async (file: File) => {
     // Cancel any in-flight extraction so its late-arriving result can't

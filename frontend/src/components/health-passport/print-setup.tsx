@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Languages, FileOutput, ChevronDown, LoaderCircle } from 'lucide-react'
@@ -8,6 +8,7 @@ import { Languages, FileOutput, ChevronDown, LoaderCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
+import { useLeaveGuard } from '@/providers/leave-guard-provider'
 import {
   fetchFlowsheetData,
   translateBiomarkerNames,
@@ -19,6 +20,9 @@ import {
   TranslationFallbackWarning,
   type TranslationPreviewItem,
 } from './translation-preview-dialog'
+
+const TRANSLATING_MESSAGE =
+  'AI translation is in progress. If you leave now, the translation will be cancelled and no names will be translated.'
 
 type Mode = 'original' | 'translate' | 'bilingual'
 
@@ -52,10 +56,12 @@ const MODES: { id: Mode; title: string; desc: string }[] = [
 export function PrintSetup() {
   const router = useRouter()
   const { mode, targetLanguage, setMode, setTargetLanguage } = usePrintConfig()
+  const { arm, disarm } = useLeaveGuard()
   const [translating, setTranslating] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [preview, setPreview] = useState<TranslationPreviewItem[] | null>(null)
   const [lastRun, setLastRun] = useState<{ cachedAll: boolean; failed: number } | null>(null)
+  const translateAbortRef = useRef<AbortController | null>(null)
 
   // Live "Translating… Ns" counter so a 5–30 s AI call never feels stuck.
   useEffect(() => {
@@ -64,6 +70,11 @@ export function PrintSetup() {
     return () => clearInterval(timer)
   }, [translating])
 
+  // Leaving the page mid-translation aborts the in-flight request so its
+  // completion cannot hijack navigation back into /print-editor.
+  useEffect(() => {
+    return () => translateAbortRef.current?.abort()
+  }, [])
   async function handleGenerate() {
     if (mode === 'original' || targetLanguage === 'en') {
       router.push('/print-editor')
@@ -72,12 +83,20 @@ export function PrintSetup() {
     // The document promises an AI translation: actually perform it before
     // navigating. The backend persists names[lang] on the definitions, so
     // repeated generates of an already-translated document are free.
+    // The document promises an AI translation: actually perform it before
+    // navigating. Nothing is persisted here — the review dialog's confirm
+    // step commits only the terms the user accepted.
     setLastRun(null)
     setPreview(null)
     setElapsed(0)
+    const controller = new AbortController()
+    translateAbortRef.current = controller
+    // Guard ONLY the in-flight network phase: once results are back, leaving
+    // during review loses nothing (nothing is persisted until confirm).
+    arm(TRANSLATING_MESSAGE, () => controller.abort())
     setTranslating(true)
     try {
-      const data = await fetchFlowsheetData()
+      const data = await fetchFlowsheetData({ signal: controller.signal })
       const unique = new Map<string, string>()
       for (const cat of data.matrix) {
         for (const row of cat.rows) {
@@ -89,12 +108,10 @@ export function PrintSetup() {
       }
       const names = [...unique].map(([id, name]) => ({ id, name }))
       if (names.length > 0) {
-        // Review flow: nothing is persisted yet — the dialog's confirm step
-        // commits only the terms the user accepted.
         const results = await translateBiomarkerNames(
           targetLanguage as TranslateLang,
           names,
-          { persist: false },
+          { persist: false, signal: controller.signal },
         )
         const items: TranslationPreviewItem[] = names.map(({ id, name }) => {
           const entry = results.get(id)
@@ -120,13 +137,17 @@ export function PrintSetup() {
         router.push('/print-editor')
       }
     } catch (err) {
+      // The user confirmed leave mid-translation: stay silent — no toast,
+      // no navigation. The leave has already happened.
+      if (controller.signal.aborted) return
       // Best-effort translation: never block the export. Fall back to the
       // English document and explain why.
       const reason = err instanceof Error ? err.message : 'unknown error'
       toast.error(`AI translation failed (${reason}) — the document will use English names.`)
       router.push('/print-editor')
     } finally {
-      setTranslating(false)
+      disarm()
+      if (!controller.signal.aborted) setTranslating(false)
     }
   }
 

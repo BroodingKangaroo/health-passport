@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { ThemeProvider } from '@/providers/theme-provider'
 import { QueryProvider } from '@/providers/query-provider'
 import { PrintConfigProvider } from '@/providers/print-config-provider'
+import { LeaveGuardProvider } from '@/providers/leave-guard-provider'
 import { AuthProvider } from '@/components/providers/AuthProvider'
 import { Toaster } from 'sonner'
 import './globals.css'
@@ -81,7 +82,9 @@ export default function RootLayout({
         <AuthProvider>
           <ThemeProvider>
             <QueryProvider>
-              <PrintConfigProvider>{children}</PrintConfigProvider>
+              <LeaveGuardProvider>
+                <PrintConfigProvider>{children}</PrintConfigProvider>
+              </LeaveGuardProvider>
             </QueryProvider>
           </ThemeProvider>
         </AuthProvider>

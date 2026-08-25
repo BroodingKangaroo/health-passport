@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { useLeaveGuard } from '@/providers/leave-guard-provider'
 
 type NavTab = 'timeline' | 'flowsheet' | 'correlation'
 
@@ -13,6 +14,14 @@ const TABS: { id: NavTab; label: string; path: string }[] = [
 
 export function NavBar({ activeTab }: { activeTab: NavTab }) {
   const router = useRouter()
+  const { confirmLeave } = useLeaveGuard()
+
+  // Navigating away mid-process (AI extraction / translation) cancels it.
+  function navigate(path: string) {
+    void confirmLeave().then((ok) => {
+      if (ok) router.push(path)
+    })
+  }
 
   return (
     <nav className="border-b border-border bg-card px-5 print:hidden">
@@ -22,7 +31,7 @@ export function NavBar({ activeTab }: { activeTab: NavTab }) {
           return (
             <button
               key={tab.id}
-              onClick={() => router.push(tab.path)}
+              onClick={() => navigate(tab.path)}
               className={cn(
                 'relative px-3 py-3 text-sm font-medium transition-colors',
                 isActive
