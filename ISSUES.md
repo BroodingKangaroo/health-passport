@@ -21,15 +21,6 @@ Refactor candidates identified during an agentic-development audit. These are
 not user-facing bugs; they increase per-task token cost for AI-assisted
 development (wholesale file reads) and slow agent context loading.
 
-### 22. Split `frontend/src/components/health-passport/add-entry.tsx` (1,017 lines)
-
-- File: `frontend/src/components/health-passport/add-entry.tsx` — bundles the
-  extract SSE flow, merge checkbox/conflict detection, unit-conflict dialog
-  wiring, and form-row rewriting.
-- Proposal: extract merge pre-flight + conflict detection and the unit-conflict
-  application into dedicated hooks/components; keep `add-entry.tsx` as the
-  orchestrator.
-
 ### 23. Document the undocumented backend/frontend modules
 
 - Backend: `app/db/models.py`, `app/db/import_ranges.py`,

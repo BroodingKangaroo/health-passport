@@ -156,6 +156,15 @@ Mirror of the backend's reference model (see `backend/docs/architecture.md`):
   a **remove (✕)** control on the document preview so a failed file can't be
   silently attached on Save. `removeFile()` clears both `selectedFile` and the
   hidden `fileRef` input, else Save re-attaches via the `fileRef` fallback.
+- Removing the document never dead-ends: an empty preview slot shows the
+  click-to-attach prompt in every mode (`DocumentPreviewPane`). Picking a
+  file there attaches it via the hidden `fileRef` input. In AI mode it then
+  re-runs the full SSE extraction (a fresh start, exactly like the dropzone)
+  — behind an `ExtractionConfirmDialog` whenever the form currently holds
+  data a fresh extraction would wipe (`hasFormData`: filled biomarker rows,
+  or extracted visit/instrumental content); an empty form extracts
+  immediately. Cancelling keeps the new file attached and the current form
+  data intact. Manual mode keeps plain attach-only semantics.
 
 ## Merge UI + merged-readings sections
 

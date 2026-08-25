@@ -237,6 +237,21 @@ export interface FormCategory {
   rows: FormBiomarkerRow[]
 }
 
+// A biomarker whose document unit differs from the definition's canonical
+// unit (a cross-scale conversion was applied during extraction). Shown in the
+// add-entry UnitConflictDialog with per-biomarker converted/original choice.
+export interface UnitConflict {
+  catId: string
+  rowId: string
+  name: string
+  rawUnit: string
+  standardUnit: string
+  scaleFunction: string
+  keepConverted: boolean
+  originalValue: string
+  originalUnit: string
+}
+
 /* ----- AI Extraction Types (two-pass: Standardized output) ----- */
 export interface StandardizedBiomarker {
   raw_name: string

@@ -739,4 +739,109 @@ describe('AddEntry', () => {
       expect(capturedSignal?.aborted).toBe(false)
     })
   })
+
+  describe('replace document after removal', () => {
+    function extractedResult(): StandardizedMedicalRecord {
+      return {
+        entry_type: 'blood_test',
+        date: '2026-07-15',
+        time: null,
+        clinic: 'Test Lab',
+        provider: null,
+        title: null,
+        notes: null,
+        biomarkers: [
+          {
+            raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170',
+            standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L',
+            reference: { kind: 'interval', low: 130, high: 170 },
+            status: 'normal', category: 'Complete Blood Count',
+            definition_id: 'hb', scope: 'global',
+          },
+        ],
+        visit_data: null,
+        instrumental_data: null,
+      }
+    }
+
+    async function renderEditorWithExtractedDoc() {
+      mockExtract.mockResolvedValue(extractedResult())
+      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
+      selectFile(container, createFile())
+      await waitFor(() => {
+        expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
+      }, { timeout: 3000 })
+      return container
+    }
+
+    it('offers an attach slot after removing the extracted document', async () => {
+      await renderEditorWithExtractedDoc()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Remove document' }))
+
+      expect(screen.getByText('Add a photo or scan')).toBeInTheDocument()
+    })
+
+    it('re-runs AI extraction when a replacement is confirmed in AI mode', async () => {
+      const container = await renderEditorWithExtractedDoc()
+      // The replacement extraction hangs so the scan screen stays up.
+      mockExtract.mockImplementationOnce(() => new Promise(() => {}))
+
+      fireEvent.click(screen.getByRole('button', { name: 'Remove document' }))
+      selectFile(container, createFile('replacement.pdf'))
+
+      // The form holds extracted data, so a confirmation gates the extraction.
+      expect(screen.getByText('Re-run AI extraction?')).toBeInTheDocument()
+      expect(mockExtract).toHaveBeenCalledTimes(1)
+
+      fireEvent.click(screen.getByText('Extract new document'))
+
+      await waitFor(() => expect(mockExtract).toHaveBeenCalledTimes(2))
+      expect(mockExtract.mock.calls[1][0].name).toBe('replacement.pdf')
+      expect(screen.getByText('Scanning document pages...')).toBeInTheDocument()
+    })
+
+    it('canceling the confirmation keeps the form data and the attached file', async () => {
+      const container = await renderEditorWithExtractedDoc()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Remove document' }))
+      selectFile(container, createFile('replacement.pdf'))
+      fireEvent.click(screen.getByText('Keep current data'))
+
+      expect(screen.queryByText('Re-run AI extraction?')).not.toBeInTheDocument()
+      expect(mockExtract).toHaveBeenCalledTimes(1)
+      // The extracted data survives untouched.
+      expect(screen.getByDisplayValue('145')).toBeInTheDocument()
+    })
+
+    it('extracts immediately when the form has no data to lose', async () => {
+      mockExtract.mockResolvedValue({ ...extractedResult(), biomarkers: [] })
+      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
+      selectFile(container, createFile())
+      await waitFor(() => {
+        expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
+      }, { timeout: 3000 })
+      mockExtract.mockImplementationOnce(() => new Promise(() => {}))
+
+      fireEvent.click(screen.getByRole('button', { name: 'Remove document' }))
+      selectFile(container, createFile('replacement.pdf'))
+
+      expect(screen.queryByText('Re-run AI extraction?')).not.toBeInTheDocument()
+      await waitFor(() => expect(mockExtract).toHaveBeenCalledTimes(2))
+      expect(mockExtract.mock.calls[1][0].name).toBe('replacement.pdf')
+    })
+
+    it('does not re-extract when attaching in manual mode', async () => {
+      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
+      fireEvent.click(screen.getByText('Skip Upload & Enter Manually'))
+      await waitFor(() => {
+        expect(screen.getByText('Save to HealthPassport')).toBeInTheDocument()
+      })
+      expect(screen.getByText('Add a photo or scan')).toBeInTheDocument()
+
+      selectFile(container, createFile('scan.jpg', 'image/jpeg'))
+
+      expect(mockExtract).not.toHaveBeenCalled()
+    })
+  })
 })

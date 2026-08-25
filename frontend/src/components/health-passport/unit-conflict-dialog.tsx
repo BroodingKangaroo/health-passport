@@ -3,18 +3,9 @@
 import { useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import type { UnitConflict } from '@/lib/types'
 
-export interface UnitConflict {
-  catId: string
-  rowId: string
-  name: string
-  rawUnit: string
-  standardUnit: string
-  scaleFunction: string
-  keepConverted: boolean
-  originalValue: string
-  originalUnit: string
-}
+export type { UnitConflict }
 
 export function UnitConflictDialog({
   conflicts,
