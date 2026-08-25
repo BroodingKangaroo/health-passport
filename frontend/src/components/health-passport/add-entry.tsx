@@ -202,7 +202,10 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const { arm, disarm } = useLeaveGuard()
   useEffect(() => {
     if (uploadState !== 'scanning') return
-    arm(EXTRACTING_MESSAGE)
+    // A confirmed leave must abort the SSE fetch so the browser drops the
+    // connection and the backend takes its client-disconnect path (quota
+    // refund) — mirroring print-setup's translation abort.
+    arm(EXTRACTING_MESSAGE, () => extractionAbortRef.current?.abort())
     return () => disarm()
   }, [uploadState, arm, disarm])
 

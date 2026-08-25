@@ -15,32 +15,6 @@ Playwright e2e removed, backend serializers hoisted into
 `app/api/_serializers.py`, several scripts deleted). Line numbers refer to
 files as they stand now.
 
-## Known gaps
-
-### 30. add-entry arms the leave-guard without an `onLeave` abort callback
-
-- `add-entry.tsx` arms the navigation guard with `arm(EXTRACTING_MESSAGE)` —
-  no second argument — while `print-setup.tsx:96` wires
-  `arm(TRANSLATING_MESSAGE, () => controller.abort())`. Consequence: when the
-  user confirms "Leave anyway" during AI extraction, the in-flight
-  `/api/extract` SSE fetch (`extractionAbortRef`) is never aborted
-  client-side.
-- What still protects correctness today: the `AddEntry` component unmounts on
-  the confirmed leave, and React ignores late `setState` from the detached
-  stream promise — so a stale completion cannot hijack navigation or clobber
-  state (no data corruption, nothing saved).
-- What it costs: with no client abort, the browser keeps the SSE connection
-  open, the server runs OCR + LLM to completion, and the quota charge stands —
-  `ai.py` refunds only on client disconnect / early close
-  (`_refund_on_abort`, lines ~521-529). An abandoned extraction burns a full
-  extraction quota for a result nobody sees (matched definitions may still be
-  persisted as a side effect).
-- Fix sketch: pass an `onLeave` that calls
-  `extractionAbortRef.current?.abort()` — mirroring print-setup; the backend
-  then takes its existing disconnect path and refunds. Also worth a provider
-  test asserting `onLeave` fires before unmount completes (the harness already
-  covers the callback contract).
-
 ## Refactors / agentic-development (2026-08-03)
 
 Refactor candidates identified during an agentic-development audit. These are

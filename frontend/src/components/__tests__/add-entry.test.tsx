@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SessionProvider } from 'next-auth/react'
 import { AddEntry } from '../health-passport/add-entry'
@@ -649,6 +649,94 @@ describe('AddEntry', () => {
       expect(picker).toHaveValue('existing-1')
       fireEvent.change(picker, { target: { value: 'existing-2' } })
       expect(picker).toHaveValue('existing-2')
+    })
+  })
+
+  describe('leave-guard abort wiring', () => {
+    // The extraction's AbortSignal, captured from the mockExtract call so the
+    // tests can assert what the confirmed-leave onLeave callback did to it.
+    let capturedSignal: AbortSignal | null
+
+    beforeEach(() => {
+      capturedSignal = null
+      // Reset any history markers left by previous tests.
+      history.pushState({}, '')
+      mockExtract.mockImplementation((_file, _onProgress, signal) => {
+        capturedSignal = signal ?? null
+        return new Promise(() => {}) // never resolves — stays on the scan screen
+      })
+    })
+
+    async function startExtraction() {
+      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
+      selectFile(container, createFile())
+      await screen.findByText('Scanning document pages...')
+    }
+
+    async function pressBack() {
+      act(() => {
+        window.dispatchEvent(new PopStateEvent('popstate'))
+      })
+      await screen.findByRole('alertdialog')
+    }
+
+    it('aborts the in-flight extraction when leave is confirmed', async () => {
+      await startExtraction()
+      await pressBack()
+
+      fireEvent.click(screen.getByText('Leave anyway'))
+
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+      expect(capturedSignal?.aborted).toBe(true)
+    })
+
+    it('keeps the extraction running when the user stays', async () => {
+      await startExtraction()
+      await pressBack()
+
+      fireEvent.click(screen.getByText('Stay'))
+
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+      expect(capturedSignal?.aborted).toBe(false)
+      expect(screen.getByText('Scanning document pages...')).toBeInTheDocument()
+    })
+
+    it('does not abort on natural completion', async () => {
+      const result = {
+        entry_type: 'blood_test',
+        date: '2026-07-15',
+        time: null,
+        clinic: 'Test Lab',
+        provider: null,
+        title: null,
+        notes: null,
+        biomarkers: [
+          {
+            raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170',
+            standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L',
+            reference: { kind: 'interval', low: 130, high: 170 },
+            status: 'normal', category: 'Complete Blood Count',
+            definition_id: 'hb', scope: 'global',
+          },
+        ],
+        visit_data: null,
+        instrumental_data: null,
+      } satisfies StandardizedMedicalRecord
+      // Resolving variant of the capturing implementation (mockResolvedValue
+      // would replace it and lose the signal capture).
+      mockExtract.mockImplementation((_file, _onProgress, signal) => {
+        capturedSignal = signal ?? null
+        return Promise.resolve(result)
+      })
+      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
+      selectFile(container, createFile())
+
+      await waitFor(() => {
+        expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
+      }, { timeout: 3000 })
+
+      expect(screen.queryByRole('alertdialog')).toBeNull()
+      expect(capturedSignal?.aborted).toBe(false)
     })
   })
 })
