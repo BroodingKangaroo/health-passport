@@ -32,7 +32,7 @@ data layer, kept for traceability.
 2. **Curated `local-` synonyms are honored.** A curated code starting with
    `local-` (e.g. `Активированные лимфоциты`) is excluded from global LOINC
    lookup and from the LLM zero-shot guess, so it can never be promoted to a
-   global LOINC. See `app/services/matcher.py` Step 1a / Step 2.
+    global LOINC. See `app/services/matcher/pipeline.py` Step 1a / Step 2.
 
 3. **RDW → `788-0`** (`RBC distribution width`). `data/multilingual_synonyms.json`
    points `RDW` / `RDW (шир. распред. эритр)` / `Ширина распределения эритроцитов`
@@ -158,8 +158,8 @@ data layer, kept for traceability.
   (`Мутация в гене JAK2 (12 exon)`, `JAK2 (14 exon; V617F)`, `CALR (9 exon)`,
   `MPL (10 exon)`) carried `standard_unit: "ratio"` — wrong: these are
   qualitative tests ("Не выявлена" / "Not detected") with no physical unit.
-  The matcher already emits `""` for them (`_guess_unit` mutation branch in
-  `app/services/matcher.py`, and `verify_or_create` persists `canonical_unit:
+   The matcher already emits `""` for them (`_guess_unit` mutation branch in
+   `app/services/matcher/units_guess.py`, and `verify_or_create` persists `canonical_unit:
   ""` on first-seen), so the observed output was `""` vs. the golden's
   `"ratio"`. Golden corrected to `standard_unit: ""` 2026-08-03.
 - **Fresh-DB ordering dependency (`колонофлор_16_*`)**: canonical units are

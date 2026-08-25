@@ -58,7 +58,30 @@ Replaces the old `range_min`/`range_max` + qualitative-flag model:
   (String, nullable) for qualitative text, merged into one union `value` on
   the wire.
 
-## Unit canonicalization / cross-scale conversion (`app/services/matcher.py`)
+## Matcher package layout (`app/services/matcher/`)
+
+The former single-module `matcher.py` is split into focused submodules behind
+a re-exporting facade (`app/services/matcher/__init__.py`). External code
+(`ai.py`, `e2e/validate_offline.py`, tests) keeps importing from
+`app.services.matcher`; only the facade knows about the split. Submodules
+import each other directly (never via the facade) so `@patch` targets keep
+working.
+
+| Module | Purpose |
+|---|---|
+| `_cache.py` | Per-thread, extraction-scoped LLM caches (`_RequestBucket` + factor/unit/scale-function caches as shared singletons) |
+| `_text.py` | Tiny shared text helpers (`_is_ascii`) |
+| `loinc_store.py` | LOINC CSV loading, `_promote_loinc_from_csv`, alias + multilingual lookup tables |
+| `name_matching.py` | Name index build, deterministic/fuzzy matching, grounding check, percent→fraction routing |
+| `llm_matching.py` | Candidate retrieval, zero-shot LOINC guess batch, verification backstop |
+| `units_guess.py` | Unit translation to English + `_guess_unit()` empty-unit heuristics |
+| `units_conversion.py` | Conversion factors (`convert_units`), cross-scale functions, canonical-unit landing |
+| `translation.py` | Biomarker-name + visit-data LLM translation with fallbacks, date/time normalize |
+| `definitions.py` | `verify_or_create` / `_make_local_copy` — definition resolution & persistence (first-seen canonical units anchor here) |
+| `standardize.py` | `StandardizedBiomarker` builders, status apply, LLM-free fallback path |
+| `pipeline.py` | The `match_and_convert` orchestrator |
+
+## Unit canonicalization / cross-scale conversion (`matcher/units_conversion.py`, `matcher/units_guess.py`)
 
 - Each biomarker definition stores a canonical unit (`canonical_unit`,
   `canonical_kind` in `linear|log10|ln`, `canonical_unit_inferred` bool), set

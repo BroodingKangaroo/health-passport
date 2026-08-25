@@ -1,0 +1,138 @@
+"""LOINC data store access: CSV loading, definition promotion, alias and
+multilingual lookup tables."""
+
+import json
+import logging
+import os
+import re
+from typing import Optional
+
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
+from app.services.matcher.name_matching import _normalize_name
+
+logger = logging.getLogger(__name__)
+
+# NOTE: this module lives one directory deeper than the pre-split matcher.py,
+# so data paths carry an extra ".." hop.
+LOINC_CSV = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "Loinc.csv")
+
+_loinc_row_cache: Optional[dict[str, dict]] = None
+
+
+def _load_loinc_rows() -> dict[str, dict]:
+    """Lazily load LOINC_NUM -> row from the full LOINC CSV (cached)."""
+    global _loinc_row_cache
+    if _loinc_row_cache is not None:
+        return _loinc_row_cache
+    import csv
+
+    rows: dict[str, dict] = {}
+    path = os.path.abspath(LOINC_CSV)
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            for row in csv.DictReader(f):
+                code = (row.get("LOINC_NUM") or "").strip()
+                if code:
+                    rows[code] = row
+    except OSError as e:
+        logger.warning("Could not load LOINC CSV for promotion: %s", e)
+    _loinc_row_cache = rows
+    return rows
+
+
+def _promote_loinc_from_csv(db: Session, code: str) -> Optional[BiomarkerDefinitionModel]:
+    """Create a global BiomarkerDefinition from the full LOINC CSV for a code
+    that was guessed by the LLM but not present in the seeded subset."""
+    from app.db.seed_loinc import row_to_definition
+
+    row = _load_loinc_rows().get(code)
+    if not row:
+        return None
+    try:
+        defn_dict = row_to_definition(row)
+    except Exception as e:
+        logger.warning("Failed to build definition for LOINC %s: %s", code, e)
+        return None
+    if not defn_dict.get("id"):
+        return None
+    new_defn = BiomarkerDefinitionModel(**defn_dict)
+    db.add(new_defn)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        return db.query(BiomarkerDefinitionModel).filter(
+            BiomarkerDefinitionModel.id == code
+        ).first()
+    logger.info("Promoted LOINC %s to global definition", code)
+    return new_defn
+
+
+# Cache of multilingual synonym lookups (name -> loinc_code) for the request.
+_loinc_alias_cache: Optional[dict[str, str]] = None
+
+
+def _load_loinc_aliases() -> dict[str, str]:
+    """Folded-code -> survivor-code map produced by the seed's dedupe step.
+
+    Lets a curated multilingual code that was deduplicated away still resolve to
+    the surviving canonical definition instead of being promoted as a duplicate."""
+    global _loinc_alias_cache
+    if _loinc_alias_cache is not None:
+        return _loinc_alias_cache
+    path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "loinc_aliases.json")
+    )
+    try:
+        with open(path, encoding="utf-8") as f:
+            _loinc_alias_cache = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        _loinc_alias_cache = {}
+    return _loinc_alias_cache
+
+
+def _load_multilingual_lookup() -> dict[str, str]:
+    """Flat (lowercased) multilingual name -> LOINC code map."""
+    path = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "..", "..", "data", "multilingual_synonyms.json"
+        )
+    )
+    if not os.path.isfile(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return {}
+    lookup: dict[str, str] = {}
+    for mapping in data.values():
+        for name, code in mapping.items():
+            lookup[name.strip().lower()] = code
+            # Also index a punctuation-normalized variant so OCR noise like
+            # "СОЭ (по Вестергрену)" or trailing punctuation still resolves.
+            lookup.setdefault(_normalize_name(name), code)
+    return lookup
+
+
+# Strips a trailing parenthetical / qualifier so noisy names like
+# "СОЭ (по Вестергрену)" or "Эозинофилы, %" still hit the curated table.
+_QUALIFIER_RE = re.compile(r"[\(,].*$")
+
+
+def _multilingual_code(name: str, multilang: dict[str, str]) -> Optional[str]:
+    """Look up a localized name in the curated table, tolerating OCR noise."""
+    if not name:
+        return None
+    candidates = [
+        name.strip().lower(),
+        _normalize_name(name),
+        _normalize_name(_QUALIFIER_RE.sub("", name)),
+    ]
+    for key in candidates:
+        if key and key in multilang:
+            return multilang[key]
+    return None

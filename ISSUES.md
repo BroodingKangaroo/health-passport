@@ -21,16 +21,6 @@ Refactor candidates identified during an agentic-development audit. These are
 not user-facing bugs; they increase per-task token cost for AI-assisted
 development (wholesale file reads) and slow agent context loading.
 
-### 21. Split `backend/app/services/matcher.py` (1,998 lines)
-
-- File: `backend/app/services/matcher.py` — bundles LOINC/name matching,
-  canonical-unit assignment, `_guess_unit()` heuristics, `_llm_scale_function`,
-  `_apply_scale_function`, cross-scale conversion, and `verify_or_create`.
-- Every matcher/unit task reads the file wholesale (~21k tokens).
-- Proposal: split into focused modules (matching, units/conversion, guessing)
-  behind the same public entry points, keep behavior identical, run the full
-  backend suite + `validate_offline.py` after.
-
 ### 22. Split `frontend/src/components/health-passport/add-entry.tsx` (1,017 lines)
 
 - File: `frontend/src/components/health-passport/add-entry.tsx` — bundles the
@@ -138,8 +128,8 @@ distinguish "worse" from "broken".
 - `.opencode/command/autoresearch.md` — start/resume entry point.
 - **Guards** (must stay green for a keep): `pytest tests/`, `ruff check .`,
   and existing e2e goldens via `validate_offline.py`.
-- **Scope-locked**: only `extractor.py`, `matcher.py`, `ai.py`, and
-  `benchmark/`. **Off-limits**: `seed_loinc`, `Loinc.csv`, goldens, DB files.
+- **Scope-locked**: only `extractor.py`, `matcher/` (the package),
+  `ai.py`, and `benchmark/`. **Off-limits**: `seed_loinc`, `Loinc.csv`, goldens, DB files.
 - **Git isolation**: runs on its own `autoresearch/extraction` branch; main
   work is untouched. The loop **never commits to main and never pushes** —
   every keep is presented for human review first.

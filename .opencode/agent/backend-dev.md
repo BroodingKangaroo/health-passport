@@ -30,7 +30,7 @@ Before answering or editing, read the source of truth for backend rules:
   own `SessionLocal()` and MUST `commit()` before `close()` (`rollback()` on
   error), or definitions + canonical units are silently lost and sequential
   extractions "forget" units. #1 bug to check.
-- **Units** (`app/services/matcher.py`): canonical unit = first-seen wins;
+- **Units** (`app/services/matcher/` package — units in `units_conversion.py`/`units_guess.py`): canonical unit = first-seen wins;
   later readings converted via `scale_function`; **`lg` MEANS log10** (do not
   "fix" to linear — reverted twice); empty units go to `_guess_unit()`, never
   the batch LLM translator.
