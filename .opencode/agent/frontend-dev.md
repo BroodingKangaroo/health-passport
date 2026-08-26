@@ -31,8 +31,13 @@ Before answering or editing, read the source of truth for frontend rules:
   editor exclude them. `biomarkersAtDate` (`views/TimelineView.tsx`) copies
   `merged`/`merged_source` from the reading AT the selected event
   (`isLatest`-gated) — never a `??`-fallback to the latest reading.
-- Commands: `pnpm test` (vitest, jsdom, `@`→`src/`), `pnpm lint`. No frontend
-  Playwright suite — e2e lives in the backend golden harness.
+- Commands: `pnpm test` (vitest, jsdom, `@`→`src/`), `pnpm lint`,
+  `pnpm typecheck` (`tsc --noEmit` — type errors otherwise surface only at
+  `next build`). No frontend Playwright suite — e2e lives in the backend
+  golden harness.
+- Big files (>~400 lines, e.g. `print-editor.tsx`, `add-entry.tsx`,
+  `correlation-chart.tsx`): locate with Grep (context lines), then Read a
+  narrow window — never read them wholesale for a single edit.
 
 When suggesting changes, note the component(s) touched and call out any effect
 on the merge/units behavioral contracts above. Update `frontend/docs/architecture.md`

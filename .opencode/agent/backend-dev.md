@@ -36,6 +36,12 @@ Before answering or editing, read the source of truth for backend rules:
   the batch LLM translator.
 - Backend tests: `backend/venv/bin/python -m pytest tests/ -v` (cwd
   `backend/`). Lint: `backend/venv/bin/ruff check .`.
+- Test scope: while iterating run the narrowest subset that reproduces the
+  issue (`pytest tests/test_x.py -k name`); run the full suite once before
+  declaring done.
+- Big files (>~400 lines, e.g. large service/api modules): locate with Grep
+  (context lines), then Read a narrow window — never read them wholesale for
+  a single edit.
 
 When asked to change code, explain the change and its exact effect on status,
 units, and persisted definitions before editing. Update `backend/docs/architecture.md`,

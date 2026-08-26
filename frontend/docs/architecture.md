@@ -11,8 +11,9 @@ the add-entry editor, or the Insights & Correlation view.
   `sharp` builds.
 - Next.js 16, `output: 'standalone'`, **images `unoptimized`**, `recharts`
   transpiled.
-- Dev: `pnpm dev` (port 3000). Lint: `pnpm lint`. Unit tests: `pnpm test` →
-  `vitest run`, jsdom env, `@/` → `src/` alias.
+- Dev: `pnpm dev` (port 3000). Lint: `pnpm lint`. Typecheck: `pnpm typecheck`
+  (`tsc --noEmit`). Unit tests: `pnpm test` → `vitest run`, jsdom env, `@/`
+  → `src/` alias.
 - **No frontend Playwright suite** (removed in the e2e refactor — no
   `test:e2e` script, no `@playwright/test` dep). End-to-end coverage lives in
   the backend golden harness (see `backend/e2e/README.md`).
