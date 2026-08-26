@@ -15,6 +15,88 @@ Playwright e2e removed, backend serializers hoisted into
 `app/api/_serializers.py`, several scripts deleted). Line numbers refer to
 files as they stand now.
 
+## Security & correctness audit (2026-08-26)
+
+Re-audit after commits `36dbcd0` / `8989829` / `8f89382`; all findings below
+were re-verified against the current working tree. Line numbers refer to
+files as they stand now. These are the five highest-priority items from the
+full audit; lower-severity findings (auth-status stuck in `loading`,
+DocumentViewer silent failure + pdf.js leak, upload whitelist/XSS hardening,
+password-reset throttle collapse behind the proxy, TOCTOU races in
+register/reset, dialog focus-trap gaps, keyboard-inaccessible rows,
+open-redirect via `?callbackUrl=`, etc.) remain tracked outside this log.
+
+### 31. Anonymous session cookie value is trusted verbatim as the authorization principal (critical)
+
+- `app/api/anon_session.py:17-19`: the raw client-supplied cookie value is
+  returned as-is and becomes `user_id` (`app/api/auth.py:125-128`) — no
+  prefix check, no server-side session store, no signature. Every ownership
+  filter in the app is `patient_id == user_id`, so anyone who sets
+  `healthpassport_anon_id=<victim's Patient.id>` gets full read/write/delete
+  on that account without any token.
+- The victim id leaks, completing the attack chain without guessing:
+  definition serialization includes owner `user_id`
+  (`app/api/_serializers.py:46`) and flowsheet/timeline definition lookups
+  deliberately ignore ownership (`app/api/flowsheet.py:111-114`). Arbitrary
+  attacker-chosen cookie values also create unauthenticated rows in
+  `usage_limits` / `medical_entries` / `biomarker_definitions`.
+- Fix: HMAC-sign the anon cookie at issuance (or persist issued ids) and
+  reject unverified values; stop emitting other tenants' `user_id` in wire
+  schemas.
+
+### 32. Translation commit endpoint lets unauthenticated callers rewrite shared global definitions (critical)
+
+- `app/api/ai.py:707-731` (`POST /api/translate-biomarkers/commit`, reachable
+  anonymously): the *visibility* filter — `(scope == "global") | (user_id IS
+  NULL) | (user_id == caller)` — is reused as the **write** filter, then
+  arbitrary client-supplied strings are persisted into `names[lang]`. Any
+  caller can poison what every user's flowsheet/print renders. Same pattern
+  applies to the `persist=True` path of `/api/translate-biomarkers`.
+  `CommitTranslationItem.name` has no length cap either.
+- Fix: restrict writes to `scope == "local" AND user_id == principal`;
+  treat global/system defs as read-only; cap name length.
+
+### 33. Shared `category_translation_cache` can be seeded/poisoned anonymously, with no size caps (medium-high)
+
+- New in `8f89382`: `/api/translate-biomarkers` writes fresh heading
+  translations into the shared all-users, never-invalidated
+  `category_translation_cache` (`app/api/ai.py:791-796`), and cache hits are
+  served *before* the LLM on every later request
+  (`app/api/ai.py:715-724`). Since the endpoint is anonymous-reachable, an
+  attacker can pre-seed poisoned heading translations that every user's
+  print render then trusts (`source="translated"`), at only the cost of anon
+  AI quota. `schemas/ai.py` caps neither the number of categories nor their
+  string length → unbounded row sizes / row counts.
+- Fix: require an authenticated principal for populating the shared cache
+  (or key rows per user); cap string length and item count.
+
+### 34. Empty blood-test entry can still be saved by deleting every row (high)
+
+- `frontend/src/components/health-passport/add-entry.tsx:325-333`: the guard
+  requires `validRowCount === 0 && skippedRowCount > 0 && !selectedFile`.
+  `LabResultForm` allows deleting all rows (no minimum), leaving both counts
+  at 0 → guard passes → Save commits an entry with no readings and no
+  document (backend accepts `biomarkers="[]"`). The comment at
+  `add-entry.tsx:180-183` claims the all-empty list is blocked — it isn't.
+- Fix: drop the `skippedRowCount > 0 &&` clause (`validRowCount === 0 &&
+  !selectedFile`), update the comment, add a delete-all-rows test.
+
+### 35. Matcher per-thread LLM caches are never cleared between extractions (high)
+
+- `app/services/matcher/_cache.py:11-44`: `_factor_cache`,
+  `_unit_translation_cache`, `_scale_function_cache` are thread-local buckets
+  that are created on first use and never reset anywhere in the repo.
+  Matching runs via `run_in_executor(None, ...)` (`app/api/ai.py:509`), whose
+  default-pool threads are reused for the process lifetime — so extraction
+  N+1 handled by the same thread starts with extraction N's cached LLM unit
+  guesses/conversions. That is exactly the cross-extraction contamination the
+  caches were built to prevent (docstring promise), and it can anchor wrong
+  canonical units — the core invariant of the matcher.
+- Fix: clear the three buckets at the start of each `match_and_convert`
+  (or key caches by request id instead of thread).
+
+---
+
 ## Refactors / agentic-development (2026-08-03)
 
 Refactor candidates identified during an agentic-development audit. These are
