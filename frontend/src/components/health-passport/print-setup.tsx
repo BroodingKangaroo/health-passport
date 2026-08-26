@@ -77,6 +77,19 @@ export function PrintSetup() {
   useEffect(() => {
     return () => translateAbortRef.current?.abort()
   }, [])
+
+  /** Programmatic exit into the editor. Tears the leave-guard down with
+   * `{ pop: false }`: the marker's history.go(-1) delivers its popstate
+   * ASYNC, landing inside the router.push() soft navigation that follows and
+   * aborting it as "stale" — the user stays here ("the editor never opens").
+   * The leftover marker is harmless: handlePop absorbs it silently on the
+   * next Back press. (Both guard teardowns below are idempotent.) */
+  function exitToEditor() {
+    disarm({ pop: false })
+    setTranslating(false)
+    router.push('/print-editor')
+  }
+
   async function handleGenerate() {
     if (mode === 'original' || targetLanguage === 'en') {
       router.push('/print-editor')
@@ -158,13 +171,13 @@ export function PrintSetup() {
         if (cachedAll) {
           // Re-generate of an already-translated document: nothing new to
           // review, and this path is instant and free.
-          router.push('/print-editor')
+          exitToEditor()
           return
         }
         // Review step: surface the terms before they land in the document.
         setPreview(items)
       } else {
-        router.push('/print-editor')
+        exitToEditor()
       }
     } catch (err) {
       // The user confirmed leave mid-translation: stay silent — no toast,
@@ -179,9 +192,9 @@ export function PrintSetup() {
       const reason = err instanceof Error ? err.message : 'unknown error'
       toast.error(
         `AI translation failed (${reason}). The document is shown in English / your source language — switch the mode back to “Original” or regenerate to retry.`,
-        { duration: Infinity },
+        { duration: Infinity, closeButton: true },
       )
-      router.push('/print-editor')
+      exitToEditor()
     } finally {
       disarm()
       if (!controller.signal.aborted) setTranslating(false)

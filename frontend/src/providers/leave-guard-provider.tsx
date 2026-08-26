@@ -22,8 +22,12 @@ interface LeaveGuardContextValue {
    * abort their in-flight request so its completion cannot outlive the page.
    */
   arm: (message: string, onLeave?: () => void) => void
-  /** Stop guarding and drop the internal history marker. */
-  disarm: () => void
+  /**
+   * Stop guarding and (by default) drop the internal history marker. Pass
+   * `{ pop: false }` when a programmatic navigation follows immediately —
+   * the marker pop would race it. Leftover markers are absorbed silently.
+   */
+  disarm: (opts?: { pop?: boolean }) => void
   /** Ask to leave while a process is running. Resolves true when confirmed. */
   confirmLeave: () => Promise<boolean>
 }
@@ -40,6 +44,10 @@ export function useLeaveGuard() {
 // browser Back button then pops the marker (invisible — same URL) instead of
 // leaving the page, giving us a chance to ask first.
 const MARKER = { leaveGuard: true } as const
+
+function isMarkerState(state: unknown): boolean {
+  return !!(state && (state as { leaveGuard?: boolean }).leaveGuard)
+}
 
 interface ConfirmState {
   message: string
@@ -92,8 +100,16 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
   // marker so the next Back is blocked the same way, then ask. On
   // confirmation, honor the absorbed Back by going back two entries
   // (marker -> current page -> previous page).
+  //
+  // While NOT guarded, a marker left behind by disarm({ pop: false }) (see
+  // below) is consumed silently: one invisible hop per Back press until the
+  // stack is clean. This keeps programmatic exits race-free without ever
+  // presenting the user with a "dead" Back press.
   const handlePop = useCallback(() => {
-    if (!busyRef.current) return
+    if (!busyRef.current) {
+      if (isMarkerState(history.state)) history.go(-1)
+      return
+    }
     history.pushState(MARKER, '')
     if (dialogOpenRef.current) return
     void confirmLeave().then((ok) => {
@@ -115,11 +131,13 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [busy])
 
+  // Always-on: besides intercepting Back while guarded, this also consumes
+  // stale markers left behind by disarm({ pop: false }) once the guard is
+  // disarmed. Both branches read refs, so attaching permanently is safe.
   useEffect(() => {
-    if (!busy) return
     window.addEventListener('popstate', handlePop)
     return () => window.removeEventListener('popstate', handlePop)
-  }, [busy, handlePop])
+  }, [handlePop])
 
   const arm = useCallback((msg: string, onLeave?: () => void) => {
     if (busyRef.current) return
@@ -128,24 +146,37 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
     onLeaveRef.current = onLeave ?? null
     setBusy(true)
     // Push the marker ON TOP of the current page so the next Back press pops
-    // it (invisible, same URL) instead of leaving the page.
-    history.pushState(MARKER, '')
+    // it (invisible, same URL) instead of leaving the page. If the top entry
+    // is already a marker (left by a disarm({ pop: false }) programmatic exit
+    // on this page), don't stack another one — one is enough to intercept Back.
+    if (!isMarkerState(history.state)) {
+      history.pushState(MARKER, '')
+    }
   }, [])
 
-  const disarm = useCallback(() => {
-    if (!busyRef.current) return
-    busyRef.current = false
-    onLeaveRef.current = null
-    // A dialog left open by a finished process: close it as "stay".
-    resolveConfirm(false)
-    setBusy(false)
-    // Pop the marker entry. Its URL equals the current page's, so the pop is
-    // invisible. Guarded by the state flag so we never pop a real entry
-    // (e.g. when the confirmed-leave path already consumed the marker).
-    if (history.state && (history.state as { leaveGuard?: boolean }).leaveGuard) {
-      history.go(-1)
-    }
-  }, [resolveConfirm])
+  /** Stop guarding. By default pops the marker entry (`history.go(-1)`); pass
+   * `{ pop: false }` when the caller navigates programmatically right after:
+   * `go(-1)` delivers its popstate ASYNC — into the middle of the in-flight
+   * Next.js soft navigation, which then aborts the pending push as stale.
+   * Leaving the marker instead is safe: handlePop consumes it silently while
+   * the guard is disarmed. */
+  const disarm = useCallback(
+    (opts?: { pop?: boolean }) => {
+      if (!busyRef.current) return
+      busyRef.current = false
+      onLeaveRef.current = null
+      // A dialog left open by a finished process: close it as "stay".
+      resolveConfirm(false)
+      setBusy(false)
+      // Pop the marker entry. Its URL equals the current page's, so the pop is
+      // invisible. Guarded by the state flag so we never pop a real entry
+      // (e.g. when the confirmed-leave path already consumed the marker).
+      if ((opts?.pop ?? true) && isMarkerState(history.state)) {
+        history.go(-1)
+      }
+    },
+    [resolveConfirm],
+  )
 
   const confirmAndLeave = useCallback(async () => {
     // Not guarded (no process running): navigate freely without asking.

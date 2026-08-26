@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CheckCircle2, AlertTriangle, Languages, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -93,6 +93,17 @@ export function TranslationPreviewDialog({
   // matching the previous all-or-nothing behavior.
   const [rejected, setRejected] = useState<Record<string, boolean>>({})
 
+  // Standard dismissal affordances: Escape discards the run, same as the
+  // explicit "Back — discard translations" button. (Backdrop click is handled
+  // directly on the overlay below.) Above the early return: rules of hooks.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onCancel])
+
   if (items.length === 0) return null
 
   const decidable = items.filter((i) => i.source === 'translated')
@@ -103,7 +114,15 @@ export function TranslationPreviewDialog({
   const hasFallback = items.some((i) => i.source === 'fallback')
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={(e) => {
+        // A click on the dimmed backdrop discards the run (same as Back).
+        // Panel clicks bubble up here too, so only react when the backdrop
+        // itself was the target.
+        if (e.target === e.currentTarget) onCancel()
+      }}
+    >
       <div className="mx-4 w-full max-w-3xl rounded-xl bg-background p-6 shadow-xl">
         <div className="mb-4 flex items-start gap-3">
           <Languages className="mt-0.5 size-5 shrink-0 text-primary" />

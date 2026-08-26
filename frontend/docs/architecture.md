@@ -38,8 +38,8 @@ backend to include the site).
   fetches the flowsheet matrix and calls `POST /api/translate-biomarkers`
   (one batched LLM call per language). While it runs, the button shows a
   spinner with live elapsed seconds ("Translating terminology… Ns") so the
-  5–30 s AI call never feels stuck; `translateBiomarkerNames` in
-  `services/api.ts` aborts with a clear error after 60 s (a retry is cheap —
+  AI call never feels stuck; the client-side patience cap lives in
+  `TRANSLATE_TIMEOUT_MS` in `services/api.ts` (see below; a retry is cheap —
   already-translated names short-circuit server-side).
 - The response's per-item `source` (`translated`/`cached`/`fallback`, see
   `backend/docs/architecture.md`) drives the UX: any fresh translations open
@@ -49,11 +49,13 @@ backend to include the site).
   locked on cached/kept-as-is rows (locked to Translation); fallback rows
   have no toggle — the amber "English fallback" label sits in the choice
   column instead; the row always shows the name that will actually print. The dialog is naming-only — it never removes a biomarker from the
-  document (exclusion lives in the print editor filter), and a footer hint says
-  so. Confirming commits ONLY the terms left on `Translation`
-  (`commitTranslatedNames` → `POST /translate-biomarkers/commit`, no LLM/quota)
-  and navigates to `/print-editor`; "Back" discards the whole run without
-  saving anything (a re-generate then re-translates at LLM cost). A success
+   document (exclusion lives in the print editor filter), and a footer hint says
+   so. Confirming commits ONLY the terms left on `Translation`
+   (`commitTranslatedNames` → `POST /translate-biomarkers/commit`, no LLM/quota)
+   and navigates to `/print-editor`; "Back" discards the whole run without
+   saving anything (a re-generate then re-translates at LLM cost) — Escape
+   and a click on the dimmed backdrop discard identically to Back, while
+   clicks inside the dialog panel are ignored. A success
   toast states how many terms were saved for future documents. Badges
   distinguish `cached` ("already translated"), `fallback` ("English fallback"
   — a failure), and names the model deliberately returned unchanged — Latin
@@ -86,7 +88,8 @@ backend to include the site).
   so `print-editor.tsx` renders the English / source names and raw category
   headings even though saved translations exist on the definitions — honoring
   the "fallback to English" contract. A successful run (or a language switch)
-  clears the flag. The failure toast is sticky (`duration: Infinity`) and
+  clears the flag. The failure toast is sticky (`duration: Infinity`) with a
+  close button, and
   tells the user the document is in their source language and how to retry,
   so it survives switching tabs. The `original` mode (labeled neutrally
   "Keep Original" — source documents are not necessarily Russian) and the
@@ -94,6 +97,21 @@ backend to include the site).
   bounded by `TRANSLATE_TIMEOUT_MS` (150s) in `services/api.ts` — generous
   because the LLM can take well over a minute under load, but capped so the
   UI can't hang forever.
+- **Every programmatic exit goes through `exitToEditor()`**, which tears the
+  leave-guard down with `disarm({ pop: false })` — deliberately WITHOUT
+  popping the history marker — before `router.push('/print-editor')`. Any
+  marker pop is forbidden on this path: `history.go(-1)` delivers its
+  `popstate` asynchronously, i.e. INTO the in-flight Next.js soft
+  navigation, which treats the popstate as a newer navigation intent and
+  aborts the pending push — the user stays on `/print-setup` ("the editor
+  never opens", seen after a failed run or an all-cached regeneration).
+  Order doesn't help; popping must simply not happen. The leftover marker is
+  harmless (see leave-guard section): it is absorbed silently by the always-
+  on `popstate` handler. The review dialog's confirm path navigates long
+  after teardown (plain `disarm()` ran when results arrived), so only the
+  three programmatic paths (all-cached shortcut, empty-names branch, failure
+  fallback) go through `exitToEditor()`; the `finally` block is just a
+  safety net for the aborted-leave path.
 
 ## Navigation leave-guard during AI processes
 
@@ -115,8 +133,16 @@ backend to include the site).
   Choosing "Stay" — or clicking the dimmed backdrop outside the dialog
   panel; clicks inside the panel are ignored — keeps the marker pushed for
   the next Back press.
-  `disarm()` is idempotent and pops the marker; both confirmed-leave and
-  natural completion converge through it.
+  `disarm()` is idempotent and by default pops the marker; both
+  confirmed-leave and natural completion converge through it. Callers that
+  navigate programmatically right after teardown must instead use
+  `disarm({ pop: false })` — the marker's `history.go(-1)` delivers its
+  popstate into the in-flight soft navigation and aborts it
+  (print-setup's `exitToEditor()` is that contract) — and the guard cleans
+  up after them: `arm()` never stacks a second marker when the top entry is
+  already one, and the (now always-on) `popstate` handler consumes stale
+  markers silently, one invisible hop per Back press, whenever the guard is
+  disarmed.
 
 ## Reference formatting / stats
 

@@ -6,10 +6,17 @@ import { usePrintConfig } from '@/hooks/usePrintConfig'
 import { LeaveGuardProvider } from '@/providers/leave-guard-provider'
 import type { FlowsheetResponse } from '@/lib/types'
 import type { TranslatedName } from '@/services/api'
+import { toast } from 'sonner'
 
 afterEach(() => {
   sessionStorage.clear()
 })
+
+// Sonner renders nothing without its <Toaster>; mock the store API so
+// failure-path options (sticky duration, close button) become assertable.
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), success: vi.fn(), dismiss: vi.fn() },
+}))
 
 const mockPush = vi.fn()
 const mockFetchFlowsheet = vi.fn()
@@ -90,6 +97,16 @@ function confirmPreview() {
   fireEvent.click(buttons[buttons.length - 1])
 }
 
+/**
+ * Any `history.go()` during a programmatic exit means the guard's async
+ * marker pop would land inside the in-flight Next.js soft navigation and
+ * abort it ("the editor never opens") — programmatic exits must navigate
+ * WITHOUT touching history traversal at all (marker left behind instead).
+ */
+function forbidHistoryTraversal(): ReturnType<typeof vi.spyOn> {
+  return vi.spyOn(history, 'go').mockImplementation(((() => {}) as typeof history.go))
+}
+
 describe('PrintSetup', () => {
   beforeEach(() => {
     mockPush.mockClear()
@@ -97,10 +114,14 @@ describe('PrintSetup', () => {
     mockTranslate.mockClear()
     mockCommit.mockClear()
     mockCommit.mockResolvedValue(2)
+    vi.mocked(toast.error).mockClear()
+    vi.mocked(toast.success).mockClear()
+    vi.mocked(toast.dismiss).mockClear()
   })
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.restoreAllMocks()
   })
 
   it('renders the title and description', () => {
@@ -492,6 +513,97 @@ describe('PrintSetup', () => {
 
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/print-editor'))
     expect(screen.queryByText('Verify Translations')).toBeNull()
+  })
+
+  it('navigates to the editor WITHOUT any history traversal on the all-cached shortcut', async () => {
+    mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
+    mockTranslate.mockResolvedValue(
+      translateResult({
+        wbc: { name: 'Leukozyten', source: 'cached' },
+        hb: { name: 'Hämoglobin', source: 'cached' },
+      }),
+    )
+    const go = forbidHistoryTraversal()
+    renderComponent()
+    selectTranslateModeAndLang('es')
+    fireEvent.click(screen.getByText('Generate Document'))
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/print-editor'))
+    // A marker pop here (even before the push) delivers its popstate async
+    // INTO the in-flight navigation, aborting it — must not happen.
+    expect(go).not.toHaveBeenCalled()
+  })
+
+  it('navigates on the failure fallback WITHOUT any history traversal', async () => {
+    mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
+    mockTranslate.mockRejectedValue(new Error('Mistral down'))
+    const go = forbidHistoryTraversal()
+    renderComponent()
+    selectTranslateModeAndLang('de')
+    fireEvent.click(screen.getByText('Generate Document'))
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/print-editor'))
+    expect(go).not.toHaveBeenCalled()
+  })
+
+  it('pins the failure toast but leaves it closable', async () => {
+    mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
+    mockTranslate.mockRejectedValue(new Error('Mistral down'))
+    renderComponent()
+    selectTranslateModeAndLang('es')
+    fireEvent.click(screen.getByText('Generate Document'))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
+    // Sticky until seen, but the toast shows a close button (sonner option).
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining('AI translation failed'),
+      { duration: Infinity, closeButton: true },
+    )
+  })
+
+  it('Escape discards the review run like the Back button', async () => {
+    mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
+    mockTranslate.mockResolvedValue(
+      translateResult({
+        wbc: { name: 'Leukozyten', source: 'translated' },
+        hb: { name: 'Hämoglobin', source: 'translated' },
+      }),
+    )
+    renderComponent()
+    selectTranslateModeAndLang('de')
+    fireEvent.click(screen.getByText('Generate Document'))
+
+    expect(await screen.findByText('Verify Translations')).toBeTruthy()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByText('Verify Translations')).toBeNull()
+    expect(mockCommit).not.toHaveBeenCalled()
+    expect(mockPush).not.toHaveBeenCalledWith('/print-editor')
+    // The setup screen is still usable for a retry.
+    expect(screen.getByText('Generate Document')).toBeTruthy()
+  })
+
+  it('a backdrop click discards the run while panel clicks keep it open', async () => {
+    mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
+    mockTranslate.mockResolvedValue(
+      translateResult({
+        wbc: { name: 'Leukozyten', source: 'translated' },
+        hb: { name: 'Hämoglobin', source: 'translated' },
+      }),
+    )
+    renderComponent()
+    selectTranslateModeAndLang('de')
+    fireEvent.click(screen.getByText('Generate Document'))
+    await screen.findByText('Verify Translations')
+
+    // A click inside the panel (bubbling to the overlay) is ignored…
+    fireEvent.click(screen.getByText('Verify Translations'))
+    expect(screen.getByText('Verify Translations')).toBeTruthy()
+
+    // …only a click on the dimmed backdrop itself discards.
+    fireEvent.click(document.querySelector('.fixed.inset-0') as Element)
+    expect(screen.queryByText('Verify Translations')).toBeNull()
+    expect(mockCommit).not.toHaveBeenCalled()
+    expect(mockPush).not.toHaveBeenCalledWith('/print-editor')
   })
 
   it('flips suppressSavedTranslations on failure so the editor shows English', async () => {
