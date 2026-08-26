@@ -118,7 +118,7 @@ Reference for agents so these aren't re-derived via grep each session:
 | `app/services/extractor.py` | Pass-1 OCR→LLM raw extraction: turns document text into a `RawMedicalRecord` (raw biomarkers / visit / instrumental data) before the matcher runs. |
 | `app/services/converters.py` | Hybrid value unit conversion (identity → dimensional via `pint` → molar/mass via per-analyte molecular weight → LLM-supplied factor fallback). |
 | `app/services/data_migration.py` | Anonymous→registered account data migration (read-only through `verify_anon_cookie`, so a forged/legacy cookie can't copy another tenant's data). |
-| `app/services/category_normalize.py` | `normalize_category()` — maps raw LOINC `CLASS` codes and per-LOINC overrides to friendly panel names; keeps local/source-derived headings verbatim (see below). |
+| `app/services/category_normalize.py` | `normalize_category()` — maps raw LOINC `CLASS` codes, per-LOINC overrides, curated local sentinel codes and known source headings to friendly panel names (see below). |
 | `app/api/anon_session.py` | Anonymous-session cookie issue/verify (`get_or_create_anon_id`, `verify_anon_cookie`); HMAC-signed, never trusted raw. |
 
 ## Category normalization (extraction output)
@@ -132,10 +132,17 @@ Reference for agents so these aren't re-derived via grep each session:
   - per-LOINC-code panel overrides refine coarse classes (e.g. `CLASS=CHEM`
     for ALT → `"Liver Function"`, Glucose → `"Comprehensive Metabolic Panel"`,
     Cholesterol → `"Lipid Panel"`);
-  - unambiguous `CLASS` codes map directly (`"HEM/BC"` → `"Complete Blood Count"`);
-  - local (unmatched) definitions keep their source document's heading
-    verbatim — canonicalizing a foreign-language heading would need an LLM pass,
-    which the matcher must not perform for determinism.
+  - unambiguous `CLASS` codes map directly (`"HEM/BC"` → `"Complete Blood Count"`,
+    `"CELLMARK"` → `"Immunology"`);
+  - curated local sentinel codes (the `local-…` ids from
+    `data/multilingual_synonyms.json`, e.g. `local-opisthorchis-igg`) are pinned
+    to their analyte family's panel via `LOCAL_PANEL_BY_CODE` — the pipeline
+    forwards the sentinel code into the local-definition creation, so a
+    deliberately-local analyte lands in the same panel as its global siblings;
+  - known source-document headings (any language, lowercased lookup in
+    `SOURCE_HEADING_TO_PANEL` — e.g. `"Инфекции"` → `Microbiology`,
+    microbiome panel headings → `Microbiome`) resolve deterministically;
+    unknown headings are kept verbatim (whitespace-collapsed).
 - The e2e `compare.py` does **not** compare `category`, so this change does not
   affect the golden harness, but the stored `category` values in
   `e2e/golden/*/standardized.json` were updated to the normalized form.

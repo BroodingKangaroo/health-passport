@@ -118,6 +118,9 @@ def _match_and_convert_impl(
     # which must therefore resolve to a per-user local definition, never to a
     # global LOINC guessed by the LLM zero-shot step.
     curated_local_ids: set[int] = set()
+    # Sentinel code ("local-…") for each curated-local biomarker, so its local
+    # definition can get a pinned panel category (see category_normalize).
+    curated_local_codes: dict[int, str] = {}
 
     # Step 1: Resolve each biomarker in strict confidence order. Curated signals
     # (the multilingual table + the raw name's own attached synonyms) are the
@@ -142,6 +145,7 @@ def _match_and_convert_impl(
                 unmatched.append(b)
                 curated_ids.add(id(b))
                 curated_local_ids.add(id(b))
+                curated_local_codes[id(b)] = code
                 continue
             # Redirect a curated code that was deduped away to its survivor.
             # Skip this when the code has an explicit display-name override —
@@ -232,6 +236,7 @@ def _match_and_convert_impl(
             resolved = verify_or_create(
                 db, b.name, guessed_loinc, user_id, raw_biomarker=b, grounded=grounded,
                 force_local=id(b) in curated_local_ids,
+                local_code=curated_local_codes.get(id(b)),
             )
 
             if resolved.scope == "global":
@@ -241,7 +246,8 @@ def _match_and_convert_impl(
     elif unmatched:
         for b in unmatched:
             resolved = verify_or_create(db, b.name, None, user_id, raw_biomarker=b, grounded=False,
-                                        force_local=id(b) in curated_local_ids)
+                                        force_local=id(b) in curated_local_ids,
+                                        local_code=curated_local_codes.get(id(b)))
             std_biomarkers.append(_build_standardized_local(b, resolved, client))
 
     # Step 5: Visit data translation

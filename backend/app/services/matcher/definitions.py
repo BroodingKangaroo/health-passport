@@ -41,6 +41,7 @@ def verify_or_create(
     raw_biomarker: Optional[RawBiomarker] = None,
     grounded: bool = True,
     force_local: bool = False,
+    local_code: Optional[str] = None,
 ) -> BiomarkerDefinitionModel:
     # Only trust an LLM LOINC guess when it was grounded in real candidates AND
     # is consistent with the analyte's English name. Ungrounded / inconsistent
@@ -105,6 +106,17 @@ def verify_or_create(
     canonical_name = _normalize_name(raw_name)
     defn_id = f"local-{hashlib.md5(canonical_name.encode()).hexdigest()[:12]}"
 
+    # Early existence check: within one uncommitted session (offline validators,
+    # batch tools) a definition created for an earlier document is still PENDING
+    # — re-inserting the same id would raise UNIQUE-violation, and recovering
+    # after db.rollback() is impossible because rollback discards that very
+    # object. Mirrors _make_local_copy's check-before-insert behavior.
+    existing_local = db.query(BiomarkerDefinitionModel).filter(
+        BiomarkerDefinitionModel.id == defn_id
+    ).first()
+    if existing_local is not None:
+        return existing_local
+
     # Use the translated English name as the canonical "en" name when
     # available; only strip OCR-attached trailing punctuation so the
     # human-readable casing is preserved.
@@ -153,7 +165,8 @@ def verify_or_create(
         names={"en": en_name},
         synonyms=syns,
         category=normalize_category(
-            raw_biomarker.category if raw_biomarker else "General"
+            raw_biomarker.category if raw_biomarker else "General",
+            loinc_code=local_code,
         ),
         reference=reference,
         unit=unit,

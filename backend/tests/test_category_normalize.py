@@ -22,12 +22,34 @@ def test_unknown_loinc_with_class_falls_back_to_class_map():
     assert normalize_category("CHEM", loinc_code="9999-9") == "Chemistry"
 
 
-def test_source_heading_is_preserved_verbatim():
-    # Local (unmatched) definitions carry the source document's own heading,
-    # often in a non-English language — it must not be mangled.
-    ru = "Исследование состава микробиоты толстого кишечника"
-    assert normalize_category(ru) == ru
-    assert normalize_category(ru, loinc_code="1234-5") == ru
+def test_source_heading_maps_to_stable_english_panel():
+    # Common source-document headings (any language) resolve deterministically
+    # to the fixed English taxonomy — no LLM, no verbatim leakage.
+    assert normalize_category("Инфекции") == "Microbiology"
+    assert normalize_category("Инфекция") == "Microbiology"
+    ru_microbiome = "Исследование состава микробиоты толстого кишечника"
+    assert normalize_category(ru_microbiome) == "Microbiome"
+    assert normalize_category("Микробиом") == "Microbiome"
+    assert normalize_category("Клинический анализ крови") == "Complete Blood Count"
+    assert normalize_category("Секвенирование") == "Genetics"
+
+
+def test_unknown_source_heading_is_preserved_verbatim():
+    # Headings with no curated mapping are kept as-is (whitespace-collapsed),
+    # never mangled by a guess.
+    assert normalize_category("Гормональное исследование") == "Гормональное исследование"
+
+
+def test_cellmark_class_is_immunology():
+    assert normalize_category("CELLMARK") == "Immunology"
+
+
+def test_local_sentinel_codes_pin_their_panel():
+    from app.services.category_normalize import LOCAL_PANEL_BY_CODE
+
+    for code, panel in LOCAL_PANEL_BY_CODE.items():
+        assert normalize_category("Инфекции", loinc_code=code) == panel
+        assert normalize_category("General", loinc_code=code) == panel
 
 
 def test_whitespace_is_collapsed_and_empty_becomes_general():

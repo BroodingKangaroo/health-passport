@@ -52,7 +52,9 @@ image extraction can contaminate later requests *in the same process* (returns
 `unknown`/empty) until the server is restarted — this is a pre-existing bug,
 not a definition-seeding issue. The deterministic, LLM-free oracle is
 `python backend/e2e/validate_offline.py` (uses the LOINC-seeded DB; the
-`default` user); prefer it for matcher/data correctness.
+`default` user); prefer it for matcher/data correctness. After any reseed,
+warm that DB's per-user anchors deterministically first:
+`PYTHONPATH=. backend/venv/bin/python -m e2e.warmup_db` (from `backend/`).
 
 ## Delete endpoint e2e
 

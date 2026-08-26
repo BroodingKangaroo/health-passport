@@ -4,12 +4,12 @@ human-readable English panel name.
 Two kinds of category strings reach the system:
 
 * LOINC-matched global definitions carry the raw LOINC ``CLASS`` code
-  (e.g. ``"HEM/BC"``, ``"CHEM"``). These render as cryptic headings even on
-  English documents.
+  (e.g. ``"HEM/BC"``, ``"CHEM"``, ``"CELLMARK"``). These render as cryptic
+  headings even on English documents.
 * Unmatched (local) definitions carry the source document's own panel heading
-  (possibly in a non-English language). We keep that verbatim — canonicalizing
-  a foreign heading into English would require an LLM pass, which the matcher
-  must not perform for determinism.
+  (possibly in a non-English language). A curated static map translates the
+  common headings deterministically (no LLM — the matcher must stay
+  deterministic); anything unknown is kept verbatim.
 
 The normalization precedence is:
 
@@ -17,9 +17,13 @@ The normalization precedence is:
    is too coarse to map to one panel (``CLASS=CHEM`` spans liver / metabolic /
    lipid / immunology), so a specific code lands in the right panel instead of
    the catch-all ``"Chemistry"``.
-2. A LOINC CLASS -> friendly panel map for the unambiguous codes.
-3. A fallback that keeps the original heading (whitespace-collapsed) for
-   local / source-derived categories.
+2. Curated local sentinel codes (``local-…`` ids from the multilingual synonym
+   table) pinned to their fixed panel, so deliberately-local analytes land in
+   the same panel as their global siblings.
+3. A LOINC CLASS -> friendly panel map for the unambiguous codes.
+4. A static source-heading map for the common foreign-language panel titles
+   seen in real lab PDFs.
+5. A fallback that keeps the original heading (whitespace-collapsed).
 """
 
 import re
@@ -65,6 +69,16 @@ PANEL_BY_LOINC: dict[str, str] = {
     "2885-2": "Chemistry",
 }
 
+# Curated per-user local definitions (sentinel codes from
+# data/multilingual_synonyms.json). Their LLM-extracted category can be empty,
+# Russian ("Инфекции"), or inconsistent between runs — pin them to the same
+# panel as the analyte family they belong to. The e2e паразиты_1 golden keeps
+# all serology rows under one heading this way.
+LOCAL_PANEL_BY_CODE: dict[str, str] = {
+    "local-opisthorchis-igg": "Microbiology",
+    "local-lamblia-immunoglobulins": "Microbiology",
+}
+
 # Unambiguous LOINC CLASS codes -> friendly panel name.
 LOINC_CLASS_TO_PANEL: dict[str, str] = {
     "HEM/BC": "Complete Blood Count",
@@ -80,6 +94,20 @@ LOINC_CLASS_TO_PANEL: dict[str, str] = {
     "FERT": "Fertility",
     "NUTR": "Nutrition",
     "DRG": "Therapeutic Drug Monitoring",
+    "CELLMARK": "Immunology",
+}
+
+# Common source-document panel headings (lowercased; any language) -> stable
+# English panel. Deterministic — no LLM pass here. Unknown headings fall
+# through to the verbatim fallback below.
+SOURCE_HEADING_TO_PANEL: dict[str, str] = {
+    "инфекции": "Microbiology",
+    "инфекция": "Microbiology",
+    "infections": "Microbiology",
+    "клинический анализ крови": "Complete Blood Count",
+    "исследование состава микробиоты толстого кишечника": "Microbiome",
+    "микробиом": "Microbiome",
+    "секвенирование": "Genetics",
 }
 
 # A raw CLASS code is short, all-caps Latin, optionally slash-separated.
@@ -93,17 +121,18 @@ def _collapse_ws(value: str) -> str:
 def normalize_category(raw_category: str, loinc_code: Optional[str] = None) -> str:
     """Return a normalized panel name for ``raw_category``.
 
-    ``loinc_code`` (when known) takes precedence via :data:`PANEL_BY_LOINC`,
-    so a coarse CLASS code is refined to the correct panel for that analyte.
+    ``loinc_code`` (when known) takes precedence via :data:`PANEL_BY_LOINC`
+    and :data:`LOCAL_PANEL_BY_CODE`, so a coarse CLASS code is refined to the
+    correct panel for that analyte and curated local sentinels stay pinned.
     """
     raw = _collapse_ws(raw_category)
     if not raw:
         return "General"
     if loinc_code:
-        panel = PANEL_BY_LOINC.get(str(loinc_code))
+        code = str(loinc_code)
+        panel = PANEL_BY_LOINC.get(code) or LOCAL_PANEL_BY_CODE.get(code)
         if panel:
             return panel
     if _CLASS_RE.match(raw):
         return LOINC_CLASS_TO_PANEL.get(raw, raw)
-    # Source-derived heading (often a foreign-language panel title): keep it.
-    return raw
+    return SOURCE_HEADING_TO_PANEL.get(raw.lower(), raw)

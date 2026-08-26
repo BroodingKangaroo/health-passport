@@ -146,7 +146,34 @@ committed.
     8123-2/24467-3, cytotoxic 8101-8/14135-8, NK 8112-5/9728-7, NKT
     42189-1/42188-3, CD4/CD8 index 54218-3 — all `%`/abs pairs split as
     distinct global defs, so the single-canonical-unit invariant holds and
-    paired %/abs rows stop flapping between global/local. This is the only
+    paired %/abs rows stop flapping between global/local.
+
+11. **Subset display names + unified category taxonomy** (2026-08-27).
+    The codes from fix #10 are correct, but their DISPLAY names collapsed to
+    generic "Cells"/"Cells, %": `seed_loinc._short_display_name` derives names
+    from COMPONENT (`Cells.CD3/Cells`) by dropping unknown "." subparts.
+    - Curated fixes: `data/loinc_name_overrides.json` now pins all 13 subset
+      codes to patient-friendly names (e.g. 8124-0 → `CD3+ T-lymphocytes, %`,
+      54218-3 → `CD4/CD8 ratio`); old short names remain synonyms for recall.
+    - Categories: local defs used to inherit whatever heading the extraction
+      LLM emitted ("Инфекции", "General", long Russian panel titles), so one
+      document showed mixed-language categories (regression case
+      `паразиты_1`). `category_normalize.py` gained a deterministic static
+      source-heading map (`SOURCE_HEADING_TO_PANEL`: Инфекции→Microbiology,
+      microbiome headings→Microbiome, Клинический анализ крови→Complete Blood
+      Count, Секвенирование→Genetics), a CELLMARK→Immunology class entry, and
+      `LOCAL_PANEL_BY_CODE` pinning curated sentinels
+      (`local-opisthorchis-igg`, `local-lamblia-immunoglobulins`) to
+      Microbiology; the pipeline forwards each sentinel code into local-def
+      creation (`verify_or_create(local_code=…)`).
+    - Robustness fix surfaced by reseeding: re-running a doc whose local def
+      is still PENDING in the same uncommitted session raised
+      UNIQUE(id)-violation; the post-rollback existence lookup could never
+      find it (rollback discards the very object). `verify_or_create` now
+      early-checks by defn-id before insert (mirrors `_make_local_copy`).
+    - Golden `популяции_лимфоцитов_анализ` regenerated live + independent
+      golden-review APPROVED (values/refs/status/codes unchanged; only
+      names/categories moved); mirrored into `benchmark/corpus/`. This is the only
     case that also reproduces EXACTLY offline (`validate_offline` PASS);
     `паразиты_1` keeps one documented offline diff: the LLM-free path cannot
     translate newly-created local def names, so
@@ -154,6 +181,20 @@ committed.
 
 ## Notes
 
+- **Offline validator environment (fresh seeds)**: `validate_offline.py` never
+  commits, so on a freshly seeded DB it cannot rebuild the per-user local
+  anchors (English display names, canonical `copies/mL` / `lg copies/mL`
+  units) that historical live extractions had committed — its diff counts
+  then drift for environment reasons, not matcher reasons. After any
+  reseed, run once:
+  `PYTHONPATH=. venv/bin/python -m e2e.warmup_db`
+  (from `backend/`; deterministic golden replay with commit, колонофлор_16_25.06
+  anchored first per the ordering rule below, plus golden-truth unit/name
+  pinning of the user-default locals). The post-reseed + warm-up offline
+  profile is 6 documented diffs (`гастроэнтеролог` visit-translation 3,
+  `эластометрия_печени` instrumental pass-through 3); `паразиты_1`,
+  `колонофлор_*`, `рнпц_омр_генетика`, `популяции_лимфоцитов_анализ`,
+  `оак_26.05`, `биохимия_26.05` all PASS.
 - Live extraction depends on the Mistral LLM; free-text (`title` / `provider` /
   `notes` / `recommendations`) can vary run-to-run (similarity-thresholded).
   The `колонофлор_16_*` `title` field is particularly noisy — the LLM
