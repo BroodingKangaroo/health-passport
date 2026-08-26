@@ -22,6 +22,17 @@ from app.services.matcher.units_guess import _translated_unit
 from app.services.reference import merge_reference, parse_reference, parse_value
 
 
+def _is_qualitative_result(raw_biomarker: Optional[RawBiomarker]) -> bool:
+    """True when the reading's value/range carry no numeric content at all
+    (e.g. ``отрицат.``, ``не выявлена``): the test is a qualitative screen and
+    has no meaningful canonical concentration unit, so first-seen anchoring
+    must NOT invent one."""
+    if raw_biomarker is None:
+        return False
+    text = f"{raw_biomarker.value or ''} {raw_biomarker.raw_range_string or ''}"
+    return bool(text.strip()) and not any(ch.isdigit() for ch in text)
+
+
 def verify_or_create(
     db: Session,
     raw_name: str,
@@ -29,12 +40,13 @@ def verify_or_create(
     user_id: str,
     raw_biomarker: Optional[RawBiomarker] = None,
     grounded: bool = True,
+    force_local: bool = False,
 ) -> BiomarkerDefinitionModel:
     # Only trust an LLM LOINC guess when it was grounded in real candidates AND
     # is consistent with the analyte's English name. Ungrounded / inconsistent
     # guesses must never touch the shared global dictionary — they fall through
     # to a user-local definition (fixes the "Билирубин -> Calcium" bug).
-    if guessed_loinc and grounded:
+    if guessed_loinc and grounded and not force_local:
         existing = db.query(BiomarkerDefinitionModel).filter(
             BiomarkerDefinitionModel.loinc_code == guessed_loinc,
             BiomarkerDefinitionModel.scope == "global",
@@ -56,29 +68,33 @@ def verify_or_create(
             return existing
         # Not consistent or couldn't resolve — fall through to local.
 
-    # Fallback: match by name or synonym against global definitions
-    raw_norm = _normalize_name(raw_name)
-    for defn in db.query(BiomarkerDefinitionModel).filter(
-        BiomarkerDefinitionModel.scope == "global"
-    ).all():
-        for n in defn.names.values():
-            if n and _normalize_name(n) == raw_norm:
-                if not _is_fraction_def(defn):
-                    syns = list(defn.synonyms or [])
-                    if raw_name.lower() not in (s.lower() for s in syns):
-                        syns.append(raw_name)
-                        defn.synonyms = syns
-                        db.flush()
-                return defn
-        for syn in (defn.synonyms or []):
-            if syn and _normalize_name(syn) == raw_norm:
-                if not _is_fraction_def(defn):
-                    syns = list(defn.synonyms or [])
-                    if raw_name.lower() not in (s.lower() for s in syns):
-                        syns.append(raw_name)
-                        defn.synonyms = syns
-                        db.flush()
-                return defn
+    # Fallback: match by name or synonym against global definitions. Curated
+    # forced-local analytes skip this scan: a previously LEARNED global synonym
+    # (e.g. 'anti-Opisthorchis IgG' once attached to the bare IgG def) must
+    # never resurrect a mapping that curation deliberately sends to a local def.
+    if not force_local:
+        raw_norm = _normalize_name(raw_name)
+        for defn in db.query(BiomarkerDefinitionModel).filter(
+            BiomarkerDefinitionModel.scope == "global"
+        ).all():
+            for n in defn.names.values():
+                if n and _normalize_name(n) == raw_norm:
+                    if not _is_fraction_def(defn):
+                        syns = list(defn.synonyms or [])
+                        if raw_name.lower() not in (s.lower() for s in syns):
+                            syns.append(raw_name)
+                            defn.synonyms = syns
+                            db.flush()
+                    return defn
+            for syn in (defn.synonyms or []):
+                if syn and _normalize_name(syn) == raw_norm:
+                    if not _is_fraction_def(defn):
+                        syns = list(defn.synonyms or [])
+                        if raw_name.lower() not in (s.lower() for s in syns):
+                            syns.append(raw_name)
+                            defn.synonyms = syns
+                            db.flush()
+                    return defn
 
     # Use the normalized name (trailing punctuation stripped + lowercased) for
     # the def id so that cosmetic variants like "Bifidobacterium spp" and
@@ -119,10 +135,18 @@ def verify_or_create(
         parsed_val = parse_value(raw_biomarker.value)
         reference = merge_reference(doc_ref, None, parsed_val)
         unit = raw_biomarker.unit
-        translation = _translated_unit(raw_biomarker.unit, en_name, raw_biomarker.category)
-        canonical_unit = translation["unit"]
-        canonical_kind = translation["kind"]
-        canonical_unit_inferred = bool(translation["inferred"])
+        if _is_qualitative_result(raw_biomarker):
+            # Qualitative screen (text-only result): no physical unit exists.
+            # Force the canonical empty instead of letting _guess_unit / the
+            # batch LLM translator invent "U/mL" for a serology row.
+            canonical_unit = ""
+            canonical_kind = "linear"
+            canonical_unit_inferred = False
+        else:
+            translation = _translated_unit(raw_biomarker.unit, en_name, raw_biomarker.category)
+            canonical_unit = translation["unit"]
+            canonical_kind = translation["kind"]
+            canonical_unit_inferred = bool(translation["inferred"])
 
     new_defn = BiomarkerDefinitionModel(
         id=defn_id,
@@ -213,10 +237,15 @@ def _make_local_copy(
     # Canonical (English) unit on first sight — anchors the conversion for
     # any later reading of the same biomarker. See ``verify_or_create`` for
     # the matching rationale.
-    translation = _translated_unit(raw_biomarker.unit, en_name, category)
-    canonical_unit = translation["unit"] or raw_biomarker.unit
-    canonical_kind = translation["kind"]
-    canonical_unit_inferred = bool(translation["inferred"])
+    if _is_qualitative_result(raw_biomarker):
+        canonical_unit = ""
+        canonical_kind = "linear"
+        canonical_unit_inferred = False
+    else:
+        translation = _translated_unit(raw_biomarker.unit, en_name, category)
+        canonical_unit = translation["unit"] or raw_biomarker.unit
+        canonical_kind = translation["kind"]
+        canonical_unit_inferred = bool(translation["inferred"])
 
     local = BiomarkerDefinitionModel(
         id=defn_id,

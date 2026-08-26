@@ -28,6 +28,33 @@ MIN_FUZZY_KEY_LEN = 3
 # LOINC variant rather than the absolute-count variant.
 _PERCENT_UNITS = {"%", "percent", "pct", "10*2/%", "10*2/100", "%/100", "pc"}
 
+# Tokens that merely name an immunoglobulin CLASS. A definition whose whole
+# name is one of these ("IgG", "IgA", …) is a generic mass-concentration
+# analyte; a compound query like "anti-Toxocara IgG" or "Корь IgM" names a
+# DIFFERENT organism/virus-specific antibody screen and must never land on
+# the bare class via fuzzy match (it conflates distinct analytes).
+_CARRIER_TOKENS = frozenset({"igg", "iga", "igm", "ige", "ig", "immunoglobulin"})
+# Connector words that don't distinguish a compound antibody query.
+_CARRIER_CONNECTORS = frozenset({"anti", "antibody", "antibodies", "антитела"})
+
+
+def _is_carrier_subset_collision(query_key: str, matched_key: str) -> bool:
+    """True when ``matched_key`` consists ONLY of immunoglobulin-class tokens
+    while ``query_key`` carries additional meaningful words — i.e. a specific
+    anti-<target> screen about to be folded onto the bare immunoglobulin def."""
+    tokens = re.split(r"[^a-zа-я0-9]+", matched_key)
+    if not tokens or any(t not in _CARRIER_TOKENS for t in tokens):
+        return False
+    extra = [
+        t
+        for t in re.split(r"[^a-zа-я0-9]+", query_key)
+        if len(t) >= 5
+        and not t.isdigit()
+        and t not in _CARRIER_TOKENS
+        and t not in _CARRIER_CONNECTORS
+    ]
+    return bool(extra)
+
 
 def _is_percent_unit(unit: Optional[str]) -> bool:
     """True when the raw document unit expresses a percentage (not an absolute count)."""
@@ -138,6 +165,10 @@ def fuzzy_match(
             key, keys, scorer=fuzz.WRatio, limit=15, score_cutoff=score_cutoff
         ):
             if len(matched_key) < MIN_FUZZY_KEY_LEN and matched_key != key:
+                continue
+            if _is_carrier_subset_collision(key, matched_key):
+                # "anti-Toxocara IgG" must not collapse onto the bare "IgG"
+                # def — leave unmatched so it resolves to a local definition.
                 continue
             r = fuzz.ratio(key, matched_key)
             if r < FUZZY_RATIO_MIN:

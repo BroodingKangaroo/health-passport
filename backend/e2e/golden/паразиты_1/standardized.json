@@ -1,0 +1,112 @@
+{
+  "entry_type": "blood_test",
+  "date": "2026-04-24",
+  "time": "",
+  "clinic": "ИООО \"Независимая лаборатория ИНВИТРО\"",
+  "provider": "",
+  "title": "",
+  "notes": "",
+  "biomarkers": [
+    {
+      "raw_name": "anti-Toxocara IgG",
+      "raw_value": "отрицат.",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "Toxocara sp Ab",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": null
+      },
+      "status": "normal",
+      "category": "Microbiology",
+      "definition_id": "96568-1",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "anti-Ascaris IgG",
+      "raw_value": "отрицат.",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "Ascaris sp Ab",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": null
+      },
+      "status": "normal",
+      "category": "Microbiology",
+      "definition_id": "74815-2",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "anti-Opisthorchis IgG",
+      "raw_value": "отрицат.",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "Anti-Opisthorchis IgG",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": null
+      },
+      "status": "normal",
+      "category": "General",
+      "definition_id": "local-8ab31083a67d",
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "anti-Lamblia IgA+IgM+IgG",
+      "raw_value": "отрицат.",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "Anti-Giardia IgA+IgM+IgG",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": null
+      },
+      "status": "normal",
+      "category": "Инфекции",
+      "definition_id": "local-94eec63e5dc6",
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    }
+  ],
+  "visit_data": {
+    "diagnosis": {
+      "original": "",
+      "translated_en": ""
+    },
+    "chief_complaint": {
+      "original": "",
+      "translated_en": ""
+    },
+    "objective_findings": {
+      "original": "",
+      "translated_en": ""
+    },
+    "prescriptions": [],
+    "recommendations": []
+  },
+  "instrumental_data": {
+    "modality": "",
+    "findings": "",
+    "conclusion": ""
+  }
+}

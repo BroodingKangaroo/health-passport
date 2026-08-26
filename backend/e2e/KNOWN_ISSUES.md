@@ -6,7 +6,9 @@ data layer, kept for traceability.
 **Status:** all seven seeded cases
 (`биохимия_26.05`, `оак_26.05`, `гастроэнтеролог_ргц_29.06`,
 `рнпц_омр_генетика`, `колонофлор_16_25.06`, `колонофлор_16_13.05`,
-`эластометрия_печени`) PASS against the live server.
+`эластометрия_печени`) PLUS `популяции_лимфоцитов_анализ` (fix #10) and
+`паразиты_1` (fix #9, offline only) are handled below; goldens verified &
+committed.
 
 ## Local vs global scope
 
@@ -109,6 +111,46 @@ data layer, kept for traceability.
    display name also has its trailing punctuation stripped (via the
    lighter `_strip_trailing_punct` helper) so the UI never shows a
    trailing dot in the analyte name.
+
+9. **Parasite serology screens resolve to their own analytes** (regression
+   case `паразиты_1`). Four fixes from golden review:
+   - Compound antibody names no longer fuzzy-collapse onto the bare generic
+     `IgG` mass-concentration def (`2465-3`): a carrier-token guard rejects
+     fuzzy candidates whose whole name is an immunoglobulin class token
+     (`_is_carrier_subset_collision`, `name_matching.py`) when the query has
+     additional meaningful words; and `verify_or_create(force_local=True)`
+     bypasses BOTH the LLM guess and the global-name/synonym fallback scan,
+     so a previously LEARNED global synonym can never resurrect a mapping
+     curation deliberately sends local (`pipeline.py` passes the flag for
+     curated `local-…` sentinels).
+   - Curated mappings: `anti-Toxocara IgG` → serum Presence code `96568-1`,
+     `anti-Ascaris IgG` → `74815-2`; Opisthorchis/Lamblia have no dictionary
+     code → forced per-user locals via sentinels
+     (`local-opisthorchis-igg`, `local-lamblia-immunoglobulins`).
+   - Truncated `отрицат.`/`отрицат`/`отриц.` canonicalise to `Negative`
+     (`reference.py _QUAL_MAP`, same abbreviation class as fix #7).
+   - Qualitative, unitless readings emit `standard_unit: ""`: first-seen
+     anchoring forces an empty canonical when value+range carry no digits
+     (`definitions.py _is_qualitative_result`), and both standardized build
+     paths suppress the reading-level unit guess for unitless qualitative
+     rows (`standardize.py`) so serology never shows invented "U/mL".
+   The extraction prompt also stops leaking receipt timestamps: time is
+   emitted only when printed NEXT TO the collection/visit/exam date.
+
+10. **Lymphocyte flow-cytometry subsets map to their true LOINC codes**
+    (regression case `популяции_лимфоцитов_анализ`, golden review found
+    NK→Monocytes 5905-5, CD3+/CD19+ % → abs-count 26474-7 with `%` units,
+    helpers/NK abs → synovial-fluid Cells 32164-6). Curated multilingual
+    entries now pin every subset row (exact raw-name spellings incl. doc
+    spacing variants): CD3 8124-0/8122-4, CD19 8117-4/8116-6, CD4 helpers
+    8123-2/24467-3, cytotoxic 8101-8/14135-8, NK 8112-5/9728-7, NKT
+    42189-1/42188-3, CD4/CD8 index 54218-3 — all `%`/abs pairs split as
+    distinct global defs, so the single-canonical-unit invariant holds and
+    paired %/abs rows stop flapping between global/local. This is the only
+    case that also reproduces EXACTLY offline (`validate_offline` PASS);
+    `паразиты_1` keeps one documented offline diff: the LLM-free path cannot
+    translate newly-created local def names, so
+    `anti-Opisthorchis IgG`'s `standard_name_en` stays untranslated there.
 
 ## Notes
 

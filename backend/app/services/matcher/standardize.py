@@ -151,6 +151,11 @@ def _build_standardized_from_def(
     ref = merge_reference(None, defn.reference, std_value)
     if isinstance(ref, dict) and ref.get("kind") == "qualitative":
         std_value = normalize_qual(std_value)
+        # A qualitative screen with neither a printed unit nor a canonical one
+        # has NO physical unit: don't let the reading-level unit guess invent
+        # "U/mL" (serology rows printed as отрицат./Negative).
+        if not (defn.canonical_unit or "").strip() and not (raw_bm.unit or "").strip():
+            std_unit = ""
     return StandardizedBiomarker(
         raw_name=raw_bm.name,
         raw_value=raw_bm.value,
@@ -224,6 +229,13 @@ def _build_standardized_local(
         en = raw_bm.standard_name_en or raw_bm.name
 
     ref = merge_reference(parsed_ref, defn.reference, std_value)
+    # A qualitative screen with neither a printed unit nor a canonical one has
+    # NO physical unit: don't let the reading-level unit guess invent "U/mL"
+    # (serology rows printed as отрицат./Negative).
+    if (isinstance(ref, dict) and ref.get("kind") == "qualitative"
+            and not (defn.canonical_unit or "").strip()
+            and not (raw_bm.unit or "").strip()):
+        std_unit = ""
     return StandardizedBiomarker(
         raw_name=raw_bm.name,
         raw_value=raw_bm.value,

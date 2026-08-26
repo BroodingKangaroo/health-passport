@@ -230,7 +230,8 @@ def _match_and_convert_impl(
             grounded = is_grounded(search_name, index)
 
             resolved = verify_or_create(
-                db, b.name, guessed_loinc, user_id, raw_biomarker=b, grounded=grounded
+                db, b.name, guessed_loinc, user_id, raw_biomarker=b, grounded=grounded,
+                force_local=id(b) in curated_local_ids,
             )
 
             if resolved.scope == "global":
@@ -239,7 +240,8 @@ def _match_and_convert_impl(
                 std_biomarkers.append(_build_standardized_local(b, resolved, client))
     elif unmatched:
         for b in unmatched:
-            resolved = verify_or_create(db, b.name, None, user_id, raw_biomarker=b, grounded=False)
+            resolved = verify_or_create(db, b.name, None, user_id, raw_biomarker=b, grounded=False,
+                                        force_local=id(b) in curated_local_ids)
             std_biomarkers.append(_build_standardized_local(b, resolved, client))
 
     # Step 5: Visit data translation
