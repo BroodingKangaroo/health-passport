@@ -29,6 +29,17 @@ backend/static/uploads/*
 backend/app.log
 app.log
 
+# Benchmark artifacts (ISSUES.md #24): own DB + loop session state
+backend/benchmark/*.db
+backend/benchmark/*.db-wal
+backend/benchmark/*.db-shm
+backend/reports/
+.autoresearch/
+# corpus is a local artifact: regenerate from e2e with
+#   venv/bin/python benchmark/run_benchmark.py --seed-corpus
+# (avoids duplicating the same medical documents already tracked in e2e/)
+backend/benchmark/corpus/
+
 # TypeScript
 *.tsbuildinfo
 

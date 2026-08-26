@@ -32,6 +32,7 @@ architecture docs are the truth.
 - Frontend dev: `pnpm dev` (port 3000). Lint: `pnpm lint`. Unit tests: `pnpm test` (vitest run, jsdom, `@/` → `src/`). No frontend e2e suite — backend golden harness covers e2e.
 - Seed LOINC: `python -m app.db.seed_loinc` — **drops and recreates the DB**. LOINC dictionary is the single source of truth for biomarker definitions. Run once; keep stable while a golden is in use.
 - E2E: `python backend/e2e/run_e2e_server.py` (isolated uvicorn, own DB; never port 8000, never `pkill`).
+- Extraction benchmark (ISSUES.md #24): `venv/bin/python benchmark/run_benchmark.py --runs 3` from `backend/` — LIVE pipeline over `benchmark/corpus/`, real Mistral spend; loop usage in `.opencode/skills/autoresearch/SKILL.md` and `benchmark/README.md`.
 
 ## Backend invariants (always true)
 
