@@ -32,7 +32,6 @@ export interface BiomarkerDefinition {
   reference: Reference | null
   category: string
   scope: 'global' | 'local'
-  user_id?: string | null
   reference_source: 'global' | 'local' | 'pdf_extracted'
   // Canonical (English) unit + scale kind for cross-document comparison.
   // Set on the first reading that defines the biomarker; subsequent

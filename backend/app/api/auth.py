@@ -170,8 +170,10 @@ def register(
             detail="Email already registered",
         )
     
-    # Check for anonymous session
-    anon_id = request.cookies.get(ANONYMOUS_COOKIE_NAME)
+    # Check for anonymous session (signature-verified; a forged or legacy
+    # unsigned cookie must never trigger a migration of someone else's data).
+    from app.api.anon_session import verify_anon_cookie
+    anon_id = verify_anon_cookie(request.cookies.get(ANONYMOUS_COOKIE_NAME))
     
     # Honor the user's explicit choice (frontend always sends the flag;
     # checkbox defaults to checked, so an unchecked box means decline).

@@ -18,19 +18,19 @@ const baseEvent: MedicalEvent = {
 const bloodTestBiomarkers: BiomarkerResult[] = [
   {
     id: 'wbc', value: 5.0, entry_id: 'evt-blood', date: '2026-12-15', status: 'normal',
-    definition: { id: 'wbc', loinc_code: '6690-2', names: { en: 'WBC' }, synonyms: [], unit: 'K/µL', reference: { kind: 'interval', low: 4, high: 11 }, category: 'CBC', scope: 'global', user_id: null, reference_source: 'global' },
+    definition: { id: 'wbc', loinc_code: '6690-2', names: { en: 'WBC' }, synonyms: [], unit: 'K/µL', reference: { kind: 'interval', low: 4, high: 11 }, category: 'CBC', scope: 'global', reference_source: 'global' },
   },
   {
     id: 'glu', value: 120, entry_id: 'evt-blood', date: '2026-12-15', status: 'high',
-    definition: { id: 'glu', loinc_code: '2345-7', names: { en: 'Glucose' }, synonyms: [], unit: 'mg/dL', reference: { kind: 'interval', low: 65, high: 100 }, category: 'CMP', scope: 'global', user_id: null, reference_source: 'global' },
+    definition: { id: 'glu', loinc_code: '2345-7', names: { en: 'Glucose' }, synonyms: [], unit: 'mg/dL', reference: { kind: 'interval', low: 65, high: 100 }, category: 'CMP', scope: 'global', reference_source: 'global' },
   },
   {
     id: 'hb', value: 11, entry_id: 'evt-blood', date: '2026-12-15', status: 'low',
-    definition: { id: 'hb', loinc_code: '718-7', names: { en: 'Hemoglobin' }, synonyms: [], unit: 'g/dL', reference: { kind: 'interval', low: 12, high: 16 }, category: 'CBC', scope: 'global', user_id: null, reference_source: 'global' },
+    definition: { id: 'hb', loinc_code: '718-7', names: { en: 'Hemoglobin' }, synonyms: [], unit: 'g/dL', reference: { kind: 'interval', low: 12, high: 16 }, category: 'CBC', scope: 'global', reference_source: 'global' },
   },
   {
     id: 'hcg', value: 'Positive', entry_id: 'evt-blood', date: '2026-12-15', status: 'abnormal',
-    definition: { id: 'hcg', loinc_code: '2118-8', names: { en: 'hCG' }, synonyms: [], unit: '', reference: { kind: 'qualitative', expected: 'Negative' }, category: 'General', scope: 'global', user_id: null, reference_source: 'global' },
+    definition: { id: 'hcg', loinc_code: '2118-8', names: { en: 'hCG' }, synonyms: [], unit: '', reference: { kind: 'qualitative', expected: 'Negative' }, category: 'General', scope: 'global', reference_source: 'global' },
   },
 ]
 

@@ -97,20 +97,27 @@ def _resolve_flowsheet_definitions(
     biomarker_readings_map: dict[str, dict[str, BiomarkerReading]],
 ) -> tuple[dict, dict]:
     """All definitions visible to the user, merged with the definitions that a
-    reading references (by id OR LOINC code, regardless of owner) so a reading
-    is never silently dropped."""
+    reading references (by id OR LOINC code) among those same visible defs so a
+    reading is never silently dropped. Foreign (other-tenant) local defs are
+    excluded: they would leak owner ids into the matrix."""
     all_defns = db.query(BiomarkerDefinitionModel).filter(
         (BiomarkerDefinitionModel.scope == "global")
         | (BiomarkerDefinitionModel.user_id == patient_id)
         | (BiomarkerDefinitionModel.user_id.is_(None))
     ).all()
 
+    visible = (
+        (BiomarkerDefinitionModel.scope == "global")
+        | (BiomarkerDefinitionModel.user_id == patient_id)
+        | (BiomarkerDefinitionModel.user_id.is_(None))
+    )
     referenced_ids = set()
     for readings in biomarker_readings_map.values():
         referenced_ids.update(readings.keys())
     referenced_defns = db.query(BiomarkerDefinitionModel).filter(
         (BiomarkerDefinitionModel.id.in_(referenced_ids))
-        | (BiomarkerDefinitionModel.loinc_code.in_(referenced_ids))
+        | (BiomarkerDefinitionModel.loinc_code.in_(referenced_ids)),
+        visible,
     ).all()
 
     defn_by_id = {d.id: d for d in all_defns}

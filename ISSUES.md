@@ -26,24 +26,6 @@ password-reset throttle collapse behind the proxy, TOCTOU races in
 register/reset, dialog focus-trap gaps, keyboard-inaccessible rows,
 open-redirect via `?callbackUrl=`, etc.) remain tracked outside this log.
 
-### 31. Anonymous session cookie value is trusted verbatim as the authorization principal (critical)
-
-- `app/api/anon_session.py:17-19`: the raw client-supplied cookie value is
-  returned as-is and becomes `user_id` (`app/api/auth.py:125-128`) — no
-  prefix check, no server-side session store, no signature. Every ownership
-  filter in the app is `patient_id == user_id`, so anyone who sets
-  `healthpassport_anon_id=<victim's Patient.id>` gets full read/write/delete
-  on that account without any token.
-- The victim id leaks, completing the attack chain without guessing:
-  definition serialization includes owner `user_id`
-  (`app/api/_serializers.py:46`) and flowsheet/timeline definition lookups
-  deliberately ignore ownership (`app/api/flowsheet.py:111-114`). Arbitrary
-  attacker-chosen cookie values also create unauthenticated rows in
-  `usage_limits` / `medical_entries` / `biomarker_definitions`.
-- Fix: HMAC-sign the anon cookie at issuance (or persist issued ids) and
-  reject unverified values; stop emitting other tenants' `user_id` in wire
-  schemas.
-
 ### 32. Translation commit endpoint lets unauthenticated callers rewrite shared global definitions (critical)
 
 - `app/api/ai.py:707-731` (`POST /api/translate-biomarkers/commit`, reachable

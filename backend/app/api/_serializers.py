@@ -43,7 +43,6 @@ def definition_schema(defn: BiomarkerDefinitionModel) -> BiomarkerDefinitionSche
         reference=defn.reference,
         unit=defn.canonical_unit or defn.unit,
         scope=defn.scope,
-        user_id=defn.user_id,
         reference_source=defn.reference_source,
         canonical_unit=defn.canonical_unit,
         canonical_kind=defn.canonical_kind,

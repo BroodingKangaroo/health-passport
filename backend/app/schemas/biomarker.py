@@ -47,7 +47,6 @@ class BiomarkerDefinition(BaseModel):
     reference: Optional[Reference] = None
     unit: str
     scope: str = "global"
-    user_id: Optional[str] = None
     reference_source: str = "global"
     # Canonical (English) unit + scale kind for cross-document comparison.
     canonical_unit: Optional[str] = None
@@ -85,7 +84,6 @@ class BiomarkerDefinitionResponse(BaseModel):
     unit: str
     reference: Optional[Reference] = None
     scope: str = "global"
-    user_id: Optional[str] = None
     reference_source: str = "global"
     canonical_unit: Optional[str] = None
     canonical_kind: Optional[str] = None

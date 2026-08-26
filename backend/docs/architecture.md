@@ -63,6 +63,27 @@ Replaces the old `range_min`/`range_max` + qualitative-flag model:
   (String, nullable) for qualitative text, merged into one union `value` on
   the wire.
 
+## Anonymous session principal (auth)
+
+- The anonymous identity is carried in the `healthpassport_anon_id` cookie as an
+  **HMAC-SHA256-signed** value (`{anon_id}.{signature}`), signed with the same
+  `SECRET_KEY` as JWTs (`app/auth.py`). `verify_anon_cookie` (`app/api/
+  anon_session.py`) rejects unsigned, tampered, or non-`anon-`-prefixed values;
+  `get_current_user_or_anon` then treats that request as a fresh session.
+- The raw cookie is **never** trusted as the authorization principal: forging it
+  to another tenant's id (registered uuid or another anon id) yields a brand-new
+  session, never the victim's data. A hard cutover — legacy unsigned cookies are
+  unconditionally rejected — means data behind existing pre-fix anon cookies is
+  orphaned.
+- Registration-time data migration (`/api/auth/register` `migrate_data`) only
+  reads the anon id through `verify_anon_cookie`, so a forged/legacy cookie can
+  never copy another user's data into the new account.
+- **Wire contract**: `BiomarkerDefinition` / `BiomarkerDefinitionResponse`
+  (and therefore every timeline/flowsheet/detail `definition` object) do **not**
+  expose `user_id`. Definitions are serialized through `definition_schema` in
+  `app/api/_serializers.py`; the owner id stays server-side so def lookups can
+  never leak a tenant id into a client's matrix.
+
 ## Matcher package layout (`app/services/matcher/`)
 
 The former single-module `matcher.py` is split into focused submodules behind
