@@ -64,10 +64,35 @@ backend to include the site).
   column (see `backend/docs/architecture.md`), so `print-editor.tsx`'s
   `translatedName()` — which reads `def.names[lang]` via the flowsheet's
   per-definition `names` — renders them with no renderer changes.
-- Translation failures never block export: the document proceeds with English
-  names and a toast explains why. The `original` mode (labeled neutrally
+- **Category/panel headings** are translated in the same batch (sent as
+  `opts.categories`, deduped distinct non-empty matrix headings) but never
+  written to the definitions: the backend serves repeat headings from a
+  shared server-side cache (only genuinely new strings reach the LLM; a
+  fully-cached document generates free). The returned map lands in
+  `PrintConfigProvider`
+  (`categoryTranslations`) and sessionStorage (`hp-cat-translations:<lang>`)
+  so refreshing `/print-editor` keeps translated headings; changing language
+  re-hydrates from that language's key. The map is keyed by each **raw**
+  matrix heading (the editor looks categories up verbatim; the API is keyed
+  by their trimmed form). The review dialog shows them
+  read-only under "Panel headings (applied automatically)" — they are
+  structural groupings, always applied. `print-editor.tsx`'s
+  `categoryLabel()` resolves the display label only — grouping/order keys
+  stay the raw string; untranslated headings fall back to it. A failed run
+  keeps whatever was previously stored for that language.
+- Translation failures never block export. On a failed run
+  `PrintConfigProvider.suppressSavedTranslations` is set for this navigation
+  so `print-editor.tsx` renders the English / source names and raw category
+  headings even though saved translations exist on the definitions — honoring
+  the "fallback to English" contract. A successful run (or a language switch)
+  clears the flag. The failure toast is sticky (`duration: Infinity`) and
+  tells the user the document is in their source language and how to retry,
+  so it survives switching tabs. The `original` mode (labeled neutrally
   "Keep Original" — source documents are not necessarily Russian) and the
-  `en` target skip the translation call entirely.
+  `en` target skip the translation call entirely. Client-side patience is
+  bounded by `TRANSLATE_TIMEOUT_MS` (150s) in `services/api.ts` — generous
+  because the LLM can take well over a minute under load, but capped so the
+  UI can't hang forever.
 
 ## Navigation leave-guard during AI processes
 

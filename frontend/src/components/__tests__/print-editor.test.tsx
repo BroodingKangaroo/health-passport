@@ -1,10 +1,14 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { useEffect } from 'react'
 import { PrintEditor } from '@/components/health-passport/print-editor'
 import { PrintConfigProvider } from '@/providers/print-config-provider'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
 import type { DateHeader, MatrixCategory, PrintLang, BiomarkerResult, CurrentUser } from '@/lib/types'
+
+afterEach(() => {
+  sessionStorage.clear()
+})
 
 const mockDates: DateHeader[] = [
   { label: '10.08.2024' },
@@ -323,6 +327,64 @@ describe('PrintEditor', () => {
     expect(categoryRows.length).toBe(2)
   })
 
+  it('renders translated category headings from the generate-step map', async () => {
+    // Seed the storage the print-setup step writes (keyed by language), then
+    // drive the provider to that language like PrintEditorView does.
+    sessionStorage.setItem(
+      'hp-cat-translations:de',
+      JSON.stringify({ 'Complete Blood Count': 'Blutbild' }),
+    )
+    function LangInit(props: Parameters<typeof PrintEditor>[0]) {
+      const { setTargetLanguage } = usePrintConfig()
+      useEffect(() => {
+        setTargetLanguage('de')
+      }, [setTargetLanguage])
+      return <PrintEditor {...props} />
+    }
+    render(
+      <PrintConfigProvider>
+        <LangInit
+          dates={mockDates}
+          matrix={mockMatrix}
+          biomarkers={mockBiomarkers}
+          lang="de"
+          bilingual={false}
+          onBack={vi.fn()}
+        />
+      </PrintConfigProvider>,
+    )
+    expect(await screen.findByText('Blutbild')).toBeTruthy()
+    // Untranslated headings keep their raw string.
+    expect(screen.getAllByText('Lipid Panel').length).toBeGreaterThan(0)
+  })
+
+  it('pairs translated and original headings in bilingual mode', async () => {
+    sessionStorage.setItem(
+      'hp-cat-translations:de',
+      JSON.stringify({ 'Complete Blood Count': 'Blutbild' }),
+    )
+    function LangInit(props: Parameters<typeof PrintEditor>[0]) {
+      const { setTargetLanguage } = usePrintConfig()
+      useEffect(() => {
+        setTargetLanguage('de')
+      }, [setTargetLanguage])
+      return <PrintEditor {...props} />
+    }
+    render(
+      <PrintConfigProvider>
+        <LangInit
+          dates={mockDates}
+          matrix={mockMatrix}
+          biomarkers={mockBiomarkers}
+          lang="de"
+          bilingual
+          onBack={vi.fn()}
+        />
+      </PrintConfigProvider>,
+    )
+    expect(await screen.findByText('Blutbild / Complete Blood Count')).toBeTruthy()
+  })
+
   it('shows time sub label for timed entries', () => {
     renderEditor()
     expect(screen.getByText('09:00')).toBeTruthy()
@@ -425,5 +487,69 @@ describe('PrintEditor', () => {
     expect(screen.queryByText('Maria Petrova')).toBeNull()
     expect(screen.queryByText(/DOB: /)).toBeNull()
     expect(screen.queryByText(/ДР: /)).toBeNull()
+  })
+
+  it('forces English names when suppressSavedTranslations is set (failed run)', () => {
+    // Seed the provider so a successful path WOULD render the German name; the
+    // suppress flag must override it with the English source name.
+    function SuppressInit(props: Parameters<typeof PrintEditor>[0]) {
+      const { setSuppressSavedTranslations, initFilters } = usePrintConfig()
+      useEffect(() => {
+        setSuppressSavedTranslations(true)
+        initFilters(
+          props.dates.map((d) => d.label + (d.sub ? '--' + d.sub : '')),
+          props.matrix.flatMap((c) => c.rows.map((r) => r.id)),
+        )
+      }, [setSuppressSavedTranslations, initFilters, props.dates, props.matrix])
+      return <PrintEditor {...props} />
+    }
+    render(
+      <PrintConfigProvider>
+        <SuppressInit
+          dates={mockDates}
+          matrix={mockMatrix}
+          biomarkers={mockBiomarkers}
+          lang="de"
+          bilingual={false}
+          onBack={vi.fn()}
+        />
+      </PrintConfigProvider>,
+    )
+    const rows = screen.getAllByRole('row')
+    // English names win over saved German names.
+    expect(rows.some((r) => r.textContent?.includes('Hemoglobin'))).toBe(true)
+    expect(rows.some((r) => r.textContent?.includes('Hämoglobin'))).toBe(false)
+  })
+
+  it('forces raw category headings when suppressSavedTranslations is set', () => {
+    sessionStorage.setItem(
+      'hp-cat-translations:de',
+      JSON.stringify({ 'Complete Blood Count': 'Blutbild' }),
+    )
+    function SuppressInit(props: Parameters<typeof PrintEditor>[0]) {
+      const { setSuppressSavedTranslations, initFilters } = usePrintConfig()
+      useEffect(() => {
+        setSuppressSavedTranslations(true)
+        initFilters(
+          props.dates.map((d) => d.label + (d.sub ? '--' + d.sub : '')),
+          props.matrix.flatMap((c) => c.rows.map((r) => r.id)),
+        )
+      }, [setSuppressSavedTranslations, initFilters, props.dates, props.matrix])
+      return <PrintEditor {...props} />
+    }
+    render(
+      <PrintConfigProvider>
+        <SuppressInit
+          dates={mockDates}
+          matrix={mockMatrix}
+          biomarkers={mockBiomarkers}
+          lang="de"
+          bilingual={false}
+          onBack={vi.fn()}
+        />
+      </PrintConfigProvider>,
+    )
+    expect(screen.getAllByText('Complete Blood Count').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Blutbild')).toBeNull()
   })
 })

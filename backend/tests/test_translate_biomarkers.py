@@ -520,6 +520,33 @@ class TestTranslateBiomarkersEndpoint:
         prompt = fake.chat.parse.call_args.kwargs["messages"][0]["content"]
         assert "NEVER omit an item" in prompt
 
+    async def test_prompt_handles_non_english_headings_and_class_codes(
+        self, client, db_session, monkeypatch
+    ):
+        """Panel headings arrive in the source document's language (not always
+        English) and must still be translated; LOINC-style class codes must
+        stay verbatim instead of being half-translated (HEM/BC -> HEM/CE)."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        _seed_plain_def(db_session)
+        fake = _fake_client({"translations": [{"id": "t1", "name": "Test-Biomarker"}]})
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={
+                "lang": "de",
+                "names": [{"id": "local-test-1", "name": "Test Biomarker"}],
+                "categories": ["Клинический анализ крови", "HEM/BC"],
+            },
+        )
+
+        assert resp.status_code == 200
+        prompt = fake.chat.parse.call_args.kwargs["messages"][0]["content"]
+        assert "may arrive in another language" in prompt
+        assert "never echo an item back in a language other than" in prompt
+        assert "EXACTLY unchanged" in prompt
+        assert "HEM/BC" in prompt  # cited as a verbatim class-code example
+
     async def test_mangled_and_duplicate_tokens_are_handled(self, client, db_session, monkeypatch):
         """Unknown tokens are skipped, duplicate tokens are last-wins, and a
         missing token is recovered by the drop-retry."""
@@ -664,6 +691,168 @@ class TestTranslateBiomarkersEndpoint:
         assert {t["id"]: t["name"] for t in resp.json()["translations"]} == {"a": "A-de", "b": "B-de"}
 
 
+class TestCategoryTranslation:
+    async def test_categories_translate_in_same_batch_as_names(
+        self, client, db_session, monkeypatch
+    ):
+        """Names and categories share one LLM call (categories ride synthetic
+        ids); the response classifies each; nothing about categories is
+        persisted and quota is charged once."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        _seed_plain_def(db_session)
+        fake = _fake_client({"translations": [
+            {"id": "t1", "name": "Test-Biomarker"},
+            {"id": "t2", "name": "Blutbild"},
+            {"id": "t3", "name": "Lipidpanel"},
+        ]})
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={
+                "lang": "de",
+                "names": [{"id": "local-test-1", "name": "Test Biomarker"}],
+                "categories": ["Complete Blood Count", "Lipid Panel"],
+            },
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["translations"] == [
+            {"id": "local-test-1", "name": "Test-Biomarker", "source": "translated"}
+        ]
+        assert body["categories"] == [
+            {"original": "Complete Blood Count", "translated": "Blutbild", "source": "translated"},
+            {"original": "Lipid Panel", "translated": "Lipidpanel", "source": "translated"},
+        ]
+        # One batched call carrying both names and category strings.
+        assert fake.chat.parse.call_count == 1
+        prompt = fake.chat.parse.call_args.kwargs["messages"][0]["content"]
+        assert '"t2 | Complete Blood Count"' in prompt
+        assert '"t3 | Lipid Panel"' in prompt
+        assert _usage_count(db_session) == 1
+
+    async def test_category_only_request_translates_without_names(
+        self, client, db_session, monkeypatch
+    ):
+        """A request with categories but NO names still reaches the LLM (the
+        empty-names guard must not short-circuit it)."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        fake = _fake_client({"translations": [{"id": "t1", "name": "Schilddrüsenpanel"}]})
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={"lang": "de", "names": [], "categories": ["Thyroid Panel"]},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["translations"] == []
+        assert resp.json()["categories"] == [
+            {"original": "Thyroid Panel", "translated": "Schilddrüsenpanel", "source": "translated"}
+        ]
+        assert fake.chat.parse.call_count == 1
+        assert _usage_count(db_session) == 1
+
+    async def test_categories_fall_back_on_total_llm_failure(
+        self, client, db_session, monkeypatch
+    ):
+        """When the LLM fails outright, categories come back as their original
+        English strings with source=fallback, quota is refunded, and nothing
+        is persisted."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        _seed_plain_def(db_session)
+        fake = _fake_client(exc=RuntimeError("LLM down"))
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={
+                "lang": "de",
+                "names": [{"id": "local-test-1", "name": "Test Biomarker"}],
+                "categories": ["Lipid Panel"],
+            },
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["translations"][0]["source"] == "fallback"
+        assert body["categories"] == [
+            {"original": "Lipid Panel", "translated": "Lipid Panel", "source": "fallback"}
+        ]
+        assert _usage_count(db_session) == 0
+
+    async def test_cached_names_with_new_categories_still_call_llm(
+        self, client, db_session, monkeypatch
+    ):
+        """All names already translated (cached) + new categories: the request
+        proceeds so only the categories are translated in the batch."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        fake = _fake_client({"translations": [{"id": "t1", "name": "Vitamine"}]})
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={
+                "lang": "de",
+                "names": [{"id": "wbc", "name": "WBC"}],  # seed def: names.de set
+                "categories": ["Vitamins"],
+            },
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["translations"] == [
+            {"id": "wbc", "name": "Leukozyten", "source": "cached"}
+        ]
+        assert body["categories"] == [
+            {"original": "Vitamins", "translated": "Vitamine", "source": "translated"}
+        ]
+        assert fake.chat.parse.call_count == 1
+        prompt = fake.chat.parse.call_args.kwargs["messages"][0]["content"]
+        assert '"t1 | Vitamins"' in prompt
+        assert "| WBC" not in prompt
+
+    async def test_categories_dedupe_after_sanitization_and_skip_empty(
+        self, client, db_session, monkeypatch
+    ):
+        """Whitespace variants of one heading collapse to a single item keyed
+        by the FIRST raw spelling; empty/whitespace-only strings never reach
+        the model."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        fake = _fake_client({"translations": [
+            {"id": "t1", "name": "Lipidpanel"},
+            {"id": "t2", "name": "CBC-de"},
+        ]})
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={
+                "lang": "de",
+                "names": [],
+                "categories": ["Lipid Panel", "  Lipid \n Panel ", "", "   ", "CBC"],
+            },
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert [c["original"] for c in body["categories"]] == ["Lipid Panel", "CBC"]
+        assert [c["translated"] for c in body["categories"]] == ["Lipidpanel", "CBC-de"]
+        assert fake.chat.parse.call_count == 1
+        prompt = fake.chat.parse.call_args.kwargs["messages"][0]["content"]
+        assert prompt.count("| Lipid") == 1
+        assert '"t2 | CBC"' in prompt
+
+    async def test_empty_request_returns_empty_for_both(self, client, db_session):
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={"lang": "de", "names": [], "categories": []},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"translations": [], "categories": []}
+
+
 class TestTranslationReviewFlow:
     async def test_persist_false_returns_translations_without_saving(
         self, client, db_session, monkeypatch
@@ -729,3 +918,157 @@ class TestTranslationReviewFlow:
             BiomarkerDefinition.id == "local-other"
         ).first()
         assert other.names.get("pl") is None
+
+
+class TestCategoryTranslationCache:
+    def _cache_id(self, lang: str, cleaned: str) -> str:
+        import hashlib
+
+        return f"{lang}:{hashlib.sha256(cleaned.encode()).hexdigest()}"
+
+    def _seed_cache(self, db_session, lang: str, original: str, translated: str):
+        from app.db.models import CategoryTranslationCache
+
+        db_session.add(
+            CategoryTranslationCache(
+                id=self._cache_id(lang, original),
+                original=original,
+                translated=translated,
+            )
+        )
+        db_session.commit()
+
+    async def test_repeat_category_request_is_served_from_cache(
+        self, client, db_session, monkeypatch
+    ):
+        """The second identical request hits the shared cache: zero new LLM
+        calls, zero new quota — the heading is translated exactly once."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        fake = _fake_client({"translations": [{"id": "t1", "name": "Lipidpanel"}]})
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        body = {"lang": "de", "names": [], "categories": ["Lipid Panel"]}
+        first = await client.post("/api/translate-biomarkers", json=body)
+        assert first.status_code == 200
+        assert first.json()["categories"] == [
+            {"original": "Lipid Panel", "translated": "Lipidpanel", "source": "translated"}
+        ]
+        assert fake.chat.parse.call_count == 1
+        assert _usage_count(db_session) == 1
+
+        second = await client.post("/api/translate-biomarkers", json=body)
+        assert second.status_code == 200
+        assert second.json()["categories"] == first.json()["categories"]
+        # Served entirely from the cache: no LLM call, no quota charge.
+        assert fake.chat.parse.call_count == 1
+        assert _usage_count(db_session) == 1
+
+    async def test_partial_cache_hit_only_sends_misses(
+        self, client, db_session, monkeypatch
+    ):
+        """Cached headings never reach the prompt; misses translate fresh and
+        the response merges both."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        self._seed_cache(db_session, "de", "Lipid Panel", "Lipidpanel")
+        fake = _fake_client({"translations": [{"id": "t1", "name": "Vitamine"}]})
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={
+                "lang": "de",
+                "names": [],
+                "categories": ["Lipid Panel", "Vitamins"],
+            },
+        )
+
+        assert resp.status_code == 200
+        assert fake.chat.parse.call_count == 1
+        prompt = fake.chat.parse.call_args.kwargs["messages"][0]["content"]
+        assert '"t1 | Vitamins"' in prompt
+        assert "| Lipid Panel" not in prompt
+        assert resp.json()["categories"] == [
+            {"original": "Lipid Panel", "translated": "Lipidpanel", "source": "translated"},
+            {"original": "Vitamins", "translated": "Vitamine", "source": "translated"},
+        ]
+
+    async def test_successful_run_writes_cache_rows(
+        self, client, db_session, monkeypatch
+    ):
+        """Fresh heading translations land in the shared cache table keyed by
+        lang + sha256 of the cleaned heading."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        fake = _fake_client({"translations": [{"id": "t1", "name": "Blutbild"}]})
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={"lang": "de", "names": [], "categories": ["Complete Blood Count"]},
+        )
+
+        assert resp.status_code == 200
+        from app.db.models import CategoryTranslationCache
+
+        row = db_session.query(CategoryTranslationCache).filter(
+            CategoryTranslationCache.id == self._cache_id("de", "Complete Blood Count")
+        ).first()
+        assert row is not None
+        assert row.original == "Complete Blood Count"
+        assert row.translated == "Blutbild"
+
+    async def test_all_cached_names_and_headings_return_free(
+        self, client, db_session, monkeypatch
+    ):
+        """Persisted names + cached headings: the request short-circuits with
+        no LLM call and no quota (a fully-cached document regenerates free)."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        self._seed_cache(db_session, "de", "Complete Blood Count", "Blutbild")
+        fake = _fake_client({"translations": []})
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={
+                "lang": "de",
+                "names": [{"id": "wbc", "name": "WBC"}],  # seed def: names.de set
+                "categories": ["Complete Blood Count"],
+            },
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["translations"] == [
+            {"id": "wbc", "name": "Leukozyten", "source": "cached"}
+        ]
+        assert resp.json()["categories"] == [
+            {"original": "Complete Blood Count", "translated": "Blutbild", "source": "translated"}
+        ]
+        assert fake.chat.parse.call_count == 0
+        assert _usage_count(db_session) == 0
+
+    async def test_llm_failure_still_returns_cached_headings(
+        self, client, db_session, monkeypatch
+    ):
+        """Total LLM failure: quota refunded, names fall back to English, but
+        cached headings stay valid and are still returned."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        self._seed_cache(db_session, "de", "Lipid Panel", "Lipidpanel")
+        _seed_plain_def(db_session)
+        fake = _fake_client(exc=RuntimeError("LLM down"))
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={
+                "lang": "de",
+                "names": [{"id": "local-test-1", "name": "Test Biomarker"}],
+                "categories": ["Lipid Panel"],
+            },
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["translations"][0]["source"] == "fallback"
+        assert body["categories"] == [
+            {"original": "Lipid Panel", "translated": "Lipidpanel", "source": "translated"}
+        ]
+        assert _usage_count(db_session) == 0

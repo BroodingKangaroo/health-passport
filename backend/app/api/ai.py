@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -14,9 +15,10 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user_or_anon
 from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
-from app.db.models import Patient
+from app.db.models import CategoryTranslationCache, Patient
 from app.db.session import SessionLocal, get_db
 from app.schemas.ai import (
+    CategoryTranslationItem,
     CommitTranslationRequest,
     RawInstrumentalData,
     StandardizedMedicalRecord,
@@ -38,6 +40,8 @@ TRANSLATE_BIOMARKER_PROMPT = """You are a professional medical translator for la
 Rules:
 - Use the standard medical term in {lang} used on laboratory reports.
 - Keep Latin acronyms, abbreviations, and numbers verbatim (e.g. "LDL Cholesterol" -> "Colesterol LDL", "Vitamin B12" -> "Vitamina B12", "TSH", "CRP", "HIV" stay unchanged).
+- Laboratory class codes — short all-caps identifiers, optionally with slashes (e.g. "HEM/BC", "CHEM", "COAG") — must stay EXACTLY unchanged: never re-spell, transliterate, or partially translate them.
+- Items are usually English, but section/panel headings may arrive in another language (e.g. Russian "Клинический анализ крови"). Translate those into {lang} just the same — never echo an item back in a language other than {lang}, unless it is a Latin term, an acronym/class code, or a proper noun.
 - Preserve clinical qualifiers verbatim — never drop or rephrase them (e.g. "Free T4", "Total", "Direct", "Indirect", "Estimated", "Urine" must survive in the translation).
 - If a name is untranslatable (Latin term like "Escherichia coli" or "Bacteroides spp", drug name, proper noun), return it unchanged.
 - NEVER omit an item from the response: even when the name stays unchanged, echo its token with the identical name.
@@ -60,6 +64,18 @@ TRANSLATE_MAX_TOKENS = 2000
 # earlier passes dropped, and maximizing their success rate is worth the
 # extra call.
 TRANSLATE_STRAGGLER_CHUNK_SIZE = 20
+
+# Category strings ride the same LLM batch as names under synthetic ids with
+# this prefix (md5-based, so they can never collide with real definition ids:
+# LOINC codes and "local-<md5>" ids contain no colon). The prefix is stripped
+# before the results go back to the client.
+_CATEGORY_ID_PREFIX = "category:"
+
+
+def _category_cache_id(lang: str, cleaned: str) -> str:
+    """Primary key of the shared category-translation cache row for a cleaned
+    heading in a language."""
+    return f"{lang}:{hashlib.sha256(cleaned.encode()).hexdigest()}"
 
 
 def _get_client() -> Optional[Mistral]:
@@ -551,17 +567,44 @@ async def extract_medical_data(
     )
 
 
+def _category_translations(
+    requested: list[str], translated_cats: dict[str, str]
+) -> list[CategoryTranslationItem]:
+    """Build the category part of the response: one item per distinct cleaned
+    input string in first-seen order. ``translated_cats`` maps the CLEANED
+    string to its translation; anything missing (LLM failure or empty input)
+    falls back to the original request string with source="fallback"."""
+    items: list[CategoryTranslationItem] = []
+    seen: set[str] = set()
+    for raw in requested:
+        cleaned = _clean_translation_name(raw)
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        tr = translated_cats.get(cleaned)
+        items.append(
+            CategoryTranslationItem(
+                original=raw,
+                translated=tr or raw,
+                source="translated" if tr else "fallback",
+            )
+        )
+    return items
+
+
 def _translation_response(
     payload: TranslateRequest,
     defn_by_id: dict,
     translated: dict[str, str],
+    translated_cats: Optional[dict[str, str]] = None,
 ) -> TranslateResponse:
     """Build the response in request order: every requested id comes back with
     its persisted translation when one exists, else the requested (English)
     name, plus a per-item ``source`` classification — ``translated`` (newly
     LLM-translated this request), ``cached`` (definition already carried
     ``names[lang]``), or ``fallback`` (LLM failure, unresolvable/foreign id,
-    or empty name)."""
+    or empty name). Categories follow the same shape but are never persisted,
+    so they only ever classify as ``translated`` / ``fallback``."""
     translations: list[TranslationItem] = []
     for item in payload.names:
         defn = defn_by_id.get(item.id)
@@ -577,7 +620,10 @@ def _translation_response(
         # place the new translation exists.
         name = translated.get(item.id) or persisted or item.name
         translations.append(TranslationItem(id=item.id, name=name, source=source))
-    return TranslateResponse(translations=translations)
+    return TranslateResponse(
+        translations=translations,
+        categories=_category_translations(payload.categories, translated_cats or {}),
+    )
 
 
 @router.post("/api/translate-biomarkers", response_model=TranslateResponse)
@@ -591,16 +637,27 @@ async def translate_biomarker_names(
     ``names[lang]`` JSON column, so every later render (flowsheet, print
     editor) reads it without another LLM call.
 
+    Category/panel heading strings (``payload.categories``) ride the same LLM
+    batch under synthetic ids but are NEVER written to the definitions — they
+    come back in the response keyed by their exact input string, for this
+    document render only. Fresh heading translations land in a shared
+    ``category_translation_cache`` table (keyed by language + cleaned string,
+    all users, never invalidated) so later requests with the same headings are
+    served without an LLM call.
+
     Best-effort: definitions that already carry ``names[lang]`` are returned
-    untouched (no LLM call, no quota charge); on LLM failure the request still
-    succeeds with the original English names and the charged quota is refunded.
+    untouched (no LLM call, no quota charge); on total LLM failure the request
+    still succeeds with the original English names/categories and the charged
+    quota is refunded. Quota is charged only when there is actual LLM work — a
+    fully-cached request (all names persisted, all headings cached) is free.
     Every returned item carries a ``source`` classification (``translated`` /
-    ``cached`` / ``fallback``) so clients can surface silent fallbacks.
+    ``cached`` / ``fallback``, categories only ever ``translated`` /
+    ``fallback``) so clients can surface silent fallbacks.
     """
     _user, user_id, is_anonymous = user_data
 
-    if not payload.names:
-        return TranslateResponse(translations=[])
+    if not payload.names and not payload.categories:
+        return TranslateResponse(translations=[], categories=[])
 
     # Resolve only definitions visible to this user (global, system-shared, or
     # their own); a foreign or unresolvable id is returned with its original
@@ -627,16 +684,54 @@ async def translate_biomarker_names(
         seen_ids.add(item.id)
         to_translate.append((item.id, item.name))
 
-    if not to_translate:
-        # Nothing new to translate: return whatever is already known without
-        # burning quota (re-generates of an already-translated document are free).
-        return _translation_response(payload, defn_by_id, translated={})
+    # Category headings: dedupe by cleaned string, one synthetic id each.
+    cat_id_by_cleaned: dict[str, str] = {}  # cleaned category -> synthetic id
+    for raw in payload.categories:
+        cleaned = _clean_translation_name(raw)
+        if not cleaned or cleaned in cat_id_by_cleaned:
+            continue
+        digest = hashlib.md5(cleaned.encode()).hexdigest()[:12]
+        cat_id_by_cleaned[cleaned] = f"{_CATEGORY_ID_PREFIX}{digest}"
+
+    # Serve headings from the shared cache first: generic lab terms repeat
+    # across documents and users, so only cache misses reach the LLM.
+    cached_cats: dict[str, str] = {}  # cleaned category -> translation
+    if cat_id_by_cleaned:
+        cache_rows = (
+            db.query(CategoryTranslationCache)
+            .filter(
+                CategoryTranslationCache.id.in_(
+                    [
+                        _category_cache_id(payload.lang, cleaned)
+                        for cleaned in cat_id_by_cleaned
+                    ]
+                )
+            )
+            .all()
+        )
+        cached_cats = {row.original: row.translated for row in cache_rows}
+    # Only cache misses are sent to the LLM.
+    cat_items = [
+        (cid, cleaned)
+        for cleaned, cid in cat_id_by_cleaned.items()
+        if cleaned not in cached_cats
+    ]
+
+    if not to_translate and not cat_items:
+        # Everything is already known (persisted names + cached headings):
+        # return it without burning quota (re-generates of an
+        # already-translated document are free).
+        return _translation_response(
+            payload, defn_by_id, translated={}, translated_cats=cached_cats
+        )
 
     # The LLM call can never succeed without a key, so never charge quota for
     # a request that would have to fall back to English anyway.
     client = _get_client()
     if client is None:
-        return _translation_response(payload, defn_by_id, translated={})
+        return _translation_response(
+            payload, defn_by_id, translated={}, translated_cats=cached_cats
+        )
 
     allowed, current_count, limit = check_and_record_ai_usage(db, user_id, is_anonymous, commit=False)
     if not allowed:
@@ -660,13 +755,46 @@ async def translate_biomarker_names(
         en_name = (defn.names or {}).get("en") or item.name
         if existing and en_name and existing != en_name:
             glossary[en_name] = existing
+    # Cached heading translations steer the style of fresh ones the same way.
+    for cleaned, tr in cached_cats.items():
+        glossary.setdefault(cleaned, tr)
 
     unique_items = list({item_id: name for item_id, name in to_translate}.items())
-    translated = _translate_names_to_lang(unique_items, payload.lang, client, glossary=glossary)
-    if not translated:
+    # Names and categories share one batched call: the chunk/retry machinery is
+    # id-based, so categories just join under their synthetic ids.
+    combined = _translate_names_to_lang(
+        [*unique_items, *cat_items], payload.lang, client, glossary=glossary
+    )
+    defn_ids = {item_id for item_id, _name in unique_items}
+    translated = {k: v for k, v in combined.items() if k in defn_ids}
+    cleaned_by_cat_id = {
+        cid: cleaned
+        for cleaned, cid in cat_id_by_cleaned.items()
+        if cleaned not in cached_cats
+    }
+    fresh_cats = {
+        cleaned_by_cat_id[k]: v for k, v in combined.items() if k in cleaned_by_cat_id
+    }
+    translated_cats = {**cached_cats, **fresh_cats}
+    if not combined:
         # The LLM failed after the quota increment was flushed: refund it.
+        # Cached headings stay valid — they still go back to the client.
         refund_ai_extraction(db, user_id, is_anonymous)
-        return _translation_response(payload, defn_by_id, translated={})
+        return _translation_response(
+            payload, defn_by_id, translated={}, translated_cats=cached_cats
+        )
+
+    # Remember fresh heading translations in the shared cache (same commit as
+    # the name persistence / quota increment). merge() keeps this idempotent
+    # against a concurrent request inserting the same row.
+    for cleaned, tr in fresh_cats.items():
+        db.merge(
+            CategoryTranslationCache(
+                id=_category_cache_id(payload.lang, cleaned),
+                original=cleaned,
+                translated=tr,
+            )
+        )
 
     if payload.persist:
         # Persist each translation into the definition's names JSON column so
@@ -684,10 +812,13 @@ async def translate_biomarker_names(
             defn.names = names
     # With persist=False (review flow) the names are NOT written — the client
     # confirms them via /translate-biomarkers/commit. The quota increment IS
-    # committed either way: the LLM genuinely ran.
+    # committed either way: the LLM genuinely ran. Categories are never
+    # written; they exist only in this response.
     db.commit()
 
-    return _translation_response(payload, defn_by_id, translated=translated)
+    return _translation_response(
+        payload, defn_by_id, translated=translated, translated_cats=translated_cats
+    )
 
 
 @router.post("/api/translate-biomarkers/commit")

@@ -138,14 +138,33 @@ working.
   `names[lang]` JSON column, so every later render (flowsheet, print editor)
   reads it without another LLM call. `en`/`ru` are not targets: `en` names
   already exist and `ru` prints the source name directly.
-- Request `{lang, names: [{id, name}], persist?}`; response `{translations:
-  [{id, name, source}]}` — every requested id comes back, in request order,
+- Request `{lang, names: [{id, name}], categories?: [str], persist?}`; response
+  `{translations: [{id, name, source}], categories: [{original, translated,
+  source}]}` — every requested id comes back, in request order,
   with the persisted translation when one exists, else the requested
   (English) name. Each item's `source` classifies how `name` was produced:
   `translated` (newly LLM-translated this request), `cached` (the definition
   already carried `names[lang]`), or `fallback` (LLM failure/drop,
   unresolvable or foreign id, or empty name) — so clients can surface silent
   English fallbacks instead of trusting every response blindly.
+- **Category/panel headings** (`categories`) ride the same LLM batch under
+  synthetic `category:<md5>` ids (deduped after whitespace-sanitization;
+  empties skipped) and are never written to the definitions — they come back
+  keyed by their exact input string (first-seen spelling wins for sanitized
+  duplicates) with `source` only ever `translated`/`fallback`. A
+  category-only request is valid; cached names plus new categories still
+  reach the LLM.
+- **Heading cache**: fresh heading translations land in a shared
+  `category_translation_cache` table (all users, keyed
+  `{lang}:{sha256(cleaned heading)}`, `original` kept for readability).
+  Lookups run before the LLM batch — only misses are sent — and results are
+  written in the same commit as the name persistence. There is no
+  invalidation: headings are generic static lab terminology and translations
+  run at temperature 0. Cached translations also seed the prompt glossary so
+  fresh ones match their style. **Quota is charged only when actual LLM work
+  exists** — a fully-cached request (all names persisted, all headings
+  cached) returns instantly and free; on total LLM failure the quota is
+  refunded but cached headings are still returned.
 - **Two-phase review flow**: with `persist: false` the translations are
   returned but NOT written — the print-setup review dialog lets the user
   accept/reject each term and then commits only the accepted ones via

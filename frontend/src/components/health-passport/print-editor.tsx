@@ -142,6 +142,8 @@ export function PrintEditor({
     setShowReferences,
     compactNumbers,
     setCompactNumbers,
+    categoryTranslations,
+    suppressSavedTranslations,
   } = usePrintConfig()
 
   const [openCats, setOpenCats] = useState<string[]>(matrix.map((c) => c.category))
@@ -237,6 +239,10 @@ export function PrintEditor({
 
   function translatedName(row: MatrixCategory['rows'][number]): string {
     if (lang === 'ru') return row.original || row.name
+    // After a failed generate we force the English / source names for this
+    // navigation so the "fallback to English" contract holds even though
+    // saved translations may exist on the definition.
+    if (suppressSavedTranslations) return row.name
     const def = defMap.get(row.id)
     const val = def?.names?.[lang]
     if (val) return val
@@ -248,6 +254,18 @@ export function PrintEditor({
       return `${translatedName(row)} / ${row.original}`
     }
     return translatedName(row)
+  }
+
+  /** Display label for a category heading: the AI translation from the
+   * generate step when one exists (grouping/order keys stay the raw string),
+   * else the raw string. Bilingual mode pairs translation / original. */
+  function categoryLabel(category: string): string {
+    // After a failed generate the raw heading is forced for this navigation.
+    if (suppressSavedTranslations) return category
+    const tr = categoryTranslations[category]
+    if (!tr) return category
+    if (bilingual && lang !== 'ru') return `${tr} / ${category}`
+    return tr
   }
 
   const years = useMemo(() => {
@@ -495,7 +513,7 @@ export function PrintEditor({
                         onClick={() => toggleCat(cat.category)}
                         className="flex w-full items-center justify-between bg-secondary/40 px-3 py-2 text-left text-sm font-semibold text-foreground transition-colors hover:bg-secondary"
                       >
-                        {cat.category}
+                        {categoryLabel(cat.category)}
                         <ChevronDown
                           className={cn(
                             'size-4 text-muted-foreground transition-transform',
@@ -645,7 +663,7 @@ export function PrintEditor({
                           colSpan={visibleDates.length + 1}
                           className="border border-gray-300 bg-gray-100 px-2 py-0.5 font-semibold uppercase tracking-wide text-gray-700"
                         >
-                          {cat.category}
+                          {categoryLabel(cat.category)}
                         </td>
                       </tr>
                       {cat.rows.map((row) => (

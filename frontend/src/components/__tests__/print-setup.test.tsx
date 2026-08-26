@@ -2,9 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { PrintSetup } from '@/components/health-passport/print-setup'
 import { PrintConfigProvider } from '@/providers/print-config-provider'
+import { usePrintConfig } from '@/hooks/usePrintConfig'
 import { LeaveGuardProvider } from '@/providers/leave-guard-provider'
 import type { FlowsheetResponse } from '@/lib/types'
 import type { TranslatedName } from '@/services/api'
+
+afterEach(() => {
+  sessionStorage.clear()
+})
 
 const mockPush = vi.fn()
 const mockFetchFlowsheet = vi.fn()
@@ -53,6 +58,14 @@ function translatedMap(
   entries: Record<string, TranslatedName>,
 ): Map<string, TranslatedName> {
   return new Map(Object.entries(entries))
+}
+
+/** Full `translateBiomarkerNames` result: names map + category headings. */
+function translateResult(
+  entries: Record<string, TranslatedName>,
+  categories: Record<string, string> = {},
+): { names: Map<string, TranslatedName>; categories: Record<string, string> } {
+  return { names: translatedMap(entries), categories }
 }
 
 function renderComponent() {
@@ -169,7 +182,7 @@ describe('PrintSetup', () => {
   it('shows a review dialog with translated terms before generating', async () => {
     mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
     mockTranslate.mockResolvedValue(
-      translatedMap({
+      translateResult({
         wbc: { name: 'Leukozyten', source: 'translated' },
         hb: { name: 'Hämoglobin', source: 'translated' },
       }),
@@ -185,7 +198,11 @@ describe('PrintSetup', () => {
           { id: 'wbc', name: 'WBC' },
           { id: 'hb', name: 'Hemoglobin' },
         ],
-        { persist: false, signal: expect.any(AbortSignal) },
+        {
+          persist: false,
+          signal: expect.any(AbortSignal),
+          categories: ['Complete Blood Count'],
+        },
       ),
     )
     expect(await screen.findByText('Verify Translations')).toBeTruthy()
@@ -206,7 +223,7 @@ describe('PrintSetup', () => {
   it('saves only the accepted translations and discards unchecked ones', async () => {
     mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
     mockTranslate.mockResolvedValue(
-      translatedMap({
+      translateResult({
         wbc: { name: 'Leukozyten', source: 'translated' },
         hb: { name: 'Hämoglobin', source: 'translated' },
       }),
@@ -237,7 +254,7 @@ describe('PrintSetup', () => {
   it('going back discards the run: nothing is saved or navigated', async () => {
     mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
     mockTranslate.mockResolvedValue(
-      translatedMap({
+      translateResult({
         wbc: { name: 'Leukozyten', source: 'translated' },
         hb: { name: 'Hämoglobin', source: 'translated' },
       }),
@@ -257,7 +274,7 @@ describe('PrintSetup', () => {
   it('proceeds without saving when every translation is rejected', async () => {
     mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
     mockTranslate.mockResolvedValue(
-      translatedMap({
+      translateResult({
         wbc: { name: 'Leukozyten', source: 'translated' },
         hb: { name: 'Hämoglobin', source: 'translated' },
       }),
@@ -279,7 +296,7 @@ describe('PrintSetup', () => {
   it('locks the toggle on cached rows and replaces fallback rows with a label', async () => {
     mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
     mockTranslate.mockResolvedValue(
-      translatedMap({
+      translateResult({
         wbc: { name: 'Leukozyten', source: 'translated' },
         hb: { name: 'Hemoglobin', source: 'fallback' },
       }),
@@ -293,7 +310,9 @@ describe('PrintSetup', () => {
     expect(
       screen.getByRole('radio', { name: 'Use translation for WBC' }).getAttribute('aria-checked'),
     ).toBe('true')
-    expect(screen.getByRole('radio', { name: 'Use English for WBC' }).disabled).toBe(false)
+    expect(
+      (screen.getByRole('radio', { name: 'Use English for WBC' }) as HTMLInputElement).disabled,
+    ).toBe(false)
 
     // Fallback: no toggle at all — the amber label takes its place at the
     // right edge, and the preview shows the English name it will print.
@@ -309,7 +328,7 @@ describe('PrintSetup', () => {
   it('explains that the choice affects names only, not document inclusion', async () => {
     mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
     mockTranslate.mockResolvedValue(
-      translatedMap({
+      translateResult({
         wbc: { name: 'Leukozyten', source: 'translated' },
         hb: { name: 'Hämoglobin', source: 'translated' },
       }),
@@ -325,7 +344,7 @@ describe('PrintSetup', () => {
   it('review dialog Back cancels and stays on the setup screen', async () => {
     mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
     mockTranslate.mockResolvedValue(
-      translatedMap({
+      translateResult({
         wbc: { name: 'Leukozyten', source: 'translated' },
         hb: { name: 'Hémoglobine', source: 'translated' },
       }),
@@ -342,7 +361,7 @@ describe('PrintSetup', () => {
   it('badges English fallbacks in the review and warns after closing', async () => {
     mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
     mockTranslate.mockResolvedValue(
-      translatedMap({
+      translateResult({
         wbc: { name: 'Leukozyten', source: 'translated' },
         hb: { name: 'Hemoglobin', source: 'fallback' },
       }),
@@ -387,7 +406,7 @@ describe('PrintSetup', () => {
     }
     mockFetchFlowsheet.mockResolvedValue(microbiology)
     mockTranslate.mockResolvedValue(
-      translatedMap({
+      translateResult({
         // The model returns Latin binomials verbatim (prompt rule), but the
         // id IS present — deliberately kept, not a failure.
         eco: { name: 'Escherichia coli', source: 'translated' },
@@ -412,7 +431,7 @@ describe('PrintSetup', () => {
   it('skips the review dialog when everything is already translated', async () => {
     mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
     mockTranslate.mockResolvedValue(
-      translatedMap({
+      translateResult({
         wbc: { name: 'Leukozyten', source: 'cached' },
         hb: { name: 'Hämoglobin', source: 'cached' },
       }),
@@ -427,10 +446,13 @@ describe('PrintSetup', () => {
 
   it('shows elapsed seconds while translating', async () => {
     vi.useFakeTimers()
-    let resolveTranslate!: (m: Map<string, TranslatedName>) => void
+    let resolveTranslate!: (r: {
+      names: Map<string, TranslatedName>
+      categories: Record<string, string>
+    }) => void
     mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
     mockTranslate.mockReturnValue(
-      new Promise<Map<string, TranslatedName>>((res) => {
+      new Promise((res) => {
         resolveTranslate = res
       }),
     )
@@ -449,7 +471,7 @@ describe('PrintSetup', () => {
     // Resolve the translation and flush the promise chain without relying
     // on timers (they are faked here).
     resolveTranslate(
-      translatedMap({
+      translateResult({
         wbc: { name: 'Leukozyten', source: 'translated' },
         hb: { name: 'Hämoglobin', source: 'translated' },
       }),
@@ -470,6 +492,32 @@ describe('PrintSetup', () => {
 
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/print-editor'))
     expect(screen.queryByText('Verify Translations')).toBeNull()
+  })
+
+  it('flips suppressSavedTranslations on failure so the editor shows English', async () => {
+    mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
+    mockTranslate.mockRejectedValue(new Error('Mistral down'))
+    let suppress = false
+    function Probe() {
+      // Re-renders with the provider on every state change, capturing the
+      // flag the failure path sets.
+      suppress = usePrintConfig().suppressSavedTranslations
+      return null
+    }
+    render(
+      <LeaveGuardProvider>
+        <PrintConfigProvider>
+          <PrintSetup />
+          <Probe />
+        </PrintConfigProvider>
+      </LeaveGuardProvider>,
+    )
+    selectTranslateModeAndLang('fr')
+    fireEvent.click(screen.getByText('Generate Document'))
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/print-editor'))
+    // A fresh attempt resets it; a failed run sets it so the editor renders
+    // the English / source names instead of any saved translations.
+    expect(suppress).toBe(true)
   })
 
   it('navigates when the translation request times out', async () => {
@@ -498,7 +546,7 @@ describe('PrintSetup', () => {
       ],
     }
     mockFetchFlowsheet.mockResolvedValue(withEmptyName)
-    mockTranslate.mockResolvedValue(translatedMap({}))
+    mockTranslate.mockResolvedValue(translateResult({}))
     renderComponent()
     selectTranslateModeAndLang('de')
     fireEvent.click(screen.getByText('Generate Document'))
@@ -561,5 +609,160 @@ describe('PrintSetup', () => {
     // completion cannot hijack navigation into /print-editor.
     unmount()
     await waitFor(() => expect(mockPush).not.toHaveBeenCalled())
+  })
+
+  it('sends distinct category headings in the translate call and shows them read-only', async () => {
+    const twoCats = {
+      ...FLOWSHEET,
+      matrix: [
+        ...FLOWSHEET.matrix,
+        {
+          category: 'Lipid Panel',
+          rows: [
+            {
+              id: 'ldl',
+              name: 'LDL',
+              original: 'ЛПНП',
+              unit: 'mg/dL',
+              reference: null,
+              cells: [{ value: '100', status: 'normal' }],
+            },
+          ],
+        },
+        {
+          // Duplicate heading: must be deduped before hitting the API.
+          category: 'Lipid Panel',
+          rows: [
+            {
+              id: 'hdl',
+              name: 'HDL',
+              original: 'ЛПВП',
+              unit: 'mg/dL',
+              reference: null,
+              cells: [{ value: '60', status: 'normal' }],
+            },
+          ],
+        },
+      ],
+    }
+    mockFetchFlowsheet.mockResolvedValue(twoCats)
+    mockTranslate.mockResolvedValue(
+      translateResult(
+        {
+          wbc: { name: 'Leukozyten', source: 'translated' },
+          hb: { name: 'Hämoglobin', source: 'translated' },
+          ldl: { name: 'LDL', source: 'translated' },
+          hdl: { name: 'HDL', source: 'translated' },
+        },
+        { 'Complete Blood Count': 'Blutbild', 'Lipid Panel': 'Lipidpanel' },
+      ),
+    )
+    renderComponent()
+    selectTranslateModeAndLang('de')
+    fireEvent.click(screen.getByText('Generate Document'))
+
+    await waitFor(() => expect(mockTranslate).toHaveBeenCalled())
+    const opts = mockTranslate.mock.calls[0][2] as { categories?: string[] }
+    expect(opts.categories).toEqual(['Complete Blood Count', 'Lipid Panel'])
+
+    // Informational section inside the review dialog.
+    expect(await screen.findByText(/Panel headings/)).toBeTruthy()
+    expect(screen.getByTitle('Complete Blood Count')).toBeTruthy()
+    expect(screen.getByText('Blutbild')).toBeTruthy()
+
+    // Stored for the editor (provider state + sessionStorage per language).
+    confirmPreview()
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/print-editor'))
+    expect(sessionStorage.getItem('hp-cat-translations:de')).toBe(
+      JSON.stringify({ 'Complete Blood Count': 'Blutbild', 'Lipid Panel': 'Lipidpanel' }),
+    )
+  })
+
+  it('stores category translations even when every name is cached', async () => {
+    mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
+    mockTranslate.mockResolvedValue(
+      translateResult(
+        {
+          wbc: { name: 'Leukozyten', source: 'cached' },
+          hb: { name: 'Hämoglobin', source: 'cached' },
+        },
+        { 'Complete Blood Count': 'Blutbild' },
+      ),
+    )
+    renderComponent()
+    selectTranslateModeAndLang('de')
+    fireEvent.click(screen.getByText('Generate Document'))
+
+    // Cached names skip the review dialog, but fresh categories still land.
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/print-editor'))
+    expect(sessionStorage.getItem('hp-cat-translations:de')).toBe(
+      JSON.stringify({ 'Complete Blood Count': 'Blutbild' }),
+    )
+    expect(mockCommit).not.toHaveBeenCalled()
+  })
+
+  it('keys stored headings by the raw matrix string so whitespace variants resolve', async () => {
+    // The API is keyed by the trimmed heading, but the editor looks the
+    // matrix category up verbatim — the stored map must carry the RAW string.
+    const dirtyCats = {
+      ...FLOWSHEET,
+      matrix: [
+        FLOWSHEET.matrix[0],
+        {
+          category: '  Lipid Panel  ',
+          rows: [
+            {
+              id: 'ldl',
+              name: 'LDL',
+              original: 'ЛПНП',
+              unit: 'mg/dL',
+              reference: null,
+              cells: [{ value: '100', status: 'normal' }],
+            },
+          ],
+        },
+      ],
+    }
+    mockFetchFlowsheet.mockResolvedValue(dirtyCats)
+    mockTranslate.mockResolvedValue(
+      translateResult(
+        {
+          wbc: { name: 'Leukozyten', source: 'translated' },
+          hb: { name: 'Hämoglobin', source: 'translated' },
+          ldl: { name: 'LDL', source: 'translated' },
+        },
+        { 'Complete Blood Count': 'Blutbild', 'Lipid Panel': 'Lipidpanel' },
+      ),
+    )
+    renderComponent()
+    selectTranslateModeAndLang('de')
+    fireEvent.click(screen.getByText('Generate Document'))
+
+    // Only the trimmed heading goes over the wire.
+    await waitFor(() => expect(mockTranslate).toHaveBeenCalled())
+    const opts = mockTranslate.mock.calls[0][2] as { categories?: string[] }
+    expect(opts.categories).toEqual(['Complete Blood Count', 'Lipid Panel'])
+
+    // The dialog previews the dirty heading (ByTitle normalizes attribute
+    // whitespace, so match the trimmed form; the RAW keying is asserted via
+    // sessionStorage below).
+    expect(await screen.findByTitle('Lipid Panel')).toBeTruthy()
+
+    confirmPreview()
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/print-editor'))
+    const map = JSON.parse(sessionStorage.getItem('hp-cat-translations:de') || '{}')
+    expect(map['  Lipid Panel  ']).toBe('Lipidpanel')
+    expect(map['Complete Blood Count']).toBe('Blutbild')
+  })
+
+  it('keeps raw headings when translation fails outright', async () => {
+    mockFetchFlowsheet.mockResolvedValue(FLOWSHEET)
+    mockTranslate.mockRejectedValue(new Error('Mistral down'))
+    renderComponent()
+    selectTranslateModeAndLang('de')
+    fireEvent.click(screen.getByText('Generate Document'))
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/print-editor'))
+    expect(sessionStorage.getItem('hp-cat-translations:de')).toBeNull()
   })
 })

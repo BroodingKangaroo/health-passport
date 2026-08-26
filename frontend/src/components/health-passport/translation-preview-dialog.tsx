@@ -69,14 +69,21 @@ function fixedChoiceFor(item: TranslationPreviewItem): 'translation' | 'english'
  * toggle locked to its forced outcome). Confirming hands the ACCEPTED terms
  * to `onConfirm` so they get persisted for future documents; going back
  * discards everything from this run.
+ *
+ * `categories` (panel headings) are informational only — they are structural
+ * groupings rather than patient-facing terms, are never persisted, and are
+ * always applied to this document.
  */
 export function TranslationPreviewDialog({
   items,
+  categories = [],
   languageLabel,
   onConfirm,
   onCancel,
 }: {
   items: TranslationPreviewItem[]
+  /** Panel heading translations shown read-only (always applied). */
+  categories?: { original: string; translated: string }[]
   languageLabel: string
   /** Receives only the accepted, newly translated terms. */
   onConfirm: (accepted: TranslationPreviewItem[]) => void
@@ -223,6 +230,33 @@ export function TranslationPreviewDialog({
             )
           })}
         </div>
+
+        {categories.length > 0 && (
+          <div className="mt-3 rounded-lg border border-border px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Panel headings (applied automatically)
+            </p>
+            <div className="mt-2 space-y-2">
+              {categories.map((c) => (
+                <div
+                  key={c.original}
+                  className="grid grid-cols-[minmax(0,1fr)_28px_minmax(0,1.4fr)] items-center gap-x-3"
+                >
+                  <span
+                    title={c.original}
+                    className="min-w-0 truncate text-sm text-muted-foreground"
+                  >
+                    {c.original}
+                  </span>
+                  <ArrowRight className="size-4 shrink-0 text-muted-foreground/60" />
+                  <span title={c.translated} className="min-w-0 truncate text-sm font-medium">
+                    {c.translated}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {(hasKeptAsIs || hasFallback) && (
           <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">

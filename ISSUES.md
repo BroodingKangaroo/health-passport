@@ -137,17 +137,27 @@ distinguish "worse" from "broken".
 - Decisions made (2026-08-03): N=3 runs, strict primary improvement keep,
   separate branch isolation, build everything in one pass.
 
-### 26. Category translation in print/export (deferred)
+### 26. Category display/normalization (partially open)
 
-- The print/export document translates biomarker names into the target
-  language, but the category/panel headings (e.g. "Complete Blood Count",
-  "Lipid Panel") are **not** translated — they render in English in every
-  language.
-- Considered translating them (categories are LOINC system classes); removed
-  from scope for now — it's not clear how translated categories would be
-  useful (they are structural groupings, not patient-facing terms), and it
-  would need a new persisted `category_names[lang]`-style field plus its own
-  LLM batch. Leave for later; no code changes planned.
+- RESOLVED (translation): print/export category headings are now translated
+  into the target language — distinct matrix headings ride the existing
+  `POST /api/translate-biomarkers` batch under synthetic ids and come back
+  per-request; the print editor resolves display labels via
+  `PrintConfigProvider` + sessionStorage while grouping/order keys stay the
+  raw string. Fresh translations are cached server-side in a shared
+  `category_translation_cache` table (all users, no invalidation), so repeat
+  headings never re-hit the LLM and a fully-cached document generates free.
+- STILL OPEN (normalization): the stored `category` string itself is
+  heterogeneous — LOINC-matched global defs carry raw CLASS codes ("HEM/BC",
+  "CHEM") that render as cryptic headings even in English documents, while
+  document-derived local defs carry the source document's own panel heading
+  in its language (e.g. Russian microbiome group titles). The old issue text
+  claimed headings "render in English in every language" / "categories are
+  LOINC system classes" — both only half true; translation alone cannot fix
+  either. A real fix normalizes categories at match time (map LOINC classes →
+  friendly panel names; group local defs under a canonical heading), which
+  changes observable extraction output and requires e2e golden regen — its
+  own scoped change.
 
 ### 29. Source-language modeling: `names['ru']` doubles as the "source name" slot (deferred)
 

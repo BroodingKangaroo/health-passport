@@ -55,11 +55,13 @@ const MODES: { id: Mode; title: string; desc: string }[] = [
 
 export function PrintSetup() {
   const router = useRouter()
-  const { mode, targetLanguage, setMode, setTargetLanguage } = usePrintConfig()
+  const { mode, targetLanguage, setMode, setTargetLanguage, setCategoryTranslations, setSuppressSavedTranslations } =
+    usePrintConfig()
   const { arm, disarm } = useLeaveGuard()
   const [translating, setTranslating] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [preview, setPreview] = useState<TranslationPreviewItem[] | null>(null)
+  const [catPreview, setCatPreview] = useState<{ original: string; translated: string }[]>([])
   const [lastRun, setLastRun] = useState<{ cachedAll: boolean; failed: number } | null>(null)
   const translateAbortRef = useRef<AbortController | null>(null)
 
@@ -88,9 +90,14 @@ export function PrintSetup() {
     // step commits only the terms the user accepted.
     setLastRun(null)
     setPreview(null)
+    setCatPreview([])
     setElapsed(0)
     const controller = new AbortController()
     translateAbortRef.current = controller
+    // A new attempt supersedes any prior failure suppression, and clears a
+    // sticky prior failure toast (if the user is retrying).
+    setSuppressSavedTranslations(false)
+    toast.dismiss()
     // Guard ONLY the in-flight network phase: once results are back, leaving
     // during review loses nothing (nothing is persisted until confirm).
     arm(TRANSLATING_MESSAGE, () => controller.abort())
@@ -107,14 +114,37 @@ export function PrintSetup() {
         }
       }
       const names = [...unique].map(([id, name]) => ({ id, name }))
-      if (names.length > 0) {
+      // Distinct non-empty category headings ride the same batch; the API is
+      // keyed by their trimmed form, stored per RAW heading below.
+      const categories = [
+        ...new Set(data.matrix.map((c) => c.category.trim()).filter(Boolean)),
+      ]
+      if (names.length > 0 || categories.length > 0) {
         const results = await translateBiomarkerNames(
           targetLanguage as TranslateLang,
           names,
-          { persist: false, signal: controller.signal },
+          { persist: false, signal: controller.signal, categories },
         )
+        // The API is keyed by trimmed headings, but the editor looks matrix
+        // categories up verbatim — store one entry per RAW heading so
+        // whitespace variants still resolve.
+        const stored: Record<string, string> = {}
+        const headingPreview: { original: string; translated: string }[] = []
+        const storedRaw = new Set<string>()
+        for (const cat of data.matrix) {
+          const raw = cat.category
+          const translated = results.categories[raw.trim()]
+          if (!raw.trim() || !translated || storedRaw.has(raw)) continue
+          storedRaw.add(raw)
+          stored[raw] = translated
+          headingPreview.push({ original: raw, translated })
+        }
+        if (Object.keys(stored).length > 0) {
+          setCategoryTranslations(stored)
+        }
+        setCatPreview(headingPreview)
         const items: TranslationPreviewItem[] = names.map(({ id, name }) => {
-          const entry = results.get(id)
+          const entry = results.names.get(id)
           return {
             id,
             english: name,
@@ -140,10 +170,17 @@ export function PrintSetup() {
       // The user confirmed leave mid-translation: stay silent — no toast,
       // no navigation. The leave has already happened.
       if (controller.signal.aborted) return
-      // Best-effort translation: never block the export. Fall back to the
-      // English document and explain why.
+      // Best-effort translation: never block the export. Force the editor to
+      // render the English / source document for this run so the fallback
+      // contract actually holds (saved translations would otherwise still
+      // show), and pin a dismissible toast so the user can always see what
+      // happened — even if they already switched tabs.
+      setSuppressSavedTranslations(true)
       const reason = err instanceof Error ? err.message : 'unknown error'
-      toast.error(`AI translation failed (${reason}) — the document will use English names.`)
+      toast.error(
+        `AI translation failed (${reason}). The document is shown in English / your source language — switch the mode back to “Original” or regenerate to retry.`,
+        { duration: Infinity },
+      )
       router.push('/print-editor')
     } finally {
       disarm()
@@ -282,6 +319,7 @@ export function PrintSetup() {
       {preview && (
         <TranslationPreviewDialog
           items={preview}
+          categories={catPreview}
           languageLabel={languageLabel}
           onConfirm={handleConfirmPreview}
           onCancel={() => setPreview(null)}

@@ -158,6 +158,20 @@ class InstrumentalData(Base):
     entry = relationship("MedicalEntry", back_populates="instrumental_data")
 
 
+class CategoryTranslationCache(Base):
+    __tablename__ = "category_translation_cache"
+
+    # Shared (all-users) cache for category/panel heading translations.
+    # Headings are generic lab terms with no PII, so translations are keyed by
+    # the language + cleaned heading string and never invalidated (temperature
+    # 0 translations of static terminology don't go stale).
+    # "{lang}:{sha256(cleaned_heading)}"
+    id = Column(String, primary_key=True)
+    original = Column(String, nullable=False)
+    translated = Column(String, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
 

@@ -146,10 +146,16 @@ export interface TranslatedName {
   source: TranslationSource
 }
 
+// A category/panel heading translation. Never persisted server-side — the
+// map lives in the print config (sessionStorage) for this document only.
+export type CategoryTranslations = Record<string, string>
+
 // A hung Mistral request must not leave the Generate button stuck forever;
-// the backend short-circuits already-translated names, so a retry after a
-// timeout is cheap.
-const TRANSLATE_TIMEOUT_MS = 60_000
+// Generous budget: the Mistral call can legitimately take well over a minute
+// under load (observed ~90s), and the backend short-circuits already-translated
+// names, so a retry after a timeout is cheap. We still cap it so the UI can't
+// hang forever.
+const TRANSLATE_TIMEOUT_MS = 150_000
 
 /**
  * Translate biomarker definition names into a target language. By default the
@@ -159,12 +165,16 @@ const TRANSLATE_TIMEOUT_MS = 60_000
  * An external `signal` aborts the in-flight request (leave-guard). Returns
  * an id -> {name, source} map; `source` distinguishes newly translated names
  * from cached ones and silent English fallbacks.
+ *
+ * `opts.categories` are category/panel heading strings translated in the same
+ * LLM batch; they are never persisted server-side and come back keyed by
+ * their exact input string (missing entries = English fallback).
  */
 export async function translateBiomarkerNames(
   lang: TranslateLang,
   names: TranslateNameItem[],
-  opts?: { persist?: boolean; signal?: AbortSignal },
-): Promise<Map<string, TranslatedName>> {
+  opts?: { persist?: boolean; signal?: AbortSignal; categories?: string[] },
+): Promise<{ names: Map<string, TranslatedName>; categories: CategoryTranslations }> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TRANSLATE_TIMEOUT_MS)
   const onExternalAbort = () => controller.abort()
@@ -174,7 +184,12 @@ export async function translateBiomarkerNames(
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       credentials: 'include',
-      body: JSON.stringify({ lang, names, persist: opts?.persist ?? true }),
+      body: JSON.stringify({
+        lang,
+        names,
+        categories: opts?.categories ?? [],
+        persist: opts?.persist ?? true,
+      }),
       signal: controller.signal,
     })
     if (!res.ok) {
@@ -190,13 +205,19 @@ export async function translateBiomarkerNames(
     }
     const data = (await res.json()) as {
       translations: (TranslateNameItem & { source?: TranslationSource })[]
+      categories?: { original: string; translated: string }[]
     }
-    return new Map(
+    const nameMap = new Map(
       (data.translations || []).map((t) => [
         t.id,
         { name: t.name, source: t.source ?? 'fallback' },
       ]),
     )
+    const categoryMap: CategoryTranslations = {}
+    for (const c of data.categories || []) {
+      categoryMap[c.original] = c.translated
+    }
+    return { names: nameMap, categories: categoryMap }
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       throw new Error(

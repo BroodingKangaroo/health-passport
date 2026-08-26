@@ -132,6 +132,10 @@ class BiomarkerNameItem(BaseModel):
 class TranslateRequest(BaseModel):
     lang: Literal["de", "fr", "es", "he", "pl"]
     names: list[BiomarkerNameItem] = []
+    # Category/panel heading strings to translate alongside ``names``. Unlike
+    # names these are never persisted — they come back in the response only
+    # (keyed by the exact input string) for the current document render.
+    categories: list[str] = []
     # When False (review flow), translations are returned but NOT persisted —
     # the client confirms them afterwards via /translate-biomarkers/commit.
     persist: bool = True
@@ -158,12 +162,22 @@ class TranslationItem(BaseModel):
     source: Literal["translated", "cached", "fallback"] = "fallback"
 
 
+class CategoryTranslationItem(BaseModel):
+    original: str
+    translated: str
+    # ``translated`` is newly LLM-translated this request, or the original
+    # string as an English fallback (LLM failure or empty input). Categories
+    # are never persisted, so there is no "cached" state.
+    source: Literal["translated", "fallback"] = "fallback"
+
+
 class TranslationBatch(BaseModel):
     translations: list[TranslationItem]
 
 
 class TranslateResponse(BaseModel):
     translations: list[TranslationItem]
+    categories: list[CategoryTranslationItem] = []
 
 
 # +++++ Pass 2 — Standardized (normalized, matched, converted, translated) +++++
