@@ -15,6 +15,11 @@ from app.schemas.ai import (
     StandardizedBiomarker,
     StandardizedMedicalRecord,
 )
+from app.services.matcher._cache import (
+    _factor_cache,
+    _scale_function_cache,
+    _unit_translation_cache,
+)
 from app.services.matcher.definitions import verify_or_create
 from app.services.matcher.llm_matching import (
     _common_biomarker_guide,
@@ -59,6 +64,13 @@ def match_and_convert(
     user_id: str,
     client: Mistral,
 ) -> StandardizedMedicalRecord:
+    # The LLM caches are thread-local, and matching runs on default-pool
+    # executor threads that are reused for the process lifetime — so every
+    # call must start from empty caches or the previous extraction's unit
+    # translations / conversion factors leak into this one.
+    _factor_cache.clear()
+    _scale_function_cache.clear()
+    _unit_translation_cache.clear()
     try:
         return _match_and_convert_impl(raw, definitions, db, user_id, client)
     except Exception as e:

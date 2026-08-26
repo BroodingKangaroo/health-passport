@@ -179,8 +179,9 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
 
   // Rows the backend would skip on save (empty name or value). Counted live
   // so the form can warn before saving: a partially-empty list still saves
-  // (the backend drops those rows), but an all-empty list is a save with
-  // nothing in it and is blocked.
+  // (the backend drops those rows), but a save with no valid rows and no
+  // document is blocked — including the delete-every-row case where both
+  // counts are zero.
   const skippedRowCount = useMemo(() => {
     if (documentType !== 'blood_test') return 0
     return categories.reduce(
@@ -319,13 +320,13 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         setDateError('Date can\u2019t be in the future')
         return
       }
-      // Saving with nothing but empty rows and no document would create an
-      // empty entry. A file-only save (e.g. an AI-extracted report with no
-      // biomarkers) stays allowed.
+      // Saving with no valid rows and no document would create an empty
+      // entry — including when every row was deleted (both counts zero).
+      // A file-only save (e.g. an AI-extracted report with no biomarkers)
+      // stays allowed.
       if (
         documentType === 'blood_test' &&
         validRowCount === 0 &&
-        skippedRowCount > 0 &&
         !selectedFile
       ) {
         setSaveError('Add at least one biomarker with a name and value.')

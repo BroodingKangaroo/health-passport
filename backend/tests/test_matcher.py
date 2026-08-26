@@ -7,6 +7,12 @@ from app.db.models import BiomarkerDefinition
 from app.db.session import SessionLocal
 from app.schemas.ai import RawBiomarker, RawMedicalRecord
 from app.services import matcher
+from app.services.matcher import (
+    _factor_cache,
+    _local_cache,
+    _scale_function_cache,
+    _unit_translation_cache,
+)
 
 
 class _FakeMsg:
@@ -395,6 +401,70 @@ def test_verifier_rejects_when_ungrounded():
         )
         assert kept == []
         assert len(rejected) == 1 and rejected[0].name == "Эритроциты"
+    finally:
+        db.rollback()
+        db.close()
+
+
+_CACHE_BUCKETS = (_factor_cache, _unit_translation_cache, _scale_function_cache)
+
+
+def test_per_thread_llm_caches_reset_between_extractions():
+    """Entries left in the thread-local LLM caches by a previous extraction
+    must not survive into the next ``match_and_convert`` call: matching runs
+    on default-pool executor threads that are reused for the process
+    lifetime, so without a per-call reset one extraction's LLM guesses would
+    poison the next one on the same thread."""
+    db = SessionLocal()
+    try:
+        defs = _global_defs(db)
+        for bucket in _CACHE_BUCKETS:
+            _local_cache(bucket)["sentinel"] = "stale-from-previous-extraction"
+
+        raw = RawMedicalRecord(
+            entry_type="blood_test",
+            biomarkers=[RawBiomarker(name="Билирубин общий", value="15", unit="мкмоль/л")],
+        )
+        res = matcher.match_and_convert(raw, defs, db, "u_cachereset", client=None)
+        assert res.biomarkers[0].definition_id == "1975-2"
+        for bucket in _CACHE_BUCKETS:
+            assert "sentinel" not in _local_cache(bucket)
+    finally:
+        db.close()
+
+
+def test_stale_unit_translation_does_not_leak_into_next_extraction():
+    """A leftover thread-local unit translation (as an earlier extraction's
+    batch translator would have cached it) must not change this extraction's
+    output. With no LLM, the Cyrillic unit falls back to an identity
+    translation — a stale 'ммоль/л' → 'mmol/L' entry used to flip it."""
+    db = SessionLocal()
+    try:
+        defs = _global_defs(db)
+
+        def run():
+            raw = RawMedicalRecord(
+                entry_type="blood_test",
+                biomarkers=[RawBiomarker(name="Глюкоза", value="5.5", unit="ммоль/л")],
+            )
+            res = matcher.match_and_convert(raw, defs, db, "u_unitleak", client=None)
+            b = res.biomarkers[0]
+            assert b.definition_id == "2345-7"
+            return b
+
+        clean = run()
+        assert clean.standard_unit == "ммоль/л"
+
+        # Simulate what the batch translator cached during a previous
+        # extraction on this same worker thread.
+        _local_cache(_unit_translation_cache)["ммоль/л"] = {
+            "unit": "mmol/L",
+            "kind": "linear",
+            "inferred": False,
+        }
+        second = run()
+        assert second.standard_unit == "ммоль/л"
+        assert second.standard_value == clean.standard_value
     finally:
         db.rollback()
         db.close()

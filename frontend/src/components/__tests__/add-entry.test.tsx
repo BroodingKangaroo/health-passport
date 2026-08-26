@@ -334,6 +334,24 @@ describe('AddEntry', () => {
       expect(mockSave).not.toHaveBeenCalled()
     })
 
+    it('blocks save when every row has been deleted', async () => {
+      // Deleting all rows leaves both valid and skipped counts at zero,
+      // which used to slip past the empty-save guard.
+      const container = await renderManualEditor()
+      setDate(container, '2025-06-10')
+      fireEvent.click(screen.getByRole('button', { name: 'Remove biomarker' }))
+      expect(screen.queryByText(/missing a name or value/)).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByText('Save to HealthPassport'))
+
+      await waitFor(() => {
+        expect(
+          screen.getByText('Add at least one biomarker with a name and value.'),
+        ).toBeInTheDocument()
+      })
+      expect(mockSave).not.toHaveBeenCalled()
+    })
+
     it('warns about skipped rows but saves when at least one row is filled', async () => {
       // AI-extracted test where one biomarker parsed and one came back empty:
       // the empty row must be flagged, not silently dropped, yet the save

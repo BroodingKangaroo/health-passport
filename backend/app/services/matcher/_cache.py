@@ -18,6 +18,18 @@ class _RequestBucket(threading.local):
     same process.
     """
 
+    def clear(self) -> None:
+        """Drop this thread's cached entries.
+
+        Matching runs on default-pool executor threads that are reused for
+        the process lifetime, so ``match_and_convert`` calls this at the
+        start of every run — without it, the previous extraction's cached
+        LLM guesses would leak into the next one on the same thread.
+        """
+        store = getattr(self, "store", None)
+        if store is not None:
+            store.clear()
+
 
 def _local_cache(bucket: _RequestBucket) -> dict:
     """Return this thread's cache dict stored on ``bucket``, creating it on

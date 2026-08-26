@@ -70,31 +70,6 @@ open-redirect via `?callbackUrl=`, etc.) remain tracked outside this log.
 - Fix: require an authenticated principal for populating the shared cache
   (or key rows per user); cap string length and item count.
 
-### 34. Empty blood-test entry can still be saved by deleting every row (high)
-
-- `frontend/src/components/health-passport/add-entry.tsx:325-333`: the guard
-  requires `validRowCount === 0 && skippedRowCount > 0 && !selectedFile`.
-  `LabResultForm` allows deleting all rows (no minimum), leaving both counts
-  at 0 → guard passes → Save commits an entry with no readings and no
-  document (backend accepts `biomarkers="[]"`). The comment at
-  `add-entry.tsx:180-183` claims the all-empty list is blocked — it isn't.
-- Fix: drop the `skippedRowCount > 0 &&` clause (`validRowCount === 0 &&
-  !selectedFile`), update the comment, add a delete-all-rows test.
-
-### 35. Matcher per-thread LLM caches are never cleared between extractions (high)
-
-- `app/services/matcher/_cache.py:11-44`: `_factor_cache`,
-  `_unit_translation_cache`, `_scale_function_cache` are thread-local buckets
-  that are created on first use and never reset anywhere in the repo.
-  Matching runs via `run_in_executor(None, ...)` (`app/api/ai.py:509`), whose
-  default-pool threads are reused for the process lifetime — so extraction
-  N+1 handled by the same thread starts with extraction N's cached LLM unit
-  guesses/conversions. That is exactly the cross-extraction contamination the
-  caches were built to prevent (docstring promise), and it can anchor wrong
-  canonical units — the core invariant of the matcher.
-- Fix: clear the three buckets at the start of each `match_and_convert`
-  (or key caches by request id instead of thread).
-
 ---
 
 ## Refactors / agentic-development (2026-08-03)
