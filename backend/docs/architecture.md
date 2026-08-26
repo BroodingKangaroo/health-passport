@@ -107,6 +107,39 @@ working.
 | `standardize.py` | `StandardizedBiomarker` builders, status apply, LLM-free fallback path |
 | `pipeline.py` | The `match_and_convert` orchestrator |
 
+## Backend module map (previously-undocumented modules)
+
+Reference for agents so these aren't re-derived via grep each session:
+
+| Module | Purpose |
+|---|---|
+| `app/db/models.py` | SQLAlchemy ORM models: `Patient`, `BiomarkerDefinition`, `BiomarkerReading`, `MedicalEntry`, `VisitData`, `InstrumentalData`, `Attachment`, `UsageLimit`, `CategoryTranslationCache`, `PasswordResetToken`, etc. |
+| `app/db/import_ranges.py` | Curated common reference ranges (`COMMON_RANGES`) merged into existing global definitions; run via `python -m app.db.import_ranges`. |
+| `app/services/extractor.py` | Pass-1 OCR→LLM raw extraction: turns document text into a `RawMedicalRecord` (raw biomarkers / visit / instrumental data) before the matcher runs. |
+| `app/services/converters.py` | Hybrid value unit conversion (identity → dimensional via `pint` → molar/mass via per-analyte molecular weight → LLM-supplied factor fallback). |
+| `app/services/data_migration.py` | Anonymous→registered account data migration (read-only through `verify_anon_cookie`, so a forged/legacy cookie can't copy another tenant's data). |
+| `app/services/category_normalize.py` | `normalize_category()` — maps raw LOINC `CLASS` codes and per-LOINC overrides to friendly panel names; keeps local/source-derived headings verbatim (see below). |
+| `app/api/anon_session.py` | Anonymous-session cookie issue/verify (`get_or_create_anon_id`, `verify_anon_cookie`); HMAC-signed, never trusted raw. |
+
+## Category normalization (extraction output)
+
+- Global (LOINC-matched) definitions used to carry the raw LOINC `CLASS` code
+  as their `category` (e.g. `"HEM/BC"`, `"CHEM"`), which renders as a cryptic
+  heading even on English documents. `app/services/category_normalize.py`
+  normalizes the stored `category` at definition-creation time in both the
+  seeder (`seed_loinc.row_to_definition`) and the matcher
+  (`matcher/definitions.py`):
+  - per-LOINC-code panel overrides refine coarse classes (e.g. `CLASS=CHEM`
+    for ALT → `"Liver Function"`, Glucose → `"Comprehensive Metabolic Panel"`,
+    Cholesterol → `"Lipid Panel"`);
+  - unambiguous `CLASS` codes map directly (`"HEM/BC"` → `"Complete Blood Count"`);
+  - local (unmatched) definitions keep their source document's heading
+    verbatim — canonicalizing a foreign-language heading would need an LLM pass,
+    which the matcher must not perform for determinism.
+- The e2e `compare.py` does **not** compare `category`, so this change does not
+  affect the golden harness, but the stored `category` values in
+  `e2e/golden/*/standardized.json` were updated to the normalized form.
+
 ## Unit canonicalization / cross-scale conversion (`matcher/units_conversion.py`, `matcher/units_guess.py`)
 
 - Each biomarker definition stores a canonical unit (`canonical_unit`,
@@ -179,7 +212,11 @@ working.
   `category_translation_cache` table (all users, keyed
   `{lang}:{sha256(cleaned heading)}`, `original` kept for readability).
   Lookups run before the LLM batch — only misses are sent — and results are
-  written in the same commit as the name persistence. There is no
+  written in the same commit as the name persistence. **The shared cache is
+  populated only by authenticated principals** — anonymous requests still
+  receive heading translations in the response but never write into the shared
+  cache, so an anonymous caller cannot seed poisoned headings that every user's
+  print render then trusts (ISSUES.md #33). There is no
   invalidation: headings are generic static lab terminology and translations
   run at temperature 0. Cached translations also seed the prompt glossary so
   fresh ones match their style. **Quota is charged only when actual LLM work
@@ -195,6 +232,15 @@ working.
   ran in the phase-1 request; its quota increment is committed either way).
   Unresolvable/foreign ids are skipped by both endpoints. Default is
   `persist: true` (translate-and-save in one shot).
+- **Writes require authentication** (ISSUES.md #32): persisting translations
+  (`persist: true` on `/api/translate-biomarkers` and the `/commit` endpoint)
+  only writes when the caller is an authenticated principal. Anonymous requests
+  still receive the translated names/headings in the **response** (so the
+  review UI works) but the writes are skipped — an anonymous caller can never
+  rewrite a shared (global/system) definition's `names[lang]`, nor can they
+  supply unbounded-length strings (`CommitTranslationItem.name` /
+  `BiomarkerNameItem.name` and `TranslateRequest.categories` are length- and
+  count-capped in `schemas/ai.py`). `/commit` returns `403` for anonymous.
 - Definitions already carrying `names[lang]` short-circuit: no LLM call, no
   quota charge (re-generates of a translated document are free). Unresolvable
   or other-user's ids are returned untouched and never written.

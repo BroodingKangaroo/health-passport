@@ -1,9 +1,16 @@
-from typing import Optional, Union
+from typing import Annotated, Optional, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing_extensions import Literal
 
 from app.schemas.reference import Reference
+
+# Cap client-supplied strings so a single translation cannot bloat a
+# definition's names JSON column or a cache row. Names/headings longer than
+# this are rejected by validation rather than persisted.
+NAME_MAX_LENGTH = 200
+CATEGORY_MAX_LENGTH = 200
+CATEGORY_MAX_ITEMS = 200
 
 # +++++ Reusable dual-language text container +++++
 
@@ -126,7 +133,7 @@ class ScaleFunction(BaseModel):
 
 class BiomarkerNameItem(BaseModel):
     id: str
-    name: str
+    name: Annotated[str, Field(max_length=NAME_MAX_LENGTH)]
 
 
 class TranslateRequest(BaseModel):
@@ -135,7 +142,9 @@ class TranslateRequest(BaseModel):
     # Category/panel heading strings to translate alongside ``names``. Unlike
     # names these are never persisted — they come back in the response only
     # (keyed by the exact input string) for the current document render.
-    categories: list[str] = []
+    categories: list[Annotated[str, Field(max_length=CATEGORY_MAX_LENGTH)]] = Field(
+        default=[], max_items=CATEGORY_MAX_ITEMS
+    )
     # When False (review flow), translations are returned but NOT persisted —
     # the client confirms them afterwards via /translate-biomarkers/commit.
     persist: bool = True
@@ -143,7 +152,7 @@ class TranslateRequest(BaseModel):
 
 class CommitTranslationItem(BaseModel):
     id: str
-    name: str
+    name: Annotated[str, Field(max_length=NAME_MAX_LENGTH)]
 
 
 class CommitTranslationRequest(BaseModel):

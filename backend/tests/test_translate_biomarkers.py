@@ -2,7 +2,12 @@ import json
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
+import pytest_asyncio
+from fastapi import FastAPI, Request, Response
+from httpx import ASGITransport, AsyncClient
+
 from app.db.models import BiomarkerDefinition, UsageLimit
+from app.db.session import get_db
 from config import REGISTERED_LIMITS
 from tests.seed_data import TEST_USER_ID
 
@@ -1072,3 +1077,115 @@ class TestCategoryTranslationCache:
             {"original": "Lipid Panel", "translated": "Lipidpanel", "source": "translated"}
         ]
         assert _usage_count(db_session) == 0
+
+
+@pytest_asyncio.fixture
+async def anon_client(db_session):
+    """An unauthenticated client: get_current_user_or_anon resolves to an
+    anonymous session. Used to prove the write endpoints reject anon writes."""
+    from app.api.ai import router as ai_router
+    from app.api.auth import get_current_user_or_anon
+
+    app = FastAPI()
+    app.include_router(ai_router)
+
+    async def override_get_db():
+        yield db_session
+
+    async def override_get_current_user_or_anon(request: Request, response: Response):
+        return (None, "anon-session-id", True)
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user_or_anon] = override_get_current_user_or_anon
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+
+class TestTranslationSecurityGating:
+    async def test_anonymous_commit_is_forbidden(self, anon_client, db_session):
+        """ISSUES.md #32: an anonymous caller must not rewrite shared (global)
+        definitions. The commit endpoint returns 403 and writes nothing."""
+        resp = await anon_client.post(
+            "/api/translate-biomarkers/commit",
+            json={"lang": "de", "items": [{"id": "wbc", "name": "Poisoned"}]},
+        )
+        assert resp.status_code == 403
+        defn = db_session.query(BiomarkerDefinition).filter(
+            BiomarkerDefinition.id == "wbc"
+        ).first()
+        # The seeded translation is untouched; the anonymous payload was rejected.
+        assert defn.names.get("de") == "Leukozyten"
+        assert defn.names.get("de") != "Poisoned"
+
+    async def test_anonymous_persist_does_not_write_shared_definitions(
+        self, anon_client, db_session, monkeypatch
+    ):
+        """ISSUES.md #32: persist=True from an anonymous caller must still return
+        the translation for this render but must NOT persist it onto the shared
+        (global) definition."""
+        # A fresh, untranslated global definition (user_id None) so the LLM would
+        # actually run for it (a def that already carries names[lang] is skipped
+        # before the LLM call).
+        db_session.add(
+            BiomarkerDefinition(
+                id="global-fresh",
+                names={"en": "Fresh Biomarker"},
+                synonyms=[],
+                category="General",
+                reference=None,
+                unit="",
+                scope="global",
+                user_id=None,
+                reference_source="global",
+            )
+        )
+        db_session.commit()
+
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        fake = _fake_client({"translations": [{"id": "t1", "name": "Poisoned-DE"}]})
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await anon_client.post(
+            "/api/translate-biomarkers",
+            json={
+                "lang": "de",
+                "names": [{"id": "global-fresh", "name": "Fresh Biomarker"}],
+                "persist": True,
+            },
+        )
+
+        assert resp.status_code == 200
+        # The render still carries the translation (in-response only)...
+        assert resp.json()["translations"][0]["name"] == "Poisoned-DE"
+        # ...but the shared global definition is untouched (no poisoning).
+        defn = db_session.query(BiomarkerDefinition).filter(
+            BiomarkerDefinition.id == "global-fresh"
+        ).first()
+        assert defn.names.get("de") is None
+
+    async def test_anonymous_does_not_poison_category_cache(
+        self, anon_client, db_session, monkeypatch
+    ):
+        """ISSUES.md #33: an anonymous caller must not be able to seed the shared
+        category_translation_cache (which every user's print render trusts)."""
+        import hashlib
+
+        from app.db.models import CategoryTranslationCache
+
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        fake = _fake_client({"translations": [{"id": "t1", "name": "Poisoned-Heading"}]})
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await anon_client.post(
+            "/api/translate-biomarkers",
+            json={"lang": "de", "names": [], "categories": ["Complete Blood Count"]},
+        )
+
+        assert resp.status_code == 200
+        cache_id = f"de:{hashlib.sha256(b'Complete Blood Count').hexdigest()}"
+        row = db_session.query(CategoryTranslationCache).filter(
+            CategoryTranslationCache.id == cache_id
+        ).first()
+        assert row is None

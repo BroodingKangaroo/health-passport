@@ -15,65 +15,6 @@ Playwright e2e removed, backend serializers hoisted into
 `app/api/_serializers.py`, several scripts deleted). Line numbers refer to
 files as they stand now.
 
-## Security & correctness audit (2026-08-26)
-
-Re-audit after commits `36dbcd0` / `8989829` / `8f89382`; all findings below
-were re-verified against the current working tree. Line numbers refer to
-files as they stand now. These are the five highest-priority items from the
-full audit; lower-severity findings (auth-status stuck in `loading`,
-DocumentViewer silent failure + pdf.js leak, upload whitelist/XSS hardening,
-password-reset throttle collapse behind the proxy, TOCTOU races in
-register/reset, dialog focus-trap gaps, keyboard-inaccessible rows,
-open-redirect via `?callbackUrl=`, etc.) remain tracked outside this log.
-
-### 32. Translation commit endpoint lets unauthenticated callers rewrite shared global definitions (critical)
-
-- `app/api/ai.py:707-731` (`POST /api/translate-biomarkers/commit`, reachable
-  anonymously): the *visibility* filter — `(scope == "global") | (user_id IS
-  NULL) | (user_id == caller)` — is reused as the **write** filter, then
-  arbitrary client-supplied strings are persisted into `names[lang]`. Any
-  caller can poison what every user's flowsheet/print renders. Same pattern
-  applies to the `persist=True` path of `/api/translate-biomarkers`.
-  `CommitTranslationItem.name` has no length cap either.
-- Fix: restrict writes to `scope == "local" AND user_id == principal`;
-  treat global/system defs as read-only; cap name length.
-
-### 33. Shared `category_translation_cache` can be seeded/poisoned anonymously, with no size caps (medium-high)
-
-- New in `8f89382`: `/api/translate-biomarkers` writes fresh heading
-  translations into the shared all-users, never-invalidated
-  `category_translation_cache` (`app/api/ai.py:791-796`), and cache hits are
-  served *before* the LLM on every later request
-  (`app/api/ai.py:715-724`). Since the endpoint is anonymous-reachable, an
-  attacker can pre-seed poisoned heading translations that every user's
-  print render then trusts (`source="translated"`), at only the cost of anon
-  AI quota. `schemas/ai.py` caps neither the number of categories nor their
-  string length → unbounded row sizes / row counts.
-- Fix: require an authenticated principal for populating the shared cache
-  (or key rows per user); cap string length and item count.
-
----
-
-## Refactors / agentic-development (2026-08-03)
-
-Refactor candidates identified during an agentic-development audit. These are
-not user-facing bugs; they increase per-task token cost for AI-assisted
-development (wholesale file reads) and slow agent context loading.
-
-### 23. Document the undocumented backend/frontend modules
-
-- Backend: `app/db/models.py`, `app/db/import_ranges.py`,
-  `app/services/extractor.py`, `app/services/converters.py`,
-  `app/services/data_migration.py`, `app/api/anon_session.py` — referenced
-  indirectly but never named in AGENTS.md or `backend/docs/architecture.md`.
-- Frontend: view layer (`src/views/*` — CorrelationView, AddEntryView,
-  BiomarkerDetailsView, FlowsheetView, PrintEditorView, PrintSetupView) and
-  shared components (`src/components/shared/BiomarkerChart.tsx`, DocumentViewer,
-  Sparkline, StatusBadge, ScaleNote) — unnamed in docs.
-- Proposal: add a module map (file → purpose, 1-2 lines each) to
-  `backend/docs/architecture.md` / `frontend/docs/architecture.md` so agents
-  don't re-derive them via grep.
-
 ---
 
 ## Proposed features (not yet built)
@@ -175,28 +116,6 @@ distinguish "worse" from "broken".
   deliberate no-op change to confirm it discards (primary unchanged).
 - Decisions made (2026-08-03): N=3 runs, strict primary improvement keep,
   separate branch isolation, build everything in one pass.
-
-### 26. Category display/normalization (partially open)
-
-- RESOLVED (translation): print/export category headings are now translated
-  into the target language — distinct matrix headings ride the existing
-  `POST /api/translate-biomarkers` batch under synthetic ids and come back
-  per-request; the print editor resolves display labels via
-  `PrintConfigProvider` + sessionStorage while grouping/order keys stay the
-  raw string. Fresh translations are cached server-side in a shared
-  `category_translation_cache` table (all users, no invalidation), so repeat
-  headings never re-hit the LLM and a fully-cached document generates free.
-- STILL OPEN (normalization): the stored `category` string itself is
-  heterogeneous — LOINC-matched global defs carry raw CLASS codes ("HEM/BC",
-  "CHEM") that render as cryptic headings even in English documents, while
-  document-derived local defs carry the source document's own panel heading
-  in its language (e.g. Russian microbiome group titles). The old issue text
-  claimed headings "render in English in every language" / "categories are
-  LOINC system classes" — both only half true; translation alone cannot fix
-  either. A real fix normalizes categories at match time (map LOINC classes →
-  friendly panel names; group local defs under a canonical heading), which
-  changes observable extraction output and requires e2e golden regen — its
-  own scoped change.
 
 ### 29. Source-language modeling: `names['ru']` doubles as the "source name" slot (deferred)
 

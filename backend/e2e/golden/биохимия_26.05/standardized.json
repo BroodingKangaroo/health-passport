@@ -21,7 +21,7 @@
         "high": 41.0
       },
       "status": "high",
-      "category": "CHEM",
+      "category": "Liver Function",
       "definition_id": "1742-6",
       "scope": "global",
       "scale_function": null,
@@ -41,7 +41,7 @@
         "high": 37.0
       },
       "status": "normal",
-      "category": "CHEM",
+      "category": "Liver Function",
       "definition_id": "1920-8",
       "scope": "global",
       "scale_function": null,
@@ -61,7 +61,7 @@
         "high": 20.5
       },
       "status": "normal",
-      "category": "CHEM",
+      "category": "Liver Function",
       "definition_id": "1975-2",
       "scope": "global",
       "scale_function": null,
@@ -81,7 +81,7 @@
         "high": 49.0
       },
       "status": "high",
-      "category": "CHEM",
+      "category": "Liver Function",
       "definition_id": "2324-2",
       "scope": "global",
       "scale_function": null,
@@ -101,7 +101,7 @@
         "high": 6.0
       },
       "status": "normal",
-      "category": "CHEM",
+      "category": "Comprehensive Metabolic Panel",
       "definition_id": "2345-7",
       "scope": "global",
       "scale_function": null,
@@ -121,7 +121,7 @@
         "high": 104.0
       },
       "status": "normal",
-      "category": "CHEM",
+      "category": "Comprehensive Metabolic Panel",
       "definition_id": "2160-0",
       "scope": "global",
       "scale_function": null,
@@ -141,7 +141,7 @@
         "high": 420.0
       },
       "status": "normal",
-      "category": "CHEM",
+      "category": "Metabolic",
       "definition_id": "3084-1",
       "scope": "global",
       "scale_function": null,
@@ -161,7 +161,7 @@
         "high": 83.0
       },
       "status": "high",
-      "category": "CHEM",
+      "category": "Chemistry",
       "definition_id": "2885-2",
       "scope": "global",
       "scale_function": null,
@@ -181,7 +181,7 @@
         "high": 5.0
       },
       "status": "normal",
-      "category": "CHEM",
+      "category": "Lipid Panel",
       "definition_id": "2093-3",
       "scope": "global",
       "scale_function": null,
@@ -201,7 +201,7 @@
         "high": 100.0
       },
       "status": "high",
-      "category": "CHEM",
+      "category": "Immunology",
       "definition_id": "19113-0",
       "scope": "global",
       "scale_function": null,

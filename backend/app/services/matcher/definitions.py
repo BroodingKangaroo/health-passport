@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
 from app.schemas.ai import RawBiomarker
+from app.services.category_normalize import normalize_category
 from app.services.matcher._text import _is_ascii
 from app.services.matcher.llm_matching import _guess_is_consistent
 from app.services.matcher.loinc_store import _promote_loinc_from_csv
@@ -127,7 +128,9 @@ def verify_or_create(
         id=defn_id,
         names={"en": en_name},
         synonyms=syns,
-        category=raw_biomarker.category if raw_biomarker else "General",
+        category=normalize_category(
+            raw_biomarker.category if raw_biomarker else "General"
+        ),
         reference=reference,
         unit=unit,
         scope="local",
@@ -178,7 +181,10 @@ def _make_local_copy(
         names = dict(source.names or {"en": raw_biomarker.name})
         synonyms = list(source.synonyms or [])
         unit = source.unit or ""
-        category = source.category or (raw_biomarker.category or "General")
+        category = normalize_category(
+            source.category or (raw_biomarker.category or "General"),
+            loinc_code=source.loinc_code if source else None,
+        )
     else:
         # Prefer the translated English name as the canonical "en" name; keep
         # the original source-language name as a synonym for future matching.
@@ -194,7 +200,7 @@ def _make_local_copy(
         if en_name and en_name != raw_biomarker.name and en_name not in synonyms:
             synonyms.append(en_name)
         unit = raw_biomarker.unit or ""
-        category = raw_biomarker.category or "General"
+        category = normalize_category(raw_biomarker.category or "General")
 
     if raw_biomarker.name not in synonyms:
         synonyms.append(raw_biomarker.name)

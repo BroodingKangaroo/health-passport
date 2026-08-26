@@ -786,17 +786,24 @@ async def translate_biomarker_names(
 
     # Remember fresh heading translations in the shared cache (same commit as
     # the name persistence / quota increment). merge() keeps this idempotent
-    # against a concurrent request inserting the same row.
-    for cleaned, tr in fresh_cats.items():
-        db.merge(
-            CategoryTranslationCache(
-                id=_category_cache_id(payload.lang, cleaned),
-                original=cleaned,
-                translated=tr,
+    # against a concurrent request inserting the same row. The shared cache is
+    # only populated by authenticated principals — an anonymous caller must
+    # never be able to seed poisoned headings that every user's render then
+    # trusts (see ISSUES.md #33).
+    if not is_anonymous:
+        for cleaned, tr in fresh_cats.items():
+            db.merge(
+                CategoryTranslationCache(
+                    id=_category_cache_id(payload.lang, cleaned),
+                    original=cleaned,
+                    translated=tr,
+                )
             )
-        )
 
-    if payload.persist:
+    # Persisting into definitions' names[lang] likewise requires an
+    # authenticated principal: anonymous callers may read/translate but must
+    # not be able to rewrite shared (global/system) definitions (ISSUES.md #32).
+    if payload.persist and not is_anonymous:
         # Persist each translation into the definition's names JSON column so
         # every later render reads it without another LLM call. Committing here
         # also persists the quota increment.
@@ -833,6 +840,15 @@ async def commit_translated_names(
     ``persist:false /translate-biomarkers`` request; this only writes the terms
     the user accepted. Unresolvable or foreign ids are skipped silently."""
     _user, user_id, _is_anonymous = user_data
+
+    # Only authenticated principals may write translations. Anonymous callers
+    # must not be able to rewrite shared (global/system) definitions that every
+    # user's flowsheet/print renders (ISSUES.md #32).
+    if _is_anonymous:
+        raise HTTPException(
+            status_code=403,
+            detail="Authentication required to persist translations.",
+        )
 
     ids = [item.id for item in payload.items]
     defns = (

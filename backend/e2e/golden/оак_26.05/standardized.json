@@ -21,7 +21,7 @@
         "high": 49.0
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "4544-3",
       "scope": "global"
     },
@@ -39,7 +39,7 @@
         "high": 17.3
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "718-7",
       "scope": "global"
     },
@@ -57,7 +57,7 @@
         "high": 5.7
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "789-8",
       "scope": "global"
     },
@@ -75,7 +75,7 @@
         "high": 99.0
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "787-2",
       "scope": "global"
     },
@@ -93,7 +93,7 @@
         "high": 14.8
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "788-0",
       "scope": "global"
     },
@@ -111,7 +111,7 @@
         "high": 34.0
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "785-6",
       "scope": "global"
     },
@@ -129,7 +129,7 @@
         "high": 37.0
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "786-4",
       "scope": "global"
     },
@@ -147,7 +147,7 @@
         "high": 400.0
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "777-3",
       "scope": "global"
     },
@@ -165,7 +165,7 @@
         "high": 11.0
       },
       "status": "high",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "6690-2",
       "scope": "global"
     },
@@ -183,7 +183,7 @@
         "high": 6.0
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "764-1",
       "scope": "global"
     },
@@ -201,7 +201,7 @@
         "high": 72.0
       },
       "status": "low",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "769-0",
       "scope": "global"
     },
@@ -219,7 +219,7 @@
         "high": 78.0
       },
       "status": "low",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "770-8",
       "scope": "global"
     },
@@ -237,7 +237,7 @@
         "high": 37.0
       },
       "status": "high",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "736-9",
       "scope": "global"
     },
@@ -255,7 +255,7 @@
         "high": 11.0
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "5905-5",
       "scope": "global"
     },
@@ -273,7 +273,7 @@
         "high": 5.0
       },
       "status": "high",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "713-8",
       "scope": "global"
     },
@@ -291,7 +291,7 @@
         "high": 1.0
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "706-2",
       "scope": "global"
     },
@@ -309,7 +309,7 @@
         "high": 0.0
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "783-1",
       "scope": "global"
     },
@@ -327,7 +327,7 @@
         "high": 0.0
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "26498-6",
       "scope": "global"
     },
@@ -345,7 +345,7 @@
         "high": 0.0
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "28541-1",
       "scope": "global"
     },
@@ -363,7 +363,7 @@
         "high": 0.0
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "17803-8",
       "scope": "global"
     },
@@ -381,7 +381,7 @@
         "high": 0.0
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "13046-8",
       "scope": "global"
     },
@@ -399,7 +399,7 @@
         "high": 0.0
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "6746-2",
       "scope": "global"
     },
@@ -417,7 +417,7 @@
         "high": 0.0
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "26446-5",
       "scope": "global"
     },
@@ -435,7 +435,7 @@
         "high": 5.38
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "751-8",
       "scope": "global"
     },
@@ -453,7 +453,7 @@
         "high": 3.57
       },
       "status": "high",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "26474-7",
       "scope": "global"
     },
@@ -471,7 +471,7 @@
         "high": 0.95
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "742-7",
       "scope": "global"
     },
@@ -489,7 +489,7 @@
         "high": 0.7
       },
       "status": "high",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "711-2",
       "scope": "global"
     },
@@ -507,7 +507,7 @@
         "high": 0.2
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "704-7",
       "scope": "global"
     },
@@ -525,7 +525,7 @@
         "high": 0.0
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "58413-6",
       "scope": "global"
     },
@@ -543,7 +543,7 @@
         "high": 15.0
       },
       "status": "normal",
-      "category": "HEM/BC",
+      "category": "Complete Blood Count",
       "definition_id": "4537-7",
       "scope": "global"
     },

@@ -16,6 +16,7 @@ from typing import Optional
 
 from app.db import models
 from app.db.session import Base, SessionLocal, engine
+from app.services.category_normalize import normalize_category
 
 logger = logging.getLogger(__name__)
 
@@ -232,7 +233,9 @@ def row_to_definition(row: dict) -> dict:
         "loinc_code": loinc_num,
         "names": {"en": display_name},
         "synonyms": list(dict.fromkeys(synonyms)),
-        "category": _sanitize((row.get("CLASS") or "General").strip()),
+        "category": normalize_category(
+            _sanitize((row.get("CLASS") or "General").strip()), loinc_code=loinc_num
+        ),
         "reference": None,
         "unit": _sanitize((row.get("EXAMPLE_UCUM_UNITS") or "").strip()),
         "scope": "global",
