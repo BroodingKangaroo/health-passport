@@ -34,6 +34,15 @@ def test_source_heading_maps_to_stable_english_panel():
     assert normalize_category("Секвенирование") == "Genetics"
 
 
+def test_heading_qualifiers_are_stripped_before_lookup():
+    # Extraction appends document context to headings ("Секвенирование
+    # (аналитическая чувствительность 20%)") — the qualifier must not defeat
+    # the static map.
+    assert normalize_category("Секвенирование (аналитическая чувствительность 20%)") == "Genetics"
+    assert normalize_category("Инфекции; серология") == "Microbiology"
+    assert normalize_category("Микробиом (кал)") == "Microbiome"
+
+
 def test_unknown_source_heading_is_preserved_verbatim():
     # Headings with no curated mapping are kept as-is (whitespace-collapsed),
     # never mangled by a guess.
