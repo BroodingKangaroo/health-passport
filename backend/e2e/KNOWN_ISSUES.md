@@ -179,6 +179,20 @@ committed.
     translate newly-created local def names, so
     `anti-Opisthorchis IgG`'s `standard_name_en` stays untranslated there.
 
+12. **`рнпц_омр_генетика` golden regenerated after stable translator drift**
+    (2026-08-27, independent golden-review APPROVE ×2). The batch translator's
+    English phrasing for the four mutation rows moved from `"... gene
+    mutation (9 exon"` to `"(exon 9"` word order and stayed there across five
+    consecutive live runs, so the old phrasing failed deterministically.
+    Category also normalizes to `Genetics` now: extraction can append document
+    context to a heading (`Секвенирование (аналитическая чувствительность
+    20%)`), which used to leak verbatim past the exact-match map —
+    `category_normalize` strips parenthetical/trailing qualifiers before the
+    static lookup. The `provider` field settled on the single doctor
+    (`Субоч Е.И.`) in all recent runs (previous note called this transient;
+    it is now the observed steady state; both-doctor extractions may still
+    reappear occasionally). Definitions/ids/values/refs untouched.
+
 ## Notes
 
 - **Offline validator environment (fresh seeds)**: `validate_offline.py` never
@@ -234,9 +248,11 @@ committed.
   from an old matcher era; per the documented absent+interval rule
   (fix #6 above) the matcher deterministically emits `0.0`. Goldens
   corrected to `0.0` (confirmed by `validate_offline.py`).
-- `рнпц_омр_генетика` `provider` can drop to a single doctor
-  (`Субоч Е.И.`) vs the golden's `Бодиловская А.А., Субоч Е.И.`
-  (similarity ~0.53) on some runs — transient OCR/LLM variance.
+- `рнпц_омр_генетика` `provider`: as of fix #12 the golden carries the
+  currently-stable single-doctor form `Субоч Е.И.` (five consecutive runs);
+  if a run emits both doctors again (`Бодиловская А.А., Субоч Е.И.`,
+  similarity ~0.53), rerun once — treated as extraction variance, not a
+  golden error.
 - `рнпц_омр_генетика`: the golden's four qualitative mutation biomarkers
   (`Мутация в гене JAK2 (12 exon)`, `JAK2 (14 exon; V617F)`, `CALR (9 exon)`,
   `MPL (10 exon)`) carried `standard_unit: "ratio"` — wrong: these are

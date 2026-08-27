@@ -29,6 +29,12 @@ The normalization precedence is:
 import re
 from typing import Optional
 
+# Extraction sometimes appends document context to a heading, e.g.
+# "Секвенирование (аналитическая чувствительность 20%)". Strip parenthetical
+# / trailing qualifiers before the static lookup so the known heading still
+# matches deterministically.
+_QUALIFIER_RE = re.compile(r"\s*\([^)]*\)\s*|\s*[;,]\s+.*$")
+
 # Curated per-LOINC-code panel. Wins over the coarse CLASS code. Covers the
 # common panels so e.g. a CHEM analyte resolves to "Liver Function" /
 # "Lipid Panel" / "Comprehensive Metabolic Panel" rather than "Chemistry".
@@ -135,4 +141,13 @@ def normalize_category(raw_category: str, loinc_code: Optional[str] = None) -> s
             return panel
     if _CLASS_RE.match(raw):
         return LOINC_CLASS_TO_PANEL.get(raw, raw)
-    return SOURCE_HEADING_TO_PANEL.get(raw.lower(), raw)
+    stripped = _QUALIFIER_RE.sub(" ", raw).strip()
+    for candidate in (raw, stripped):
+        panel = SOURCE_HEADING_TO_PANEL.get(candidate.lower())
+        if panel:
+            return panel
+        collapsed = " ".join(candidate.lower().split())
+        panel = SOURCE_HEADING_TO_PANEL.get(collapsed)
+        if panel:
+            return panel
+    return raw
