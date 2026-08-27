@@ -205,7 +205,13 @@ class InstrumentedMistral:
     per call, so the next call transparently gets a rebuilt client.
     """
 
-    def __init__(self, build_client: Callable[[], object], metrics: BenchmarkMetrics):
+    def __init__(self, build_client, metrics: BenchmarkMetrics):
+        # Accept either a ready client instance or a zero-arg builder
+        # (tests pass fakes directly; make_instrumented_client passes the
+        # lazy ``_get_client`` builder for poison/rebuild support).
+        if not callable(build_client):
+            ready = build_client
+            build_client = lambda: ready  # noqa: E731
         self._build_client = build_client
         self._metrics = metrics
         self._client: Optional[object] = None
