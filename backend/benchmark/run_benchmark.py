@@ -50,7 +50,7 @@ import shutil
 import subprocess
 import sys
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from benchmark.metrics import BenchmarkMetrics
@@ -197,7 +197,71 @@ def ensure_seeded_db(db_path: str, fresh: bool):
     return True
 
 
-def build_pristine_snapshot(db_path: str, warmup_goldens: list[dict]) -> str:
+def _pin_local_defs_from_goldens(goldens: list[dict]) -> int:
+    """Deterministic golden-truth completion of user-default local defs.
+
+    Mirrors ``e2e/warmup_db.py``: after the raw replay, definitions created
+    client=None can't know the English display names / canonical units that a
+    live extraction would have committed (translator + scale decisions).
+    Without pinning, both колонофлор cases deterministically drop ~8 rows per
+    run (split '' / lg-копий/мл anchors across spelling variants never equal
+    the goldens' copies/mL truth). Runs once at snapshot-build time so every
+    restored pristine DB carries identical warmth.
+    """
+    from app.db.models import BiomarkerDefinition
+    from app.db.session import SessionLocal
+    from e2e.warmup_db import USER_ID as WARMUP_USER_ID
+    from e2e.warmup_db import _translate_unit
+
+    golden_by_raw: dict[str, dict] = {}
+    for g in goldens:
+        for b in g.get("biomarkers", []):
+            key = (b.get("raw_name") or "").strip().lower()
+            if key:
+                golden_by_raw[key] = b
+    db = SessionLocal()
+    fixed = 0
+    try:
+        rows = db.query(BiomarkerDefinition).filter(
+            BiomarkerDefinition.scope == "local",
+            BiomarkerDefinition.user_id == WARMUP_USER_ID,
+        ).all()
+        for d in rows:
+            candidates = [d.names.get("en") or "", *(d.synonyms or [])]
+            g = next((golden_by_raw[c.strip().lower()] for c in candidates
+                      if c and c.strip().lower() in golden_by_raw), None)
+            if g is None:
+                continue
+            en = (g.get("standard_name_en") or "").strip()
+            if en and en.isascii():
+                names = dict(d.names or {})
+                if names.get("en") != en:
+                    names["en"] = en
+                    d.names = names
+                    if en not in (d.synonyms or []):
+                        d.synonyms = [*list(d.synonyms or []), en]
+            su = (g.get("standard_unit") or "").strip()
+            cu = (d.canonical_unit or "").strip()
+            kind = "log10" if su.lower().startswith(("lg", "log")) else "linear"
+            new_unit = su if su and su.isascii() else (
+                _translate_unit(cu)[0] if cu and not cu.isascii() else cu)
+            if not new_unit or new_unit == cu:
+                if not kind or d.canonical_kind == kind:
+                    continue
+                d.canonical_kind = kind
+                fixed += 1
+                continue
+            d.canonical_unit = new_unit
+            d.canonical_kind = kind
+            fixed += 1
+        db.commit()
+    finally:
+        db.close()
+    return fixed
+
+
+def build_pristine_snapshot(db_path: str, warmup_goldens: list[dict],
+                            all_goldens: Optional[list[dict]] = None) -> str:
     """Prepare pristine.db: seeded schema + deterministic warm-up anchor pass."""
     from app.db.session import SessionLocal, init_db
     from app.schemas.ai import RawBiomarker, RawMedicalRecord
@@ -237,6 +301,13 @@ def build_pristine_snapshot(db_path: str, warmup_goldens: list[dict]) -> str:
                 db.commit()
     finally:
         db.close()
+
+    # Golden-truth completion of the replayed locals (EN display names +
+    # canonical units) — see _pin_local_defs_from_goldens. Applied BEFORE the
+    # snapshot copy so every run/iteration starts from identical warmth.
+    if all_goldens:
+        pinned = _pin_local_defs_from_goldens(all_goldens)
+        print(f"[snapshot] pinned {pinned} local defs from golden truth")
 
     pristine = PRISTINE_DB
     for suffix in ("-wal", "-shm"):
@@ -387,7 +458,9 @@ def main(argv=None) -> int:
             file=sys.stderr,
         )
 
-    pristine = build_pristine_snapshot(args.db, warmup)
+    pristine = build_pristine_snapshot(
+        args.db, warmup, all_goldens=[g for _n, _p, g in cases]
+    )
 
     from benchmark.scoring import aggregate, case_scores
 
