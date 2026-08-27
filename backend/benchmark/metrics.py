@@ -12,8 +12,38 @@ OCR responses expose ``usage_info.pages_processed`` /
 ``usage_info.doc_size_bytes``.
 """
 
+import contextlib
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
+from typing import Callable, Optional
+
+# Hard per-call watchdog. The Mistral SDK's read-timeout only counts between
+# received bytes, so a server that keeps the socket half-open (periodic
+# keepalive chunks, stalled stream) can block a call FOREVER — observed twice
+# on overnight runs (process 0% CPU, DB frozen for ~1h). The watchdog converts
+# such a stall into a TimeoutError the pipeline already handles like any other
+# LLM failure. A timed-out worker thread is abandoned holding that client's
+# pooled HTTP connections; to keep later calls from blocking forever on pool
+# acquire, every timeout POISONS the current client and the next intercepted
+# call transparently rebuilds a fresh one with identical settings.
+CALL_TIMEOUT_S = 420.0
+
+_watchdog_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="mistral-call")
+
+
+def _call_with_watchdog(fn: Callable, on_timeout: Callable[[], None], *args, **kwargs):
+    future = _watchdog_pool.submit(fn, *args, **kwargs)
+    try:
+        return future.result(timeout=CALL_TIMEOUT_S)
+    except FutureTimeoutError:
+        future.cancel()
+        with contextlib.suppress(Exception):
+            on_timeout()
+        raise TimeoutError(
+            f"Mistral call exceeded {CALL_TIMEOUT_S:.0f}s hard watchdog — treating as failure"
+        ) from None
 
 
 def _int_or_zero(value) -> int:
@@ -100,13 +130,14 @@ class BenchmarkMetrics:
 class _ChatNamespace:
     """Counts ``chat.parse`` calls (every LLM call site goes through it)."""
 
-    def __init__(self, inner, metrics: BenchmarkMetrics):
-        self._inner = inner
+    def __init__(self, provider, poison, metrics: BenchmarkMetrics):
+        self._provider = provider
+        self._poison = poison
         self._metrics = metrics
 
     def parse(self, **kwargs):
         t0 = time.perf_counter()
-        resp = self._inner.parse(**kwargs)
+        resp = _call_with_watchdog(self._provider().parse, self._poison, **kwargs)
         dt = time.perf_counter() - t0
         usage = getattr(resp, "usage", None)
         self._metrics.add_llm_call(
@@ -117,35 +148,37 @@ class _ChatNamespace:
         return resp
 
     def __getattr__(self, name):
-        return getattr(self._inner, name)
+        return getattr(self._provider(), name)
 
 
 class _FilesNamespace:
     """Counts Files-API upload byte sizes (the OCR payload)."""
 
-    def __init__(self, inner, metrics: BenchmarkMetrics):
-        self._inner = inner
+    def __init__(self, provider, poison, metrics: BenchmarkMetrics):
+        self._provider = provider
+        self._poison = poison
         self._metrics = metrics
 
     def upload(self, file=None, **kwargs):
         content = getattr(file, "content", None)
         if content is not None:
             self._metrics.add_upload(len(content))
-        return self._inner.upload(file=file, **kwargs)
+        return _call_with_watchdog(self._provider().upload, self._poison, file=file, **kwargs)
 
     def __getattr__(self, name):
-        return getattr(self._inner, name)
+        return getattr(self._provider(), name)
 
 
 class _OcrNamespace:
     """Counts OCR pages/document bytes from the response's ``usage_info``."""
 
-    def __init__(self, inner, metrics: BenchmarkMetrics):
-        self._inner = inner
+    def __init__(self, provider, poison, metrics: BenchmarkMetrics):
+        self._provider = provider
+        self._poison = poison
         self._metrics = metrics
 
     def process(self, **kwargs):
-        resp = self._inner.process(**kwargs)
+        resp = _call_with_watchdog(self._provider().process, self._poison, **kwargs)
         info = getattr(resp, "usage_info", None)
         if info is not None:
             self._metrics.add_ocr(
@@ -157,7 +190,7 @@ class _OcrNamespace:
         return resp
 
     def __getattr__(self, name):
-        return getattr(self._inner, name)
+        return getattr(self._provider(), name)
 
 
 class InstrumentedMistral:
@@ -166,21 +199,36 @@ class InstrumentedMistral:
     Only the three namespaces the pipeline uses (``chat``, ``files``, ``ocr``)
     are intercepted; everything else transparently forwards to the wrapped
     client via attribute delegation.
+
+    Watchdog safety — see module docstring of ``_call_with_watchdog``: any
+    watchdog timeout poisons the live client; namespaces consult the provider
+    per call, so the next call transparently gets a rebuilt client.
     """
 
-    def __init__(self, client, metrics: BenchmarkMetrics):
-        self._client = client
+    def __init__(self, build_client: Callable[[], object], metrics: BenchmarkMetrics):
+        self._build_client = build_client
         self._metrics = metrics
-        self.chat = _ChatNamespace(client.chat, metrics)
-        self.files = _FilesNamespace(client.files, metrics)
-        self.ocr = _OcrNamespace(client.ocr, metrics)
+        self._client: Optional[object] = None
+        self.chat = _ChatNamespace(lambda: self._ensure().chat, self._poison, metrics)
+        self.files = _FilesNamespace(lambda: self._ensure().files, self._poison, metrics)
+        self.ocr = _OcrNamespace(lambda: self._ensure().ocr, self._poison, metrics)
 
     @property
     def metrics(self) -> BenchmarkMetrics:
         return self._metrics
 
+    def _ensure(self):
+        if self._client is None:
+            self._client = self._build_client()
+        return self._client
+
+    def _poison(self):
+        self._client = None
+
     def __getattr__(self, name):
-        return getattr(self._client, name)
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self._ensure(), name)
 
 
 def make_instrumented_client(metrics: BenchmarkMetrics):
@@ -191,7 +239,7 @@ def make_instrumented_client(metrics: BenchmarkMetrics):
     """
     from app.api.ai import _get_client  # lazy import keeps module import cheap
 
-    client = _get_client()
-    if client is None:
+    wrapper = InstrumentedMistral(_get_client, metrics)
+    if wrapper._ensure() is None:
         raise RuntimeError("MISTRAL_API_KEY not configured")
-    return InstrumentedMistral(client, metrics)
+    return wrapper
