@@ -227,6 +227,9 @@ def test_leading_list_marker_variance_is_not_a_failure():
         "translated_en": "1. Rational nutrition, exclusion of foods based on intolerance",
     }]}}
 
+    assert compare_standardized(observed, golden, 0.9) == []
+
+
 # --- boundless-note guard: absent value + "допустимо любое количество" -------
 
 def test_absent_value_against_boundless_note_stays_qualitative():
@@ -283,4 +286,5 @@ def test_numeric_value_against_boundless_note_keeps_doc_first():
         raw_range_string="допустимо любое количество",
         standard_name_en="Some ratio",
     )
+    out = _build_standardized_local(bm, defn, client=None)
     assert out.standard_value == 1.14
