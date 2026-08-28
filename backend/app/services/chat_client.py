@@ -292,7 +292,8 @@ class _HybridChatNamespace:
         if response_format is None:
             raise ValueError("chat.parse requires a pydantic response_format")
         route_openrouter = self._scope == "all" or (
-            response_format in self._extraction_formats)
+            self._scope == "extraction"
+            and response_format in self._extraction_formats)
         if route_openrouter:
             return self._chat.parse(response_format=response_format, **kwargs)
         try:
@@ -329,25 +330,34 @@ class SplitChatClient:
 
 
 def build_chat_aware_client(mistral_client: Any) -> Any:
-    """Env-gated provider split (default: unchanged plain-Mistral behavior).
+    """Env-gated provider split / failover (default: plain Mistral).
 
-    Returns a ``SplitChatClient`` when ``CHAT_PROVIDER=openrouter`` and
-    ``OPENROUTER_API_KEY`` are configured; otherwise returns the Mistral
-    client as-is. ``OPENROUTER_SCOPE`` (default ``all``) routes only the
-    extraction call to OpenRouter when set to ``extraction``.
+    - ``CHAT_PROVIDER=openrouter`` + ``OPENROUTER_API_KEY``: SplitChatClient
+      with ``OPENROUTER_SCOPE`` (``all`` | ``extraction``) routing calls
+      proactively to OpenRouter.
+    - ``CHAT_FAILOVER=openrouter`` (works in ANY provider config, including
+      the mistral default): a Mistral chat call that fails post-SDK-retry is
+      retried once on the OpenRouter route — scope ``none`` keeps every call
+      Mistral-first. Each failover is counted (``chat_failover_events()``)
+      so the benchmark's pollution guard sees mixed-provider weather.
     """
-    if (os.getenv("CHAT_PROVIDER", "").lower() != "openrouter"
-            or not os.getenv("OPENROUTER_API_KEY")):
+    if not os.getenv("OPENROUTER_API_KEY"):
+        return mistral_client
+    provider = os.getenv("CHAT_PROVIDER", "").lower()
+    failover = os.getenv("CHAT_FAILOVER", "").lower() == "openrouter"
+    if provider == "openrouter":
+        scope = os.getenv("OPENROUTER_SCOPE", "all").lower()
+    elif failover:
+        scope = "none"  # everything Mistral-first; OpenRouter only on failure
+    else:
         return mistral_client
     model = os.getenv("OPENROUTER_CHAT_MODEL", "z-ai/glm-5.2:free")
     fallbacks = [m.strip() for m in os.getenv("OPENROUTER_CHAT_FALLBACKS", "").split(",")
                  if m.strip()]
-    scope = os.getenv("OPENROUTER_SCOPE", "all").lower()
-    failover = os.getenv("CHAT_FAILOVER", "").lower() == "openrouter"
     chat = OpenRouterChatClient(
         os.environ["OPENROUTER_API_KEY"], model,
         base_url=os.getenv("OPENROUTER_BASE_URL", DEFAULT_OPENROUTER_BASE_URL),
         fallback_models=fallbacks)
-    logger.info("Chat provider: OpenRouter model=%s scope=%s failover=%s (OCR stays Mistral)",
-                model, scope, failover)
+    logger.info("Chat provider: mistral + OpenRouter(model=%s) scope=%s failover=%s "
+                "(OCR stays Mistral)", model, scope, failover)
     return SplitChatClient(mistral_client, chat, scope, failover)

@@ -161,8 +161,46 @@ def test_split_client_routes_chat_and_delegates_rest():
 def test_build_chat_aware_client_defaults_to_mistral(monkeypatch):
     monkeypatch.delenv("CHAT_PROVIDER", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("CHAT_FAILOVER", raising=False)
     mistral = _FakeMistral()
     assert build_chat_aware_client(mistral) is mistral
+
+
+def test_failover_works_in_mistral_default_config(monkeypatch):
+    """The storm scenario: CHAT_PROVIDER stays mistral, CHAT_FAILOVER arms the
+    mistral→OpenRouter retry for EVERY call type (scope 'none')."""
+    from app.schemas.ai import RawMedicalRecord, StandardizedVisitData
+
+    monkeypatch.delenv("CHAT_PROVIDER", raising=False)
+    monkeypatch.setenv("CHAT_FAILOVER", "openrouter")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.setenv("OPENROUTER_CHAT_MODEL", "test/free-model")
+
+    mistral = _FakeMistral()
+    hybrid = build_chat_aware_client(mistral)
+    assert isinstance(hybrid, SplitChatClient)
+
+    # healthy window: everything served by mistral, OpenRouter untouched
+    healthy = _RecordingMistral()
+    hybrid.chat._mistral = healthy
+    ok_extraction = _ok_body(RawMedicalRecord(entry_type="unknown").model_dump_json())
+    chat_client, calls = _make_client([ok_extraction])
+    hybrid.chat._chat = chat_client
+    hybrid.chat.parse(model="mistral-large-latest",
+                      messages=[{"role": "system", "content": ""}],
+                      response_format=RawMedicalRecord)
+    assert len(healthy.chat_calls) == 1 and not calls
+
+    # storm: mistral chat fails → GLM serves the same call
+    failing = _FailingMistral()
+    hybrid2 = build_chat_aware_client(failing)
+    hybrid2.chat._chat = chat_client
+    hybrid2.chat.parse(model="mistral-large-latest",
+                       messages=[{"role": "system", "content": ""}],
+                       response_format=StandardizedVisitData)
+    assert len(failing.chat_calls) == 1 and len(calls) == 2  # OR retry
+    import app.services.chat_client as cc
+    assert cc.chat_failover_events() >= 1
 
 
 def test_build_chat_aware_client_splits_on_env(monkeypatch):
