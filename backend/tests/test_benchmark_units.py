@@ -335,18 +335,20 @@ def test_merge_child_reports_equals_direct_aggregation_and_sums_wall():
                   "fallback_extractions": 0, "provider_error_calls": 1}
     reports = [
         {"runs_diffs": {"caseA": [run1], "caseB": [run2]},
-         "metrics": metrics_r1, "wall_s": 100.0},
+         "metrics": metrics_r1, "wall_s": 100.0, "chat_failovers": 2},
         {"runs_diffs": {"caseA": [run2], "caseB": [run3]},
-         "metrics": metrics_r2, "wall_s": 50.0},
+         "metrics": metrics_r2, "wall_s": 50.0, "chat_failovers": 1},
     ]
 
-    runs_diffs, tot, wall = _merge_child_reports(reports)
+    runs_diffs, tot, wall, failovers = _merge_child_reports(reports)
 
     # run order preserved, per-case diffs concatenated
     assert runs_diffs["caseA"] == [run1, run2]
     assert runs_diffs["caseB"] == [run2, run3]
     # wall_s keeps its documented sum-of-run-walls semantic
     assert wall == 150.0
+    # failover events are summed across children (pollution visibility)
+    assert failovers == 3
     assert tot.llm_calls == 5
     assert tot.prompt_tokens == 180
     assert tot.fallback_extractions == 1
