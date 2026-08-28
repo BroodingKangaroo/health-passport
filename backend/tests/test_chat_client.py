@@ -198,7 +198,7 @@ def test_failover_works_in_mistral_default_config(monkeypatch):
     hybrid2.chat.parse(model="mistral-large-latest",
                        messages=[{"role": "system", "content": ""}],
                        response_format=StandardizedVisitData)
-    assert len(failing.chat_calls) == 1 and len(calls) == 2  # OR retry
+    assert len(failing.chat_calls) == 1 and len(calls) == 1  # one OR failover attempt
     import app.services.chat_client as cc
     assert cc.chat_failover_events() >= 1
 
