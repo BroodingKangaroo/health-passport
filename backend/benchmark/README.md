@@ -56,6 +56,28 @@ venv/bin/python benchmark/run_benchmark.py --runs 1 \
 venv/bin/python benchmark/run_benchmark.py --report reports/iter_01.json
 ```
 
+### Parallelism flags
+
+- `--jobs N` (default 3): runs execute in parallel as isolated subprocesses,
+  each restoring its own DB copy from the shared pristine snapshot
+  (`benchmark_run_r<i>.db`, gitignored). Results are identical to sequential
+  execution — same snapshot, same matcher ordering. `--jobs 1` runs
+  in-process sequentially (debugging-friendly).
+- `--stage-concurrency K` (default 2, max 8): within a run, the DB-free
+  stages (OCR + LLM extraction) fan out across cases with a bounded thread
+  pool. The matcher stays strictly sequential in sorted case order, so
+  definition-creation ordering keeps its documented semantics. The cap is the
+  instrumentation watchdog pool size (each in-flight call occupies one
+  worker).
+- Fail-fast: the first failing child terminates its running siblings (its own
+  subprocesses only) and the parent propagates the child's exit code; within
+  a run, a hard OCR failure cancels not-yet-started sibling work. No spend
+  continues behind a doomed run.
+
+With defaults (`--jobs 3 --stage-concurrency 2`) a full 9-case × 3-runs
+verify drops from ~66 min to roughly 15–25 min (it is ~99% Mistral latency;
+the matcher — ~half the wall — remains sequential by design).
+
 Output ends in a machine-readable block:
 
 ```
@@ -67,6 +89,12 @@ METRIC input_tokens=18430
 METRIC output_tokens=5210
 METRIC ocr_bytes=2415013
 METRIC wall_s=92.4
+METRIC wall_clock_s=31.2
+METRIC fallback_extractions=0
+METRIC provider_error_calls=0
+METRIC stage_ocr_s=8.1
+METRIC stage_extract_s=11.3
+METRIC stage_match_s=30.0
 ```
 
 Exit codes: **0** metrics computed (even if worse than baseline — deciding
@@ -93,7 +121,18 @@ snapshot. Diffs come from `e2e/compare.py` (`compare_standardized`) at
 - **primary** = `recognition × stability` — the loop's keep/discard scalar.
 - **cost co-metrics**: `llm_calls`, `input_tokens` (SDK `usage.prompt_tokens`),
   `output_tokens` (`usage.completion_tokens`), `ocr_bytes` (Files upload size;
-  OCR `usage_info.doc_size_bytes` fallback), `wall_s` (sum of run walls).
+  OCR `usage_info.doc_size_bytes` fallback), `wall_s` (**sum of run walls** —
+  provider latency, scheduling-independent; the loop's cost-regression guard
+  reads this one), `wall_clock_s` (invocation wall-clock; smaller than
+  `wall_s` when runs execute in parallel), `stage_ocr_s` / `stage_extract_s`
+  / `stage_match_s` (cumulative per-stage seconds).
+- **pollution counters** (loop keep-rule guard, SKILL.md):
+  `fallback_extractions` counts extractions that ended in the silent
+  "unknown + Raw OCR text" failure record; `provider_error_calls` counts
+  calls that raised at the instrumentation boundary AFTER the SDK's own
+  retry/backoff gave up (5xx storms, timeouts, watchdog kills). ANY count > 0
+  marks the run environment-suspect: the loop re-runs once (bounded) and
+  never keeps/discards on polluted data.
 
 ### Why cold snapshots + warm-up
 

@@ -14,6 +14,26 @@ against a cold snapshot DB, and prints machine-readable metrics:
     METRIC output_tokens=5210
     METRIC ocr_bytes=2415013
     METRIC wall_s=92.4
+    METRIC wall_clock_s=31.2
+    METRIC fallback_extractions=0
+    METRIC provider_error_calls=0
+    METRIC stage_ocr_s=8.1
+    METRIC stage_extract_s=11.3
+    METRIC stage_match_s=30.0
+
+``wall_s`` stays the SUM of run walls (provider latency; the cost guard's
+input); ``wall_clock_s`` is the invocation's wall-clock (smaller when runs
+execute in parallel). ``fallback_extractions`` / ``provider_error_calls``
+are the pollution counters — any count > 0 marks the run environment-
+suspect for the loop (SKILL.md), never keep/discard material.
+
+Parallelism: with ``--jobs > 1`` each run executes in its own subprocess
+with a DB copy restored from the shared pristine snapshot (runs are
+perfectly isolated; results are identical to sequential execution). Within
+a run, ``--stage-concurrency`` fans the DB-free stages (OCR + LLM
+extraction) out across cases; the matcher stays strictly sequential in
+sorted case order so definition-creation ordering keeps its documented
+semantics.
 
 Isolation rules (mirrors validate_offline.py / e2e safety conventions):
 
@@ -44,11 +64,14 @@ loop's "worse" vs "broken" distinction from ISSUES.md #24 intact.
 """
 
 import argparse
+import contextlib
 import json
+import logging
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from typing import TYPE_CHECKING, Optional
 
@@ -69,6 +92,11 @@ VENV_PY = os.path.join(BACKEND, "venv", "bin", "python")
 DEFAULT_DB = os.path.join(HERE, "benchmark_run.db")
 PRISTINE_DB = os.path.join(HERE, "benchmark_pristine.db")
 BENCHMARK_USER_ID = "default"
+
+# Ceiling for --stage-concurrency: each in-flight OCR/LLM call occupies one
+# worker of the module-level watchdog pool in benchmark.metrics (size 8), so
+# fan-out beyond that would silently serialize on pool acquire.
+MAX_STAGE_CONCURRENCY = 8
 
 # Documented in e2e/KNOWN_ISSUES.md: on a fresh DB, alphabetical order anchors
 # `lg копий/мл` -> log10 for the колонофлор analytes unless the 25.06 doc
@@ -91,9 +119,23 @@ def parse_args(argv=None):
     ap.add_argument("--report", help="write a JSON report to this path")
     ap.add_argument("--seed-corpus", action="store_true",
                     help="copy current e2e inputs/goldens into benchmark/corpus/ and exit")
+    ap.add_argument("--jobs", type=int, default=3,
+                    help="runs executed in parallel as isolated subprocesses, each with "
+                         "its own DB copy (default 3; 1 = in-process sequential)")
+    ap.add_argument("--stage-concurrency", type=int, default=2,
+                    help="concurrent OCR+extraction calls per run; the matcher stays "
+                         f"sequential (default 2, max {MAX_STAGE_CONCURRENCY})")
+    ap.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--pristine", default=PRISTINE_DB, help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
     if args.runs < 1:
         ap.error("--runs must be >= 1")
+    if args.jobs < 1:
+        ap.error("--jobs must be >= 1")
+    if not 1 <= args.stage_concurrency <= MAX_STAGE_CONCURRENCY:
+        ap.error(f"--stage-concurrency must be 1..{MAX_STAGE_CONCURRENCY} (watchdog pool size)")
+    if args.child and (args.seed_corpus or args.fresh_db):
+        ap.error("--seed-corpus/--fresh-db are parent-only flags")
     return args
 
 
@@ -363,8 +405,54 @@ def _unknown_shape(raw) -> dict:
     ).model_dump()
 
 
-def run_once(cases, threshold: float) -> tuple[dict, "BenchmarkMetrics", float]:
-    """One full verification pass over all cases. Returns results+metrics+wall."""
+def _is_fallback_record(raw) -> bool:
+    """True when llm_extract ended in its silent failure record (LLM call
+    failed or output unparseable): entry_type 'unknown' plus the canned
+    'Raw OCR text:' notes. A model-chosen 'unknown' classification carries
+    real notes and does NOT count — only genuine failures do (pollution
+    guard, see SKILL.md)."""
+    return raw.entry_type == "unknown" and (raw.notes or "").startswith("Raw OCR text:")
+
+
+def _extract_all(cases, worker, stage_concurrency: int) -> dict:
+    """Run ``worker(name, input_path) -> (name, raw)`` over all cases; fan out
+    with a bounded pool when ``stage_concurrency > 1``. Any worker failure
+    cancels not-yet-started siblings before propagating, so a doomed run
+    stops spending immediately; in-flight calls finish or hit the
+    SDK/watchdog timeouts."""
+    raws: dict[str, object] = {}
+    if stage_concurrency > 1 and len(cases) > 1:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        with ThreadPoolExecutor(max_workers=stage_concurrency) as pool:
+            futures = {
+                pool.submit(worker, name, input_path): name
+                for name, input_path, _golden in cases
+            }
+            try:
+                for fut in as_completed(futures):
+                    name, raw = fut.result()
+                    raws[name] = raw
+            except BaseException:
+                for f in futures:
+                    f.cancel()
+                raise
+    else:
+        for name, input_path, _golden in cases:
+            _n, raw = worker(name, input_path)
+            raws[name] = raw
+    return raws
+
+
+def run_once(cases, threshold: float,
+             stage_concurrency: int = 1) -> tuple[dict, "BenchmarkMetrics", float]:
+    """One full verification pass over all cases. Returns results+metrics+wall.
+
+    Phase 1 fans OCR + llm_extract out across cases (both DB-free and
+    case-independent — see _extract_all). Phase 2 runs the matcher STRICTLY
+    in sorted case order: definitions created by earlier cases must
+    participate in later matches (same semantics as the sequential runner).
+    """
     from app.db.session import SessionLocal
     from app.services.extractor import OCRProcessingError, llm_extract, ocr_document
     from app.services.matcher import match_and_convert
@@ -375,25 +463,35 @@ def run_once(cases, threshold: float) -> tuple[dict, "BenchmarkMetrics", float]:
     db = SessionLocal()
     results: dict[str, dict] = {}
     wall_start = time.perf_counter()
+
+    def _ocr_and_extract(name: str, input_path: str):
+        with open(input_path, "rb") as fh:
+            data = fh.read()
+        ext = os.path.splitext(input_path)[1].lower()
+
+        t0 = time.perf_counter()
+        try:
+            markdown = ocr_document(data, ext, wrapped)
+        except OCRProcessingError as err:
+            if err.kind in ("auth", "quota"):
+                raise BenchmarkBroken(f"{name}: OCR {err.kind} — {err.message}") from err
+            raise
+        metrics.record_stage("ocr_s", time.perf_counter() - t0)
+
+        t0 = time.perf_counter()
+        raw = llm_extract(markdown, wrapped)
+        metrics.record_stage("extract_s", time.perf_counter() - t0)
+        if _is_fallback_record(raw):
+            metrics.add_fallback_extraction()
+        return name, raw
+
     try:
+        raws = _extract_all(cases, _ocr_and_extract, stage_concurrency)
+
+        from e2e.compare import compare_standardized
+
         for name, input_path, golden in cases:
-            with open(input_path, "rb") as fh:
-                data = fh.read()
-            ext = os.path.splitext(input_path)[1].lower()
-
-            t0 = time.perf_counter()
-            try:
-                markdown = ocr_document(data, ext, wrapped)
-            except OCRProcessingError as err:
-                if err.kind in ("auth", "quota"):
-                    raise BenchmarkBroken(f"{name}: OCR {err.kind} — {err.message}") from err
-                raise
-            metrics.record_stage("ocr_s", time.perf_counter() - t0)
-
-            t0 = time.perf_counter()
-            raw = llm_extract(markdown, wrapped)
-            metrics.record_stage("extract_s", time.perf_counter() - t0)
-
+            raw = raws[name]
             t0 = time.perf_counter()
             if raw.entry_type == "unknown":
                 observed = _unknown_shape(raw)
@@ -408,8 +506,6 @@ def run_once(cases, threshold: float) -> tuple[dict, "BenchmarkMetrics", float]:
                 db.commit()
             metrics.record_stage("match_s", time.perf_counter() - t0)
 
-            from e2e.compare import compare_standardized
-
             diffs = compare_standardized(observed, golden, threshold)
             result = results.setdefault(
                 name, {"input": input_path, "runs_diffs": [], "observed": []}
@@ -421,8 +517,277 @@ def run_once(cases, threshold: float) -> tuple[dict, "BenchmarkMetrics", float]:
         db.close()
 
 
+def _finalize(args, cases, runs_diffs: dict[str, list], tot_metrics, total_wall: float,
+              wall_clock_s: float, chat_failovers: Optional[int] = None) -> int:
+    """Score merged runs_diffs, print per-case lines + the METRICS block and
+    write the report. Shared by the parent's in-process and parallel paths
+    (and by --child, whose stdout the parent captures).
+
+    ``wall_s`` keeps its documented semantic — the SUM of run walls (provider
+    latency, scheduling-independent, the cost guard's input). ``wall_clock_s``
+    is the additive human-facing wall-clock of the whole invocation.
+    """
+    from benchmark.scoring import aggregate, case_scores
+
+    inputs = {name: path for name, path, _g in cases}
+    scores = {}
+    for name, runs in runs_diffs.items():
+        golden = next((g for n, _p, g in cases if n == name), {})
+        sc = case_scores(golden, runs)
+        sc["input"] = inputs.get(name)
+        scores[name] = sc
+        unstable = ", ".join(sc["unstable_items"]) or "-"
+        print(
+            f"[{name}] universe={sc['universe_size']} "
+            f"per_run_rec={[round(v, 3) for v in sc['per_run_recognition']]} "
+            f"recognition={sc['recognition']:.3f} stability={sc['stability']:.3f} "
+            f"extras={sc['extras_total']} unstable={unstable}"
+        )
+        if sc["top_diffs"]:
+            print(f"[{name}] top_level diffs: {len(sc['top_diffs'])}")
+        if sc["unclassified"]:
+            print(
+                f"[{name}] WARN {len(sc['unclassified'])} unclassified diff(s) — scoring.py parser",
+                file=sys.stderr,
+            )
+            for u in sc["unclassified"]:
+                print(f"    ? {u}", file=sys.stderr)
+
+    agg = aggregate(scores)
+
+    wall = round(total_wall, 2)
+    print("\n--- METRICS ---")
+    print(f"METRIC recognition={agg['recognition']:.4f}")
+    print(f"METRIC stability={agg['stability']:.4f}")
+    print(f"METRIC primary={agg['primary']:.4f}")
+    print(f"METRIC llm_calls={tot_metrics.llm_calls}")
+    print(f"METRIC input_tokens={tot_metrics.prompt_tokens}")
+    print(f"METRIC output_tokens={tot_metrics.completion_tokens}")
+    print(f"METRIC ocr_bytes={max(tot_metrics.upload_bytes, tot_metrics.ocr_doc_bytes)}")
+    print(f"METRIC wall_s={wall}")
+    print(f"METRIC wall_clock_s={round(wall_clock_s, 2)}")
+    print(f"METRIC fallback_extractions={tot_metrics.fallback_extractions}")
+    print(f"METRIC provider_error_calls={tot_metrics.provider_error_calls}")
+    # Cross-provider failovers (mistral call failed post-retry → served by
+    # OpenRouter). Pollution-guard signal: >0 means mixed-provider weather.
+    # Children report their own count; the in-process/child path reads the
+    # local module counter.
+    if chat_failovers is None:
+        with contextlib.suppress(Exception):
+            from app.services.chat_client import chat_failover_events
+            chat_failovers = chat_failover_events()
+    print(f"METRIC chat_failovers={chat_failovers or 0}")
+    for k, v in tot_metrics.stage_seconds.items():
+        print(f"METRIC stage_{k}={round(v, 2)}")
+
+    if args.report:
+        report = {
+            "config": {
+                "runs": args.runs,
+                "jobs": args.jobs,
+                "stage_concurrency": args.stage_concurrency,
+                "text_threshold": args.text_threshold,
+                "cases": [c[0] for c in cases],
+                "db": args.db,
+            },
+            "aggregate": agg,
+            "metrics": tot_metrics.to_dict(),
+            "wall_s": wall,
+            "wall_clock_s": round(wall_clock_s, 2),
+            "cases": {
+                name: {
+                    "input": sc["input"],
+                    "universe_size": sc["universe_size"],
+                    "recognition": round(sc["recognition"], 4),
+                    "stability": round(sc["stability"], 4),
+                    "extras_total": sc["extras_total"],
+                    "per_run_recognition": [round(v, 4) for v in sc["per_run_recognition"]],
+                    "unstable_items": sc["unstable_items"],
+                }
+                for name, sc in scores.items()
+            },
+        }
+        if args.child:
+            # Intermediate artifact the parent merges; not part of the
+            # documented report schema.
+            report["runs_diffs"] = runs_diffs
+        report["chat_failovers"] = chat_failovers or 0
+        os.makedirs(os.path.dirname(os.path.abspath(args.report)), exist_ok=True)
+        with open(args.report, "w", encoding="utf-8") as fh:
+            json.dump(report, fh, indent=2, ensure_ascii=False)
+        print(f"[report] wrote {args.report}")
+    return 0
+
+
+def _run_db_path(db: str, r: int) -> str:
+    """Per-run DB path (sibling of --db); covered by .gitignore's
+    benchmark/*.db for the default location."""
+    root, ext = os.path.splitext(db)
+    return f"{root}_r{r}{ext or '.db'}"
+
+
+def _child_command(args, run_db: str, child_report: str) -> list[str]:
+    py = VENV_PY if os.path.exists(VENV_PY) else sys.executable
+    cmd = [
+        py, os.path.abspath(__file__),
+        "--child",
+        "--runs", "1",
+        "--db", run_db,
+        "--pristine", args.pristine,
+        "--text-threshold", str(args.text_threshold),
+        "--stage-concurrency", str(args.stage_concurrency),
+        "--report", child_report,
+    ]
+    if args.cases:
+        cmd += ["--cases", args.cases]
+    return cmd
+
+
+def _run_child(args, cases) -> int:
+    """One cold run against the pristine snapshot passed by the parent.
+
+    No seeding, no pristine rebuild, no full-corpus pinning — all parent-only
+    steps. Restores the snapshot into --db and runs exactly one pass.
+    """
+    restore_snapshot(args.pristine, args.db)
+    res, m, wall = run_once(cases, args.text_threshold, args.stage_concurrency)
+    runs_diffs = {name: item["runs_diffs"] for name, item in res.items()}
+    return _finalize(args, cases, runs_diffs, m, wall, wall)
+
+
+def _run_inprocess(args, cases, pristine: str) -> int:
+    """Sequential runs in this process (the pre-parallel behavior; also the
+    --jobs 1 path)."""
+    from benchmark.metrics import BenchmarkMetrics
+
+    results: dict[str, dict] = {}
+    totals_runs_metrics = []
+    total_wall = 0.0
+    clock_start = time.perf_counter()
+    for _r in range(1, args.runs + 1):
+        restore_snapshot(pristine, args.db)
+        res, m, wall = run_once(cases, args.text_threshold, args.stage_concurrency)
+        total_wall += wall
+        totals_runs_metrics.append(m)
+        for name, item in res.items():
+            entry = results.setdefault(name, {"input": item["input"], "runs_diffs": []})
+            entry["runs_diffs"].append(item["runs_diffs"][0])
+
+    runs_diffs = {name: entry["runs_diffs"] for name, entry in results.items()}
+    tot = BenchmarkMetrics()
+    for m in totals_runs_metrics:
+        tot.merge(m)
+    return _finalize(args, cases, runs_diffs, tot, total_wall,
+                     time.perf_counter() - clock_start)
+
+
+def _merge_child_reports(reports: list[dict]) -> tuple[dict[str, list], "BenchmarkMetrics", float, int]:
+    """Merge child reports (in run order, so per_run arrays stay ordered):
+    per-case runs_diffs lists concatenated, metrics summed, ``wall_s`` summed
+    (its documented semantic — sum of run walls — must survive merging),
+    failover events summed."""
+    from benchmark.metrics import BenchmarkMetrics
+
+    runs_diffs: dict[str, list] = {}
+    tot = BenchmarkMetrics()
+    total_wall = 0.0
+    total_failovers = 0
+    for rep in reports:
+        for name, runs in rep["runs_diffs"].items():
+            runs_diffs.setdefault(name, []).extend(runs)
+        tot.merge(BenchmarkMetrics.from_dict(rep["metrics"]))
+        total_wall += rep["wall_s"]
+        total_failovers += int(rep.get("chat_failovers") or 0)
+    return runs_diffs, tot, total_wall, total_failovers
+
+
+def _run_parallel(args, cases, pristine: str) -> int:
+    """Spawn one child process per run — each restores its own DB copy from
+    the same pristine snapshot, so runs stay perfectly isolated — at most
+    --jobs at a time.
+
+    Fail-fast: the first child that exits non-zero TERMINATES its still-
+    running siblings (our own Popen handles only — never any shared dev
+    server) and the parent propagates the child's exit code. Children's
+    stdout is captured; the console contract (per-case lines + METRICS
+    block) belongs to the parent.
+    """
+    child_reports: list[tuple[int, str]] = []
+    procs: dict[int, subprocess.Popen] = {}
+    clock_start = time.perf_counter()
+    try:
+        for wave_start in range(0, args.runs, args.jobs):
+            batch = range(wave_start + 1, min(wave_start + args.jobs, args.runs) + 1)
+            procs = {}
+            for r in batch:
+                run_db = _run_db_path(args.db, r)
+                if args.report:
+                    child_report = f"{args.report}.child{r}"
+                else:
+                    child_report = os.path.join(
+                        tempfile.gettempdir(), f"bm_child_{os.getpid()}_{r}.json")
+                child_reports.append((r, child_report))
+                env = dict(os.environ)
+                env["DATABASE_URL"] = f"sqlite:///{os.path.abspath(run_db)}"
+                env["PYTHONUNBUFFERED"] = "1"
+                procs[r] = subprocess.Popen(
+                    _child_command(args, run_db, child_report),
+                    cwd=BACKEND, env=env,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                )
+
+            failed = None
+            while any(p.poll() is None for p in procs.values()):
+                bad = [r for r, p in procs.items()
+                       if p.poll() is not None and p.returncode != 0]
+                if bad and failed is None:
+                    failed = bad[0]
+                    for p in procs.values():
+                        if p.poll() is None:
+                            p.terminate()
+                    break
+                time.sleep(0.2)
+
+            outputs = {r: p.communicate() for r, p in procs.items()}
+            failed = failed or next(
+                (r for r, p in procs.items() if p.returncode != 0), None)
+            if failed is not None:
+                _out, err = outputs[failed]
+                print(
+                    f"[jobs] child run {failed} exited {procs[failed].returncode} "
+                    "— failing fast",
+                    file=sys.stderr,
+                )
+                if err:
+                    print(err, file=sys.stderr)
+                return procs[failed].returncode or 1
+    finally:
+        for p in procs.values():
+            if p.poll() is None:
+                p.terminate()
+                p.wait()
+
+    reports = []
+    for _r, report_path in child_reports:
+        with open(report_path, encoding="utf-8") as fh:
+            reports.append(json.load(fh))
+    for _r, report_path in child_reports:
+        with contextlib.suppress(OSError):
+            os.remove(report_path)
+
+    runs_diffs, tot, total_wall, total_failovers = _merge_child_reports(reports)
+    return _finalize(args, cases, runs_diffs, tot, total_wall,
+                     time.perf_counter() - clock_start, total_failovers)
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
+
+    # Matcher/LLM errors are otherwise SILENT here (match_and_convert catches
+    # everything; logging is unconfigured) — a degraded run would look like a
+    # legitimate bad metric. Surface ERROR+ (matcher fallbacks, parse
+    # failures) on stderr so pollution is attributable in the log.
+    logging.basicConfig(level=logging.INFO, format="%(name)s %(levelname)s %(message)s")
 
     if args.seed_corpus:
         return seed_corpus_from_e2e()
@@ -439,6 +804,9 @@ def main(argv=None) -> int:
     cases = load_corpus(
         [c.strip() for c in args.cases.split(",")] if args.cases else None
     )
+
+    if args.child:
+        return _run_child(args, cases)
 
     ensure_seeded_db(args.db, args.fresh_db)
 
@@ -465,94 +833,14 @@ def main(argv=None) -> int:
         args.db, warmup, all_goldens=[g for _n, _p, g in _all_corpus]
     )
 
-    from benchmark.scoring import aggregate, case_scores
-
     print(
-        f"[run] {args.runs} run(s) x {len(cases)} case(s); "
+        f"[run] {args.runs} run(s) x {len(cases)} case(s) "
+        f"(jobs={args.jobs}, stage_concurrency={args.stage_concurrency}); "
         f"threshold={args.text_threshold}; corpus={CORPUS_DIR}"
     )
-    results: dict[str, dict] = {}
-    totals_runs_metrics = []
-    total_wall = 0.0
-    for _r in range(1, args.runs + 1):
-        restore_snapshot(pristine, args.db)
-        res, m, wall = run_once(cases, args.text_threshold)
-        total_wall += wall
-        totals_runs_metrics.append(m)
-        for name, item in res.items():
-            entry = results.setdefault(name, {"input": item["input"], "runs_diffs": []})
-            entry["runs_diffs"].append(item["runs_diffs"][0])
-
-    scores = {}
-    for name, entry in results.items():
-        golden = next((g for n, _p, g in cases if n == name), {})
-        sc = case_scores(golden, entry["runs_diffs"])
-        sc["input"] = entry["input"]
-        scores[name] = sc
-        unstable = ", ".join(sc["unstable_items"]) or "-"
-        print(
-            f"[{name}] universe={sc['universe_size']} "
-            f"per_run_rec={[round(v, 3) for v in sc['per_run_recognition']]} "
-            f"recognition={sc['recognition']:.3f} stability={sc['stability']:.3f} "
-            f"extras={sc['extras_total']} unstable={unstable}"
-        )
-        if sc["top_diffs"]:
-            print(f"[{name}] top_level diffs: {len(sc['top_diffs'])}")
-        if sc["unclassified"]:
-            print(
-                f"[{name}] WARN {len(sc['unclassified'])} unclassified diff(s) — scoring.py parser",
-                file=sys.stderr,
-            )
-            for u in sc["unclassified"]:
-                print(f"    ? {u}", file=sys.stderr)
-
-    agg = aggregate(scores)
-    from benchmark.metrics import BenchmarkMetrics
-
-    tot = BenchmarkMetrics()
-    for m in totals_runs_metrics:
-        tot.merge(m)
-
-    wall = round(total_wall, 2)
-    print("\n--- METRICS ---")
-    print(f"METRIC recognition={agg['recognition']:.4f}")
-    print(f"METRIC stability={agg['stability']:.4f}")
-    print(f"METRIC primary={agg['primary']:.4f}")
-    print(f"METRIC llm_calls={tot.llm_calls}")
-    print(f"METRIC input_tokens={tot.prompt_tokens}")
-    print(f"METRIC output_tokens={tot.completion_tokens}")
-    print(f"METRIC ocr_bytes={max(tot.upload_bytes, tot.ocr_doc_bytes)}")
-    print(f"METRIC wall_s={wall}")
-
-    if args.report:
-        report = {
-            "config": {
-                "runs": args.runs,
-                "text_threshold": args.text_threshold,
-                "cases": [c[0] for c in cases],
-                "db": args.db,
-            },
-            "aggregate": agg,
-            "metrics": tot.to_dict(),
-            "wall_s": wall,
-            "cases": {
-                name: {
-                    "input": sc["input"],
-                    "universe_size": sc["universe_size"],
-                    "recognition": round(sc["recognition"], 4),
-                    "stability": round(sc["stability"], 4),
-                    "extras_total": sc["extras_total"],
-                    "per_run_recognition": [round(v, 4) for v in sc["per_run_recognition"]],
-                    "unstable_items": sc["unstable_items"],
-                }
-                for name, sc in scores.items()
-            },
-        }
-        os.makedirs(os.path.dirname(os.path.abspath(args.report)), exist_ok=True)
-        with open(args.report, "w", encoding="utf-8") as fh:
-            json.dump(report, fh, indent=2, ensure_ascii=False)
-        print(f"[report] wrote {args.report}")
-    return 0
+    if args.jobs > 1 and args.runs > 1:
+        return _run_parallel(args, cases, pristine)
+    return _run_inprocess(args, cases, pristine)
 
 
 if __name__ == "__main__":

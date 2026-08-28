@@ -13,8 +13,9 @@ Original proposal: ISSUES.md #24 (git history).
 ## Safety rules (absolute)
 
 - **Cost**: every verify run is REAL Mistral spend (~cases × N × up-to-10 LLM
-  calls). Respect `max_iterations`; prefer `--runs 1 --cases <x>` probes while
-  debugging, full `--runs 3` runs for keep/discard decisions.
+  calls). Respect `max_iterations`; a full `--runs 3` verify takes ~15–25 min
+  with default parallelism (`--jobs 3 --stage-concurrency 2`; ~66 min with
+  `--jobs 1`), so screen cheaply first (see step 3) before every full run.
 - **Git isolation**: work ONLY on branch `autoresearch/extraction`. Never
   commit to `main`, never push, never rebase over user branches. Every keep
   is presented for human review — do not merge yourself.
@@ -48,10 +49,25 @@ Everything else is off-limits except README/journal state described below.
    hypothesis (prompt tweak, matcher heuristic, caching, chunking…). Do not
    stack unrelated edits; a failed composite can't be attributed.
 
-3. **Verify** with the same command shape (`--report reports/iter_<k>.json`).
-   Exit code ≠ 0 means BROKEN — revert the change, journal it, continue next
-   iteration (don't burn iterations on repeated auth/quota breakage; stop and
-   tell the user).
+3. **Verify (two-stage)**:
+   - **Screen cheaply first**: `--runs 1` (translator-adjacent changes:
+     `--runs 2` minimum — N=1 is blind to bimodal flapping; the рнпц case
+     once scored perfect at N=1 and collapsed to 0 at N=3) over the cases
+     the change targets PLUS at least one control case. A clearly negative
+     screen discards the change without a full run.
+   - **Full verify** for any promising screen and ALWAYS for the keep
+     decision: `--runs 3` over the WHOLE corpus, same command shape
+     (`--report reports/iter_<k>.json`). Exit code ≠ 0 means BROKEN — revert
+     the change, journal it, continue next iteration (don't burn iterations
+     on repeated auth/quota breakage; stop and tell the user).
+   - **Pollution guard**: a run whose METRICS block has
+     `fallback_extractions > 0` OR `provider_error_calls > 0` OR
+     `chat_failovers > 0` is ENVIRONMENT-SUSPECT (provider storm, rate-limit
+     backoff exhausted, silent LLM fallbacks, or mixed-provider weather from
+     mistral→OpenRouter failover) — it is NOT evidence about the change.
+     Auto-rerun the same command ONCE (bounded); decide on the clean rerun.
+     If pollution repeats, STOP and tell the user. Never keep or discard on
+     a polluted run.
 
 4. **Keep rule**: compute Δprimary = new_primary − best_so_far.
    - Keep iff `Δprimary ≥ 0.02` (epsilon margin — protects against noise,
@@ -62,8 +78,10 @@ Everything else is off-limits except README/journal state described below.
    - Ties/negative: DISCARD (`git checkout -- <files>` or restore from the
      iteration-start commit on `autoresearch/extraction`). Cost matters only
      as tie-break (equal primary ⇒ prefer lower input_tokens/output_tokens).
-   - Also honor cost regression guard: if Δprimary ≥ ε but wall_s or tokens
-     balloon >2× baseline, flag prominently in the journal for human review.
+   - Also honor cost regression guard: if Δprimary ≥ ε but `wall_s` (sum of
+     run walls — NOT `wall_clock_s`, which shrinks when runs execute in
+     parallel) or tokens balloon >2× baseline, flag prominently in the
+     journal for human review.
 
 5. **Guards before any keep**:
    - `pytest tests/` and `ruff check .` must PASS outright.
@@ -97,6 +115,12 @@ Run once per setup (and after major runner/scoring edits):
 2. No-op dry-run: apply a deliberate no-op change (e.g. add+remove blank
    effectively cosmetic), verify the loop path discards it (primary unchanged
    within ε) and the runner prints identical METRIC keys.
+3. Harness equivalence (after parallel-runner edits): run a small stable
+   subset (оак + рнпц — the latter exercises full-corpus golden pinning)
+   with `--jobs 1 --stage-concurrency 1` and with the default
+   `--jobs 3 --stage-concurrency 2` on a stable provider window. Structure
+   must agree (same cases, same METRIC keys, pollution counters 0); values
+   may wobble with LLM nondeterminism but should land in the same range.
 
 ## State & resumability
 

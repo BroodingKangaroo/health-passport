@@ -72,6 +72,16 @@ class BenchmarkMetrics:
         self.ocr_calls = 0
         self.ocr_pages = 0
         self.ocr_doc_bytes = 0
+        # Pollution counters (the loop's keep-rule guard, see SKILL.md):
+        # - provider_error_calls: calls that raised at the wrapper boundary
+        #   AFTER the SDK's own retry/backoff gave up (5xx storms, timeouts,
+        #   watchdog kills). Any count > 0 means the run ran into provider
+        #   trouble and its metrics are environment-suspect.
+        # - fallback_extractions: llm_extract calls that ended in the silent
+        #   "unknown + Raw OCR text" fallback record (LLM failure/unparseable
+        #   output) — these quietly tank a case-run's recognition.
+        self.fallback_extractions = 0
+        self.provider_error_calls = 0
         # stage name -> cumulative seconds
         self.stage_seconds: dict[str, float] = {}
 
@@ -81,6 +91,14 @@ class BenchmarkMetrics:
             self.prompt_tokens += prompt_tokens
             self.completion_tokens += completion_tokens
             self.llm_latency_s += latency_s
+
+    def add_provider_error(self):
+        with self._lock:
+            self.provider_error_calls += 1
+
+    def add_fallback_extraction(self):
+        with self._lock:
+            self.fallback_extractions += 1
 
     def add_upload(self, nbytes: int):
         with self._lock:
@@ -109,6 +127,8 @@ class BenchmarkMetrics:
             self.ocr_calls += other.ocr_calls
             self.ocr_pages += other.ocr_pages
             self.ocr_doc_bytes += other.ocr_doc_bytes
+            self.fallback_extractions += other.fallback_extractions
+            self.provider_error_calls += other.provider_error_calls
             for k, v in other.stage_seconds.items():
                 self.stage_seconds[k] = self.stage_seconds.get(k, 0.0) + v
 
@@ -123,8 +143,33 @@ class BenchmarkMetrics:
             "ocr_pages": self.ocr_pages,
             "ocr_doc_bytes": self.ocr_doc_bytes,
             "llm_latency_s": round(self.llm_latency_s, 3),
+            "fallback_extractions": self.fallback_extractions,
+            "provider_error_calls": self.provider_error_calls,
             "stage_seconds": {k: round(v, 3) for k, v in sorted(self.stage_seconds.items())},
         }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "BenchmarkMetrics":
+        """Rebuild a record from ``to_dict`` output (parent merges child reports).
+
+        ``stage_seconds`` are restored as-is; latency/byte/token fields are
+        already cumulative integers or rounded floats, so plain assignment is
+        enough for merge purposes.
+        """
+        m = cls()
+        m.llm_calls = int(data.get("llm_calls") or 0)
+        m.prompt_tokens = int(data.get("input_tokens") or 0)
+        m.completion_tokens = int(data.get("output_tokens") or 0)
+        m.upload_bytes = int(data.get("upload_bytes") or 0)
+        m.uploads = int(data.get("uploads") or 0)
+        m.ocr_calls = int(data.get("ocr_calls") or 0)
+        m.ocr_pages = int(data.get("ocr_pages") or 0)
+        m.ocr_doc_bytes = int(data.get("ocr_doc_bytes") or 0)
+        m.llm_latency_s = float(data.get("llm_latency_s") or 0.0)
+        m.fallback_extractions = int(data.get("fallback_extractions") or 0)
+        m.provider_error_calls = int(data.get("provider_error_calls") or 0)
+        m.stage_seconds = {k: float(v) for k, v in (data.get("stage_seconds") or {}).items()}
+        return m
 
 
 class _ChatNamespace:
@@ -137,7 +182,11 @@ class _ChatNamespace:
 
     def parse(self, **kwargs):
         t0 = time.perf_counter()
-        resp = _call_with_watchdog(self._provider().parse, self._poison, **kwargs)
+        try:
+            resp = _call_with_watchdog(self._provider().parse, self._poison, **kwargs)
+        except Exception:
+            self._metrics.add_provider_error()
+            raise
         dt = time.perf_counter() - t0
         usage = getattr(resp, "usage", None)
         self._metrics.add_llm_call(
@@ -163,7 +212,11 @@ class _FilesNamespace:
         content = getattr(file, "content", None)
         if content is not None:
             self._metrics.add_upload(len(content))
-        return _call_with_watchdog(self._provider().upload, self._poison, file=file, **kwargs)
+        try:
+            return _call_with_watchdog(self._provider().upload, self._poison, file=file, **kwargs)
+        except Exception:
+            self._metrics.add_provider_error()
+            raise
 
     def __getattr__(self, name):
         return getattr(self._provider(), name)
@@ -178,7 +231,11 @@ class _OcrNamespace:
         self._metrics = metrics
 
     def process(self, **kwargs):
-        resp = _call_with_watchdog(self._provider().process, self._poison, **kwargs)
+        try:
+            resp = _call_with_watchdog(self._provider().process, self._poison, **kwargs)
+        except Exception:
+            self._metrics.add_provider_error()
+            raise
         info = getattr(resp, "usage_info", None)
         if info is not None:
             self._metrics.add_ocr(
@@ -224,6 +281,9 @@ class InstrumentedMistral:
         return self._metrics
 
     def _ensure(self):
+        # Benign race under concurrent first calls: two threads may both build
+        # a client (last write wins). Both builds are valid clients with
+        # identical settings, so either outcome is correct.
         if self._client is None:
             self._client = self._build_client()
         return self._client

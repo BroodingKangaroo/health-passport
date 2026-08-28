@@ -146,7 +146,10 @@ def _llm_translate_visit_data(
             recommendations=[],
         )
 
-    payload = raw_visit_data.model_dump()
+    # Compact JSON instead of the Python repr(str(payload)): same data, fewer
+    # tokens, no single-quote noise for the model to parse around.
+    payload = json.dumps(raw_visit_data.model_dump(), ensure_ascii=False,
+                         separators=(",", ":"))
 
     try:
         chat_response = client.chat.parse(
@@ -154,7 +157,7 @@ def _llm_translate_visit_data(
             temperature=0,
             messages=[
                 {"role": "system", "content": TRANSLATE_PROMPT},
-                {"role": "user", "content": str(payload)},
+                {"role": "user", "content": payload},
             ],
             response_format=StandardizedVisitData,
             max_tokens=16000,
