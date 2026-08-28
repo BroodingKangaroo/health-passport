@@ -1,6 +1,7 @@
 import io
 import json
 import logging
+import os
 import re
 from typing import Optional
 
@@ -170,6 +171,51 @@ RAW_EXTRACTION_PROMPT = (
 )
 
 
+_PAGE_FURNITURE_RE = re.compile(
+    r"^(?:стр\.\s*\d+\s*из\s*\d+|page\s+\d+(?:\s*/\s*\d+)?|[-=_*]{3,}"
+    r"|продолжение на следующей странице|continued on (?:the )?next page)\s*$",
+    re.IGNORECASE,
+)
+_TABLE_SEPARATOR_RE = re.compile(r"^\|(\s*:?-+:?\s*\|)+\s*$")
+_URL_RE = re.compile(r"^(?:https?://|www\.)\S+$", re.IGNORECASE)
+
+
+def _clean_ocr_markdown(markdown: str) -> str:
+    """Deterministically strip zero-information boilerplate from OCR markdown
+    before it is sent to any LLM (extraction or matching).
+
+    Removes only noise that cannot affect extraction semantics:
+    - table separator rows (``| --- | --- |``): pure rendering artifacts;
+    - page furniture (``стр.1 из 2``, ``Page 3``, ``---`` rules);
+    - standalone URL lines;
+    - EXACT duplicate non-tabular lines (headers/footers/legal blocks repeat
+      on every page) — keep-first, so no information is ever lost; biomarker
+      rows (starting with ``|``) are never deduped;
+    - runs of blank lines.
+
+    Clinical content — table rows, headings, notes, dates — is untouched.
+    """
+    lines_out: list[str] = []
+    seen_non_tabular: set[str] = set()
+    for raw_line in markdown.split("\n"):
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if (not stripped or _TABLE_SEPARATOR_RE.match(stripped)
+                or _PAGE_FURNITURE_RE.match(stripped) or _URL_RE.match(stripped)):
+            continue
+        # Header/footer/legal blocks repeat verbatim on every page. Dedupe
+        # keep-first; tabular rows carry real data and are exempt.
+        if (not stripped.startswith("|") and len(stripped) < 120
+                and stripped in seen_non_tabular):
+            continue
+        if not stripped.startswith("|") and len(stripped) < 120:
+            seen_non_tabular.add(stripped)
+        lines_out.append(line)
+    cleaned = "\n".join(lines_out)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
 def _convert_to_pdf(bytes_data: bytes, ext: str) -> Optional[bytes]:
     """Convert an image file to PDF bytes using Pillow. Returns None on failure."""
     try:
@@ -229,6 +275,11 @@ def ocr_document(bytes_data: bytes, ext: str, client: Mistral) -> str:
                 )
                 markdown = "\n\n".join(page.markdown for page in ocr_response.pages)
                 markdown = re.sub(r'!\[.*?\]\(.*?\)', '', markdown)
+                # Deterministic boilerplate strip (input-token compression).
+                # OCR_MARKDOWN_CLEAN=0 disables it — the loop's A/B switch for
+                # measuring the cleaner's quality/token effect.
+                if os.getenv("OCR_MARKDOWN_CLEAN", "1") != "0":
+                    markdown = _clean_ocr_markdown(markdown)
                 markdown = markdown.strip()
                 logger.info(
                     "OCR returned %d pages, %d chars (candidate=%s, attempt=%d)",

@@ -70,7 +70,12 @@ class RawMedicalRecord(BaseModel):
 class LoincGuess(BaseModel):
     raw_name: str
     standard_name_en: str
-    guessed_loinc: str = ""
+    # Optional, NOT ""-defaulted str: the zero-shot prompt explicitly tells
+    # the model "set guessed_loinc to null when no candidate fits" — a strict
+    # schema-literal model (GLM, GPT-class) obeys and emits null, which a
+    # plain str field rejects, killing the WHOLE batch parse. verify_or_create
+    # already treats None as "no guess".
+    guessed_loinc: Optional[str] = None
 
 
 class LoincGuessBatch(BaseModel):
