@@ -84,6 +84,24 @@ def _normalize_name(name: str) -> str:
     return _strip_trailing_punct(name).lower()
 
 
+# The batch translator flips between two word orders for gene-mutation
+# parentheses across calls — "(9 exon" vs "(exon 9" (observed bimodally on
+# рнпц_омр_генетика, 5 consecutive runs one way then flipping back inside one
+# benchmark). Canonicalize deterministically so the stored/displayed English
+# definition name never flaps: always the "exon N" order.
+_MUTATION_ORDER_RE = re.compile(r"\((\d+)\s+(exon)\b", re.IGNORECASE)
+
+
+def canonicalize_gene_mutation_en(name: str) -> str:
+    """Rewrite "(N exon" -> "(exon N" in an English mutation display name.
+
+    Idempotent; everything after the swapped token (e.g. "; V617F") is kept
+    verbatim. Non-mutation names pass through untouched."""
+    if not name:
+        return name
+    return _MUTATION_ORDER_RE.sub(lambda m: f"(exon {m.group(1)}", name)
+
+
 def _definition_rank(defn: BiomarkerDefinitionModel) -> int:
     """Preference key (lower = better). Uses LOINC COMMON_TEST_RANK so the most
     commonly ordered test wins when several definitions share a synonym."""

@@ -18,6 +18,7 @@ from app.schemas.ai import (
 )
 from app.services import converters
 from app.services.matcher._text import _is_ascii
+from app.services.matcher.name_matching import canonicalize_gene_mutation_en
 from app.services.matcher.translation import (
     _fallback_translate,
     _normalize_date,
@@ -227,6 +228,7 @@ def _build_standardized_local(
     en = defn.names.get("en") or raw_bm.standard_name_en or raw_bm.name
     if not _is_ascii(en):
         en = raw_bm.standard_name_en or raw_bm.name
+    en = canonicalize_gene_mutation_en(en)
 
     ref = merge_reference(parsed_ref, defn.reference, std_value)
     # A qualitative screen with neither a printed unit nor a canonical one has

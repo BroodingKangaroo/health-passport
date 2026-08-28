@@ -17,6 +17,7 @@ from app.services.matcher.name_matching import (
     _is_fraction_def,
     _normalize_name,
     _strip_trailing_punct,
+    canonicalize_gene_mutation_en,
 )
 from app.services.matcher.units_guess import _translated_unit
 from app.services.reference import merge_reference, parse_reference, parse_value
@@ -124,7 +125,9 @@ def verify_or_create(
     if raw_biomarker and raw_biomarker.standard_name_en and _is_ascii(
         raw_biomarker.standard_name_en
     ):
-        en_name = _strip_trailing_punct(raw_biomarker.standard_name_en.strip())
+        en_name = canonicalize_gene_mutation_en(
+            _strip_trailing_punct(raw_biomarker.standard_name_en.strip())
+        )
     syns = [raw_name]
     if en_name and en_name != raw_name and en_name not in syns:
         syns.append(en_name)
@@ -231,7 +234,9 @@ def _make_local_copy(
         if raw_biomarker.standard_name_en and _is_ascii(
             raw_biomarker.standard_name_en
         ):
-            en_name = _strip_trailing_punct(raw_biomarker.standard_name_en.strip())
+            en_name = canonicalize_gene_mutation_en(
+                _strip_trailing_punct(raw_biomarker.standard_name_en.strip())
+            )
         names = {"en": en_name}
         synonyms = [raw_biomarker.name]
         if en_name and en_name != raw_biomarker.name and en_name not in synonyms:
