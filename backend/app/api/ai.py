@@ -29,6 +29,7 @@ from app.schemas.ai import (
     TranslationItem,
 )
 from app.services import extractor, matcher
+from app.services.chat_client import build_chat_aware_client
 from app.services.usage_limits import check_and_record_ai_usage, refund_ai_extraction
 
 logger = logging.getLogger(__name__)
@@ -102,7 +103,10 @@ def _get_client() -> Optional[Mistral]:
         ),
         retry_connection_errors=True,
     )
-    return Mistral(api_key=api_key, timeout_ms=300_000, retry_config=retry_config)
+    mistral = Mistral(api_key=api_key, timeout_ms=300_000, retry_config=retry_config)
+    # Env-gated provider split: chat LLM via OpenRouter, OCR stays Mistral
+    # (default: unchanged plain-Mistral behavior). See app.services.chat_client.
+    return build_chat_aware_client(mistral)
 
 
 def _sse(event: str, data: dict) -> str:
