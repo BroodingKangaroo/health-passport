@@ -458,8 +458,11 @@ def main(argv=None) -> int:
             file=sys.stderr,
         )
 
+    # Pin from the FULL corpus goldens even on --cases subsets: a subset
+    # probe must restore the same snapshot warmth a full run would have.
+    _all_corpus = load_corpus(None)
     pristine = build_pristine_snapshot(
-        args.db, warmup, all_goldens=[g for _n, _p, g in cases]
+        args.db, warmup, all_goldens=[g for _n, _p, g in _all_corpus]
     )
 
     from benchmark.scoring import aggregate, case_scores
