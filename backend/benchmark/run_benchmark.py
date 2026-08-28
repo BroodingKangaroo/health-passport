@@ -518,7 +518,7 @@ def run_once(cases, threshold: float,
 
 
 def _finalize(args, cases, runs_diffs: dict[str, list], tot_metrics, total_wall: float,
-              wall_clock_s: float) -> int:
+              wall_clock_s: float, chat_failovers: Optional[int] = None) -> int:
     """Score merged runs_diffs, print per-case lines + the METRICS block and
     write the report. Shared by the parent's in-process and parallel paths
     (and by --child, whose stdout the parent captures).
@@ -568,6 +568,15 @@ def _finalize(args, cases, runs_diffs: dict[str, list], tot_metrics, total_wall:
     print(f"METRIC wall_clock_s={round(wall_clock_s, 2)}")
     print(f"METRIC fallback_extractions={tot_metrics.fallback_extractions}")
     print(f"METRIC provider_error_calls={tot_metrics.provider_error_calls}")
+    # Cross-provider failovers (mistral call failed post-retry → served by
+    # OpenRouter). Pollution-guard signal: >0 means mixed-provider weather.
+    # Children report their own count; the in-process/child path reads the
+    # local module counter.
+    if chat_failovers is None:
+        with contextlib.suppress(Exception):
+            from app.services.chat_client import chat_failover_events
+            chat_failovers = chat_failover_events()
+    print(f"METRIC chat_failovers={chat_failovers or 0}")
     for k, v in tot_metrics.stage_seconds.items():
         print(f"METRIC stage_{k}={round(v, 2)}")
 
@@ -602,6 +611,7 @@ def _finalize(args, cases, runs_diffs: dict[str, list], tot_metrics, total_wall:
             # Intermediate artifact the parent merges; not part of the
             # documented report schema.
             report["runs_diffs"] = runs_diffs
+        report["chat_failovers"] = chat_failovers or 0
         os.makedirs(os.path.dirname(os.path.abspath(args.report)), exist_ok=True)
         with open(args.report, "w", encoding="utf-8") as fh:
             json.dump(report, fh, indent=2, ensure_ascii=False)
@@ -671,21 +681,24 @@ def _run_inprocess(args, cases, pristine: str) -> int:
                      time.perf_counter() - clock_start)
 
 
-def _merge_child_reports(reports: list[dict]) -> tuple[dict[str, list], "BenchmarkMetrics", float]:
+def _merge_child_reports(reports: list[dict]) -> tuple[dict[str, list], "BenchmarkMetrics", float, int]:
     """Merge child reports (in run order, so per_run arrays stay ordered):
     per-case runs_diffs lists concatenated, metrics summed, ``wall_s`` summed
-    (its documented semantic — sum of run walls — must survive merging)."""
+    (its documented semantic — sum of run walls — must survive merging),
+    failover events summed."""
     from benchmark.metrics import BenchmarkMetrics
 
     runs_diffs: dict[str, list] = {}
     tot = BenchmarkMetrics()
     total_wall = 0.0
+    total_failovers = 0
     for rep in reports:
         for name, runs in rep["runs_diffs"].items():
             runs_diffs.setdefault(name, []).extend(runs)
         tot.merge(BenchmarkMetrics.from_dict(rep["metrics"]))
         total_wall += rep["wall_s"]
-    return runs_diffs, tot, total_wall
+        total_failovers += int(rep.get("chat_failovers") or 0)
+    return runs_diffs, tot, total_wall, total_failovers
 
 
 def _run_parallel(args, cases, pristine: str) -> int:
@@ -762,9 +775,9 @@ def _run_parallel(args, cases, pristine: str) -> int:
         with contextlib.suppress(OSError):
             os.remove(report_path)
 
-    runs_diffs, tot, total_wall = _merge_child_reports(reports)
+    runs_diffs, tot, total_wall, total_failovers = _merge_child_reports(reports)
     return _finalize(args, cases, runs_diffs, tot, total_wall,
-                     time.perf_counter() - clock_start)
+                     time.perf_counter() - clock_start, total_failovers)
 
 
 def main(argv=None) -> int:

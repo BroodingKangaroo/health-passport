@@ -194,6 +194,12 @@ class _RecordingMistral(_FakeMistral):
             message=SimpleNamespace(content=_Parsed().model_dump_json()))])
 
 
+class _FailingMistral(_RecordingMistral):
+    def parse(self, **kwargs):
+        self.chat_calls.append(kwargs)
+        raise RuntimeError("Mistral storm: read timeout")
+
+
 def test_scope_extraction_routes_only_extraction_to_openrouter():
     from app.schemas.ai import RawMedicalRecord, StandardizedVisitData
 
@@ -224,6 +230,57 @@ def test_scope_all_keeps_legacy_behavior():
 
     hybrid.chat.parse(messages=[{"role": "system", "content": ""}],
                       response_format=StandardizedVisitData)
+    assert len(calls) == 1 and not mistral.chat_calls
+
+
+# ------------------------------------------------- mistral→openrouter failover ---
+
+def test_failover_retries_mistral_failure_on_openrouter():
+    from app.schemas.ai import StandardizedVisitData
+
+    chat_client, calls = _make_client([_ok_body('{"ping": "x"}')])
+    mistral = _FailingMistral()
+    hybrid = SplitChatClient(mistral, chat_client, scope="extraction",
+                             failover=True)
+
+    resp = hybrid.chat.parse(model="mistral-large-latest",
+                             messages=[{"role": "system", "content": ""}],
+                             response_format=StandardizedVisitData)
+
+    # mistral attempted first, then the same call served by OpenRouter
+    assert len(mistral.chat_calls) == 1
+    assert len(calls) == 1
+    assert resp.usage.prompt_tokens == 11
+    import app.services.chat_client as cc
+    assert cc.chat_failover_events() >= 1
+
+
+def test_failover_disabled_propagates_mistral_failure():
+    from app.schemas.ai import StandardizedVisitData
+
+    chat_client, calls = _make_client([_ok_body('{"ping": "x"}')])
+    mistral = _FailingMistral()
+    hybrid = SplitChatClient(mistral, chat_client, scope="extraction",
+                             failover=False)
+
+    with pytest.raises(RuntimeError, match="Mistral storm"):
+        hybrid.chat.parse(messages=[{"role": "system", "content": ""}],
+                          response_format=StandardizedVisitData)
+    assert not calls  # no OpenRouter attempt
+
+
+def test_failover_extraction_route_unchanged():
+    """OR-first routes never touch mistral, failover or not."""
+    from app.schemas.ai import RawMedicalRecord
+
+    chat_client, calls = _make_client(
+        [_ok_body(RawMedicalRecord(entry_type="unknown").model_dump_json())])
+    mistral = _FailingMistral()
+    hybrid = SplitChatClient(mistral, chat_client, scope="extraction",
+                             failover=True)
+
+    hybrid.chat.parse(messages=[{"role": "system", "content": ""}],
+                      response_format=RawMedicalRecord)
     assert len(calls) == 1 and not mistral.chat_calls
 
 

@@ -29,6 +29,7 @@ import contextlib
 import json
 import logging
 import os
+import threading
 import time
 from types import SimpleNamespace
 from typing import Any, Optional
@@ -37,6 +38,26 @@ import httpx
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
+
+# Cross-provider failover events (mistral chat call failed post-SDK-retry and
+# was retried on the OpenRouter route). Module-level counter so the benchmark
+# can print it as METRIC chat_failovers — without it, a successful failover
+# would look like a clean call and hide provider weather from the loop's
+# pollution guard.
+_failover_lock = threading.Lock()
+_failover_events = 0
+
+
+def record_chat_failover() -> int:
+    global _failover_events
+    with _failover_lock:
+        _failover_events += 1
+        return _failover_events
+
+
+def chat_failover_events() -> int:
+    with _failover_lock:
+        return _failover_events
 
 DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # Per-call HTTP timeout and bounded retries for transient failures (429/5xx).
@@ -247,15 +268,24 @@ class _HybridChatNamespace:
     verify/zero-shot) on the Mistral client — measured: GLM-class models
     match mistral-large on structured lab-table extraction but lose on
     free-text translation fidelity.
+
+    ``failover=True`` (``CHAT_FAILOVER=openrouter``) adds resilience: a
+    Mistral-side call that fails AFTER the SDK's own retry/backoff is retried
+    once on the OpenRouter route, so provider storms degrade call-by-call
+    instead of zeroing case-runs. Each failover is logged and counted
+    (``chat_failover_events()`` → benchmark prints ``METRIC chat_failovers``)
+    so the loop's pollution guard still sees the weather.
     """
 
     def __init__(self, chat_client: "OpenRouterChatClient",
-                 mistral_client: Any, scope: str = "all"):
+                 mistral_client: Any, scope: str = "all",
+                 failover: bool = False):
         from app.schemas.ai import RawMedicalRecord
 
         self._chat = chat_client
         self._mistral = mistral_client
         self._scope = scope
+        self._failover = failover
         self._extraction_formats = (RawMedicalRecord,)
 
     def parse(self, response_format=None, **kwargs):
@@ -265,12 +295,21 @@ class _HybridChatNamespace:
             response_format in self._extraction_formats)
         if route_openrouter:
             return self._chat.parse(response_format=response_format, **kwargs)
-        return self._mistral.chat.parse(response_format=response_format, **kwargs)
+        try:
+            return self._mistral.chat.parse(response_format=response_format, **kwargs)
+        except Exception as e:
+            if not self._failover:
+                raise
+            logger.warning(
+                "Mistral chat call failed (%s: %.160s) — failing over to "
+                "OpenRouter (%s)", type(e).__name__, e, self._chat.model)
+            record_chat_failover()
+            return self._chat.parse(response_format=response_format, **kwargs)
 
 
 class SplitChatClient:
-    """Duck-typed Mistral client: chat routed per scope, everything else
-    (files/ocr) stays Mistral.
+    """Duck-typed Mistral client: chat routed per scope (with optional
+    mistral→OpenRouter failover), everything else (files/ocr) stays Mistral.
 
     The benchmark's InstrumentedMistral and the pipeline only ever touch
     ``.chat``, ``.files`` and ``.ocr`` — the latter two delegate to the real
@@ -278,9 +317,10 @@ class SplitChatClient:
     """
 
     def __init__(self, mistral_client: Any, chat_client: "OpenRouterChatClient",
-                 scope: str = "all"):
+                 scope: str = "all", failover: bool = False):
         self._mistral = mistral_client
-        self.chat = _HybridChatNamespace(chat_client, mistral_client, scope)
+        self.chat = _HybridChatNamespace(chat_client, mistral_client, scope,
+                                         failover)
 
     def __getattr__(self, name):
         if name.startswith("_"):
@@ -303,10 +343,11 @@ def build_chat_aware_client(mistral_client: Any) -> Any:
     fallbacks = [m.strip() for m in os.getenv("OPENROUTER_CHAT_FALLBACKS", "").split(",")
                  if m.strip()]
     scope = os.getenv("OPENROUTER_SCOPE", "all").lower()
+    failover = os.getenv("CHAT_FAILOVER", "").lower() == "openrouter"
     chat = OpenRouterChatClient(
         os.environ["OPENROUTER_API_KEY"], model,
         base_url=os.getenv("OPENROUTER_BASE_URL", DEFAULT_OPENROUTER_BASE_URL),
         fallback_models=fallbacks)
-    logger.info("Chat provider: OpenRouter model=%s scope=%s (OCR stays Mistral)",
-                model, scope)
-    return SplitChatClient(mistral_client, chat, scope)
+    logger.info("Chat provider: OpenRouter model=%s scope=%s failover=%s (OCR stays Mistral)",
+                model, scope, failover)
+    return SplitChatClient(mistral_client, chat, scope, failover)

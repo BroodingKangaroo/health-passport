@@ -61,12 +61,13 @@ Everything else is off-limits except README/journal state described below.
      the change, journal it, continue next iteration (don't burn iterations
      on repeated auth/quota breakage; stop and tell the user).
    - **Pollution guard**: a run whose METRICS block has
-     `fallback_extractions > 0` OR `provider_error_calls > 0` is
-     ENVIRONMENT-SUSPECT (provider storm, rate-limit backoff exhausted, or
-     silent LLM fallbacks) — it is NOT evidence about the change. Auto-rerun
-     the same command ONCE (bounded); decide on the clean rerun. If
-     pollution repeats, STOP and tell the user. Never keep or discard on a
-     polluted run.
+     `fallback_extractions > 0` OR `provider_error_calls > 0` OR
+     `chat_failovers > 0` is ENVIRONMENT-SUSPECT (provider storm, rate-limit
+     backoff exhausted, silent LLM fallbacks, or mixed-provider weather from
+     mistral→OpenRouter failover) — it is NOT evidence about the change.
+     Auto-rerun the same command ONCE (bounded); decide on the clean rerun.
+     If pollution repeats, STOP and tell the user. Never keep or discard on
+     a polluted run.
 
 4. **Keep rule**: compute Δprimary = new_primary − best_so_far.
    - Keep iff `Δprimary ≥ 0.02` (epsilon margin — protects against noise,
