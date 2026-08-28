@@ -3,6 +3,7 @@
 chat provider, dumping the observed record + matcher logs (which the benchmark
 swallows silently)."""
 # ruff: noqa: E402
+import json
 import logging
 import os
 import sys
@@ -33,6 +34,12 @@ cases = rb.load_corpus([CASE])
 results, metrics, wall = rb.run_once(cases, 0.9, stage_concurrency=1)
 observed = results[CASE]["observed"][0]
 diffs = results[CASE]["runs_diffs"][0]
+
+# Full observed record for item-level analysis (visit_data translations etc.)
+dump = f"/tmp/observed_{CASE}.json"
+with open(dump, "w", encoding="utf-8") as fh:
+    json.dump(observed, fh, ensure_ascii=False, indent=1)
+print(f"[dump] {dump}")
 
 print(f"\n=== observed ({len(observed.get('biomarkers', []))} biomarkers)")
 for b in observed.get("biomarkers", []):

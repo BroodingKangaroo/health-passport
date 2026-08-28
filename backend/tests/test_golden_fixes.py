@@ -169,3 +169,62 @@ def test_verify_or_create_force_local_skips_learned_synonyms(db_session):
     )
     assert resolved_plain.scope == "global" and resolved_plain.id == "polluted-igg"
     db_session.rollback()
+
+
+# --- comparator: translated_en alternatives (provider-neutral goldens) -------
+
+def test_translated_en_alt_accepts_valid_provider_variance():
+    """Two LLMs translate «Рациональное питание…» differently and both are
+    valid — the golden's translated_en_alt list lets the comparator take the
+    best match instead of punishing a provider change."""
+    from e2e.compare import compare_standardized
+
+    golden = {"visit_data": {"recommendations": [{
+        "original": "Рациональное питание, исключение продуктов по непереносимости",
+        "translated_en": "Balanced nutrition with exclusion of intolerant foods",
+        "translated_en_alt": [
+            "Rational nutrition, exclusion of foods based on intolerance",
+        ],
+    }]}}
+    observed = {"visit_data": {"recommendations": [{
+        "original": "Рациональное питание, исключение продуктов по непереносимости",
+        "translated_en": "Rational nutrition, exclusion of foods based on intolerance",
+    }]}}
+
+    assert compare_standardized(observed, golden, 0.9) == []
+
+
+def test_translated_en_still_fails_without_any_matching_alt():
+    from e2e.compare import compare_standardized
+
+    golden = {"visit_data": {"recommendations": [{
+        "original": "X",
+        "translated_en": "Do the thing",
+        "translated_en_alt": ["Perform the task"],
+    }]}}
+    observed = {"visit_data": {"recommendations": [{
+        "original": "X",
+        "translated_en": "Something completely unrelated entirely",
+    }]}}
+
+    diffs = compare_standardized(observed, golden, 0.9)
+    assert len(diffs) == 1 and "translated_en" in diffs[0]
+
+
+def test_leading_list_marker_variance_is_not_a_failure():
+    """OCR keeps/strips the document's list numbering («1. ») nondeterministically;
+    ordering is already encoded in the item index — the marker must not fail
+    either the original exact-match or the EN similarity."""
+    from e2e.compare import compare_standardized
+
+    golden = {"visit_data": {"recommendations": [{
+        "original": "Рациональное питание, исключение продуктов по непереносимости",
+        "translated_en": "Balanced nutrition with exclusion of intolerant foods",
+        "translated_en_alt": ["Rational nutrition, exclusion of foods based on intolerance"],
+    }]}}
+    observed = {"visit_data": {"recommendations": [{
+        "original": "1. Рациональное питание, исключение продуктов по непереносимости",
+        "translated_en": "1. Rational nutrition, exclusion of foods based on intolerance",
+    }]}}
+
+    assert compare_standardized(observed, golden, 0.9) == []

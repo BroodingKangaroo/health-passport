@@ -134,6 +134,25 @@ snapshot. Diffs come from `e2e/compare.py` (`compare_standardized`) at
   marks the run environment-suspect: the loop re-runs once (bounded) and
   never keeps/discards on polluted data.
 
+### Golden format: provider/OCR variance
+
+Goldens are provider-neutral. Two LLMs translate the same Russian source
+differently and both can be valid, and OCR keeps/strips list numbering
+nondeterministically — neither may read as a quality failure:
+
+- `translated_en_alt` (optional, per TranslatedText entry): alternative
+  acceptable EN renderings. The comparator scores against the BEST of
+  primary + alternatives (`e2e/compare.py::_cmp_tx`).
+- Leading list markers ("1. ", "2) ", "• ") are stripped from both sides
+  before comparison — ordering is already encoded in the item index.
+
+A golden update must remain hand-verified truth: only add renderings that a
+reviewer judged equivalent to the source text (e.g. «Рациональное питание» →
+"Rational nutrition" is the literal reading of the golden's "Balanced
+nutrition"; the телефон in гастро rec[2] is printed WITHOUT the +375
+country code — GLM's verbatim copy is more faithful than the golden's own
+embellishment).
+
 ### Why cold snapshots + warm-up
 
 - `verify_or_create` persists definitions/units on first sight (first-seen

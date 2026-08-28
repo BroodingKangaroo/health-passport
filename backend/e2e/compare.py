@@ -15,6 +15,7 @@ Comparison rules (from the e2e spec):
 Returns a list of human-readable diff strings (empty list == match)."""
 
 import difflib
+import re
 from collections import defaultdict
 
 DEFAULT_TEXT_THRESHOLD = 0.9
@@ -29,25 +30,58 @@ def _sim(a, b):
     return difflib.SequenceMatcher(None, _norm(a) or "", _norm(b) or "").ratio()
 
 
+_LEADING_MARKER_RE = re.compile(r"^\s*(?:\d{1,2}[.)]\s*|[•*·-]\s+)")
+
+
+def _strip_list_marker(s: str) -> str:
+    """Drop a leading list marker ("1. ", "2) ", "• ").
+
+    OCR sometimes keeps the document's list numbering inside a recommendation
+    and sometimes strips it; the number itself carries no clinical content
+    (ordering is already encoded in the item's index), so it must not read as
+    a translation/extraction failure.
+    """
+    return _LEADING_MARKER_RE.sub("", s or "", count=1)
+
+
 def _cmp_tx(observed, golden, path, diffs, thr):
-    """Compare a TranslatedText-shaped dict ({original, translated_en})."""
+    """Compare a TranslatedText-shaped dict ({original, translated_en}).
+
+    Two presentation-variance accommodations, both validated against real
+    provider/OCR behavior:
+    - ``translated_en_alt`` — a golden may list alternative acceptable EN
+      renderings; scoring takes the BEST similarity across primary +
+      alternatives ("Balanced" vs "Rational nutrition" are both valid
+      translations of «Рациональное питание»).
+    - leading list markers are stripped from both sides before comparison
+      (OCR keeps/strips "1. " nondeterministically; ordering is already
+      encoded in the item index).
+    """
     if not isinstance(golden, dict):
         diffs.append(f"{path}: expected TranslatedText object, got {type(observed).__name__}")
         return
     obs = observed if isinstance(observed, dict) else {}
 
-    o_orig = _norm(obs.get("original", ""))
-    g_orig = _norm(golden.get("original", ""))
+    o_orig = _norm(_strip_list_marker(obs.get("original", "")))
+    g_orig = _norm(_strip_list_marker(golden.get("original", "")))
     if o_orig != g_orig:
         diffs.append(f"{path}.original: expected {g_orig!r}, got {o_orig!r}")
 
     o_tr = obs.get("translated_en", "")
     g_tr = golden.get("translated_en", "")
-    if _norm(g_tr) and _sim(o_tr, g_tr) < thr:
-        diffs.append(
-            f"{path}.translated_en: similarity {_sim(o_tr, g_tr):.2f} < {thr} "
-            f"(expected {g_tr!r}, got {o_tr!r})"
-        )
+    candidates = [g_tr] + [
+        a for a in (golden.get("translated_en_alt") or []) if isinstance(a, str)
+    ]
+    candidates = [_strip_list_marker(c) for c in candidates if _norm(c)]
+    o_tr = _strip_list_marker(o_tr)
+    if candidates:
+        best_sim = max(_sim(o_tr, c) for c in candidates)
+        best = max(candidates, key=lambda c: _sim(o_tr, c))
+        if best_sim < thr:
+            diffs.append(
+                f"{path}.translated_en: similarity {best_sim:.2f} < {thr} "
+                f"(expected {best!r}, got {o_tr!r})"
+            )
 
 
 def _cmp_biomarkers(observed_list, golden_list, diffs, tol=VALUE_TOLERANCE, thr=DEFAULT_TEXT_THRESHOLD):
