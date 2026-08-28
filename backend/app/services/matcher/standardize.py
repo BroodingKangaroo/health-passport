@@ -64,6 +64,14 @@ def _build_standardized_from_def(
     # Canonicalize the document's own unit (e.g. Cyrillic "ммоль/л" -> "mmol/L").
     doc_unit = converters.normalize_unit(raw_bm.unit)
     doc_reference = parse_reference(raw_bm.raw_range_string)
+    # Same boundless-note guard as the local path: an absent-canonical result
+    # against "допустимо любое количество" is a qualitative screen — the
+    # definition's own reference must decide the kind, not the leaked note.
+    if (isinstance(doc_reference, dict) and doc_reference.get("kind") == "interval"
+            and doc_reference.get("low") is None and doc_reference.get("high") is None
+            and isinstance(parsed_value, str)
+            and normalize_qual(parsed_value) in _ABSENT_CANONICAL):
+        doc_reference = None
 
     # Document-first: when the lab printed its own reference range, trust it and
     # keep the value in the document's own (normalized) unit. This avoids lossy
@@ -183,6 +191,15 @@ def _build_standardized_local(
 ) -> StandardizedBiomarker:
     parsed_value = parse_value(raw_bm.value)
     parsed_ref = parse_reference(raw_bm.raw_range_string)
+    # A boundless document note ("допустимо любое количество" — often a leaked
+    # comment column) against an absent-canonical result ("не обнаруж") is a
+    # QUALITATIVE screen, not a 0.0 measurement: the note carries no numeric
+    # bound, so the definition's own reference must decide the kind.
+    if (isinstance(parsed_ref, dict) and parsed_ref.get("kind") == "interval"
+            and parsed_ref.get("low") is None and parsed_ref.get("high") is None
+            and isinstance(parsed_value, str)
+            and normalize_qual(parsed_value) in _ABSENT_CANONICAL):
+        parsed_ref = None
     # A parsed interval ref means the document reported a numeric range, so
     # the biomarker is Quantitative. Keep the value type aligned with the ref:
     # numeric values stay as numbers, and a canonical "absent" result

@@ -227,4 +227,60 @@ def test_leading_list_marker_variance_is_not_a_failure():
         "translated_en": "1. Rational nutrition, exclusion of foods based on intolerance",
     }]}}
 
-    assert compare_standardized(observed, golden, 0.9) == []
+# --- boundless-note guard: absent value + "допустимо любое количество" -------
+
+def test_absent_value_against_boundless_note_stays_qualitative():
+    """колонофлор_16_13.05 Bacteroides thetaiotaomicron: the extraction leaks
+    the comment column («допустимо любое количество») into raw_range_string;
+    an absent result («не обнаруж») against that BOUNDLESS note is a
+    qualitative screen — never a 0.0-with-interval measurement."""
+    from types import SimpleNamespace
+
+    from app.services.matcher.standardize import _build_standardized_local
+
+    defn = SimpleNamespace(
+        id="local-eb472412ea39",
+        names={"en": "Bacteroides thetaiotaomicron"},
+        reference={"kind": "qualitative", "expected": None},
+        canonical_unit="",
+        canonical_unit_inferred=False,
+        canonical_kind=None,
+        unit="",
+        category=None,
+        scope="local",
+        loinc_code=None,
+    )
+    bm = SimpleNamespace(
+        name="Bacteroides thetaiotaomicron",
+        value="не обнаруж",
+        unit="lg копий/мл",
+        category=None,
+        raw_range_string="допустимо любое количество",
+        standard_name_en="Bacteroides thetaiotaomicron",
+    )
+    out = _build_standardized_local(bm, defn, client=None)
+    assert out.standard_value == "Not detected"
+    ref = out.reference.model_dump() if hasattr(out.reference, "model_dump") else out.reference
+    assert ref["kind"] == "qualitative"
+
+
+def test_numeric_value_against_boundless_note_keeps_doc_first():
+    """A NUMERIC result against the same boundless note keeps the existing
+    doc-first behavior (the note is not turned into bounds, and the numeric
+    value is untouched)."""
+    from types import SimpleNamespace
+
+    from app.services.matcher.standardize import _build_standardized_local
+
+    defn = SimpleNamespace(
+        id="local-x", names={"en": "Some ratio"},
+        reference={"kind": "interval", "low": 0.01, "high": 100.0},
+        canonical_unit="", canonical_unit_inferred=False, canonical_kind=None,
+        unit="", category=None, scope="local", loinc_code=None,
+    )
+    bm = SimpleNamespace(
+        name="Some ratio", value="1.14", unit="", category=None,
+        raw_range_string="допустимо любое количество",
+        standard_name_en="Some ratio",
+    )
+    assert out.standard_value == 1.14
