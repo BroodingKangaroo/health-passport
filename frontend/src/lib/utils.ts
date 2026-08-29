@@ -78,12 +78,21 @@ export async function printAuthedDocument(url: string): Promise<void> {
   iframe.src = src
 }
 
-export function formatDate(iso: string): string {
+/**
+ * Locale-aware connector between a date and its time ("Jan 15, 2027 at 09:00"
+ * / "15 янв. 2026 г. в 09:00"). Shared by formatDate and splitDateLabel so the
+ * format and the reverse-parse stay in sync.
+ */
+export function dateConnector(locale: string): string {
+  return locale.toLowerCase().startsWith('ru') ? ' в ' : ' at '
+}
+
+export function formatDate(iso: string, locale = 'en-US'): string {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return iso
-  const base = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const base = d.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' })
   if (d.getHours() !== 0 || d.getMinutes() !== 0) {
-    return `${base} at ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+    return `${base}${dateConnector(locale)}${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
   }
   return base
 }
@@ -187,10 +196,13 @@ export function sortReadingsByDate<T extends { date: string }>(
     .map((entry) => entry.reading)
 }
 
-export function splitDateLabel(dateStr: string): { label: string; sub?: string } {
+export function splitDateLabel(
+  dateStr: string,
+  locale = 'en-US',
+): { label: string; sub?: string } {
   const d = new Date(dateStr)
   if (!isNaN(d.getTime())) {
-    const base = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    const base = d.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' })
     if (d.getHours() !== 0 || d.getMinutes() !== 0) {
       return {
         label: base,
@@ -199,7 +211,9 @@ export function splitDateLabel(dateStr: string): { label: string; sub?: string }
     }
     return { label: base }
   }
-  const idx = dateStr.indexOf(' at ')
+  // Reverse-parse a previously formatted label ("… at 09:00" / "… в 09:00").
+  const conn = dateConnector(locale)
+  const idx = dateStr.lastIndexOf(conn)
   if (idx === -1) return { label: dateStr }
-  return { label: dateStr.slice(0, idx), sub: dateStr.slice(idx + 4) }
+  return { label: dateStr.slice(0, idx).trimEnd(), sub: dateStr.slice(idx + conn.length).trim() }
 }

@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { Check, ChevronsUpDown, Plus } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -32,8 +33,10 @@ interface UnitComboboxProps {
 export function UnitCombobox({
   value,
   onChange,
-  placeholder = 'Search unit…',
+  placeholder,
 }: UnitComboboxProps) {
+  const t = useTranslations('unitCombobox')
+  const resolvedPlaceholder = placeholder ?? t('searchPlaceholder')
   const { definitions, loading } = useBiomarkerDefinitions()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState(value)
@@ -75,7 +78,7 @@ export function UnitCombobox({
             !value && 'text-muted-foreground',
           )}
         >
-          {value || placeholder}
+          {value || resolvedPlaceholder}
           <ChevronsUpDown className="ml-2 size-3 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -85,21 +88,21 @@ export function UnitCombobox({
       >
         <Command shouldFilter={false}>
           <CommandInput
-            placeholder={placeholder}
+            placeholder={resolvedPlaceholder}
             value={search}
             onValueChange={setSearch}
           />
           <CommandList>
             {loading && (
               <div className="py-6 text-center text-sm text-muted-foreground">
-                Loading units…
+                {t('loading')}
               </div>
             )}
             {!loading && filtered.length === 0 && !showAddNew && (
-              <CommandEmpty>No unit found.</CommandEmpty>
+              <CommandEmpty>{t('notFound')}</CommandEmpty>
             )}
             {filtered.length > 0 && (
-              <CommandGroup heading="Standard units">
+              <CommandGroup heading={t('standardGroup')}>
                 {filtered.map((unit) => (
                   <CommandItem
                     key={unit}
@@ -124,7 +127,7 @@ export function UnitCombobox({
                 className="text-primary"
               >
                 <Plus className="mr-2 size-3" />
-                Add &lsquo;{search.trim()}&rsquo; as new
+                {t('addNew', { name: search.trim() })}
               </CommandItem>
             )}
           </CommandList>

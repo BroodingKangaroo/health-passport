@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { EntrySettings } from '../health-passport/entry-settings'
+import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type { BiomarkerResult, MedicalEvent, VisitData } from '@/lib/types'
+
+// Wrap renders with the i18n context (English) — EntrySettings uses useTranslations.
+const renderI18n = ((ui: React.ReactElement, options?: Parameters<typeof render>[1]) =>
+  render(<TestI18nProvider>{ui}</TestI18nProvider>, options)) as typeof render
 
 const baseEvent: MedicalEvent = {
   id: 'test-event-1',
@@ -65,7 +70,7 @@ describe('EntrySettings', () => {
   })
 
   it('shows the entry type, date, attachment count, and total size for a blood test', () => {
-    render(
+    renderI18n(
       <EntrySettings
         event={baseEvent}
         biomarkers={bloodTestBiomarkers}
@@ -82,7 +87,7 @@ describe('EntrySettings', () => {
   })
 
   it('shows biomarker count and status breakdown for a blood test', () => {
-    render(
+    renderI18n(
       <EntrySettings
         event={baseEvent}
         biomarkers={bloodTestBiomarkers}
@@ -95,7 +100,7 @@ describe('EntrySettings', () => {
   })
 
   it('shows visit-specific counts (notes, prescriptions, recommendations) for a doctor visit', () => {
-    render(
+    renderI18n(
       <EntrySettings
         event={{ ...baseEvent, type: 'doctor_visit', title: 'Cardiology Follow-up' }}
         visit={visitData}
@@ -113,7 +118,7 @@ describe('EntrySettings', () => {
   })
 
   it('shows zero counts when no biomarkers are passed for a blood test', () => {
-    render(
+    renderI18n(
       <EntrySettings
         event={baseEvent}
         biomarkers={[]}
@@ -125,7 +130,7 @@ describe('EntrySettings', () => {
   })
 
   it('renders the entry ID and a copy button', () => {
-    render(
+    renderI18n(
       <EntrySettings
         event={baseEvent}
         biomarkers={[]}
@@ -145,7 +150,7 @@ describe('EntrySettings', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(
+    renderI18n(
       <EntrySettings
         event={baseEvent}
         biomarkers={bloodTestBiomarkers}
@@ -183,7 +188,7 @@ describe('EntrySettings', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(
+    renderI18n(
       <EntrySettings
         event={baseEvent}
         biomarkers={[]}
@@ -206,7 +211,7 @@ describe('EntrySettings', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
 
-    render(
+    renderI18n(
       <EntrySettings
         event={baseEvent}
         biomarkers={[]}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { ArrowLeft } from 'lucide-react'
 
 import { HeaderBar } from '@/components/health-passport/header-bar'
@@ -9,10 +10,11 @@ import { Button } from '@/components/ui/button'
 
 export function BiomarkerDetailsView() {
   const router = useRouter()
+  const t = useTranslations('misc.backLinks')
   const searchParams = useSearchParams()
   const from = searchParams.get('from')
   const backPath = from === 'flowsheet' ? '/flowsheet' : '/'
-  const backLabel = from === 'flowsheet' ? 'Back to Lab Flowsheet' : 'Back to Timeline'
+  const backLabel = from === 'flowsheet' ? t('flowsheet') : t('timeline')
 
   return (
     <div className="min-h-screen bg-background">

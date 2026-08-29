@@ -1,7 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { DoctorVisitDetails } from '../health-passport/doctor-visit-details'
+import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type { VisitData } from '@/lib/types'
+
+// Wrap renders with the i18n context (English) — the component uses useTranslations.
+const renderI18n = ((ui: React.ReactElement, options?: Parameters<typeof render>[1]) =>
+  render(<TestI18nProvider>{ui}</TestI18nProvider>, options)) as typeof render
 
 vi.mock('next/dynamic', () => ({
   default: () => {
@@ -40,7 +45,7 @@ const visitNoUrl: VisitData = {
 
 describe('DoctorVisitDetails', () => {
   it('renders DocumentViewer with the active attachment url', () => {
-    render(<DoctorVisitDetails visit={baseVisit} entryId={TEST_ENTRY_ID} />)
+    renderI18n(<DoctorVisitDetails visit={baseVisit} entryId={TEST_ENTRY_ID} />)
 
     const documentsTab = screen.getByText('Original Document (2)')
     fireEvent.click(documentsTab)
@@ -50,7 +55,7 @@ describe('DoctorVisitDetails', () => {
   })
 
   it('switches DocumentViewer url when clicking a different attachment', () => {
-    render(<DoctorVisitDetails visit={baseVisit} entryId={TEST_ENTRY_ID} />)
+    renderI18n(<DoctorVisitDetails visit={baseVisit} entryId={TEST_ENTRY_ID} />)
 
     const documentsTab = screen.getByText('Original Document (2)')
     fireEvent.click(documentsTab)
@@ -62,7 +67,7 @@ describe('DoctorVisitDetails', () => {
   })
 
   it('renders attachment name and type in the list', () => {
-    render(<DoctorVisitDetails visit={baseVisit} entryId={TEST_ENTRY_ID} />)
+    renderI18n(<DoctorVisitDetails visit={baseVisit} entryId={TEST_ENTRY_ID} />)
 
     const documentsTab = screen.getByText('Original Document (2)')
     fireEvent.click(documentsTab)
@@ -74,7 +79,7 @@ describe('DoctorVisitDetails', () => {
   })
 
   it('does not fall back to a hardcoded pdf when attachment has no url', () => {
-    render(<DoctorVisitDetails visit={visitNoUrl} entryId={TEST_ENTRY_ID} />)
+    renderI18n(<DoctorVisitDetails visit={visitNoUrl} entryId={TEST_ENTRY_ID} />)
 
     const documentsTab = screen.getByText('Original Document (1)')
     fireEvent.click(documentsTab)
@@ -89,7 +94,7 @@ describe('DoctorVisitDetails', () => {
   })
 
   it('renders a Settings tab and switches to it on click', () => {
-    render(<DoctorVisitDetails visit={baseVisit} entryId={TEST_ENTRY_ID} onDeleted={vi.fn()} />)
+    renderI18n(<DoctorVisitDetails visit={baseVisit} entryId={TEST_ENTRY_ID} onDeleted={vi.fn()} />)
 
     const settingsTab = screen.getByRole('button', { name: 'Settings' })
     expect(settingsTab).toBeDefined()
@@ -100,7 +105,7 @@ describe('DoctorVisitDetails', () => {
   })
 
   it('uses the real entry id for the Settings delete/ID action', () => {
-    render(<DoctorVisitDetails visit={baseVisit} entryId={TEST_ENTRY_ID} onDeleted={vi.fn()} />)
+    renderI18n(<DoctorVisitDetails visit={baseVisit} entryId={TEST_ENTRY_ID} onDeleted={vi.fn()} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
 

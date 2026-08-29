@@ -1,6 +1,7 @@
 'use client'
 
 import { AlertTriangle, Sigma } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 
 /**
@@ -22,19 +23,28 @@ export function ScaleNote({
   originalUnit?: string | null
   className?: string
 }) {
+  const t = useTranslations('misc.scaleNote')
   if (!scaleFunction && !needsReview) return null
+  const hasOriginal = originalValue !== undefined && originalValue !== null && originalValue !== ''
   const tipParts: string[] = []
-  if (originalValue !== undefined && originalValue !== null && originalValue !== '') {
-    tipParts.push(`Original: ${originalValue}${originalUnit ? ' ' + originalUnit : ''}`)
+  if (hasOriginal) {
+    tipParts.push(
+      originalUnit
+        ? t('originalWithUnit', { value: originalValue, unit: originalUnit })
+        : t('original', { value: originalValue }),
+    )
   }
   if (scaleFunction) {
-    tipParts.push(`Converted via ${scaleFunction}`)
+    tipParts.push(t('convertedVia', { fn: scaleFunction }))
   }
   if (needsReview && !scaleFunction) {
-    tipParts.push('Unit could not be auto-converted — value kept as-is')
+    tipParts.push(t('notConverted'))
   }
   const tip = tipParts.join(' • ')
-  const label = needsReview && !scaleFunction ? 'Needs review' : `Converted via ${scaleFunction}`
+  const label =
+    needsReview && !scaleFunction
+      ? t('needsReview')
+      : t('convertedVia', { fn: scaleFunction ?? '' })
   return (
     <span
       className={cn('inline-flex items-center gap-0.5 text-amber-600', className)}

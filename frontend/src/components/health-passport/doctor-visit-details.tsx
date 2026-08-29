@@ -2,6 +2,7 @@
 
 import { useState, useCallback, Fragment } from 'react'
 import dynamic from 'next/dynamic'
+import { useTranslations } from 'next-intl'
 import {
   Stethoscope,
   Building,
@@ -20,19 +21,25 @@ import { cn, fetchAuthedObjectUrl, printAuthedDocument } from '@/lib/utils'
 import { EntrySettings } from './entry-settings'
 import type { VisitData } from '@/lib/types'
 
+function ViewerLoadingFallback() {
+  const t = useTranslations('timeline.doctorVisit')
+  return (
+    <div className="flex min-h-[300px] items-center justify-center text-sm text-muted-foreground">
+      {t('loadingViewer')}
+    </div>
+  )
+}
+
 const DocumentViewer = dynamic(
   () => import('@/components/shared/DocumentViewer').then((m) => m.DocumentViewer),
   {
     ssr: false,
-    loading: () => (
-      <div className="flex min-h-[300px] items-center justify-center text-sm text-muted-foreground">
-        Loading document viewer...
-      </div>
-    ),
+    loading: () => <ViewerLoadingFallback />,
   },
 )
 
 export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: VisitData; entryId: string; onDeleted?: () => void }) {
+  const t = useTranslations('timeline.doctorVisit')
   const [activeTab, setActiveTab] = useState<'summary' | 'document' | 'settings'>('summary')
   const [showOriginal, setShowOriginal] = useState(false)
   const [activeAttachmentId, setActiveAttachmentId] = useState<string | null>(null)
@@ -60,7 +67,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
   }, [])
 
   const verdictText = showOriginal ? visit.verdict.original : visit.verdict.translated_en
-  const verdictLabel = showOriginal ? 'Original' : 'Translated'
+  const verdictLabel = showOriginal ? t('original') : t('translated')
 
   const eventForSettings = {
     id: entryId,
@@ -84,7 +91,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
             }
           >
             <FileText className="size-4" />
-            {showOriginal ? 'Original Summary' : 'Translated Summary'}
+            {showOriginal ? t('originalSummary') : t('translatedSummary')}
           </button>
           <span className="text-sm text-muted-foreground/20">|</span>
           <button
@@ -96,7 +103,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
             }
           >
             <Paperclip className="size-4" />
-            Original Document ({visit.attachments.length})
+            {t('originalDocument', { count: visit.attachments.length })}
           </button>
           <span className="text-sm text-muted-foreground/20">|</span>
           <button
@@ -108,7 +115,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
             }
           >
             <Settings className="size-4" />
-            Settings
+            {t('settings')}
           </button>
         </div>
 
@@ -123,7 +130,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
             )}
           >
             <Languages className="size-3.5" />
-            {showOriginal ? 'Showing Original' : 'View Original Language'}
+            {showOriginal ? t('showingOriginal') : t('viewOriginalLanguage')}
           </button>
         )}
       </div>
@@ -146,7 +153,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
               <div className="flex items-center gap-2">
                 <Activity className="size-4 text-blue-500" />
                 <span className="text-xs font-semibold uppercase tracking-wide text-blue-500">
-                  Primary Diagnosis
+                  {t('primaryDiagnosis')}
                 </span>
               </div>
               <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
@@ -159,7 +166,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
               </p>
             ) : (
               <p className="text-sm italic text-muted-foreground/50">
-                No diagnosis recorded
+                {t('noDiagnosis')}
               </p>
             )}
           </div>
@@ -167,7 +174,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
           <div className="bg-card border border-border rounded-xl p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                Clinical Notes
+                {t('clinicalNotes')}
               </h3>
               <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
                 {verdictLabel}
@@ -195,7 +202,9 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
                       </p>
                     ) : (
                       <p className="mt-1 text-sm italic text-muted-foreground/50">
-                        No {note.heading?.toLowerCase() || 'information'} recorded
+                        {t('noSectionRecorded', {
+                          section: note.heading?.toLowerCase() || 'information',
+                        })}
                       </p>
                     )
                   })()}
@@ -204,7 +213,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
               </Fragment>
             )) : (
               <p className="text-sm italic text-muted-foreground/50">
-                No clinical notes recorded
+                {t('noClinicalNotes')}
               </p>
             )}
             </div>
@@ -213,7 +222,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
           <div className="bg-card border border-border rounded-xl p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                Prescriptions
+                {t('prescriptions')}
               </h3>
               <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
                 {verdictLabel}
@@ -241,7 +250,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
               </div>
             )) : (
               <p className="text-sm italic text-muted-foreground/50">
-                No prescriptions recorded
+                {t('noPrescriptions')}
               </p>
             )}
           </div>
@@ -249,7 +258,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
           <div className="bg-card border border-border rounded-xl p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                Recommendations
+                {t('recommendations')}
               </h3>
               <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
                 {verdictLabel}
@@ -268,7 +277,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
               </ul>
             ) : (
               <p className="text-sm italic text-muted-foreground/50">
-                No recommendations recorded
+                {t('noRecommendations')}
               </p>
             )}
           </div>
@@ -277,7 +286,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
         <div className="mt-5 flex w-full min-w-0 flex-1 flex-col min-h-0">
           {visit.attachments.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No documents available for this event.
+              {t('noDocuments')}
             </p>
           ) : (
           <div className="flex flex-col gap-3">
@@ -315,16 +324,16 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
                         className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                       >
                         <Printer className="size-4" />
-                        Print
+                        {t('print')}
                       </button>
-                      )}
+                        )}
                     {url && (
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDownload(att.name, url) }}
                         className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                       >
                         <Download className="size-4" />
-                        Download
+                        {t('download')}
                       </button>
                     )}
                   </div>
@@ -337,7 +346,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
           {selectedAttachment && (
             <>
               <p className="mt-4 mb-2 text-xs text-muted-foreground">
-                Viewing: {selectedAttachment.name}
+                {t('viewing', { name: selectedAttachment.name })}
               </p>
 
               <div className="flex-1 min-h-0 w-full overflow-hidden rounded-xl border border-border">

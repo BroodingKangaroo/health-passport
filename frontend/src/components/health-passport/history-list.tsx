@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import type { ComponentType } from 'react'
+import { useLocale, useTranslations } from 'next-intl'
 import {
   SlidersHorizontal,
   Droplet,
@@ -25,11 +26,12 @@ const iconMap: Record<EventType, ComponentType<{ className?: string }>> = {
   procedure: Syringe,
 }
 
-const typeLabels: Record<EventType, string> = {
-  blood_test: 'Blood Tests',
-  doctor_visit: 'Doctor Visits',
-  instrumental_test: 'Instrumental Tests',
-  procedure: 'Procedures',
+// Data values → message keys; unknown values fall back to the raw value.
+const TYPE_LABEL_KEYS: Record<string, string> = {
+  blood_test: 'typeBloodTest',
+  doctor_visit: 'typeDoctorVisit',
+  instrumental_test: 'typeInstrumentalTest',
+  procedure: 'typeProcedure',
 }
 
 const ALL_TYPES: EventType[] = ['blood_test', 'doctor_visit', 'instrumental_test', 'procedure']
@@ -42,6 +44,8 @@ interface HistoryListProps {
 }
 
 export function HistoryList({ events, selectedId, onSelect, biomarkers }: HistoryListProps) {
+  const t = useTranslations('timeline.historyList')
+  const locale = useLocale()
   const [showFilter, setShowFilter] = useState(false)
   const [search, setSearch] = useState('')
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
@@ -144,11 +148,11 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between px-1">
-        <h2 className="text-sm font-semibold text-foreground">History</h2>
+        <h2 className="text-sm font-semibold text-foreground">{t('title')}</h2>
         <div className="relative">
           <button
             ref={buttonRef}
-            aria-label="Filter history"
+            aria-label={t('filterAria')}
             onClick={() => setShowFilter((v) => !v)}
             className={cn(
               'relative flex size-7 items-center justify-center rounded-md transition-colors',
@@ -177,7 +181,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                   <input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search by title, doctor, clinic..."
+                    placeholder={t('searchPlaceholder')}
                     className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-8 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:outline-none"
                   />
                   {search && (
@@ -194,7 +198,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                 <div>
                   <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     <ArrowUpDown className="size-3" />
-                    Sort
+                    {t('sort')}
                   </label>
                   <div className="flex gap-2">
                     {(['newest', 'oldest'] as const).map((order) => (
@@ -208,7 +212,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                             : 'border-border text-muted-foreground hover:border-primary/20 hover:text-foreground',
                         )}
                       >
-                        {order === 'newest' ? 'Newest First' : 'Oldest First'}
+                        {order === 'newest' ? t('newestFirst') : t('oldestFirst')}
                       </button>
                     ))}
                   </div>
@@ -217,16 +221,16 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                 {/* Type filters */}
                 <div>
                   <label className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Entry Type
+                    {t('entryType')}
                   </label>
                   <div className="flex flex-col gap-1">
-                    {ALL_TYPES.map((t) => {
-                      const Icon = iconMap[t]
-                      const active = typeFilters.includes(t)
+                    {ALL_TYPES.map((type) => {
+                      const Icon = iconMap[type]
+                      const active = typeFilters.includes(type)
                       return (
                         <button
-                          key={t}
-                          onClick={() => toggleType(t)}
+                          key={type}
+                          onClick={() => toggleType(type)}
                           className={cn(
                             'flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-left text-sm transition-colors',
                             active
@@ -255,7 +259,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                             )}
                           </div>
                           <Icon className="size-4" />
-                          {typeLabels[t]}
+                          {TYPE_LABEL_KEYS[type] ? t(TYPE_LABEL_KEYS[type]) : type}
                         </button>
                       )
                     })}
@@ -265,20 +269,20 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                 {/* Quick toggles */}
                 <div>
                   <label className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Quick Filters
+                    {t('quickFilters')}
                   </label>
                   <div className="flex flex-col gap-1">
                     <ToggleRow
                       icon={AlertTriangle}
-                      label="Abnormal Results"
-                      description="Only lab tests with flagged values"
+                      label={t('abnormalResults')}
+                      description={t('abnormalResultsDesc')}
                       active={abnormalOnly}
                       onToggle={() => setAbnormalOnly((v) => !v)}
                     />
                     <ToggleRow
                       icon={Paperclip}
-                      label="Has Attachments"
-                      description="Only entries with source documents"
+                      label={t('hasAttachments')}
+                      description={t('hasAttachmentsDesc')}
                       active={attachmentsOnly}
                       onToggle={() => setAttachmentsOnly((v) => !v)}
                     />
@@ -292,7 +296,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                     className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
                   >
                     <RotateCcw className="size-3" />
-                    Reset all filters
+                    {t('resetFilters')}
                   </button>
                 )}
               </div>
@@ -306,14 +310,14 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <Search className="mb-2 size-8 text-muted-foreground/40" />
             <p className="text-sm font-medium text-muted-foreground">
-              No matching records found
+              {t('noMatching')}
             </p>
             {activeFilterCount > 0 && (
               <button
                 onClick={resetFilters}
                 className="mt-2 text-xs text-primary hover:underline"
               >
-                Reset all filters
+                {t('resetFilters')}
               </button>
             )}
           </div>
@@ -347,7 +351,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                   <p className="truncate text-sm font-semibold text-foreground">
                     {event.title}
                   </p>
-                  <p className="text-xs text-muted-foreground">{formatDate(event.date)}</p>
+                  <p className="text-xs text-muted-foreground">{formatDate(event.date, locale)}</p>
                   <p className="truncate text-xs text-muted-foreground/80" title={event.clinic}>{event.clinic}</p>
                 </div>
                 {count > 0 && (

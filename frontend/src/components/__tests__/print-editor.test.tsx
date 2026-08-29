@@ -4,7 +4,13 @@ import { useEffect } from 'react'
 import { PrintEditor } from '@/components/health-passport/print-editor'
 import { PrintConfigProvider } from '@/providers/print-config-provider'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
+import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type { DateHeader, MatrixCategory, PrintLang, BiomarkerResult, CurrentUser } from '@/lib/types'
+
+// Wrap renders with the i18n context (English) — the editor's sidebar chrome
+// uses useTranslations (the printed document's language maps do NOT).
+const renderI18n = ((ui: React.ReactElement, options?: Parameters<typeof render>[1]) =>
+  render(<TestI18nProvider>{ui}</TestI18nProvider>, options)) as typeof render
 
 afterEach(() => {
   sessionStorage.clear()
@@ -156,7 +162,7 @@ function renderEditor(props?: {
   const dates = props?.dates ?? mockDates
   const matrix = props?.matrix ?? mockMatrix
   const biomarkers = props?.biomarkers ?? mockBiomarkers
-  return render(
+  return renderI18n(
     <PrintConfigProvider>
       <PrintEditorInit
         dates={dates}
@@ -366,7 +372,7 @@ describe('PrintEditor', () => {
       }, [setTargetLanguage])
       return <PrintEditor {...props} />
     }
-    render(
+    renderI18n(
       <PrintConfigProvider>
         <LangInit
           dates={mockDates}
@@ -395,7 +401,7 @@ describe('PrintEditor', () => {
       }, [setTargetLanguage])
       return <PrintEditor {...props} />
     }
-    render(
+    renderI18n(
       <PrintConfigProvider>
         <LangInit
           dates={mockDates}
@@ -528,7 +534,7 @@ describe('PrintEditor', () => {
       }, [setSuppressSavedTranslations, initFilters, props.dates, props.matrix])
       return <PrintEditor {...props} />
     }
-    render(
+    renderI18n(
       <PrintConfigProvider>
         <SuppressInit
           dates={mockDates}
@@ -562,7 +568,7 @@ describe('PrintEditor', () => {
       }, [setSuppressSavedTranslations, initFilters, props.dates, props.matrix])
       return <PrintEditor {...props} />
     }
-    render(
+    renderI18n(
       <PrintConfigProvider>
         <SuppressInit
           dates={mockDates}

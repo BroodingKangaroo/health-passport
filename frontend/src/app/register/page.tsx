@@ -6,14 +6,17 @@ import Link from "next/link"
 import { Loader2 } from "lucide-react"
 import { signIn } from "next-auth/react"
 import { toast } from "sonner"
+import { useTranslations } from "next-intl"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { LanguageSwitch } from "@/components/shared/language-switch"
 import { fetchUsageLimits, fetchTimelineEvents } from "@/services/api"
 
 export default function RegisterPage() {
   const router = useRouter()
+  const t = useTranslations("register")
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -52,12 +55,12 @@ export default function RegisterPage() {
     setError("")
     
     if (formData.password !== formData.confirmPassword) {
-      setError("Passwords do not match")
+      setError(t("passwordMismatch"))
       return
     }
-    
+
     if (formData.password.length < 8) {
-      setError("Password must be at least 8 characters")
+      setError(t("passwordTooShort"))
       return
     }
 
@@ -81,7 +84,7 @@ export default function RegisterPage() {
       const data = await res.json()
       
       if (!res.ok) {
-        setError(data.detail || "Registration failed")
+        setError(data.detail || t("registrationFailed"))
         return
       }
 
@@ -98,32 +101,35 @@ export default function RegisterPage() {
         return
       }
 
-      toast.success("Account created!", {
+      toast.success(t("toast.title"), {
         description: hasAnonData && migrateData
-          ? "Your data has been transferred to your new account."
-          : "Welcome to Health Passport.",
+          ? t("toast.dataTransferred")
+          : t("toast.welcome"),
       })
       router.push("/")
       router.refresh()
     } catch {
-      setError("An error occurred. Please try again.")
+      setError(t("unexpectedError"))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
+    <div className="relative flex min-h-screen items-center justify-center bg-background px-4 py-12">
+      <div className="absolute right-4 top-4 z-10">
+        <LanguageSwitch />
+      </div>
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Create Account</CardTitle>
-          <CardDescription>Start tracking your health journey</CardDescription>
+          <CardTitle className="text-2xl">{t("title")}</CardTitle>
+          <CardDescription>{t("subtitle")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <label htmlFor="name" className="text-sm font-medium">
-                Full Name
+                {t("fullName")}
               </label>
               <Input
                 id="name"
@@ -132,13 +138,13 @@ export default function RegisterPage() {
                 value={formData.name}
                 onChange={handleChange}
                 required
-                placeholder="Alexey Ivanov"
+                placeholder={t("fullNamePlaceholder")}
               />
             </div>
 
             <div className="space-y-2">
               <label htmlFor="email" className="text-sm font-medium">
-                Email
+                {t("email")}
               </label>
               <Input
                 id="email"
@@ -147,13 +153,13 @@ export default function RegisterPage() {
                 value={formData.email}
                 onChange={handleChange}
                 required
-                placeholder="alexey@example.com"
+                placeholder={t("emailPlaceholder")}
               />
             </div>
 
             <div className="space-y-2">
               <label htmlFor="dob" className="text-sm font-medium">
-                Date of Birth
+                {t("dateOfBirth")}
               </label>
               <Input
                 id="dob"
@@ -168,7 +174,7 @@ export default function RegisterPage() {
 
             <div className="space-y-2">
               <label htmlFor="gender" className="text-sm font-medium">
-                Gender
+                {t("gender")}
               </label>
               <select
                 id="gender"
@@ -177,15 +183,15 @@ export default function RegisterPage() {
                 onChange={handleChange}
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
+                <option value="Male">{t("genderMale")}</option>
+                <option value="Female">{t("genderFemale")}</option>
+                <option value="Other">{t("genderOther")}</option>
               </select>
             </div>
 
             <div className="space-y-2">
               <label htmlFor="password" className="text-sm font-medium">
-                Password
+                {t("password")}
               </label>
               <Input
                 id="password"
@@ -195,13 +201,13 @@ export default function RegisterPage() {
                 onChange={handleChange}
                 required
                 minLength={8}
-                placeholder="At least 8 characters"
+                placeholder={t("passwordPlaceholder")}
               />
             </div>
 
             <div className="space-y-2">
               <label htmlFor="confirmPassword" className="text-sm font-medium">
-                Confirm Password
+                {t("confirmPassword")}
               </label>
               <Input
                 id="confirmPassword"
@@ -210,7 +216,7 @@ export default function RegisterPage() {
                 value={formData.confirmPassword}
                 onChange={handleChange}
                 required
-                placeholder="Confirm your password"
+                placeholder={t("confirmPasswordPlaceholder")}
               />
             </div>
 
@@ -227,11 +233,10 @@ export default function RegisterPage() {
                   />
                   <div className="ml-3 text-sm">
                     <label htmlFor="migrate_data" className="font-medium text-blue-900">
-                      Transfer my existing data
+                      {t("migration.title")}
                     </label>
                     <p className="text-blue-700 mt-1">
-                      We found data from your session. Check this to copy it to your new account.
-                      Your anonymous data will also remain accessible if you log out.
+                      {t("migration.description")}
                     </p>
                   </div>
                 </div>
@@ -248,18 +253,18 @@ export default function RegisterPage() {
               {loading ? (
                 <>
                   <Loader2 className="mr-2 size-4 animate-spin" />
-                  Creating account...
+                  {t("creatingAccount")}
                 </>
               ) : (
-                "Create Account"
+                t("submit")
               )}
             </Button>
           </form>
 
           <div className="mt-6 text-center text-sm text-muted-foreground">
-            Already have an account?{" "}
+            {t("haveAccount")}{" "}
             <Link href="/login" className="text-primary hover:underline font-medium">
-              Sign in
+              {t("signIn")}
             </Link>
           </div>
         </CardContent>

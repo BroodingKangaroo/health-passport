@@ -1,15 +1,17 @@
 'use client'
 
 import { Check, ArrowDown, ArrowUp, AlertTriangle } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { Badge } from '@/components/ui/badge'
 import type { Status } from '@/lib/types'
 
 export function StatusBadge({ status }: { status: Status }) {
+  const t = useTranslations('statuses')
   if (status === 'normal') {
     return (
       <Badge variant="normal">
         <Check className="size-3" />
-        Normal
+        {t('normal')}
       </Badge>
     )
   }
@@ -17,7 +19,7 @@ export function StatusBadge({ status }: { status: Status }) {
     return (
       <Badge variant="low">
         <ArrowDown className="size-3" />
-        Low
+        {t('low')}
       </Badge>
     )
   }
@@ -25,14 +27,14 @@ export function StatusBadge({ status }: { status: Status }) {
     return (
       <Badge variant="high">
         <ArrowUp className="size-3" />
-        High
+        {t('high')}
       </Badge>
     )
   }
   return (
     <Badge variant="abnormal">
       <AlertTriangle className="size-3" />
-      Abnormal
+      {t('abnormal')}
     </Badge>
   )
 }

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { Search, ChevronRight, ArrowDown, ArrowUp } from 'lucide-react'
 
 import { cn, formatNumber } from '@/lib/utils'
@@ -48,6 +49,7 @@ interface FlowsheetMatrixProps {
 
 export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixProps) {
   const router = useRouter()
+  const t = useTranslations('timeline.flowsheet')
   const [query, setQuery] = useState('')
 
   const dateCols = dates.map(() => '1fr').join(' ')
@@ -74,10 +76,10 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
         <div className="leading-tight">
           <h2 className="text-base font-semibold text-foreground">
-            Longitudinal Lab Flowsheet
+            {t('title')}
           </h2>
           <p className="text-xs text-muted-foreground">
-            Tracking biomarker values across all recorded lab panels
+            {t('subtitle')}
           </p>
         </div>
         <div className="relative w-full sm:w-64">
@@ -85,7 +87,7 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter biomarkers..."
+            placeholder={t('filterPlaceholder')}
             className="pl-8"
           />
         </div>
@@ -101,14 +103,14 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
             )}
             style={{ gridTemplateColumns: gridTemplateCols }}
           >
-            <span>Biomarker / Reference range</span>
-            <span className="text-left">TREND</span>
+            <span>{t('colBiomarkerReference')}</span>
+            <span className="text-left">{t('colTrend')}</span>
             {dates.map((date, i) => (
               <span key={`${date.label}-${i}`} className="text-right leading-tight">
                 <span className="block whitespace-nowrap">
                   {date.label}
                   {i === dates.length - 1 && (
-                    <span className="ml-1 text-primary">(Latest)</span>
+                    <span className="ml-1 text-primary">{t('latest')}</span>
                   )}
                 </span>
                 {date.sub && (
@@ -186,8 +188,8 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
           {filtered.length === 0 && (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
               {query
-                ? `No biomarkers match \u201c${query}\u201d.`
-                : 'No biomarkers recorded for this entry.'}
+                ? t('emptySearch', { query })
+                : t('empty')}
             </p>
           )}
         </div>

@@ -6,6 +6,10 @@ import {
   normalizedValue,
 } from '../health-passport/correlation-chart'
 import type { BiomarkerResult, Reference } from '@/lib/types'
+import { TestI18nProvider } from '@/test/i18n-test-provider'
+
+const renderI18n = ((ui: React.ReactElement, options?: Parameters<typeof render>[1]) =>
+  render(<TestI18nProvider>{ui}</TestI18nProvider>, options)) as typeof render
 
 vi.mock('recharts', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
@@ -99,7 +103,7 @@ describe('CorrelationChart', () => {
   }
 
   it('shows single-measurement biomarkers in the picker (onboarding case)', () => {
-    render(
+    renderI18n(
       <CorrelationChart
         biomarkers={[
           makeBiomarker('b1', 'Hemoglobin', { value: 7 }),
@@ -116,7 +120,7 @@ describe('CorrelationChart', () => {
   })
 
   it('plots single-measurement biomarkers instead of showing the empty prompt', () => {
-    render(
+    renderI18n(
       <CorrelationChart
         biomarkers={[
           makeBiomarker('b1', 'Hemoglobin', { value: 7 }),
@@ -130,7 +134,7 @@ describe('CorrelationChart', () => {
   })
 
   it('notes that correlation needs at least 2 paired readings', () => {
-    render(
+    renderI18n(
       <CorrelationChart
         biomarkers={[
           makeBiomarker('b1', 'Hemoglobin', { value: 7 }),
@@ -146,7 +150,7 @@ describe('CorrelationChart', () => {
   })
 
   it('computes and shows the correlation for multi-date series', () => {
-    render(
+    renderI18n(
       <CorrelationChart
         biomarkers={[
           makeBiomarker('b1', 'Hemoglobin', {
@@ -175,7 +179,7 @@ describe('CorrelationChart', () => {
   it('auto-selects the most correlated pair on load', () => {
     // C is listed first so the naive "first two" fallback would pick C+A;
     // the suggestion logic must instead select A+B (r = 1.0 vs 0.5).
-    render(
+    renderI18n(
       <CorrelationChart
         biomarkers={[
           makeBiomarker('c1', 'Creatinine', {
@@ -222,7 +226,7 @@ describe('CorrelationChart', () => {
   })
 
   it('re-applies a suggested pair via its chip', () => {
-    render(
+    renderI18n(
       <CorrelationChart
         biomarkers={[
           makeBiomarker('c1', 'Creatinine', {
@@ -273,7 +277,7 @@ describe('CorrelationChart', () => {
   })
 
   it('highlights the pair that is currently selected', () => {
-    render(
+    renderI18n(
       <CorrelationChart
         biomarkers={[
           makeBiomarker('c1', 'Creatinine', {
@@ -320,7 +324,7 @@ describe('CorrelationChart', () => {
   })
 
   it('does not suggest pairs without enough shared readings', () => {
-    render(
+    renderI18n(
       <CorrelationChart
         biomarkers={[
           makeBiomarker('a1', 'Hemoglobin', {
@@ -349,7 +353,7 @@ describe('CorrelationChart', () => {
         ],
         value: 7,
       })
-    render(
+    renderI18n(
       <CorrelationChart
         biomarkers={[
           mk('a1', 'Hemoglobin'),
@@ -364,7 +368,7 @@ describe('CorrelationChart', () => {
   })
 
   it('labels strength and confidence in plain language', () => {
-    render(
+    renderI18n(
       <CorrelationChart
         biomarkers={[
           makeBiomarker('a1', 'Hemoglobin', {
@@ -395,7 +399,7 @@ describe('CorrelationChart', () => {
   })
 
   it('explains too-few-readings in plain language', () => {
-    render(
+    renderI18n(
       <CorrelationChart
         biomarkers={[
           makeBiomarker('a1', 'Hemoglobin', {
@@ -422,7 +426,7 @@ describe('CorrelationChart', () => {
   })
 
   it('shows a dedicated empty state when there is no biomarker data', () => {
-    render(<CorrelationChart biomarkers={[]} />)
+    renderI18n(<CorrelationChart biomarkers={[]} />)
     expect(
       screen.getByText('No biomarker data yet — add a blood test to get started.'),
     ).toBeInTheDocument()
@@ -430,7 +434,7 @@ describe('CorrelationChart', () => {
 
   it('excludes biomarkers with no readings at all from the picker', () => {
     const empty = makeBiomarker('b3', 'Empty', { value: null })
-    render(
+    renderI18n(
       <CorrelationChart
         biomarkers={[
           makeBiomarker('b1', 'Hemoglobin', { value: 7 }),
@@ -443,7 +447,7 @@ describe('CorrelationChart', () => {
   })
 
   it('shows the select prompt again when the user unchecks everything', () => {
-    render(
+    renderI18n(
       <CorrelationChart
         biomarkers={[makeBiomarker('b1', 'Hemoglobin', { value: 7 })]}
       />,

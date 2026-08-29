@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 
 import { intervalReference } from '@/lib/reference'
 import type { Reference } from '@/lib/types'
@@ -44,6 +45,7 @@ function buildReference(type: RefType, lo: string, hi: string): Reference | null
 }
 
 export function ReferenceInput({ value, onChange }: Props) {
+  const t = useTranslations('reference')
   const [initial] = useState(() => parseType(value))
   const [type, setType] = useState<RefType>(initial.type)
   const [loVal, setLoVal] = useState(initial.lo)
@@ -75,10 +77,10 @@ export function ReferenceInput({ value, onChange }: Props) {
         onChange={(e) => handleTypeChange(e.target.value as RefType)}
         className="h-8 w-[88px] shrink-0 rounded-lg border border-input bg-background px-1.5 text-[11px] outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
       >
-        <option value="interval">Interval</option>
+        <option value="interval">{t('interval')}</option>
         <option value="lt">≤</option>
         <option value="gt">≥</option>
-        <option value="none">None</option>
+        <option value="none">{t('none')}</option>
       </select>
       {type === 'interval' && (
         <div className="flex items-center gap-0.5">
@@ -100,7 +102,7 @@ export function ReferenceInput({ value, onChange }: Props) {
       {type === 'lt' && (
         <input
           value={hiVal}
-          placeholder="max"
+          placeholder={t('placeholderMax')}
           onChange={(e) => handleHiChange(e.target.value)}
           className="h-8 w-[88px] rounded-lg border border-input bg-background px-1.5 text-[11px] outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
         />
@@ -108,7 +110,7 @@ export function ReferenceInput({ value, onChange }: Props) {
       {type === 'gt' && (
         <input
           value={loVal}
-          placeholder="min"
+          placeholder={t('placeholderMin')}
           onChange={(e) => handleLoChange(e.target.value)}
           className="h-8 w-[88px] rounded-lg border border-input bg-background px-1.5 text-[11px] outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
         />

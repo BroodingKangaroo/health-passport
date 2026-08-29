@@ -2,14 +2,12 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { toast } from 'sonner'
+import { useTranslations } from 'next-intl'
 
 import { useLeaveGuard } from '@/providers/leave-guard-provider'
 import { extractMedicalData, UsageLimitError } from '@/services/api'
 import { estimateExtractionTime, estimateMatchingTime } from '@/lib/extraction-timing'
 import type { UploadState, ProgressStage, StandardizedMedicalRecord } from '@/lib/types'
-
-const EXTRACTING_MESSAGE =
-  'AI extraction is in progress. If you leave now, the extraction will be cancelled and no data will be saved.'
 
 interface UseExtractionOptions {
   // Applied to the form state while the "Done! Reviewing results..." stage is
@@ -19,6 +17,7 @@ interface UseExtractionOptions {
 }
 
 export function useExtraction({ onSuccess, onFailure }: UseExtractionOptions) {
+  const t = useTranslations('extraction')
   const [uploadState, setUploadState] = useState<UploadState>('idle')
   const [progressStage, setProgressStage] = useState<ProgressStage>('ocr_scanning')
   const [markdownChars, setMarkdownChars] = useState<number | null>(null)
@@ -45,9 +44,9 @@ export function useExtraction({ onSuccess, onFailure }: UseExtractionOptions) {
     // A confirmed leave must abort the SSE fetch so the browser drops the
     // connection and the backend takes its client-disconnect path (quota
     // refund) — mirroring print-setup's translation abort.
-    arm(EXTRACTING_MESSAGE, () => extractionAbortRef.current?.abort())
+    arm(t('leaveGuard'), () => extractionAbortRef.current?.abort())
     return () => disarm()
-  }, [uploadState, arm, disarm])
+  }, [uploadState, arm, disarm, t])
 
   useEffect(() => {
     if (uploadState !== 'scanning') return
@@ -129,20 +128,20 @@ export function useExtraction({ onSuccess, onFailure }: UseExtractionOptions) {
         // Ignore aborts from a superseding extraction — the new run is in charge.
         if (err instanceof Error && err.name === 'AbortError') return
         if (err instanceof UsageLimitError) {
-          toast.error('AI Extraction Limit Reached', {
+          toast.error(t('limitTitle'), {
             description: err.message,
           })
         }
         const msg =
           typeof err === 'object' && err !== null && 'message' in err
             ? String((err as { message: unknown }).message)
-            : 'AI extraction failed'
+            : t('failed')
         setAiError(msg)
         onFailure()
         setUploadState('editor')
       }
     },
-    [onSuccess, onFailure],
+    [onSuccess, onFailure, t],
   )
 
   const clearError = useCallback(() => setAiError(null), [])

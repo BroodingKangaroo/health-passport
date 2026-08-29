@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { Check, ChevronsUpDown, Plus, AlertTriangle } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
@@ -35,9 +36,11 @@ interface Props {
   onScopeChange: (scope: string) => void
 }
 
-function formatRangeHint(def: { unit: string; reference: Reference | null }): string {
+type ComboboxT = ReturnType<typeof useTranslations>
+
+function formatRangeHint(t: ComboboxT, def: { unit: string; reference: Reference | null }): string {
   const ref = formatReference(def.reference)
-  return ref === '—' ? `(${def.unit})` : `(${def.unit}, ref: ${ref})`
+  return ref === '—' ? t('rangeHintUnitOnly', { unit: def.unit }) : t('rangeHintWithRef', { unit: def.unit, ref })
 }
 
 export function BiomarkerCombobox({
@@ -50,6 +53,7 @@ export function BiomarkerCombobox({
   onDefinitionIdChange,
   onScopeChange,
 }: Props) {
+  const t = useTranslations('biomarkerCombobox')
   const { definitions, loading, error } = useBiomarkerDefinitions()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState(value)
@@ -117,7 +121,7 @@ export function BiomarkerCombobox({
         <Input
           ref={inputRef}
           value={value}
-          placeholder="Name"
+          placeholder={t('namePlaceholder')}
           onChange={(e) => onNameChange(e.target.value)}
         />
         {originalName && (
@@ -149,7 +153,7 @@ export function BiomarkerCombobox({
               {scope === 'local' && (
                 <AlertTriangle className="size-3 shrink-0 text-amber-500" />
               )}
-              {selected ? selected.names.en : value || 'Search biomarker…'}
+              {selected ? selected.names.en : value || t('searchPlaceholder')}
             </span>
             <ChevronsUpDown className="ml-2 size-3 shrink-0 opacity-50" />
           </Button>
@@ -157,26 +161,26 @@ export function BiomarkerCombobox({
         <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
           <Command shouldFilter={false}>
             <CommandInput
-              placeholder="Search biomarker…"
+              placeholder={t('searchPlaceholder')}
               value={search}
               onValueChange={setSearch}
             />
             <CommandList>
               {loading && (
                 <div className="py-6 text-center text-sm text-muted-foreground">
-                  Loading definitions…
+                  {t('loading')}
                 </div>
               )}
               {!loading && debounced.trim().length === 0 && (
                 <div className="py-6 text-center text-sm text-muted-foreground">
-                  Type to search biomarkers…
+                  {t('typeToSearch')}
                 </div>
               )}
               {!loading && debounced.trim().length > 0 && filtered.length === 0 && !showAddNew && (
-                <CommandEmpty>No biomarker found.</CommandEmpty>
+                <CommandEmpty>{t('notFound')}</CommandEmpty>
               )}
               {filtered.length > 0 && (
-                <CommandGroup heading="Existing biomarkers">
+                <CommandGroup heading={t('existingGroup')}>
                   {filtered.map((def) => (
                     <CommandItem
                       key={def.id}
@@ -191,13 +195,13 @@ export function BiomarkerCombobox({
                       />
                       <span className="flex-1 truncate">{def.names.en}</span>
                       <span className="ml-2 truncate text-[11px] text-muted-foreground">
-                        {formatRangeHint(def)}
+                        {formatRangeHint(t, def)}
                       </span>
                     </CommandItem>
                   ))}
                   {totalMatches > filtered.length && (
                     <div className="px-2 py-1.5 text-center text-[11px] text-muted-foreground">
-                      Showing {filtered.length} of {totalMatches} — keep typing to narrow
+                      {t('showingRange', { shown: filtered.length, total: totalMatches })}
                     </div>
                   )}
                 </CommandGroup>
@@ -209,7 +213,7 @@ export function BiomarkerCombobox({
                   className="text-primary"
                 >
                   <Plus className="mr-2 size-3" />
-                  Add &lsquo;{search.trim()}&rsquo; as new
+                  {t('addNew', { name: search.trim() })}
                 </CommandItem>
               )}
             </CommandList>
@@ -219,7 +223,7 @@ export function BiomarkerCombobox({
       {scope === 'local' && (
         <span className="mt-0.5 flex items-center gap-1 text-[11px] text-amber-600">
           <AlertTriangle className="size-3" />
-          Unrecognized — not in global dictionary
+          {t('unrecognized')}
         </span>
       )}
       {originalName && (

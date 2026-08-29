@@ -1,7 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { BloodTestDetails } from '../health-passport/blood-test-details'
+import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type { MedicalEvent, BiomarkerResult } from '@/lib/types'
+
+// Wrap renders with the i18n context (English) — StatusBadge uses useTranslations.
+const renderI18n = ((ui: React.ReactElement, options?: Parameters<typeof render>[1]) =>
+  render(<TestI18nProvider>{ui}</TestI18nProvider>, options)) as typeof render
 
 vi.mock('next/dynamic', () => ({
   default: () => {
@@ -46,7 +51,7 @@ const eventWithLongLabName: MedicalEvent = {
 
 describe('BloodTestDetails', () => {
   it('renders DocumentViewer with the active attachment url', () => {
-    render(<BloodTestDetails event={baseEvent} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} />)
+    renderI18n(<BloodTestDetails event={baseEvent} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} />)
 
     const documentsTab = screen.getByText('Documents (2)')
     fireEvent.click(documentsTab)
@@ -56,7 +61,7 @@ describe('BloodTestDetails', () => {
   })
 
   it('switches DocumentViewer url when clicking a different attachment', () => {
-    render(<BloodTestDetails event={baseEvent} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} />)
+    renderI18n(<BloodTestDetails event={baseEvent} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} />)
 
     const documentsTab = screen.getByText('Documents (2)')
     fireEvent.click(documentsTab)
@@ -68,7 +73,7 @@ describe('BloodTestDetails', () => {
   })
 
   it('shows empty state when no attachments', () => {
-    render(<BloodTestDetails event={eventNoAttachments} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} />)
+    renderI18n(<BloodTestDetails event={eventNoAttachments} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} />)
 
     const documentsTab = screen.getByText('Documents (0)')
     fireEvent.click(documentsTab)
@@ -77,7 +82,7 @@ describe('BloodTestDetails', () => {
   })
 
   it('keeps search input on same row and shows full lab name on hover when lab name is long', () => {
-    render(<BloodTestDetails event={eventWithLongLabName} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} />)
+    renderI18n(<BloodTestDetails event={eventWithLongLabName} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} />)
 
     const searchInput = screen.getByPlaceholderText('Search biomarkers...')
 
@@ -93,7 +98,7 @@ describe('BloodTestDetails', () => {
   })
 
   it('renders a Settings tab and switches to it on click', () => {
-    render(<BloodTestDetails event={baseEvent} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} onDeleted={vi.fn()} />)
+    renderI18n(<BloodTestDetails event={baseEvent} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} onDeleted={vi.fn()} />)
 
     const settingsTab = screen.getByRole('button', { name: 'Settings' })
     expect(settingsTab).toBeDefined()
@@ -143,7 +148,7 @@ describe('BloodTestDetails', () => {
           },
         }),
       ]
-      render(<BloodTestDetails event={baseEvent} biomarkers={biomarkers} onViewDetails={vi.fn()} />)
+      renderI18n(<BloodTestDetails event={baseEvent} biomarkers={biomarkers} onViewDetails={vi.fn()} />)
 
       const header = screen.getByText('Evening Panel · 18:30')
       expect(header).toBeInTheDocument()
@@ -156,7 +161,7 @@ describe('BloodTestDetails', () => {
         makeBiomarker('hb', 'Hemoglobin'),
         makeBiomarker('glu', 'Glucose'),
       ]
-      render(<BloodTestDetails event={baseEvent} biomarkers={biomarkers} onViewDetails={vi.fn()} />)
+      renderI18n(<BloodTestDetails event={baseEvent} biomarkers={biomarkers} onViewDetails={vi.fn()} />)
 
       expect(screen.queryByText('Added from a later upload on the same date')).not.toBeInTheDocument()
       expect(screen.getAllByText('Hemoglobin').length).toBeGreaterThan(0)
@@ -175,7 +180,7 @@ describe('BloodTestDetails', () => {
           merged_source: { title: 'Morning Follow-up', clinic: 'City Lab', provider: 'Dr. Day', time: '08:00' },
         }),
       ]
-      render(<BloodTestDetails event={baseEvent} biomarkers={biomarkers} onViewDetails={vi.fn()} />)
+      renderI18n(<BloodTestDetails event={baseEvent} biomarkers={biomarkers} onViewDetails={vi.fn()} />)
 
       expect(screen.getByText('Evening Panel · 18:30')).toBeInTheDocument()
       expect(screen.getByText('Morning Follow-up · 08:00')).toBeInTheDocument()
@@ -191,7 +196,7 @@ describe('BloodTestDetails', () => {
           merged_source: { time: '10:15' },
         }),
       ]
-      render(<BloodTestDetails event={baseEvent} biomarkers={biomarkers} onViewDetails={vi.fn()} />)
+      renderI18n(<BloodTestDetails event={baseEvent} biomarkers={biomarkers} onViewDetails={vi.fn()} />)
 
       expect(screen.getByText('Merged readings · 10:15')).toBeInTheDocument()
     })
@@ -203,7 +208,7 @@ describe('BloodTestDetails', () => {
           merged_source: { title: 'Evening Panel' },
         }),
       ]
-      render(<BloodTestDetails event={baseEvent} biomarkers={biomarkers} onViewDetails={vi.fn()} />)
+      renderI18n(<BloodTestDetails event={baseEvent} biomarkers={biomarkers} onViewDetails={vi.fn()} />)
 
       expect(screen.getByText('Evening Panel')).toBeInTheDocument()
       expect(screen.getByText('Added from a later upload on the same date')).toBeInTheDocument()

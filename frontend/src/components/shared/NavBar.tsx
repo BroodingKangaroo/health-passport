@@ -1,19 +1,21 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import { useLeaveGuard } from '@/providers/leave-guard-provider'
 
 type NavTab = 'timeline' | 'flowsheet' | 'correlation'
 
-const TABS: { id: NavTab; label: string; path: string }[] = [
-  { id: 'timeline', label: 'Timeline & Vitals', path: '/' },
-  { id: 'flowsheet', label: 'Lab Flowsheet (Matrix)', path: '/flowsheet' },
-  { id: 'correlation', label: 'Insights & Correlation', path: '/correlation' },
+const TABS: { id: NavTab; path: string }[] = [
+  { id: 'timeline', path: '/' },
+  { id: 'flowsheet', path: '/flowsheet' },
+  { id: 'correlation', path: '/correlation' },
 ]
 
 export function NavBar({ activeTab }: { activeTab: NavTab }) {
   const router = useRouter()
+  const t = useTranslations('misc.nav')
   const { confirmLeave } = useLeaveGuard()
 
   // Navigating away mid-process (AI extraction / translation) cancels it.
@@ -39,7 +41,7 @@ export function NavBar({ activeTab }: { activeTab: NavTab }) {
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              {tab.label}
+              {t(tab.id)}
               {isActive && (
                 <span className="absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-primary" />
               )}

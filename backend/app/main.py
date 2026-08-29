@@ -17,6 +17,7 @@ log_file.setLevel(logging.INFO)
 logging.getLogger().setLevel(logging.INFO)
 logging.getLogger().addHandler(log_file)
 
+from app import i18n
 from app.api.ai import router as ai_router
 from app.api.auth import get_current_user_or_anon
 from app.api.auth import router as auth_router
@@ -29,6 +30,7 @@ from app.db.models import Attachment as AttachmentModel
 from app.db.models import MedicalEntry as MedicalEntryModel
 from app.db.models import Patient
 from app.db.session import get_db, init_db
+from app.i18n import LocaleMiddleware
 
 
 @asynccontextmanager
@@ -38,6 +40,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="HealthPassport API", version="1.0.0", lifespan=lifespan)
+
+# Resolve the request locale (Accept-Language) before anything user-facing is
+# built. Pure-ASGI — SSE streaming is untouched.
+app.add_middleware(LocaleMiddleware)
 
 cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
@@ -69,13 +75,13 @@ async def serve_upload(
     _user, user_id, _is_anonymous = user_data
     # Validate file_path to prevent path traversal
     if not file_path or '..' in file_path or file_path.startswith('/'):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise HTTPException(status_code=403, detail=i18n.tr("main.forbidden"))
     # Normalize and validate the path stays within uploads directory
     upload_dir = os.path.abspath("static/uploads")
     requested_path = os.path.abspath(os.path.join("static/uploads", file_path))
     # Ensure the requested path is within upload_dir
     if not requested_path.startswith(upload_dir + os.sep) and requested_path != upload_dir:
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise HTTPException(status_code=403, detail=i18n.tr("main.forbidden"))
 
     # Per-user authorization: confirm the file belongs to the current user (anon or registered).
     # Attachment.file_path is stored as "/static/uploads/{saved_name}" (see entries.py).
@@ -89,17 +95,17 @@ async def serve_upload(
     ).all()
     if not attachments:
         # No attachment row tracking this file — refuse to serve.
-        raise HTTPException(status_code=404, detail="File not found")
+        raise HTTPException(status_code=404, detail=i18n.tr("main.file_not_found"))
     entry_ids = {a.entry_id for a in attachments}
     owned = db.query(MedicalEntryModel).filter(
         MedicalEntryModel.id.in_(entry_ids),
         MedicalEntryModel.patient_id == user_id,
     ).first()
     if owned is None:
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise HTTPException(status_code=403, detail=i18n.tr("main.forbidden"))
 
     if not os.path.isfile(requested_path):
-        raise HTTPException(status_code=404, detail="File not found")
+        raise HTTPException(status_code=404, detail=i18n.tr("main.file_not_found"))
     return FileResponse(requested_path)
 
 

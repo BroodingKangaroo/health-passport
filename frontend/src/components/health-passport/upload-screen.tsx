@@ -2,16 +2,17 @@
 
 import { useState, useRef } from 'react'
 import { UploadCloud, Loader2, Pencil, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import type { UploadState, ProgressStage } from '@/lib/types'
 
 const docPills = [
-  { emoji: '📄', label: 'Lab Results' },
-  { emoji: '📝', label: 'Doctor Notes' },
-  { emoji: '🩻', label: 'Instrumental Tests' },
-]
+  { emoji: '📄', labelKey: 'pillLab' },
+  { emoji: '📝', labelKey: 'pillDoctor' },
+  { emoji: '🩻', labelKey: 'pillInstrumental' },
+] as const
 
 const stageStep: Record<ProgressStage, number> = {
   ocr_scanning: 1,
@@ -20,28 +21,6 @@ const stageStep: Record<ProgressStage, number> = {
   completed: 4,
 }
 const totalSteps = 3
-
-const stageInfo: Record<ProgressStage, { label: string; detail: string }> = {
-  ocr_scanning: {
-    label: 'Scanning document pages...',
-    detail:
-      'Running optical character recognition to extract text from each page of your document.',
-  },
-  extracting: {
-    label: 'Identifying medical data...',
-    detail:
-      'Extracting test names, values, units, reference ranges, and clinical findings from the text.',
-  },
-  matching: {
-    label: 'Standardizing results...',
-    detail:
-      'Matching biomarkers against known definitions, normalizing units, and computing reference statuses.',
-  },
-  completed: {
-    label: 'Done! Reviewing results...',
-    detail: 'AI extraction complete. Opening the editor for your review.',
-  },
-}
 
 interface UploadScreenProps {
   uploadState: UploadState
@@ -70,6 +49,14 @@ export function UploadScreen({
 }: UploadScreenProps) {
   const [dragActive, setDragActive] = useState(false)
   const uploadFileRef = useRef<HTMLInputElement>(null)
+  const t = useTranslations('upload')
+
+  const stageInfo: Record<ProgressStage, { label: string; detail: string }> = {
+    ocr_scanning: { label: t('stageOcrLabel'), detail: t('stageOcrDetail') },
+    extracting: { label: t('stageExtractLabel'), detail: t('stageExtractDetail') },
+    matching: { label: t('stageMatchLabel'), detail: t('stageMatchDetail') },
+    completed: { label: t('stageDoneLabel'), detail: t('stageDoneDetail') },
+  }
 
   function handleFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
     onFiles(e.target.files)
@@ -120,11 +107,10 @@ export function UploadScreen({
     <div className="mx-auto max-w-3xl py-4">
       <div className="mb-6 text-center">
         <h1 className="text-balance text-2xl font-bold text-foreground">
-          Add New Medical Record
+          {t('title')}
         </h1>
         <p className="mx-auto mt-2 max-w-xl text-pretty text-sm text-muted-foreground">
-          Upload lab results, doctor notes, or instrumental test reports. Our AI will
-          automatically extract and categorize the data.
+          {t('subtitle')}
         </p>
       </div>
 
@@ -157,18 +143,18 @@ export function UploadScreen({
             </div>
             <div>
               <p className="text-sm font-semibold text-foreground">
-                Drag &amp; drop a document here, or click to browse.
+                {t('dropzone')}
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">Supports PDF, JPG, PNG</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t('formats')}</p>
             </div>
             <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
               {docPills.map((p) => (
                 <span
-                  key={p.label}
+                  key={p.labelKey}
                   className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground"
                 >
                   <span aria-hidden>{p.emoji}</span>
-                  {p.label}
+                  {t(p.labelKey)}
                 </span>
               ))}
             </div>
@@ -206,14 +192,14 @@ export function UploadScreen({
               </div>
               <p className="text-xs text-muted-foreground">
                 {progressStage === 'completed' ? (
-                  'Complete!'
+                  t('complete')
                 ) : (
                   <>
-                    Step {stageStep[progressStage]} of {totalSteps}
+                    {t('stepOf', { step: stageStep[progressStage], total: totalSteps })}
                     {remainingSeconds !== null ? (
-                      <> · ~{remainingSeconds}s remaining</>
+                      <> {t('secondsRemaining', { seconds: remainingSeconds })}</>
                     ) : (
-                      <> · estimating...</>
+                      <> {t('estimating')}</>
                     )}
                   </>
                 )}
@@ -235,13 +221,13 @@ export function UploadScreen({
           <div className="relative my-6">
             <div className="border-t border-border" />
             <span className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 bg-background px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              OR
+              {t('or')}
             </span>
           </div>
 
           <Button variant="outline" size="lg" onClick={onStartManual} className="w-full gap-2">
             <Pencil className="size-4" />
-            Skip Upload &amp; Enter Manually
+            {t('skipManual')}
           </Button>
         </>
       )}

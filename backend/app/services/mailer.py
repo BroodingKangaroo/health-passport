@@ -34,14 +34,24 @@ def send_reset_email(email: str, reset_url: str) -> None:
         return
 
     msg = EmailMessage()
-    msg["Subject"] = "Reset your HealthPassport password"
+    msg["Subject"] = "Reset your HealthPassport password / Сброс пароля HealthPassport"
     msg["From"] = SMTP_FROM
     msg["To"] = email
+    # Bilingual (English + Russian) body: there is no per-user language
+    # preference in the data model, so both languages travel in one email and
+    # the recipient reads whichever block they need.
     msg.set_content(
         "You requested a password reset for your HealthPassport account.\n\n"
         "Open the link below to choose a new password (valid for 30 minutes):\n\n"
         f"{reset_url}\n\n"
         "If you didn't request this, you can safely ignore this email.\n"
+        "\n"
+        "———————————————————————————————\n"
+        "\n"
+        "Вы запросили сброс пароля для вашего аккаунта HealthPassport.\n\n"
+        "Откройте ссылку ниже, чтобы задать новый пароль (действительна 30 минут):\n\n"
+        f"{reset_url}\n\n"
+        "Если вы не запрашивали сброс пароля, просто проигнорируйте это письмо.\n"
     )
 
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:

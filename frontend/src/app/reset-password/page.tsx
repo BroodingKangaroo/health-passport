@@ -3,15 +3,18 @@
 import { Suspense, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import { Loader2, Lock, ArrowLeft } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { LanguageSwitch } from "@/components/shared/language-switch"
 
 function ResetPasswordForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const t = useTranslations("resetPassword")
   const token = searchParams.get("token") ?? ""
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -24,12 +27,12 @@ function ResetPasswordForm() {
     setError("")
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match")
+      setError(t("passwordMismatch"))
       return
     }
 
     if (password.length < 8) {
-      setError("Password must be at least 8 characters")
+      setError(t("passwordTooShort"))
       return
     }
 
@@ -46,13 +49,13 @@ function ResetPasswordForm() {
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.detail || "Something went wrong. Please try again.")
+        setError(data.detail || t("unexpectedError"))
         return
       }
 
       setDone(true)
     } catch {
-      setError("Something went wrong. Please try again.")
+      setError(t("unexpectedError"))
     } finally {
       setIsLoading(false)
     }
@@ -66,14 +69,14 @@ function ResetPasswordForm() {
             className="flex items-center gap-2 rounded-lg border border-status-high/20 bg-status-high/5 p-3 text-sm text-status-high"
             role="alert"
           >
-            This password reset link is invalid or incomplete. Please request a new one.
+            {t("invalidLink")}
           </div>
           <Link
             href="/forgot-password"
             className="flex items-center justify-center gap-2 text-sm text-primary hover:underline font-medium"
           >
             <ArrowLeft className="size-4" />
-            Request a new link
+            {t("requestNewLink")}
           </Link>
         </div>
       </CardContent>
@@ -85,10 +88,10 @@ function ResetPasswordForm() {
       {done ? (
         <div className="space-y-4">
           <div className="rounded-lg border border-status-normal/20 bg-status-normal/5 p-3 text-sm text-status-normal">
-            Your password has been updated. You can now sign in with your new password.
+            {t("done")}
           </div>
           <Button onClick={() => router.push("/login")} className="w-full">
-            Go to sign in
+            {t("goToSignIn")}
           </Button>
         </div>
       ) : (
@@ -104,14 +107,14 @@ function ResetPasswordForm() {
 
           <div className="space-y-2">
             <label htmlFor="password" className="block text-sm font-medium mb-1">
-              New Password
+              {t("newPassword")}
             </label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 id="password"
                 type="password"
-                placeholder="At least 8 characters"
+                placeholder={t("newPasswordPlaceholder")}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="pl-10"
@@ -124,12 +127,12 @@ function ResetPasswordForm() {
 
           <div className="space-y-2">
             <label htmlFor="confirmPassword" className="block text-sm font-medium mb-1">
-              Confirm New Password
+              {t("confirmNewPassword")}
             </label>
             <Input
               id="confirmPassword"
               type="password"
-              placeholder="Confirm your new password"
+              placeholder={t("confirmNewPasswordPlaceholder")}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
@@ -141,10 +144,10 @@ function ResetPasswordForm() {
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 size-4 animate-spin" />
-                Updating...
+                {t("updating")}
               </>
             ) : (
-              "Update password"
+              t("submit")
             )}
           </Button>
         </form>
@@ -154,14 +157,18 @@ function ResetPasswordForm() {
 }
 
 export default function ResetPasswordPage() {
+  const t = useTranslations()
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+    <div className="relative min-h-screen flex items-center justify-center bg-background px-4">
+      <div className="absolute right-4 top-4 z-10">
+        <LanguageSwitch />
+      </div>
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">Set a new password</CardTitle>
-          <CardDescription>Choose a new password for your account</CardDescription>
+          <CardTitle className="text-2xl font-bold">{t("resetPassword.title")}</CardTitle>
+          <CardDescription>{t("resetPassword.subtitle")}</CardDescription>
         </CardHeader>
-        <Suspense fallback={<div className="min-h-24 flex items-center justify-center">Loading...</div>}>
+        <Suspense fallback={<div className="min-h-24 flex items-center justify-center">{t("common.loading")}</div>}>
           <ResetPasswordForm />
         </Suspense>
       </Card>

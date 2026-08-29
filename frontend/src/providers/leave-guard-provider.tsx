@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react'
 import { AlertTriangle } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
 
@@ -54,6 +55,7 @@ interface ConfirmState {
 }
 
 export function LeaveGuardProvider({ children }: { children: ReactNode }) {
+  const t = useTranslations('misc.leaveGuard')
   const [busy, setBusy] = useState(false)
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
 
@@ -207,17 +209,17 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
               <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-500" />
               <div>
                 <h2 className="text-lg font-semibold text-foreground">
-                  Leave while AI is working?
+                  {t('title')}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">{confirm.message}</p>
               </div>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => resolveConfirm(false)}>
-                Stay
+                {t('stay')}
               </Button>
               <Button variant="destructive" onClick={() => resolveConfirm(true)}>
-                Leave anyway
+                {t('leave')}
               </Button>
             </div>
           </div>

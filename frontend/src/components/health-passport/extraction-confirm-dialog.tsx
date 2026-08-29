@@ -1,6 +1,7 @@
 'use client'
 
 import { AlertTriangle } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
 
@@ -16,6 +17,7 @@ export function ExtractionConfirmDialog({
   onConfirm: () => void
   onCancel: () => void
 }) {
+  const t = useTranslations('extractionConfirm')
   if (fileName === null) return null
 
   return (
@@ -24,19 +26,22 @@ export function ExtractionConfirmDialog({
         <div className="mb-4 flex items-start gap-3">
           <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-500" />
           <div>
-            <h2 className="text-lg font-semibold text-foreground">Re-run AI extraction?</h2>
+            <h2 className="text-lg font-semibold text-foreground">{t('title')}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              A fresh extraction of{' '}
-              <span className="font-medium text-foreground">{fileName}</span> will replace the
-              data currently in the form, which came from the previous document.
+              {t.rich('description', {
+                fileName,
+                file: (chunks) => (
+                  <span className="font-medium text-foreground">{chunks}</span>
+                ),
+              })}
             </p>
           </div>
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onCancel}>
-            Keep current data
+            {t('keepCurrent')}
           </Button>
-          <Button onClick={onConfirm}>Extract new document</Button>
+          <Button onClick={onConfirm}>{t('extractNew')}</Button>
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SessionProvider } from 'next-auth/react'
 import { AddEntry } from '../health-passport/add-entry'
 import { LeaveGuardProvider } from '@/providers/leave-guard-provider'
+import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type { StandardizedMedicalRecord, EntriesByDateResponse } from '@/lib/types'
 
 const mockExtract = vi.fn()
@@ -50,11 +51,13 @@ function renderWithProviders(ui: React.ReactElement) {
     defaultOptions: { queries: { retry: false } },
   })
   return render(
-    <SessionProvider session={null}>
-      <QueryClientProvider client={queryClient}>
-        <LeaveGuardProvider>{ui}</LeaveGuardProvider>
-      </QueryClientProvider>
-    </SessionProvider>,
+    <TestI18nProvider>
+      <SessionProvider session={null}>
+        <QueryClientProvider client={queryClient}>
+          <LeaveGuardProvider>{ui}</LeaveGuardProvider>
+        </QueryClientProvider>
+      </SessionProvider>
+    </TestI18nProvider>,
   )
 }
 

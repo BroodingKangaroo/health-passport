@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 
 import { HeaderBar } from '@/components/health-passport/header-bar'
 import { NavBar } from '@/components/shared/NavBar'
@@ -14,6 +15,8 @@ import type { MedicalEvent, BiomarkerResult, Reading } from '@/lib/types'
 
 export function TimelineView() {
   const router = useRouter()
+  const t = useTranslations('timeline.views.timeline')
+  const tc = useTranslations('common')
   const { data, isLoading, error, refetch } = useTimelineData()
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
 
@@ -38,7 +41,7 @@ export function TimelineView() {
         <HeaderBar />
         <NavBar activeTab="timeline" />
         <main className="mx-auto max-w-[1400px] p-5 text-center text-sm text-muted-foreground">
-          Loading...
+          {tc('loading')}
         </main>
       </div>
     )
@@ -50,7 +53,7 @@ export function TimelineView() {
         <HeaderBar />
         <NavBar activeTab="timeline" />
         <main className="mx-auto max-w-[1400px] p-5 text-center text-sm text-status-high">
-          Failed to load data. Is the backend running?
+          {t('loadError')}
         </main>
       </div>
     )
@@ -82,7 +85,7 @@ export function TimelineView() {
             />
           ) : selectedEventData?.type === 'doctor_visit' ? (
             <div className="flex h-full min-h-[300px] items-center justify-center text-sm text-muted-foreground">
-              <p>Visit details not yet available.</p>
+              <p>{t('visitDetailsUnavailable')}</p>
             </div>
           ) : selectedEventData?.type === 'blood_test' ? (
             <BloodTestDetails
@@ -105,11 +108,11 @@ export function TimelineView() {
             />
           ) : selectedEventData?.type === 'instrumental_test' ? (
             <div className="flex h-full min-h-[300px] items-center justify-center text-sm text-muted-foreground">
-              <p>Instrumental test details not yet available.</p>
+              <p>{t('instrumentalDetailsUnavailable')}</p>
             </div>
           ) : selectedEventData ? (
             <div className="flex h-full min-h-[300px] items-center justify-center text-sm text-muted-foreground">
-              <p>No detailed view available for this event type.</p>
+              <p>{t('noDetailView')}</p>
             </div>
           ) : null}
         </section>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { fetchFlowsheetData } from '@/services/api'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
 import { useAuthStatus } from '@/components/providers/AuthStatusProvider'
@@ -10,6 +11,7 @@ import type { FlowsheetResponse, PrintLang } from '@/lib/types'
 
 export function PrintEditorView() {
   const router = useRouter()
+  const t = useTranslations('print.editorView')
   const { mode, targetLanguage, initFilters } = usePrintConfig()
   const { user } = useAuthStatus()
   const [data, setData] = useState<FlowsheetResponse | null>(null)
@@ -25,10 +27,10 @@ export function PrintEditorView() {
         initFilters(allDateLabels, allRowIds)
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : 'Failed to load flowsheet data')
+        setError(err instanceof Error ? err.message : t('failedToLoad'))
       })
       .finally(() => setLoading(false))
-  }, [initFilters])
+  }, [initFilters, t])
 
   let lang: PrintLang = targetLanguage
   let bilingual = false
@@ -39,13 +41,13 @@ export function PrintEditorView() {
   }
 
   if (loading) {
-    return <div className="p-5 text-sm text-muted-foreground">Loading flowsheet data\u2026</div>
+    return <div className="p-5 text-sm text-muted-foreground">{t('loading')}</div>
   }
 
   if (error || !data) {
     return (
       <div className="p-5 text-sm text-red-500">
-        {error || 'Failed to load data.'}
+        {error || t('failedToLoad')}
       </div>
     )
   }

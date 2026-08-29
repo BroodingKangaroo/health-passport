@@ -2,6 +2,7 @@
 
 import { useRef, useLayoutEffect, useEffect, useState, useCallback } from 'react'
 import * as pdfjs from 'pdfjs-dist'
+import { useTranslations } from 'next-intl'
 import { getAccessToken } from '@/lib/auth-token'
 
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
@@ -11,6 +12,7 @@ interface DocumentViewerProps {
 }
 
 export function DocumentViewer({ url }: DocumentViewerProps) {
+  const t = useTranslations('misc.documentViewer')
   const isImage =
     typeof url === 'string' &&
     /\.(jpg|jpeg|png|gif|webp|tiff|tif|bmp)$/i.test(url)
@@ -237,7 +239,7 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
   if (!url) {
     return (
       <div className="flex min-h-[300px] items-center justify-center text-sm text-muted-foreground">
-        No document URL provided
+        {t('noUrl')}
       </div>
     )
   }
@@ -247,7 +249,7 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
       <div className="flex min-h-[300px] h-[80vh] min-w-0 flex-col bg-muted/20">
         <div className="flex items-center justify-between border-b border-border bg-card px-3 py-2">
           <span className="text-xs font-medium text-muted-foreground">
-            Image preview
+            {t('imagePreview')}
           </span>
         </div>
         <div className="flex-1 flex items-center justify-center overflow-auto bg-muted/20 p-4">
@@ -255,12 +257,12 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={imgSrc}
-              alt="Document preview"
+              alt={t('documentPreview')}
               className="h-full w-full object-contain"
             />
           ) : (
             <div className="text-sm text-muted-foreground">
-              {loading ? 'Loading…' : 'Preview unavailable'}
+              {loading ? t('loading') : t('previewUnavailable')}
             </div>
           )}
         </div>
@@ -278,7 +280,7 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
             disabled={pageNum <= 1}
             className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-30"
           >
-            Prev
+            {t('prev')}
           </button>
           <span className="min-w-[70px] text-center text-xs tabular-nums text-muted-foreground">
             {pageNum} / {numPages}
@@ -288,7 +290,7 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
             disabled={pageNum >= numPages}
             className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-30"
           >
-            Next
+            {t('next')}
           </button>
         </div>
 
@@ -296,7 +298,7 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
           <button
             onClick={() => zoomAtCenter(-1)}
             className="flex size-6 items-center justify-center rounded text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            title="Zoom out"
+            title={t('zoomOut')}
           >
             -
           </button>
@@ -306,16 +308,16 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
           <button
             onClick={() => zoomAtCenter(1)}
             className="flex size-6 items-center justify-center rounded text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            title="Zoom in"
+            title={t('zoomIn')}
           >
             +
           </button>
           <button
             onClick={() => setScale(fitScaleRef.current)}
             className="ml-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            title="Reset to fit width"
+            title={t('resetToWidth')}
           >
-            Reset
+            {t('reset')}
           </button>
         </div>
       </div>
@@ -331,7 +333,7 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
       >
         {loading ? (
           <div className="m-auto flex items-center justify-center text-sm text-muted-foreground">
-            Loading...
+            {t('loadingPdf')}
           </div>
         ) : (
           <div className="m-auto w-max h-max">

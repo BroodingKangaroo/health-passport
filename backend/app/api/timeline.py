@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
+from app import i18n
 from app.api._serializers import (
     is_loinc,
     lookup_definition,
@@ -302,11 +303,11 @@ async def get_biomarker_detail(
     # definition id so flowsheet and timeline callers resolve to the same analyte.
     base_id, defn = _resolve_biomarker_base_id(db, biomarker_id)
     if defn is None:
-        raise HTTPException(status_code=404, detail=f"Biomarker '{biomarker_id}' not found")
+        raise HTTPException(status_code=404, detail=i18n.tr("timeline.biomarker_not_found", id=biomarker_id))
 
     readings_query = _readings_query(db, user_id, base_id)
     if not readings_query:
-        raise HTTPException(status_code=404, detail=f"Biomarker '{biomarker_id}' not found")
+        raise HTTPException(status_code=404, detail=i18n.tr("timeline.biomarker_not_found", id=biomarker_id))
 
     return _result_from_query(base_id, defn, readings_query)
 
@@ -362,14 +363,14 @@ async def get_visit_data(
         .first()
     )
     if not entry:
-        raise HTTPException(status_code=404, detail=f"Visit '{event_id}' not found")
+        raise HTTPException(status_code=404, detail=i18n.tr("timeline.visit_not_found", id=event_id))
     vd = (
         db.query(VisitDataModel)
         .filter(VisitDataModel.entry_id == event_id)
         .first()
     )
     if not vd:
-        raise HTTPException(status_code=404, detail=f"Visit '{event_id}' not found")
+        raise HTTPException(status_code=404, detail=i18n.tr("timeline.visit_not_found", id=event_id))
     entry_attachments = [
         AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size, url=a.file_path)
         for a in entry.attachments

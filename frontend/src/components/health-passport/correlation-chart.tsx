@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { useTranslations, useLocale } from 'next-intl'
 import { Search } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -33,6 +34,8 @@ const CLINICAL_PALETTE = [
   '#f97316',
   '#6366f1',
 ]
+
+type TFunction = ReturnType<typeof useTranslations>
 
 /** A biomarker is chartable when it has at least one reading (history or current). */
 export function hasReadings(b: BiomarkerResult): boolean {
@@ -105,9 +108,10 @@ function CustomTooltip({
   label,
   biomarkers,
 }: Partial<TooltipContentProps> & { biomarkers: BiomarkerResult[] }) {
+  const locale = useLocale()
   if (active && payload && payload.length) {
     const labelText = typeof label === 'string' ? label : String(label ?? '')
-    const { label: mainLabel, sub } = splitDateLabel(labelText)
+    const { label: mainLabel, sub } = splitDateLabel(labelText, locale)
     const visible = payload.filter((entry) => {
       if (typeof entry.dataKey !== 'string') return false
       if (entry.dataKey.startsWith('dash_')) return false
@@ -146,19 +150,34 @@ function CustomTooltip({
 }
 
 /** Plain-language strength of a correlation coefficient (r in [-1, 1]). */
-function strengthLabel(r: number): string {
+function strengthLabel(r: number, t: TFunction): string {
   const a = Math.abs(r)
-  const direction = r >= 0 ? 'positive' : 'negative'
-  if (a >= 0.7) return `Strong ${direction}`
-  if (a >= 0.4) return `Moderate ${direction}`
-  if (a >= 0.2) return `Weak ${direction}`
-  return 'Negligible'
+  const direction = r >= 0 ? t('strength.positive') : t('strength.negative')
+  if (a >= 0.7) {
+    return t('strength.composed', {
+      strength: t('strength.strong'),
+      direction,
+    })
+  }
+  if (a >= 0.4) {
+    return t('strength.composed', {
+      strength: t('strength.moderate'),
+      direction,
+    })
+  }
+  if (a >= 0.2) {
+    return t('strength.composed', {
+      strength: t('strength.weak'),
+      direction,
+    })
+  }
+  return t('strength.negligible')
 }
 
 /** Plain-language confidence, replacing raw p-value jargon. */
-function confidenceLabel(n: number, p: number): string {
-  if (n < 3 || !Number.isFinite(p)) return 'too few readings to tell'
-  return p < 0.05 ? 'likely a real relationship' : 'could still be chance'
+function confidenceLabel(n: number, p: number, t: TFunction): string {
+  if (n < 3 || !Number.isFinite(p)) return t('confidence.tooFew')
+  return p < 0.05 ? t('confidence.real') : t('confidence.chance')
 }
 
 function rColor(r: number): string {
@@ -177,6 +196,7 @@ function CorrelationStats({
   selectedIds: string[]
   biomarkers: BiomarkerResult[]
 }) {
+  const t = useTranslations('correlation')
   const nameOf = (id: string) =>
     biomarkers.find((b) => b.id === id)?.definition.names.en ?? id
   const entries = Object.entries(pairStats)
@@ -188,7 +208,7 @@ function CorrelationStats({
   return (
     <div className="border-b border-border px-4 py-3">
       <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Pairwise correlation
+        {t('stats.heading')}
       </p>
       {entries.length > 0 ? (
         <div className="grid max-h-[200px] gap-1.5 overflow-y-auto pr-1 md:grid-cols-2 [scrollbar-width:thin]">
@@ -215,9 +235,9 @@ function CorrelationStats({
                     className="font-medium"
                     style={{ color: rColor(s.r) }}
                   >
-                    {strengthLabel(s.r)}
+                    {strengthLabel(s.r, t)}
                   </span>
-                  {' · '}{s.n} readings · {confidenceLabel(s.n, s.p)}
+                  {' · '}{t('readingsCount', { count: s.n })} · {confidenceLabel(s.n, s.p, t)}
                 </p>
               </div>
             )
@@ -225,7 +245,7 @@ function CorrelationStats({
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Need at least 2 paired readings on shared dates to compute correlation.
+          {t('stats.needPaired')}
         </p>
       )}
     </div>
@@ -243,6 +263,7 @@ function TopCorrelatedPairs({
   selectedIds: string[]
   onApply: (pairKey: string) => void
 }) {
+  const t = useTranslations('correlation')
   if (pairs.length === 0) return null
   const nameOf = (id: string) =>
     biomarkers.find((b) => b.id === id)?.definition.names.en ?? id
@@ -252,7 +273,7 @@ function TopCorrelatedPairs({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex justify-end px-4 pt-2.5">
         <span className="text-[10px] text-muted-foreground/70">
-          by |r| · strongest first
+          {t('topPairs.hint')}
         </span>
       </div>
       <ul className="min-h-0 flex-1 overflow-y-auto py-1.5 [scrollbar-width:thin]">
@@ -265,7 +286,13 @@ function TopCorrelatedPairs({
               <button
                 type="button"
                 onClick={() => onApply(pairKey)}
-                title={`${nameOf(a)} × ${nameOf(b)} — ${strengthLabel(s.r)}, ${s.n} readings, ${confidenceLabel(s.n, s.p)}`}
+                title={t('topPairs.rowTitle', {
+                  a: nameOf(a),
+                  b: nameOf(b),
+                  strength: strengthLabel(s.r, t),
+                  readings: t('readingsCount', { count: s.n }),
+                  confidence: confidenceLabel(s.n, s.p, t),
+                })}
                 className={cn(
                   'flex w-full items-center gap-2 px-4 py-1.5 text-left transition-colors hover:bg-muted/30',
                   isSelected && 'bg-primary/10 hover:bg-primary/10',
@@ -307,21 +334,24 @@ function TopCorrelatedPairs({
 }
 
 function CorrelationLegend() {
+  const t = useTranslations('correlation')
   return (
     <div className="border-t border-border bg-muted/10 px-4 py-2">
       <p className="text-[10px] leading-relaxed text-muted-foreground">
-        r (correlation) runs from −1 to +1: how closely two biomarkers move
-        together. <span className="font-medium">r = 1</span>: perfectly in sync
-        — they rise and fall together. <span className="font-medium">r = −1</span>:
-        perfect mirror — one rises while the other falls. “Likely a real
-        relationship” means there is less than a 5% chance this link is
-        coincidence.
+        {t('legend.intro')}{' '}
+        <span className="font-medium">{t('legend.rPlusOne')}</span>
+        {t('legend.afterPlusOne')}{' '}
+        <span className="font-medium">{t('legend.rMinusOne')}</span>
+        {t('legend.afterMinusOne')}{' '}
+        {t('legend.confidence', { phrase: t('confidence.real') })}
       </p>
     </div>
   )
 }
 
 export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: BiomarkerResult[] }) {
+  const t = useTranslations('correlation')
+  const locale = useLocale()
   const [query, setQuery] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [leftTab, setLeftTab] = useState<'pairs' | 'select'>('pairs')
@@ -476,7 +506,7 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
                 : 'font-medium text-muted-foreground hover:text-foreground',
             )}
           >
-            Top correlated pairs
+            {t('tabs.topPairs')}
           </button>
           <span className="text-sm text-muted-foreground/20">|</span>
           <button
@@ -489,7 +519,7 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
                 : 'font-medium text-muted-foreground hover:text-foreground',
             )}
           >
-            Select biomarkers
+            {t('tabs.select')}
           </button>
         </div>
         {leftTab === 'pairs' ? (
@@ -504,8 +534,8 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
             <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6">
               <p className="text-center text-xs leading-relaxed text-muted-foreground">
                 {allBiomarkers.length === 0
-                  ? 'No biomarker data yet — add a blood test to get started.'
-                  : 'No pairs with 5+ shared readings yet — check the Select biomarkers tab.'}
+                  ? t('empty.noData')
+                  : t('empty.noPairs', { tab: t('tabs.select') })}
               </p>
             </div>
           )
@@ -517,7 +547,7 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
                 <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search..."
+                  placeholder={t('searchPlaceholder')}
                   className="pl-8"
                 />
               </div>
@@ -526,8 +556,8 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
               {filteredBiomarkers.length === 0 && (
                 <p className="px-2 py-4 text-center text-xs text-muted-foreground">
                   {allBiomarkers.length === 0
-                    ? 'No biomarker data yet — add a blood test to get started.'
-                    : 'No matching biomarkers.'}
+                    ? t('empty.noData')
+                    : t('empty.noMatching')}
                 </p>
               )}
               {filteredBiomarkers.map((b) => {
@@ -566,10 +596,10 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
       <Card className="flex h-full min-h-0 flex-col border-border">
         <div className="border-b border-border p-4">
           <h2 className="text-base font-semibold text-foreground">
-            Biomarker Correlation Dynamics
+            {t('heading')}
           </h2>
           <p className="text-xs text-muted-foreground">
-            Comparing normalized trends across selected biomarkers
+            {t('subtitle')}
           </p>
         </div>
         <CorrelationStats
@@ -580,11 +610,11 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
         <div className="min-h-0 flex-1 p-4">
           {selectedIds.length === 0 ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              Select at least one biomarker to display the correlation chart.
+              {t('empty.selectAtLeastOne')}
             </div>
           ) : chartData.length === 0 ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              No numeric readings to chart for the selected biomarkers.
+              {t('empty.noNumeric')}
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
@@ -598,7 +628,10 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
                   axisLine={{ stroke: '#d4d4d8' }}
                   padding={{ left: 20, right: 20 }}
                   tick={(tickProps: XAxisTickContentProps) => {
-                    const { label, sub } = splitDateLabel(String(tickProps.payload.value))
+                    const { label, sub } = splitDateLabel(
+                      String(tickProps.payload.value),
+                      locale,
+                    )
                     return (
                       <g transform={`translate(${tickProps.x},${tickProps.y})`}>
                         <text x={0} y={0} dy={12} textAnchor="middle" fill="#71717a" fontSize={11}>

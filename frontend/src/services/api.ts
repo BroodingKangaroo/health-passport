@@ -23,10 +23,23 @@ export type {
   CurrentUser,
 } from '@/lib/types'
 import { getAccessToken } from '@/lib/auth-token'
+import { apiFallback, getApiLocale } from '@/i18n/api-locale'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL
   ? `${process.env.NEXT_PUBLIC_API_URL}/api`
   : '/api'
+
+/**
+ * Headers sent with every API call. Besides the auth token, the chosen UI
+ * locale goes out as Accept-Language so the backend localizes its error
+ * `detail` strings (see backend/app/i18n.py).
+ */
+function baseHeaders(): Record<string, string> {
+  return {
+    'Accept-Language': getApiLocale(),
+    ...authHeaders(),
+  }
+}
 
 // SSE/streaming endpoints route through the same Next.js rewrite proxy as every
 // other API call (STATIC_PROXY_URL). The proxy streams SSE through unchanged —
@@ -88,7 +101,7 @@ function extractDetail(body: unknown, fallback: string): string {
 
 async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { ...authHeaders() },
+    headers: { ...baseHeaders() },
     credentials: 'include',
   })
   if (!res.ok) throw new ApiError(res.status, `GET ${path} failed: ${res.statusText}`)
@@ -106,7 +119,7 @@ export async function fetchFlowsheetData(
 ): Promise<FlowsheetResponse> {
   const res = await fetch(`${API_BASE}/flowsheet`, {
     cache: 'no-store',
-    headers: { ...authHeaders() },
+    headers: { ...baseHeaders() },
     credentials: 'include',
     signal: opts?.signal,
   })
@@ -182,7 +195,7 @@ export async function translateBiomarkerNames(
   try {
     const res = await fetch(`${API_BASE}/translate-biomarkers`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json', ...baseHeaders() },
       credentials: 'include',
       body: JSON.stringify({
         lang,
@@ -195,12 +208,12 @@ export async function translateBiomarkerNames(
     if (!res.ok) {
       if (res.status === 429) {
         const body = await res.json().catch(() => null)
-        throw new UsageLimitError(res.status, extractDetail(body, 'Usage limit reached'))
+        throw new UsageLimitError(res.status, extractDetail(body, apiFallback('usageLimitReached')))
       }
       const body = await res.json().catch(() => null)
       throw new ApiError(
         res.status,
-        extractDetail(body, 'POST /translate-biomarkers failed'),
+        extractDetail(body, apiFallback('postTranslateFailed')),
       )
     }
     const data = (await res.json()) as {
@@ -221,7 +234,7 @@ export async function translateBiomarkerNames(
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       throw new Error(
-        'Translation timed out — the AI service did not respond in time. Please try again.',
+        apiFallback('translationTimedOut'),
       )
     }
     throw err
@@ -243,13 +256,13 @@ export async function commitTranslatedNames(
 ): Promise<number> {
   const res = await fetch(`${API_BASE}/translate-biomarkers/commit`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: { 'Content-Type': 'application/json', ...baseHeaders() },
     credentials: 'include',
     body: JSON.stringify({ lang, items }),
   })
   if (!res.ok) {
     const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, extractDetail(body, 'POST /translate-biomarkers/commit failed'))
+    throw new ApiError(res.status, extractDetail(body, apiFallback('postTranslateCommitFailed')))
   }
   const data = (await res.json()) as { saved?: number }
   return data.saved ?? 0
@@ -266,7 +279,7 @@ export async function extractMedicalData(
   const res = await fetch(`${streamApiBase()}/extract`, {
     method: 'POST',
     body: fd,
-    headers: { ...authHeaders() },
+    headers: { ...baseHeaders() },
     credentials: 'include',
     signal,
   })
@@ -276,7 +289,7 @@ export async function extractMedicalData(
       throw new UsageLimitError(res.status, extractDetail(body, 'Usage limit reached'))
     }
     const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, extractDetail(body, 'POST /extract failed'))
+      throw new ApiError(res.status, extractDetail(body, apiFallback('postExtractFailed')))
   }
 
   if (!res.body) throw new Error('Response body is missing — cannot read extraction stream')
@@ -307,8 +320,7 @@ export async function extractMedicalData(
       reader.cancel().catch(() => {})
     }, WATCHDOG_MS)
   }
-  const timeoutError = () =>
-    new Error('AI extraction timed out — the connection stalled. Please try again.')
+  const timeoutError = () => new Error(apiFallback('extractionTimedOut'))
 
   function processLine(line: string) {
     if (line.startsWith('event: ')) {
@@ -331,7 +343,7 @@ export async function extractMedicalData(
           throw new Error('Failed to parse extraction result payload')
         }
       } else if (eventType === 'error') {
-        let message = 'Extraction failed'
+        let message = apiFallback('extractionFailed')
         try {
           message = JSON.parse(data.trim()).message || message
         } catch {
@@ -451,7 +463,7 @@ export async function saveMedicalEntry(formData: FormData): Promise<SaveEntryRes
   const res = await fetch(`${API_BASE}/entry`, {
     method: 'POST',
     body: formData,
-    headers: { ...authHeaders() },
+    headers: { ...baseHeaders() },
     credentials: 'include',
   })
   if (!res.ok) {
@@ -460,7 +472,7 @@ export async function saveMedicalEntry(formData: FormData): Promise<SaveEntryRes
       throw new UsageLimitError(res.status, extractDetail(body, 'Usage limit reached'))
     }
     const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, extractDetail(body, 'POST /entry failed'))
+    throw new ApiError(res.status, extractDetail(body, apiFallback('postEntryFailed')))
   }
   return res.json()
 }
@@ -473,7 +485,7 @@ export async function mergeMedicalEntry(
   const res = await fetch(`${API_BASE}/entry/${encodeURIComponent(entryId)}/merge`, {
     method: 'POST',
     body: formData,
-    headers: { ...authHeaders() },
+    headers: { ...baseHeaders() },
     credentials: 'include',
   })
   if (!res.ok) {
@@ -482,7 +494,7 @@ export async function mergeMedicalEntry(
       throw new UsageLimitError(res.status, extractDetail(body, 'Usage limit reached'))
     }
     const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, extractDetail(body, 'POST /entry/merge failed'))
+    throw new ApiError(res.status, extractDetail(body, apiFallback('postEntryMergeFailed')))
   }
   return res.json()
 }
@@ -491,12 +503,12 @@ export async function mergeMedicalEntry(
 export async function deleteEntry(id: string): Promise<DeleteEntryResponse> {
   const res = await fetch(`${API_BASE}/entry/${encodeURIComponent(id)}`, {
     method: 'DELETE',
-    headers: { ...authHeaders() },
+    headers: { ...baseHeaders() },
     credentials: 'include',
   })
   if (!res.ok) {
     const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, extractDetail(body, 'DELETE /entry failed'))
+    throw new ApiError(res.status, extractDetail(body, apiFallback('deleteEntryFailed')))
   }
   return res.json() as Promise<DeleteEntryResponse>
 }

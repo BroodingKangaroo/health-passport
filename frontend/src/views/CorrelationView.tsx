@@ -1,11 +1,13 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
 import { HeaderBar } from '@/components/health-passport/header-bar'
 import { NavBar } from '@/components/shared/NavBar'
 import { CorrelationChart } from '@/components/health-passport/correlation-chart'
 import { useTimelineData } from '@/hooks/useTimelineData'
 
 export function CorrelationView() {
+  const t = useTranslations('correlation.view')
   const { data, isLoading, error } = useTimelineData()
   const biomarkers = data?.biomarkers ?? []
 
@@ -15,7 +17,7 @@ export function CorrelationView() {
         <HeaderBar />
         <NavBar activeTab="correlation" />
         <main className="mx-auto max-w-[1400px] p-5 text-center text-sm text-muted-foreground">
-          Loading...
+          {t('loading')}
         </main>
       </div>
     )
@@ -27,7 +29,7 @@ export function CorrelationView() {
         <HeaderBar />
         <NavBar activeTab="correlation" />
         <main className="mx-auto max-w-[1400px] p-5 text-center text-sm text-status-high">
-          Failed to load data. Is the backend running?
+          {t('failedToLoad')}
         </main>
       </div>
     )

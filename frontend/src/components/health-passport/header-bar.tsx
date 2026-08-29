@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useLocale, useTranslations } from 'next-intl'
 import { signIn, signOut } from "next-auth/react"
 import { useAuthStatus } from '@/components/providers/AuthStatusProvider'
 import {
@@ -19,17 +20,24 @@ import {
 import { Button } from '@/components/ui/button'
 import { useTheme } from '@/providers/theme-provider'
 import { useLeaveGuard } from '@/providers/leave-guard-provider'
+import { LanguageSwitch } from '@/components/shared/language-switch'
 
-function formatDob(dob: string | undefined): string {
+function formatDob(dob: string | undefined, locale: string): string {
   if (!dob) return ''
   const d = new Date(dob)
   if (isNaN(d.getTime())) return dob
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-  return `${d.getUTCDate()} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`
+  return d.toLocaleDateString(locale, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
 }
 
 export function HeaderBar() {
   const router = useRouter()
+  const locale = useLocale()
+  const t = useTranslations('header')
   const { confirmLeave } = useLeaveGuard()
   const { status, user, anonId } = useAuthStatus()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -53,6 +61,15 @@ export function HeaderBar() {
     })
   }
 
+  function localizedGender(raw: string | undefined | null): string {
+    const g = raw?.trim().toLowerCase()
+    if (!g) return ''
+    if (g === 'male') return t('genderMale')
+    if (g === 'female') return t('genderFemale')
+    if (g === 'other') return t('genderOther')
+    return raw as string
+  }
+
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border bg-card px-5 py-3 print:hidden">
       <div className="flex items-center gap-3">
@@ -66,19 +83,19 @@ export function HeaderBar() {
               <>
                 <span className="font-semibold text-foreground">{user.name}</span>
                 {(() => {
-                  const dob = formatDob(user.dob)
-                  const gender = user.gender?.trim()
+                  const dob = formatDob(user.dob, locale)
+                  const gender = localizedGender(user.gender)
                   const ext = user.external_id
                   const parts: string[] = []
-                  if (dob) parts.push(`DOB ${dob}`)
+                  if (dob) parts.push(t('dob', { dob }))
                   if (gender) parts.push(gender)
-                  if (ext) parts.push(`ID ${ext}`)
+                  if (ext) parts.push(t('id', { ext }))
                   return parts.length ? ` | ${parts.join(' • ')}` : ''
                 })()}
               </>
             ) : (
               <span className="text-muted-foreground/80">
-                Anonymous session
+                {t('anonymousSession')}
                 {anonId ? <span className="font-mono text-foreground/70"> · {anonId}</span> : null}
               </span>
             )}
@@ -89,16 +106,18 @@ export function HeaderBar() {
       <div className="flex items-center gap-2">
         <Button size="sm" onClick={() => navigate('/add-entry')}>
           <Plus className="size-3.5" />
-          Add New Entry
+          {t('addNewEntry')}
         </Button>
 
-        <Button variant="outline" size="icon-sm" onClick={toggleTheme} aria-label="Toggle theme">
+        <Button variant="outline" size="icon-sm" onClick={toggleTheme} aria-label={t('toggleTheme')}>
           {theme === 'light' ? <Moon className="size-3.5" /> : <Sun className="size-3.5" />}
         </Button>
 
+        <LanguageSwitch />
+
         <Button variant="outline" size="sm" onClick={() => navigate('/print-setup')}>
           <Printer className="size-3.5" />
-          Print
+          {t('print')}
         </Button>
 
         {/* Auth section — driven by backend-verified auth status */}
@@ -124,7 +143,7 @@ export function HeaderBar() {
                   className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                 >
                   <LogOut className="size-4" />
-                  Sign out
+                  {t('signOut')}
                 </button>
               </div>
             )}
@@ -132,7 +151,7 @@ export function HeaderBar() {
         ) : (
           <Button variant="outline" size="sm" onClick={() => signIn('credentials', { callbackUrl: '/' })}>
             <LogIn className="size-3.5 mr-1" />
-            Sign in
+            {t('signIn')}
           </Button>
         )}
       </div>

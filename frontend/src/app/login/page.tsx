@@ -3,15 +3,18 @@
 import { Suspense, useState } from "react"
 import { signIn } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { Loader2, Mail, Lock, AlertCircle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { LanguageSwitch } from "@/components/shared/language-switch"
 
 function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const t = useTranslations("login")
   const callbackUrl = searchParams.get("callbackUrl") ?? "/"
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -32,24 +35,27 @@ function LoginForm() {
       })
 
       if (res?.error) {
-        setError("Invalid email or password")
+        setError(t("invalidCredentials"))
       } else {
         router.push(callbackUrl)
         router.refresh()
       }
     } catch {
-      setError("Something went wrong. Please try again.")
+      setError(t("unexpectedError"))
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+    <div className="relative min-h-screen flex items-center justify-center bg-background px-4">
+      <div className="absolute right-4 top-4 z-10">
+        <LanguageSwitch />
+      </div>
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
-          <CardDescription>Sign in to your HealthPassport account</CardDescription>
+          <CardTitle className="text-2xl font-bold">{t("title")}</CardTitle>
+          <CardDescription>{t("subtitle")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -62,14 +68,14 @@ function LoginForm() {
 
             <div className="space-y-2">
               <label htmlFor="email" className="block text-sm font-medium mb-1">
-                Email
+                {t("email")}
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   id="email"
                   type="email"
-                  placeholder="you@example.com"
+                  placeholder={t("emailPlaceholder")}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-10"
@@ -82,10 +88,10 @@ function LoginForm() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label htmlFor="password" className="block text-sm font-medium mb-1">
-                  Password
+                  {t("password")}
                 </label>
                 <a href="/forgot-password" className="text-sm text-primary hover:underline">
-                  Forgot password?
+                  {t("forgotPassword")}
                 </a>
               </div>
               <div className="relative">
@@ -107,24 +113,24 @@ function LoginForm() {
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 size-4 animate-spin" />
-                  Signing in...
+                  {t("signingIn")}
                 </>
               ) : (
-                "Sign in"
+                t("signIn")
               )}
             </Button>
           </form>
 
           <div className="mt-6 text-center text-sm text-muted-foreground">
-            Don&apos;t have an account?{" "}
+            {t("noAccount")}{" "}
             <a href="/register" className="text-primary hover:underline font-medium">
-              Sign up
+              {t("signUp")}
             </a>
           </div>
         </CardContent>
         {process.env.NEXT_PUBLIC_DEMO_CREDENTIALS && (
           <div className="flex justify-center text-xs text-muted-foreground pt-4">
-            Demo: {process.env.NEXT_PUBLIC_DEMO_CREDENTIALS}
+            {t("demo", { credentials: process.env.NEXT_PUBLIC_DEMO_CREDENTIALS })}
           </div>
         )}
       </Card>
@@ -133,8 +139,9 @@ function LoginForm() {
 }
 
 export default function LoginPage() {
+  const t = useTranslations()
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">{t("common.loading")}</div>}>
       <LoginForm />
     </Suspense>
   )

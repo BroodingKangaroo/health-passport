@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { useTranslations } from 'next-intl'
 import { Languages, FileOutput, ChevronDown, LoaderCircle } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -21,39 +22,21 @@ import {
   type TranslationPreviewItem,
 } from './translation-preview-dialog'
 
-const TRANSLATING_MESSAGE =
-  'AI translation is in progress. If you leave now, the translation will be cancelled and no names will be translated.'
-
 type Mode = 'original' | 'translate' | 'bilingual'
 
-const TARGETS: { id: PrintLang; label: string }[] = [
-  { id: 'en', label: 'English' },
-  { id: 'de', label: 'German' },
-  { id: 'fr', label: 'French' },
-  { id: 'es', label: 'Spanish' },
-  { id: 'he', label: 'Hebrew' },
-  { id: 'pl', label: 'Polish' },
+const TARGETS: { id: PrintLang }[] = [
+  { id: 'en' },
+  { id: 'de' },
+  { id: 'fr' },
+  { id: 'es' },
+  { id: 'he' },
+  { id: 'pl' },
 ]
 
-const MODES: { id: Mode; title: string; desc: string }[] = [
-  {
-    id: 'original',
-    title: 'Keep Original',
-    desc: 'Export names exactly as they appear in your documents — fastest export.',
-  },
-  {
-    id: 'translate',
-    title: 'Translate to…',
-    desc: 'Convert all terminology into a single language.',
-  },
-  {
-    id: 'bilingual',
-    title: 'Bilingual Format',
-    desc: 'Show the original alongside the target language.',
-  },
-]
+const MODES: Mode[] = ['original', 'translate', 'bilingual']
 
 export function PrintSetup() {
+  const t = useTranslations('print.setup')
   const router = useRouter()
   const { mode, targetLanguage, setMode, setTargetLanguage, setCategoryTranslations, setSuppressSavedTranslations } =
     usePrintConfig()
@@ -113,7 +96,7 @@ export function PrintSetup() {
     toast.dismiss()
     // Guard ONLY the in-flight network phase: once results are back, leaving
     // during review loses nothing (nothing is persisted until confirm).
-    arm(TRANSLATING_MESSAGE, () => controller.abort())
+    arm(t('leaveGuard'), () => controller.abort())
     setTranslating(true)
     try {
       const data = await fetchFlowsheetData({ signal: controller.signal })
@@ -191,7 +174,7 @@ export function PrintSetup() {
       setSuppressSavedTranslations(true)
       const reason = err instanceof Error ? err.message : 'unknown error'
       toast.error(
-        `AI translation failed (${reason}). The document is shown in English / your source language — switch the mode back to “Original” or regenerate to retry.`,
+        t('toastFailed', { reason }),
         { duration: Infinity, closeButton: true },
       )
       exitToEditor()
@@ -211,19 +194,17 @@ export function PrintSetup() {
           targetLanguage as TranslateLang,
           accepted.map((i) => ({ id: i.id, name: i.translated })),
         )
-        toast.success(
-          `Saved ${accepted.length} translation${accepted.length === 1 ? '' : 's'} for future documents.`,
-        )
+        toast.success(t('toastSaved', { count: accepted.length }))
       } catch (err) {
         const reason = err instanceof Error ? err.message : 'unknown error'
-        toast.error(`Could not save translations (${reason}) — this document will use English for them.`)
+        toast.error(t('toastSaveFailed', { reason }))
       }
     }
     router.push('/print-editor')
   }
 
-  const languageLabel =
-    TARGETS.find((t) => t.id === targetLanguage)?.label ?? targetLanguage
+  const target = TARGETS.find((x) => x.id === targetLanguage)
+  const languageLabel = target ? t(`targetLangs.${target.id}`) : targetLanguage
 
   return (
     <div className="mx-auto mt-12 max-w-xl px-5">
@@ -235,10 +216,10 @@ export function PrintSetup() {
             </div>
             <div>
               <h1 className="text-lg font-bold text-foreground">
-                Prepare Document for Print/Export
+                {t('title')}
               </h1>
               <p className="text-sm text-muted-foreground">
-                AI translation of medical terminology may take a few moments.
+                {t('subtitle')}
               </p>
             </div>
           </div>
@@ -246,13 +227,13 @@ export function PrintSetup() {
 
         <div className="space-y-3 px-6 py-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Translation Mode
+            {t('translationMode')}
           </p>
           {MODES.map((m) => {
-            const selected = mode === m.id
+            const selected = mode === m
             return (
               <label
-                key={m.id}
+                key={m}
                 className={cn(
                   'flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors',
                   selected
@@ -264,28 +245,28 @@ export function PrintSetup() {
                   type="radio"
                   name="mode"
                   checked={selected}
-                  onChange={() => setMode(m.id)}
+                  onChange={() => setMode(m)}
                   className="mt-0.5 size-4 accent-primary"
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold text-foreground">
-                      {m.title}
+                      {t(`modes.${m}.title`)}
                     </span>
-                    {m.id !== 'original' && selected && (
+                    {m !== 'original' && selected && (
                       <div className="relative inline-flex">
                         <select
                           value={targetLanguage}
                           onClick={(e) => e.stopPropagation()}
                           onChange={(e) => {
                             setTargetLanguage(e.target.value as PrintLang)
-                            setMode(m.id)
+                            setMode(m)
                           }}
                           className="appearance-none rounded-md border border-border bg-background py-1 pl-2.5 pr-7 text-xs font-medium text-foreground outline-none focus:border-primary"
                         >
-                          {TARGETS.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.label}
+                          {TARGETS.map((tg) => (
+                            <option key={tg.id} value={tg.id}>
+                              {t(`targetLangs.${tg.id}`)}
                             </option>
                           ))}
                         </select>
@@ -294,7 +275,7 @@ export function PrintSetup() {
                     )}
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {m.desc}
+                    {t(`modes.${m}.desc`)}
                   </p>
                 </div>
               </label>
@@ -307,7 +288,7 @@ export function PrintSetup() {
             <div className="mb-3 space-y-1">
               {lastRun.cachedAll && (
                 <p className="text-xs text-muted-foreground">
-                  Already translated — regenerated instantly at no AI cost.
+                  {t('cachedNotice')}
                 </p>
               )}
               <TranslationFallbackWarning count={lastRun.failed} />
@@ -317,12 +298,12 @@ export function PrintSetup() {
             {translating ? (
               <>
                 <LoaderCircle className="size-4 animate-spin" />
-                Translating terminology… {elapsed}s
+                {t('translating', { elapsed })}
               </>
             ) : (
               <>
                 <Languages className="size-4" />
-                Generate Document
+                {t('generate')}
               </>
             )}
           </Button>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import type { UnitConflict } from '@/lib/types'
 
@@ -14,17 +15,20 @@ export function UnitConflictDialog({
   conflicts: UnitConflict[]
   onResolve: (conflicts: UnitConflict[]) => void
 }) {
+  const t = useTranslations('unitConflict')
   const [choices, setChoices] = useState<Record<string, boolean>>(
     Object.fromEntries(conflicts.map((c) => [c.rowId, true])),
   )
 
   if (conflicts.length === 0) return null
 
+  // Math notation (10^value, × factor, log10) stays verbatim; only the
+  // surrounding words describing the direction are localized.
   const scaleLabel = (fn: string) => {
-    if (fn === '10^x') return '10^value (log10 → linear)'
-    if (fn === 'log10') return 'log10(value) (linear → log10)'
+    if (fn === '10^x') return t('scaleLogToLinear')
+    if (fn === 'log10') return t('scaleLinearToLog')
     if (fn.startsWith('factor:')) return `× ${fn.slice(7)}`
-    if (fn === 'exp(x)') return 'e^value (ln → linear)'
+    if (fn === 'exp(x)') return t('scaleExpToLinear')
     return fn
   }
 
@@ -35,11 +39,10 @@ export function UnitConflictDialog({
           <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-500" />
           <div>
             <h2 className="text-lg font-semibold text-foreground">
-              Unit Conversion Detected
+              {t('title')}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Some biomarkers in this document use a different unit than what was
-              previously recorded. Choose how to handle each one.
+              {t('description')}
             </p>
           </div>
         </div>
@@ -52,9 +55,9 @@ export function UnitConflictDialog({
             >
               <p className="font-medium text-foreground">{c.name}</p>
               <div className="mt-1.5 space-y-1 text-xs text-muted-foreground">
-                <p>Document reports in: <span className="font-mono text-foreground">{c.rawUnit}</span></p>
-                <p>Previously stored as: <span className="font-mono text-foreground">{c.standardUnit}</span></p>
-                <p>Applied conversion: <span className="font-mono text-foreground">{scaleLabel(c.scaleFunction)}</span></p>
+                <p>{t('reportsIn')} <span className="font-mono text-foreground">{c.rawUnit}</span></p>
+                <p>{t('storedAs')} <span className="font-mono text-foreground">{c.standardUnit}</span></p>
+                <p>{t('appliedConversion')} <span className="font-mono text-foreground">{scaleLabel(c.scaleFunction)}</span></p>
               </div>
               <div className="mt-2 flex items-center gap-4">
                 <label className="flex items-center gap-1.5 text-xs text-foreground">
@@ -65,7 +68,7 @@ export function UnitConflictDialog({
                     onChange={() => setChoices((p) => ({ ...p, [c.rowId]: true }))}
                     className="size-3.5 accent-primary"
                   />
-                  Use converted value
+                  {t('useConverted')}
                 </label>
                 <label className="flex items-center gap-1.5 text-xs text-foreground">
                   <input
@@ -75,12 +78,12 @@ export function UnitConflictDialog({
                     onChange={() => setChoices((p) => ({ ...p, [c.rowId]: false }))}
                     className="size-3.5 accent-primary"
                   />
-                  Keep document unit
+                  {t('keepDocumentUnit')}
                 </label>
               </div>
               {choices[c.rowId] === false && (
                 <p className="mt-1.5 text-xs text-amber-600">
-                  Keeping the document unit will make this biomarker&apos;s graph unusable because values will be in a different scale from previously recorded data.
+                  {t('keepWarning')}
                 </p>
               )}
             </div>
@@ -96,7 +99,7 @@ export function UnitConflictDialog({
               )
             }
           >
-            Convert all
+            {t('convertAll')}
           </Button>
           <Button
             onClick={() =>
@@ -108,7 +111,7 @@ export function UnitConflictDialog({
               )
             }
           >
-            Apply
+            {t('apply')}
           </Button>
         </div>
       </div>

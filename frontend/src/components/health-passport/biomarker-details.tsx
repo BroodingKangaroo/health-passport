@@ -1,9 +1,11 @@
 'use client'
 
 import { useSearchParams, notFound } from 'next/navigation'
+import { useLocale, useTranslations } from 'next-intl'
 import { BookOpen } from 'lucide-react'
 
 import { cn, formatDate, formatNumber } from '@/lib/utils'
+import { localizedStatus } from '@/lib/status-labels'
 import { Card } from '@/components/ui/card'
 import { BiomarkerChart } from '@/components/shared/BiomarkerChart'
 import { useBiomarkerData } from '@/hooks/useBiomarkerData'
@@ -26,11 +28,15 @@ export function BiomarkerDetails() {
   const searchParams = useSearchParams()
   const id = searchParams.get('id')
   const { data: biomarker, isLoading, error } = useBiomarkerData(id)
+  const t = useTranslations('timeline.biomarker')
+  const tc = useTranslations('common')
+  const tRoot = useTranslations()
+  const locale = useLocale()
 
   if (isLoading) {
     return (
       <div className="mx-auto max-w-5xl py-20 text-center text-sm text-muted-foreground">
-        Loading...
+        {tc('loading')}
       </div>
     )
   }
@@ -54,7 +60,7 @@ export function BiomarkerDetails() {
             <span className="text-muted-foreground/70">/ {biomarker.definition.names.ru}</span>
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Reference range: {refText(biomarker)}
+            {t('referenceRange', { value: refText(biomarker) })}
           </p>
         </div>
         <div
@@ -76,12 +82,12 @@ export function BiomarkerDetails() {
               statusText[biomarker.status],
             )}
           >
-            Current
+            {t('current')}
           </p>
           <p className={cn('text-lg font-bold', statusText[biomarker.status])}>
             {formatNumber(biomarker.value) || '—'} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}{' '}
             <span className="text-sm font-semibold capitalize">
-              ({biomarker.status})
+              ({localizedStatus(biomarker.status, tRoot)})
             </span>
           </p>
         </div>
@@ -91,10 +97,10 @@ export function BiomarkerDetails() {
         <div className="space-y-5">
           <Card className="border-border p-4">
             <h2 className="text-sm font-semibold text-foreground">
-              All-Time Dynamics
+              {t('allTimeDynamics')}
             </h2>
             <p className="mb-3 text-xs text-muted-foreground">
-              Historical trend · reference band {refText(biomarker)}
+              {t('historicalTrend', { value: refText(biomarker) })}
             </p>
             <BiomarkerChart biomarker={biomarker} data={chartData} height={350} />
           </Card>
@@ -102,22 +108,22 @@ export function BiomarkerDetails() {
           <Card className="overflow-hidden border-border">
             <div className="border-b border-border p-4">
               <h2 className="text-sm font-semibold text-foreground">
-                Reading History
+                {t('readingHistoryTable')}
               </h2>
             </div>
             <div className="overflow-x-auto">
               <div className="min-w-[400px]">
                 <div className="grid grid-cols-[1fr_1fr_1fr] gap-x-3 border-b border-border bg-muted/40 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  <span>Date</span>
-                  <span>Value</span>
-                  <span>Status</span>
+                  <span>{t('colDate')}</span>
+                  <span>{t('colValue')}</span>
+                  <span>{t('colStatus')}</span>
                 </div>
                 {[...chartData].reverse().map((entry, idx) => (
                   <div
                     key={`${entry.date}-${idx}`}
                     className="grid grid-cols-[1fr_1fr_1fr] items-center gap-x-3 border-b border-border px-4 py-3 text-sm transition-colors last:border-0 hover:bg-muted/40"
                   >
-                    <span className="text-muted-foreground">{formatDate(entry.date)}</span>
+                    <span className="text-muted-foreground">{formatDate(entry.date, locale)}</span>
                     <span
                       className={cn(
                         'font-semibold tabular-nums',
@@ -132,7 +138,7 @@ export function BiomarkerDetails() {
                         statusText[entry.status],
                       )}
                     >
-                      {entry.status}
+                      {localizedStatus(entry.status, tRoot)}
                     </span>
                   </div>
                 ))}
@@ -146,13 +152,16 @@ export function BiomarkerDetails() {
             <div className="mb-2 flex items-center gap-2">
               <BookOpen className="size-4 text-muted-foreground" />
               <h2 className="text-sm font-semibold text-foreground">
-                About this Biomarker
+                {t('about')}
               </h2>
             </div>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              {biomarker.definition.names.en} is measured at{' '}
-              {formatNumber(biomarker.value) || '—'} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}. The standard reference range
-              is {refText(biomarker)}.
+              {t('aboutSentence', {
+                name: biomarker.definition.names.en,
+                value: formatNumber(biomarker.value) || '—',
+                unit: unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference),
+                ref: refText(biomarker),
+              })}
             </p>
           </Card>
 

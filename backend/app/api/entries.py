@@ -22,6 +22,7 @@ from sqlalchemy import String, cast, func, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app import i18n
 from app.api.auth import get_current_user_or_anon
 from app.db.models import (
     Attachment as AttachmentModel,
@@ -392,17 +393,17 @@ async def _save_attachment(
         return None
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail=f"File too large ({len(content) // 1024} KB). Maximum allowed size is {MAX_FILE_SIZE // (1024 * 1024)} MB.")
+        raise HTTPException(status_code=413, detail=i18n.tr("entries.file_too_large", kb=len(content) // 1024, max_mb=MAX_FILE_SIZE // (1024 * 1024)))
 
     # Enforce storage quota for ALL users (anon: 50MB, registered: 200MB — see config.py).
     allowed, _current_bytes, limit_bytes, _remaining = check_and_record_storage_usage(
         db, user_id, len(content), is_anonymous, commit=False
     )
     if not allowed:
-        tier = "Anonymous" if is_anonymous else "Registered"
+        tier = i18n.tr("entries.tier_anonymous" if is_anonymous else "entries.tier_registered")
         raise HTTPException(
             status_code=429,
-            detail=f"Storage limit reached. {tier} users can upload up to {limit_bytes // (1024*1024)}MB. Please remove old entries or contact support."
+            detail=i18n.tr("entries.storage_limit_reached", tier=tier, limit_mb=limit_bytes // (1024*1024))
         )
 
     ext = os.path.splitext(file.filename)[1]
@@ -438,7 +439,7 @@ async def get_entries_by_date(
     try:
         target = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
     except ValueError:
-        raise HTTPException(status_code=400, detail=f"Invalid date format: '{date}'. Expected ISO format (YYYY-MM-DD).") from None
+        raise HTTPException(status_code=400, detail=i18n.tr("entries.invalid_date_format", date=date)) from None
     q = db.query(MedicalEntryModel).filter(
         MedicalEntryModel.patient_id == user_id,
         func.date(MedicalEntryModel.date) == func.date(target),
@@ -517,10 +518,10 @@ async def save_entry(
     try:
         entry_date = _normalize_date(date, time)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid date/time format: {e}") from e
+        raise HTTPException(status_code=400, detail=i18n.tr("entries.invalid_datetime_format", error=e)) from e
 
     if entry_date.date() > datetime.now(timezone.utc).date():
-        raise HTTPException(status_code=400, detail="Date cannot be in the future")
+        raise HTTPException(status_code=400, detail=i18n.tr("entries.date_in_future"))
 
     source_language = source_language if source_language in SUPPORTED_LANGUAGES else None
     entry = MedicalEntryModel(
@@ -551,7 +552,7 @@ async def save_entry(
         try:
             categories_data = json.loads(biomarkers)
         except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid biomarkers JSON format.") from None
+            raise HTTPException(status_code=400, detail=i18n.tr("entries.invalid_biomarkers_json")) from None
         specs = _parse_biomarker_rows(db, user_id, categories_data)
         _create_reading_rows(db, entry_id, specs, merged=False)
         db.flush()
@@ -560,9 +561,9 @@ async def save_entry(
         try:
             vd = json.loads(visit_data)
         except json.JSONDecodeError as e:
-            raise HTTPException(status_code=400, detail=f"Invalid visit_data JSON: {e}") from e
+            raise HTTPException(status_code=400, detail=i18n.tr("entries.invalid_visit_data_json", error=e)) from e
         if not isinstance(vd, dict):
-            raise HTTPException(status_code=400, detail="visit_data must be a JSON object")
+            raise HTTPException(status_code=400, detail=i18n.tr("entries.visit_data_not_object"))
         db.add(_build_visit_data_model(entry_id, vd, title, provider, entry_date, clinic))
         db.flush()
 
@@ -570,14 +571,14 @@ async def save_entry(
         try:
             idv = json.loads(instrumental_data)
         except json.JSONDecodeError as e:
-            raise HTTPException(status_code=400, detail=f"Invalid instrumental_data JSON: {e}") from e
+            raise HTTPException(status_code=400, detail=i18n.tr("entries.invalid_instrumental_data_json", error=e)) from e
         if not isinstance(idv, dict):
-            raise HTTPException(status_code=400, detail="instrumental_data must be a JSON object")
+            raise HTTPException(status_code=400, detail=i18n.tr("entries.instrumental_data_not_object"))
         db.add(_build_instrumental_data_model(entry_id, idv))
         db.flush()
 
     db.commit()
-    return SaveEntryResponse(success=True, message="Entry saved", id=entry_id)
+    return SaveEntryResponse(success=True, message=i18n.tr("entries.message_entry_saved"), id=entry_id)
 
 
 @router.post("/api/entry/{entry_id}/merge", response_model=SaveEntryResponse)
@@ -617,34 +618,34 @@ async def merge_entry(
         .first()
     )
     if not entry:
-        raise HTTPException(status_code=404, detail=f"Entry '{entry_id}' not found")
+        raise HTTPException(status_code=404, detail=i18n.tr("entries.entry_not_found", entry_id=entry_id))
     if entry.type != "blood_test":
-        raise HTTPException(status_code=400, detail="Only blood test entries can be merged into")
+        raise HTTPException(status_code=400, detail=i18n.tr("entries.merge_only_blood_test"))
     if date:
         try:
             target_date = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid date format: '{date}'. Expected ISO format (YYYY-MM-DD).") from None
+            raise HTTPException(status_code=400, detail=i18n.tr("entries.invalid_date_format", date=date)) from None
         # Compare in Python: sqlite stores naive datetimes, and passing mixed
         # naive/tz-aware values through SQL func.date() is unreliable.
         entry_day = entry.date
         if entry_day.tzinfo is None:
             entry_day = entry_day.replace(tzinfo=timezone.utc)
         if entry_day.date() != target_date.date():
-            raise HTTPException(status_code=400, detail="Entry date does not match the supplied merge date")
+            raise HTTPException(status_code=400, detail=i18n.tr("entries.merge_date_mismatch"))
 
     if biomarkers and biomarkers != "[]":
         try:
             categories_data = json.loads(biomarkers)
         except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid biomarkers JSON format.") from None
+            raise HTTPException(status_code=400, detail=i18n.tr("entries.invalid_biomarkers_json")) from None
         specs = _parse_biomarker_rows(db, user_id, categories_data)
 
         # Conflict check: refuse when any resolved definition already has a
         # reading in the target entry (by definition id OR LOINC code).
         conflicts = _detect_merge_conflicts(db, entry, specs)
         if conflicts:
-            detail = "Cannot merge: biomarker(s) already present in this test: " + ", ".join(sorted(set(conflicts)))
+            detail = i18n.tr("entries.merge_conflict") + ", ".join(sorted(set(conflicts)))
             raise HTTPException(status_code=409, detail=detail)
 
         merged_source = _merged_source_from(title, clinic, provider, time, file)
@@ -658,7 +659,7 @@ async def merge_entry(
         await _save_attachment(db, entry_id, user_id, is_anonymous, file)
 
     db.commit()
-    return SaveEntryResponse(success=True, message="Entry merged", id=entry_id)
+    return SaveEntryResponse(success=True, message=i18n.tr("entries.message_entry_merged"), id=entry_id)
 
 
 def _parse_size_to_bytes(size_str: str) -> int:
@@ -727,7 +728,7 @@ async def delete_entry(
         .first()
     )
     if not entry:
-        raise HTTPException(status_code=404, detail=f"Entry '{entry_id}' not found")
+        raise HTTPException(status_code=404, detail=i18n.tr("entries.entry_not_found", entry_id=entry_id))
 
     # Snapshot attachment file_paths BEFORE the cascade deletes the rows, so we
     # can re-query "are there any remaining references?" after the delete.

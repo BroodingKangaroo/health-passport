@@ -1,6 +1,8 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
+import { NextIntlClientProvider } from 'next-intl'
+import { getLocale } from 'next-intl/server'
 import { ThemeProvider } from '@/providers/theme-provider'
 import { QueryProvider } from '@/providers/query-provider'
 import { PrintConfigProvider } from '@/providers/print-config-provider'
@@ -9,10 +11,10 @@ import { AuthProvider } from '@/components/providers/AuthProvider'
 import { Toaster } from 'sonner'
 import './globals.css'
 
-const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
+const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin', 'cyrillic'] })
 const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
-  subsets: ['latin'],
+  subsets: ['latin', 'cyrillic'],
 })
 
 export const metadata: Metadata = {
@@ -47,14 +49,15 @@ export const viewport: Viewport = {
   ],
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const locale = await getLocale()
   return (
     <html
-      lang="en"
+      lang={locale}
       className={`${geistSans.variable} ${geistMono.variable} bg-background`}
       suppressHydrationWarning
     >
@@ -77,14 +80,37 @@ export default function RootLayout({
             `,
           }}
         />
+        {/* First-visit locale detection: persist the browser language in the
+            NEXT_LOCALE cookie (the single source of truth for the UI locale).
+            If a Russian browser lands on an English-rendered page, reload once
+            so the server re-renders with the cookie set. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var m = document.cookie.match(/(?:^|; )NEXT_LOCALE=(en|ru)(?:;|$)/);
+                  if (!m) {
+                    var lang = (navigator.language || 'en').toLowerCase();
+                    var loc = lang.indexOf('ru') === 0 ? 'ru' : 'en';
+                    document.cookie = 'NEXT_LOCALE=' + loc + '; path=/; max-age=31536000; samesite=lax';
+                    if (loc === 'ru') location.reload();
+                  }
+                } catch(e) {}
+              })();
+            `,
+          }}
+        />
       </head>
       <body className="font-sans antialiased">
         <AuthProvider>
           <ThemeProvider>
             <QueryProvider>
-              <LeaveGuardProvider>
-                <PrintConfigProvider>{children}</PrintConfigProvider>
-              </LeaveGuardProvider>
+              <NextIntlClientProvider>
+                <LeaveGuardProvider>
+                  <PrintConfigProvider>{children}</PrintConfigProvider>
+                </LeaveGuardProvider>
+              </NextIntlClientProvider>
             </QueryProvider>
           </ThemeProvider>
         </AuthProvider>

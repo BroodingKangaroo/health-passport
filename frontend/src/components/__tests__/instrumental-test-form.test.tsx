@@ -1,11 +1,16 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { InstrumentalTestForm } from '../health-passport/InstrumentalTestForm'
+import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type { ExtractedInstrumentalData } from '@/lib/types'
+
+// Wrap renders with the i18n context (English) — InstrumentalTestForm uses useTranslations.
+const renderI18n = ((ui: React.ReactElement, options?: Parameters<typeof render>[1]) =>
+  render(<TestI18nProvider>{ui}</TestI18nProvider>, options)) as typeof render
 
 describe('InstrumentalTestForm', () => {
   it('renders all fields with empty defaults', () => {
-    render(<InstrumentalTestForm />)
+    renderI18n(<InstrumentalTestForm />)
 
     expect(screen.getByText('Instrumental Test Report')).toBeInTheDocument()
     expect(screen.getByText('Modality')).toBeInTheDocument()
@@ -22,7 +27,7 @@ describe('InstrumentalTestForm', () => {
       conclusion: 'No abnormalities detected',
     }
 
-    render(<InstrumentalTestForm initialData={initial} />)
+    renderI18n(<InstrumentalTestForm initialData={initial} />)
 
     const select = screen.getByRole('combobox') as HTMLSelectElement
     expect(select.value).toBe('CT')
@@ -32,7 +37,7 @@ describe('InstrumentalTestForm', () => {
 
   it('calls onDataChange when modality changes', () => {
     const onDataChange = vi.fn()
-    render(<InstrumentalTestForm onDataChange={onDataChange} />)
+    renderI18n(<InstrumentalTestForm onDataChange={onDataChange} />)
 
     const select = screen.getByRole('combobox')
     fireEvent.change(select, { target: { value: 'Elastography' } })
@@ -44,7 +49,7 @@ describe('InstrumentalTestForm', () => {
 
   it('calls onDataChange when findings change', () => {
     const onDataChange = vi.fn()
-    render(<InstrumentalTestForm onDataChange={onDataChange} />)
+    renderI18n(<InstrumentalTestForm onDataChange={onDataChange} />)
 
     const textareas = screen.getAllByRole('textbox')
     fireEvent.change(textareas[0], { target: { value: 'Some findings' } })

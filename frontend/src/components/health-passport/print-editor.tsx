@@ -8,6 +8,7 @@ import {
   Filter,
   Hash,
 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { cn, formatNumber, formatNumberFull } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -152,6 +153,7 @@ export function PrintEditor({
   onBack: () => void
   patient?: CurrentUser | null
 }) {
+  const t = useTranslations('print.editor')
   const {
     layout,
     textSize,
@@ -327,10 +329,10 @@ export function PrintEditor({
           onClick={onBack}
           className="gap-1.5 text-muted-foreground hover:text-foreground"
         >
-          {'\u2190'} Back to Setup
+          {t('backToSetup')}
         </Button>
         <h1 className="text-sm font-semibold text-foreground">
-          Document Editor
+          {t('documentEditor')}
         </h1>
         <div className="w-[120px]" />
       </div>
@@ -339,11 +341,11 @@ export function PrintEditor({
         <aside className="flex w-[350px] shrink-0 flex-col border-r border-border bg-card print:hidden">
           <div className="flex-1 space-y-7 overflow-y-auto px-5 py-5">
             <section>
-              <SectionTitle>Formatting & Layout</SectionTitle>
+              <SectionTitle>{t('formatting')}</SectionTitle>
               <div className="space-y-4">
                 <div>
                   <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-                    Orientation
+                    {t('orientation')}
                   </p>
                   <div className="flex overflow-hidden rounded-lg border border-border">
                     {(['portrait', 'landscape'] as const).map((o) => (
@@ -357,7 +359,7 @@ export function PrintEditor({
                             : 'bg-card text-muted-foreground hover:bg-accent',
                         )}
                       >
-                        {o}
+                        {t(o)}
                       </button>
                     ))}
                   </div>
@@ -365,7 +367,7 @@ export function PrintEditor({
                 <div>
                   <div className="mb-1.5 flex items-center justify-between">
                     <span className="text-xs font-medium text-muted-foreground">
-                      Text Size
+                      {t('textSize')}
                     </span>
                     <span className="text-xs font-semibold text-foreground">
                       {textSize}px
@@ -379,20 +381,20 @@ export function PrintEditor({
                     value={textSize}
                     onChange={(e) => setTextSize(Number(e.target.value))}
                     className="w-full accent-primary"
-                    aria-label="Text size"
+                    aria-label={t('textSizeAria')}
                   />
                 </div>
               </div>
             </section>
 
             <section>
-              <SectionTitle>Columns (Dates)</SectionTitle>
+              <SectionTitle>{t('columns')}</SectionTitle>
               <div className="mb-3 flex gap-1.5">
                 {[
-                  { label: 'Last 3', val: 3 },
-                  { label: 'Last 5', val: 5 },
-                  { label: 'Last 10', val: 10 },
-                  { label: 'All', val: 'all' as const },
+                  { label: t('last3'), val: 3 },
+                  { label: t('last5'), val: 5 },
+                  { label: t('last10'), val: 10 },
+                  { label: t('all'), val: 'all' as const },
                 ].map((p) => (
                   <button
                     key={p.label}
@@ -433,7 +435,7 @@ export function PrintEditor({
             </section>
 
             <section>
-              <SectionTitle>Rows (Biomarkers)</SectionTitle>
+              <SectionTitle>{t('rows')}</SectionTitle>
 
               <button
                 onClick={() => setShowAbnormalOnly(!showAbnormalOnly)}
@@ -448,10 +450,10 @@ export function PrintEditor({
                   <Filter className="size-4 text-muted-foreground" />
                   <span>
                     <span className="block text-sm font-medium text-foreground">
-                      Show Abnormal Only
+                      {t('showAbnormalOnly')}
                     </span>
                     <span className="block text-[11px] text-muted-foreground">
-                      Hides all normal results
+                      {t('hidesNormal')}
                     </span>
                   </span>
                 </span>
@@ -483,10 +485,10 @@ export function PrintEditor({
                   <Filter className="size-4 text-muted-foreground" />
                   <span>
                     <span className="block text-sm font-medium text-foreground">
-                      Show Reference Ranges
+                      {t('showReferences')}
                     </span>
                     <span className="block text-[11px] text-muted-foreground">
-                      Display reference range below each biomarker
+                      {t('referenceHint')}
                     </span>
                   </span>
                 </span>
@@ -518,10 +520,10 @@ export function PrintEditor({
                   <Hash className="size-4 text-muted-foreground" />
                   <span>
                     <span className="block text-sm font-medium text-foreground">
-                      Compact Large Numbers
+                      {t('compactNumbers')}
                     </span>
                     <span className="block text-[11px] text-muted-foreground">
-                      Show 10M, 1B instead of 10,000,000
+                      {t('compactHint')}
                     </span>
                   </span>
                 </span>
@@ -587,7 +589,7 @@ export function PrintEditor({
                                   checked={!isHidden}
                                   onChange={() => toggleBiomarker(id)}
                                   className="size-4 accent-primary"
-                                  aria-label={`Show ${row.name}`}
+                                  aria-label={t('showBiomarker', { name: row.name })}
                                 />
                                 <span
                                   className={cn(
@@ -615,7 +617,7 @@ export function PrintEditor({
               onClick={() => window.print()}
             >
               <Printer className="size-4" />
-              Print Document
+              {t('print')}
             </Button>
           </div>
         </aside>
@@ -675,8 +677,8 @@ export function PrintEditor({
             {visibleDates.length === 0 || visibleMatrix.length === 0 ? (
               <p className="py-8 text-center text-gray-500">
                 {visibleDates.length === 0
-                  ? 'Select at least one date column.'
-                  : 'No biomarkers match your filters.'}
+                  ? t('emptyDates')
+                  : t('emptyBiomarkers')}
               </p>
             ) : (
               <table className="w-full border-collapse">

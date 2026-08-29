@@ -282,3 +282,42 @@ Mirror of the backend's reference model (see `backend/docs/architecture.md`):
   button + Radix Popover confirm dialog.
 - The view-level `TimelineView` passes an `onDeleted` callback that clears the
   local selection and refetches the timeline.
+
+## UI localization EN/RU (next-intl, cookie-driven)
+
+- **No URL-based locale routing.** The locale lives ONLY in the `NEXT_LOCALE`
+  cookie (`en` | `ru`), read server-side by `src/i18n/request.ts`
+  (registered via `createNextIntlPlugin` in `next.config.mjs`). First visit
+  sets the cookie from `navigator.language` (inline bootstrap script in
+  `app/layout.tsx`, which reloads once when a Russian browser lands on the
+  English-rendered page). `app/layout.tsx` also drives `<html lang>` and the
+  message set from the cookie; all routes are therefore Dynamic.
+- `LanguageSwitch` (`src/components/shared/language-switch.tsx`, `EN | RU`)
+  sits in the header bar and on all four auth pages. It writes the cookie via
+  `setLocaleCookie()` in `src/i18n/api-locale.ts` and calls
+  `router.refresh()` — the server tree re-renders with the new locale while
+  client state survives.
+- Message catalogs: per-domain TS modules in `src/i18n/messages/`
+  (`shared/auth/addEntry/timeline/correlation/print.ts`), each exporting
+  `{ en, ru }` trees merged by `index.ts`. RU plurals use ICU
+  one/few/many/other with the `count` param. `src/i18n/__tests__/messages.test.ts`
+  guards en/ru key parity, non-empty values, and param consistency.
+- **Backend error text is localized server-side**, not in the browser:
+  `services/api.ts` sends `Accept-Language: <locale>` on every API call
+  (`baseHeaders()`), and the backend returns localized `detail`/SSE messages
+  (see `backend/docs/architecture.md`). `api-locale.ts` additionally carries
+  the few frontend-side ApiError fallback strings (`apiFallback()`) — its
+  English values are pinned by `api-error-detail.test.ts`.
+- Dates: `formatDate`/`splitDateLabel` in `lib/utils.ts` take a `locale` param
+  (call sites pass `useLocale()`); the connector (" at " / " в ") is shared so
+  the reverse-parse in `splitDateLabel` stays in sync. Status enums render
+  through `localizedStatus()` (`lib/status-labels.ts`), never raw.
+- Tests: components under test need the i18n context — wrap renders with
+  `TestI18nProvider` (`src/test/i18n-test-provider.tsx`, English by default,
+  so all English assertions pass unchanged).
+- **Still English by design**: pydantic 422 validation text, catch-all SSE
+  `str(e)` errors, DB-persisted entry titles/categories, flowsheet date-column
+  labels ("May 26" — server-formatted and embedded in composite ids), the
+  printed document's language maps in `print-editor.tsx` (those localize the
+  DOCUMENT per its target language, independent of the UI locale), and
+  technical identifiers (units, modality values, `EN` badges).

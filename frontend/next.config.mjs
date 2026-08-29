@@ -1,3 +1,5 @@
+import createNextIntlPlugin from 'next-intl/plugin'
+
 /** @type {import('next').NextConfig} */
 const staticProxy = process.env.STATIC_PROXY_URL || 'http://localhost:8000'
 
@@ -22,4 +24,7 @@ const nextConfig = {
   },
 }
 
-export default nextConfig
+// Locates src/i18n/request.ts for next-intl (cookie-driven locale, no URL routing).
+const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts')
+
+export default withNextIntl(nextConfig)

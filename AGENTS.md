@@ -42,12 +42,14 @@ architecture docs are the truth.
 - **Unit canonicalization** (`app/services/matcher/` package — facade `__init__.py`, units in `units_conversion.py`/`units_guess.py`): canonical unit set on the FIRST reading that creates the def (first-seen wins), and it is ALWAYS the linear magnitude — a log-scale raw unit (`lg копий/мл`) strips to `copies/mL` at anchor time with the def's reference scaled `10^x`; the `lg` prefix still MEANS log10 (values convert via the deterministic `10^x` scale function — never treat lg values as linear). Ratio-like analytes anchor `ratio`, qualitative screens anchor `""`. Later readings converted via `scale_function`; empty units handled by `_guess_unit()`, never the batch LLM translator. Existing lg-anchored defs were migrated by `scripts/migrate_lg_to_linear.py`.
 - `app.log` is a generated runtime artifact.
 - New columns are added to existing DBs by `migrate_add_columns()` in `app/db/session.py` (called from `init_db`).
+- **Response localization**: user-facing `detail`/SSE/success strings go through `app/i18n.py` (`i18n.tr`), localized EN/RU by the request's `Accept-Language` (pure-ASGI `LocaleMiddleware` + ContextVar; EN byte-identical default). Never hardcode new user-facing strings in routers — add a catalog key. OCR errors are localized in `ai.py` from `OCRProcessingError.kind` (classification runs in a thread without the locale).
 
 ## Frontend invariants (always true)
 
 - API calls proxied server-side via `next.config.mjs` rewrites: `/api/*` (except next-auth paths) and `/static/*` → `STATIC_PROXY_URL` (default `http://localhost:8000`, Docker `http://backend:8000`). Don't add client-side API base URLs that bypass this.
 - AI-guessed units (`canonical_unit_inferred`) are flagged ONLY in the add-entry editor (`LabResultForm.tsx`, blue ring + hover tooltip). The old amber `InferredUnitNote` triangle is **removed** from the timeline and flowsheet — do not re-add it there.
 - Merged readings appear **only** in the timeline details view (`results-panel.tsx`) under `MergedSectionHeader`; flowsheet and print editor exclude them. `biomarkersAtDate` copies `merged`/`merged_source` from the reading AT the selected event (`isLatest`-gated) — never a `??`-fallback to the latest reading.
+- **UI locale (EN/RU)**: next-intl, cookie `NEXT_LOCALE` driven, NO URL routing (`next.config.mjs` must keep the `createNextIntlPlugin` wrapper). Catalogs in `src/i18n/messages/*.ts` (en/ru parity guarded by `src/i18n/__tests__/messages.test.ts`); EN values are pinned by ~280 existing test assertions — don't reword them. `services/api.ts` sends `Accept-Language` on every call. Tests rendering components with `t()` must wrap in `TestI18nProvider`. The printed document's own 7-language maps in `print-editor.tsx` are document-language, NOT UI locale — keep them out of the catalogs.
 
 ## Docker / CI
 

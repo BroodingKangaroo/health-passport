@@ -76,11 +76,15 @@ def _classify_ocr_error(exc: Exception) -> OCRProcessingError:
         )
 
     if status in (401, 403):
-        return OCRProcessingError(
+        err = OCRProcessingError(
             f"Mistral AI authentication failed (HTTP {status}). The MISTRAL_API_KEY in "
             "backend/.env is invalid or expired. Please update it and restart the backend.",
             kind="auth",
         )
+        # http_status lets the /api/extract stream localize this message per
+        # request locale (app/i18n.py) with the concrete HTTP code interpolated.
+        err.http_status = status
+        return err
     if status == 429:
         return OCRProcessingError(
             "Mistral OCR quota exceeded (HTTP 429). Upgrade your plan or try again later.",

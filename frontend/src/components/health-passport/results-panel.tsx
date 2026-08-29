@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useLocale, useTranslations } from 'next-intl'
 import {
   Search,
   ChevronDown,
@@ -31,6 +32,8 @@ export function ResultsPanel({
 }) {
   const [query, setQuery] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const t = useTranslations('timeline.resultsPanel')
+  const locale = useLocale()
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -71,10 +74,10 @@ export function ResultsPanel({
       <div className="flex flex-nowrap items-center justify-between gap-3 border-b border-border p-4">
         <div className="min-w-0 leading-tight">
           <h2 className="text-base font-semibold text-foreground">
-            Blood Test Results
+            {t('title')}
           </h2>
-          <p className="truncate text-xs text-muted-foreground" title={`${formatDate(date)} · ${labName}`}>
-            {formatDate(date)} · {labName}
+          <p className="truncate text-xs text-muted-foreground" title={`${formatDate(date, locale)} · ${labName}`}>
+            {formatDate(date, locale)} · {labName}
           </p>
         </div>
         <div className="relative shrink-0 sm:w-64">
@@ -82,7 +85,7 @@ export function ResultsPanel({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search biomarkers..."
+            placeholder={t('searchPlaceholder')}
             className="pl-8"
           />
         </div>
@@ -96,12 +99,12 @@ export function ResultsPanel({
               'border-b border-border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground',
             )}
           >
-            <span>Biomarker (EN)</span>
-            <span>Original Name</span>
-            <span>Latest</span>
-            <span>Unit</span>
-            <span>Reference range</span>
-            <span>Status</span>
+            <span>{t('colBiomarker')}</span>
+            <span>{t('colOriginalName')}</span>
+            <span>{t('colLatest')}</span>
+            <span>{t('colUnit')}</span>
+            <span>{t('colReference')}</span>
+            <span>{t('colStatus')}</span>
             <span aria-hidden />
           </div>
 
@@ -139,8 +142,8 @@ export function ResultsPanel({
           {filtered.length === 0 && (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
               {query
-                ? `No biomarkers match \u201c${query}\u201d.`
-                : 'No biomarkers recorded for this entry.'}
+                ? t('emptySearch', { query })
+                : t('empty')}
             </p>
           )}
         </div>
@@ -218,7 +221,8 @@ function FlowRow({
 }
 
 function MergedSectionHeader({ source }: { source: MergedSource | null }) {
-  const title = source?.title?.trim() || 'Merged readings'
+  const t = useTranslations('timeline.resultsPanel')
+  const title = source?.title?.trim() || t('mergedFallbackTitle')
   const time = source?.time?.trim()
   const meta = [source?.clinic?.trim(), source?.provider?.trim()]
     .filter((v): v is string => !!v)
@@ -235,7 +239,7 @@ function MergedSectionHeader({ source }: { source: MergedSource | null }) {
         </p>
       )}
       <p className="mt-0.5 text-[10px] text-muted-foreground/70">
-        Added from a later upload on the same date
+        {t('mergedSubtitle')}
       </p>
     </div>
   )

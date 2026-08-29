@@ -1,0 +1,142 @@
+// Shared strings used across many views (statuses, common actions).
+// Each domain file exports { en, ru } message trees; `index.ts` merges them.
+export const sharedMessages = {
+  en: {
+    common: {
+      loading: 'Loading...',
+      cancel: 'Cancel',
+      delete: 'Delete',
+      close: 'Close',
+    },
+    statuses: {
+      normal: 'Normal',
+      low: 'Low',
+      high: 'High',
+      abnormal: 'Abnormal',
+    },
+    languageSwitch: {
+      label: 'Language',
+    },
+    header: {
+      anonymousSession: 'Anonymous session',
+      dob: 'DOB {dob}',
+      id: 'ID {ext}',
+      addNewEntry: 'Add New Entry',
+      print: 'Print',
+      signIn: 'Sign in',
+      signOut: 'Sign out',
+      toggleTheme: 'Toggle theme',
+      genderMale: 'Male',
+      genderFemale: 'Female',
+      genderOther: 'Other',
+    },
+    misc: {
+      nav: {
+        timeline: 'Timeline & Vitals',
+        flowsheet: 'Lab Flowsheet (Matrix)',
+        correlation: 'Insights & Correlation',
+      },
+      documentViewer: {
+        noUrl: 'No document URL provided',
+        imagePreview: 'Image preview',
+        documentPreview: 'Document preview',
+        loading: 'Loading…',
+        loadingPdf: 'Loading...',
+        previewUnavailable: 'Preview unavailable',
+        prev: 'Prev',
+        next: 'Next',
+        zoomOut: 'Zoom out',
+        zoomIn: 'Zoom in',
+        resetToWidth: 'Reset to fit width',
+        reset: 'Reset',
+      },
+      scaleNote: {
+        original: 'Original: {value}',
+        originalWithUnit: 'Original: {value} {unit}',
+        convertedVia: 'Converted via {fn}',
+        notConverted:
+          'Unit could not be auto-converted — value kept as-is',
+        needsReview: 'Needs review',
+      },
+      leaveGuard: {
+        title: 'Leave while AI is working?',
+        stay: 'Stay',
+        leave: 'Leave anyway',
+      },
+      backLinks: {
+        dashboard: 'Back to Dashboard',
+        flowsheet: 'Back to Lab Flowsheet',
+        timeline: 'Back to Timeline',
+      },
+    },
+  },
+  ru: {
+    common: {
+      loading: 'Загрузка...',
+      cancel: 'Отмена',
+      delete: 'Удалить',
+      close: 'Закрыть',
+    },
+    statuses: {
+      normal: 'Норма',
+      low: 'Низкий',
+      high: 'Высокий',
+      abnormal: 'Отклонение',
+    },
+    languageSwitch: {
+      label: 'Язык',
+    },
+    header: {
+      anonymousSession: 'Анонимная сессия',
+      dob: 'ДР {dob}',
+      id: 'ID {ext}',
+      addNewEntry: 'Добавить запись',
+      print: 'Печать',
+      signIn: 'Войти',
+      signOut: 'Выйти',
+      toggleTheme: 'Переключить тему',
+      genderMale: 'Мужчина',
+      genderFemale: 'Женщина',
+      genderOther: 'Другое',
+    },
+    misc: {
+      nav: {
+        timeline: 'Хронология и показатели',
+        flowsheet: 'Таблица анализов (матрица)',
+        correlation: 'Аналитика и корреляции',
+      },
+      documentViewer: {
+        noUrl: 'Ссылка на документ не указана',
+        imagePreview: 'Предпросмотр изображения',
+        documentPreview: 'Предпросмотр документа',
+        loading: 'Загрузка…',
+        loadingPdf: 'Загрузка...',
+        previewUnavailable: 'Предпросмотр недоступен',
+        prev: 'Пред.',
+        next: 'След.',
+        zoomOut: 'Уменьшить',
+        zoomIn: 'Увеличить',
+        resetToWidth: 'Сбросить к ширине страницы',
+        reset: 'Сбросить',
+      },
+      scaleNote: {
+        original: 'Оригинал: {value}',
+        originalWithUnit: 'Оригинал: {value} {unit}',
+        convertedVia: 'Пересчёт: {fn}',
+        notConverted:
+          'Единицы не удалось пересчитать автоматически — значение оставлено без изменений',
+        needsReview: 'Требует проверки',
+      },
+      leaveGuard: {
+        title: 'Уйти, пока работает ИИ?',
+        stay: 'Остаться',
+        leave: 'Всё равно уйти',
+      },
+      backLinks: {
+        dashboard: 'Назад на главную',
+        flowsheet: 'Назад к таблице анализов',
+        timeline: 'Назад к хронологии',
+      },
+    },
+  },
+} as const

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { X, Pill, CheckCircle, Activity, Languages } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { useAutoResize } from '@/lib/hooks/useAutoResize'
 
 import { Input } from '@/components/ui/input'
@@ -23,6 +24,7 @@ function TxField({
   placeholder?: string
   rows?: number
 }) {
+  const t = useTranslations('doctorVisit')
   const [showOriginal, setShowOriginal] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const resize = useAutoResize(textareaRef)
@@ -54,7 +56,7 @@ function TxField({
           className="mt-1 flex items-center gap-1 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
         >
           <Languages className="size-3" />
-          {showOriginal ? 'Hide' : 'Show'} original text
+          {showOriginal ? t('hideOriginal') : t('showOriginal')}
         </button>
       )}
       {showOriginal && value.original && (
@@ -98,6 +100,7 @@ function RecommendationRow({
   onRemove: () => void
   setRecItem: (val: RecommendationFormItem) => void
 }) {
+  const t = useTranslations('doctorVisit')
   const ref = useRef<HTMLTextAreaElement>(null)
   const resize = useAutoResize(ref)
 
@@ -114,7 +117,7 @@ function RecommendationRow({
               setRecItem({ ...item, editable: e.target.value })
               resize()
             }}
-            placeholder="Task / recommendation"
+            placeholder={t('placeholderRecommendation')}
             rows={1}
             className="flex w-full resize-none overflow-y-hidden rounded-lg border border-input bg-background px-2.5 py-2 pr-8 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
           />
@@ -129,7 +132,7 @@ function RecommendationRow({
       </div>
       {item.original && item.original !== item.editable && (
         <div className="ml-2 text-xs italic text-muted-foreground/50">
-          Original: {item.original}
+          {t('originalLine', { text: item.original })}
         </div>
       )}
     </div>
@@ -144,6 +147,7 @@ export function DoctorVisitForm({
   initialData?: ExtractedVisitData | null
   onDataChange?: (data: ExtractedVisitData) => void
 }) {
+  const t = useTranslations('doctorVisit')
   const [diagnosis, setDiagnosis] = useState<TranslatedText>(_tx(initialData?.diagnosis ?? ''))
   const [chiefComplaint, setChiefComplaint] = useState<TranslatedText>(_tx(initialData?.chief_complaint ?? ''))
   const [objectiveFindings, setObjectiveFindings] = useState<TranslatedText>(_tx(initialData?.objective_findings ?? ''))
@@ -226,14 +230,14 @@ export function DoctorVisitForm({
     <div className="mt-5 flex flex-col gap-6">
       <div>
         <h3 className="mb-3 text-sm font-semibold text-foreground">
-          Clinical Notes
+          {t('clinicalNotes')}
         </h3>
 
         <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4">
           <div className="mb-2 flex items-center gap-2">
             <Activity className="size-4 text-blue-500" />
             <span className="text-xs font-semibold uppercase tracking-wide text-blue-500">
-              Primary Diagnosis
+              {t('primaryDiagnosis')}
             </span>
           </div>
           <textarea
@@ -243,7 +247,7 @@ export function DoctorVisitForm({
               setDiagnosis({ ...diagnosis, translated_en: e.target.value })
               resizeDiagnosis()
             }}
-            placeholder="e.g., Mild Sinus Tachycardia - Under Control..."
+            placeholder={t('placeholderDiagnosis')}
             rows={2}
             className="flex w-full rounded-lg border border-blue-500/20 bg-background px-2.5 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
           />
@@ -257,7 +261,7 @@ export function DoctorVisitForm({
               className="mt-1 flex items-center gap-1 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
             >
               <Languages className="size-3" />
-              Show original text
+              {t('showOriginal')}
             </button>
           )}
           {diagnosis.original && (
@@ -269,24 +273,24 @@ export function DoctorVisitForm({
 
         <div className="mt-4 space-y-4">
           <TxField
-            label="Chief Complaint & Subjective"
+            label={t('chiefComplaint')}
             value={chiefComplaint}
             onChange={setChiefComplaint}
-            placeholder="e.g., symptoms, duration, severity..."
+            placeholder={t('placeholderChiefComplaint')}
           />
 
           <TxField
-            label="Objective Findings"
+            label={t('objectiveFindings')}
             value={objectiveFindings}
             onChange={setObjectiveFindings}
-            placeholder="e.g., physical exam findings, vital signs..."
+            placeholder={t('placeholderObjective')}
           />
         </div>
       </div>
 
       <div>
         <h3 className="mb-3 text-sm font-semibold text-foreground">
-          Prescriptions &amp; Medications
+          {t('prescriptions')}
         </h3>
 
         <div className="flex flex-col gap-3">
@@ -304,7 +308,7 @@ export function DoctorVisitForm({
                         prev.map((r) => (r.id === p.id ? { ...r, name_editable: e.target.value } : r)),
                       )
                     }
-                    placeholder="Medication name"
+                    placeholder={t('placeholderMedication')}
                   />
                   <span className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-blue-500/10 px-1 py-0.5 text-[10px] font-medium text-blue-500">EN</span>
                 </div>
@@ -316,7 +320,7 @@ export function DoctorVisitForm({
                         prev.map((r) => (r.id === p.id ? { ...r, dosage_editable: e.target.value } : r)),
                       )
                     }
-                    placeholder="Dosage"
+                    placeholder={t('placeholderDosage')}
                   />
                   <span className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-blue-500/10 px-1 py-0.5 text-[10px] font-medium text-blue-500">EN</span>
                 </div>
@@ -328,7 +332,7 @@ export function DoctorVisitForm({
                         prev.map((r) => (r.id === p.id ? { ...r, instructions_editable: e.target.value } : r)),
                       )
                     }
-                    placeholder="Instructions"
+                    placeholder={t('placeholderInstructions')}
                   />
                   <span className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-blue-500/10 px-1 py-0.5 text-[10px] font-medium text-blue-500">EN</span>
                 </div>
@@ -343,12 +347,12 @@ export function DoctorVisitForm({
                 <details className="mt-2 group">
                   <summary className="cursor-pointer text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors">
                     <Languages className="mr-1 inline size-3" />
-                    Show original text
+                    {t('showOriginal')}
                   </summary>
                   <div className="mt-1 space-y-1 rounded border border-dashed border-muted-foreground/20 bg-muted/30 p-2 text-xs italic text-muted-foreground/70">
-                    {p.name_original && <div>Name: {p.name_original}</div>}
-                    {p.dosage_original && <div>Dosage: {p.dosage_original}</div>}
-                    {p.instructions_original && <div>Instructions: {p.instructions_original}</div>}
+                    {p.name_original && <div>{t('nameLine', { text: p.name_original })}</div>}
+                    {p.dosage_original && <div>{t('dosageLine', { text: p.dosage_original })}</div>}
+                    {p.instructions_original && <div>{t('instructionsLine', { text: p.instructions_original })}</div>}
                   </div>
                 </details>
               )}
@@ -363,13 +367,13 @@ export function DoctorVisitForm({
           className="mt-2 gap-1.5 text-primary hover:text-primary"
         >
           <Pill className="size-4" />
-          Add Medication
+          {t('addMedication')}
         </Button>
       </div>
 
       <div>
         <h3 className="mb-3 text-sm font-semibold text-foreground">
-          Recommendations
+          {t('recommendations')}
         </h3>
 
         <div className="flex flex-col gap-2">
@@ -394,7 +398,7 @@ export function DoctorVisitForm({
           className="mt-2 gap-1.5 text-primary hover:text-primary"
         >
           <CheckCircle className="size-4" />
-          Add Recommendation
+          {t('addRecommendation')}
         </Button>
       </div>
     </div>

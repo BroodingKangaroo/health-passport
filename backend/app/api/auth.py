@@ -17,6 +17,7 @@ from jwt import ExpiredSignatureError
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
+from app import i18n
 from app.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     authenticate_user,
@@ -71,7 +72,7 @@ async def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Se
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
+            detail=i18n.tr("auth.not_authenticated"),
             headers={"WWW-Authenticate": "Bearer"},
         )
     try:
@@ -81,27 +82,27 @@ async def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Se
         # rather than silently falling back to an empty anonymous session.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token expired",
+            detail=i18n.tr("auth.token_expired"),
             headers={"WWW-Authenticate": "Bearer"},
         ) from None
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
+            detail=i18n.tr("auth.invalid_credentials"),
             headers={"WWW-Authenticate": "Bearer"},
         )
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
+            detail=i18n.tr("auth.invalid_credentials"),
             headers={"WWW-Authenticate": "Bearer"},
         )
     user = db.query(models.Patient).filter(models.Patient.id == user_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
+            detail=i18n.tr("auth.user_not_found"),
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
@@ -132,7 +133,7 @@ async def get_current_user_or_anon(
         user = await get_current_user(token, db)
         return (user, user.id, False)
     except HTTPException as e:
-        if e.status_code == status.HTTP_401_UNAUTHORIZED and e.detail != "Token expired":
+        if e.status_code == status.HTTP_401_UNAUTHORIZED and e.detail != i18n.tr("auth.token_expired"):
             # No valid token (missing/invalid), use anonymous session
             from app.api.anon_session import get_or_create_anon_id
             anon_id = get_or_create_anon_id(request, response)
@@ -160,14 +161,14 @@ def register(
     if len(user_data.password) < PASSWORD_MIN_LENGTH:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Password must be at least {PASSWORD_MIN_LENGTH} characters",
+            detail=i18n.tr("auth.password_too_short", min_length=PASSWORD_MIN_LENGTH),
         )
 
     # Check if email already exists
     if get_user_by_email(db, user_data.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered",
+            detail=i18n.tr("auth.email_already_registered"),
         )
     
     # Check for anonymous session (signature-verified; a forged or legacy
@@ -205,7 +206,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail=i18n.tr("auth.incorrect_email_or_password"),
             headers={"WWW-Authenticate": "Bearer"},
         )
     
@@ -312,7 +313,7 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest, db: Ses
     ):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many reset requests. Try again later.",
+            detail=i18n.tr("auth.too_many_reset_requests"),
         )
     _prune_reset_attempts()
 
@@ -336,7 +337,7 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest, db: Ses
             # uniform (no user enumeration) and the user can simply re-request.
             logger.exception("Failed to send password reset email to %s", body.email)
 
-    return {"message": "If an account exists for this email, a reset link has been sent."}
+    return {"message": i18n.tr("auth.message_reset_sent")}
 
 
 @router.post("/reset-password")
@@ -345,7 +346,7 @@ async def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_d
     if len(body.new_password) < PASSWORD_MIN_LENGTH:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Password must be at least {PASSWORD_MIN_LENGTH} characters",
+            detail=i18n.tr("auth.password_too_short", min_length=PASSWORD_MIN_LENGTH),
         )
 
     token = db.query(models.PasswordResetToken).filter(
@@ -354,23 +355,23 @@ async def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_d
     if not token or token.used_at is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired reset token",
+            detail=i18n.tr("auth.invalid_reset_token"),
         )
     if token.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired reset token",
+            detail=i18n.tr("auth.invalid_reset_token"),
         )
 
     user = db.query(models.Patient).filter(models.Patient.id == token.patient_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired reset token",
+            detail=i18n.tr("auth.invalid_reset_token"),
         )
 
     user.hashed_password = get_password_hash(body.new_password)
     token.used_at = datetime.now(timezone.utc)
     db.commit()
 
-    return {"message": "Password updated. You can now sign in with your new password."}
+    return {"message": i18n.tr("auth.message_password_updated")}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useLocale, useTranslations } from 'next-intl'
 import {
   Settings,
   Trash2,
@@ -34,6 +35,14 @@ interface EntrySettingsProps {
   onDeleted: () => void
 }
 
+// Data values → message keys; unknown values fall back to the raw value.
+const TYPE_LABEL_KEYS: Record<string, string> = {
+  blood_test: 'typeBloodTest',
+  doctor_visit: 'typeDoctorVisit',
+  instrumental_test: 'typeInstrumentalTest',
+  procedure: 'typeProcedure',
+}
+
 function parseSizeToBytes(size: string | undefined): number {
   if (!size) return 0
   const m = /^([\d.]+)\s*(B|KB|MB|GB)?$/i.exec(size.trim())
@@ -46,12 +55,16 @@ function parseSizeToBytes(size: string | undefined): number {
   return value
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes <= 0) return '0 B'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
+const BYTE_UNITS_EN = ['B', 'KB', 'MB', 'GB'] as const
+const BYTE_UNITS_RU = ['Б', 'КБ', 'МБ', 'ГБ'] as const
+
+function formatBytes(bytes: number, locale: string): string {
+  const units = locale.toLowerCase().startsWith('ru') ? BYTE_UNITS_RU : BYTE_UNITS_EN
+  if (bytes <= 0) return `0 ${units[0]}`
+  if (bytes < 1024) return `${bytes} ${units[0]}`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} ${units[1]}`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} ${units[2]}`
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} ${units[3]}`
 }
 
 function daysSince(iso: string): number {
@@ -92,6 +105,9 @@ export function EntrySettings({
   visit,
   onDeleted,
 }: EntrySettingsProps) {
+  const t = useTranslations('timeline.entrySettings')
+  const tc = useTranslations('common')
+  const locale = useLocale()
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -128,19 +144,9 @@ export function EntrySettings({
   }, [visit])
 
   const typeLabel = useMemo(() => {
-    switch (event.type) {
-      case 'blood_test':
-        return 'Blood Test'
-      case 'doctor_visit':
-        return 'Doctor Visit'
-      case 'instrumental_test':
-        return 'Instrumental Test'
-      case 'procedure':
-        return 'Procedure'
-      default:
-        return 'Entry'
-    }
-  }, [event.type])
+    const key = TYPE_LABEL_KEYS[event.type]
+    return key ? t(key) : event.type
+  }, [event.type, t])
 
   const handleCopy = async () => {
     try {
@@ -160,7 +166,7 @@ export function EntrySettings({
       setConfirmOpen(false)
       onDeleted()
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to delete entry'
+      const msg = e instanceof Error ? e.message : t('deleteFailed')
       setError(msg)
     } finally {
       setDeleting(false)
@@ -173,36 +179,37 @@ export function EntrySettings({
         <div className="mb-4 flex items-center gap-2">
           <Settings className="size-4 text-muted-foreground" />
           <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-            Entry Details
+            {t('entryDetails')}
           </h3>
         </div>
 
         <div className="divide-y divide-border/60">
           <StatRow
             icon={FileText}
-            label="Type"
+            label={t('type')}
             value={typeLabel}
             hint={event.clinic || undefined}
           />
           <StatRow
             icon={Calendar}
-            label="Date"
-            value={formatDate(event.date)}
+            label={t('date')}
+            value={formatDate(event.date, locale)}
             hint={
               ageDays === 0
-                ? 'Today'
-                : ageDays === 1
-                  ? '1 day ago'
-                  : `${ageDays} days ago`
+                ? t('today')
+                : t('daysAgo', { count: ageDays })
             }
           />
           <StatRow
             icon={HardDrive}
-            label="Documents"
+            label={t('documents')}
             value={
               attachmentCount === 0
-                ? 'None'
-                : `${attachmentCount} (${formatBytes(totalSizeBytes)})`
+                ? t('none')
+                : t('documentsValue', {
+                    count: attachmentCount,
+                    size: formatBytes(totalSizeBytes, locale),
+                  })
             }
           />
           {/* Blood tests are the only entry type that can carry biomarker
@@ -210,11 +217,16 @@ export function EntrySettings({
           {event.type === 'blood_test' && (
             <StatRow
               icon={FlaskConical}
-              label="Biomarkers"
+              label={t('biomarkers')}
               value={(biomarkers?.length ?? 0).toString()}
               hint={
                 biomarkers && biomarkers.length > 0
-                  ? `${biomarkerCounts.normal} normal · ${biomarkerCounts.low} low · ${biomarkerCounts.high} high · ${biomarkerCounts.abnormal} abnormal`
+                  ? t('statusBreakdown', {
+                      normal: biomarkerCounts.normal,
+                      low: biomarkerCounts.low,
+                      high: biomarkerCounts.high,
+                      abnormal: biomarkerCounts.abnormal,
+                    })
                   : undefined
               }
             />
@@ -223,17 +235,17 @@ export function EntrySettings({
             <>
               <StatRow
                 icon={ClipboardList}
-                label="Clinical Notes"
+                label={t('clinicalNotes')}
                 value={visitCounts.notes.toString()}
               />
               <StatRow
                 icon={Pill}
-                label="Prescriptions"
+                label={t('prescriptions')}
                 value={visitCounts.prescriptions.toString()}
               />
               <StatRow
                 icon={CheckCircle}
-                label="Recommendations"
+                label={t('recommendations')}
                 value={visitCounts.recommendations.toString()}
               />
             </>
@@ -243,21 +255,21 @@ export function EntrySettings({
 
       <Card className="p-6">
         <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-          Technical
+          {t('technical')}
         </h3>
         <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background p-3">
           <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">Entry ID</p>
+            <p className="text-xs text-muted-foreground">{t('entryId')}</p>
             <p className="truncate font-mono text-xs text-foreground">{event.id}</p>
           </div>
           <Button
             variant="outline"
             size="sm"
             onClick={handleCopy}
-            aria-label="Copy entry ID"
+            aria-label={t('copyIdAria')}
           >
             <Copy className="size-3.5" />
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? t('copied') : t('copy')}
           </Button>
         </div>
       </Card>
@@ -265,17 +277,16 @@ export function EntrySettings({
       <div className="rounded-xl border border-status-high/30 bg-status-high/5 p-6">
         <div className="mb-2 flex items-center gap-2">
           <AlertTriangle className="size-4 text-status-high" />
-          <h3 className="text-sm font-semibold text-status-high">Danger Zone</h3>
+          <h3 className="text-sm font-semibold text-status-high">{t('dangerZone')}</h3>
         </div>
         <p className="mb-4 text-sm text-muted-foreground">
-          Permanently delete this entry and all of its data, including biomarkers,
-          visit notes, and uploaded documents. This action cannot be undone.
+          {t('dangerWarning')}
         </p>
         <Popover open={confirmOpen} onOpenChange={setConfirmOpen}>
           <PopoverTrigger asChild>
             <Button variant="destructive" disabled={deleting}>
               <Trash2 className="size-4" />
-              Delete this entry
+              {t('deleteEntry')}
             </Button>
           </PopoverTrigger>
           <PopoverContent
@@ -287,16 +298,14 @@ export function EntrySettings({
             <div className="space-y-3">
               <div>
                 <p className="text-sm font-semibold text-foreground">
-                  Delete {typeLabel.toLowerCase()}?
+                  {t('deleteConfirmTitle', { type: typeLabel.toLowerCase() })}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {event.title}
                 </p>
               </div>
               <p className="text-xs text-muted-foreground">
-                This will remove all biomarkers, visit data, and attachments
-                associated with this entry. The file storage quota will be
-                adjusted accordingly.
+                {t('deleteConfirmBody')}
               </p>
               {error && (
                 <p className="rounded-md border border-status-high/30 bg-status-high/10 px-2 py-1 text-xs text-status-high">
@@ -310,7 +319,7 @@ export function EntrySettings({
                   onClick={() => setConfirmOpen(false)}
                   disabled={deleting}
                 >
-                  Cancel
+                  {tc('cancel')}
                 </Button>
                 <Button
                   variant="destructive"
@@ -319,7 +328,7 @@ export function EntrySettings({
                   disabled={deleting}
                   data-testid="delete-confirm-button"
                 >
-                  {deleting ? 'Deleting…' : 'Delete'}
+                  {deleting ? t('deleting') : tc('delete')}
                 </Button>
               </div>
             </div>

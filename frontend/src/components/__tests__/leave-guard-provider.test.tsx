@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { LeaveGuardProvider, useLeaveGuard } from '@/providers/leave-guard-provider'
+import { TestI18nProvider } from '@/test/i18n-test-provider'
 
 // Mirrors the provider's internal marker shape; asserted via history.state.
 const MARKER = { leaveGuard: true }
@@ -18,9 +19,11 @@ function Harness({ onLeave }: { onLeave?: () => void }) {
 
 function renderHarness(onLeave?: () => void) {
   return render(
-    <LeaveGuardProvider>
-      <Harness onLeave={onLeave} />
-    </LeaveGuardProvider>,
+    <TestI18nProvider>
+      <LeaveGuardProvider>
+        <Harness onLeave={onLeave} />
+      </LeaveGuardProvider>
+    </TestI18nProvider>,
   )
 }
 

@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
+import { useTranslations } from 'next-intl'
 import {
   Activity,
   FileText,
@@ -16,15 +17,20 @@ import { cn, fetchAuthedObjectUrl, printAuthedDocument } from '@/lib/utils'
 import { EntrySettings } from './entry-settings'
 import type { InstrumentalData, MedicalEvent } from '@/lib/types'
 
+function ViewerLoadingFallback() {
+  const t = useTranslations('timeline.instrumentalTest')
+  return (
+    <div className="flex min-h-[300px] items-center justify-center text-sm text-muted-foreground">
+      {t('loadingViewer')}
+    </div>
+  )
+}
+
 const DocumentViewer = dynamic(
   () => import('@/components/shared/DocumentViewer').then((m) => m.DocumentViewer),
   {
     ssr: false,
-    loading: () => (
-      <div className="flex min-h-[300px] items-center justify-center text-sm text-muted-foreground">
-        Loading document viewer...
-      </div>
-    ),
+    loading: () => <ViewerLoadingFallback />,
   },
 )
 
@@ -37,6 +43,7 @@ export function InstrumentalTestDetails({
   data: InstrumentalData
   onDeleted?: () => void
 }) {
+  const t = useTranslations('timeline.instrumentalTest')
   const [activeTab, setActiveTab] = useState<'summary' | 'document' | 'settings'>('summary')
   const [activeAttachmentId, setActiveAttachmentId] = useState<string | null>(null)
 
@@ -84,7 +91,7 @@ export function InstrumentalTestDetails({
             }
           >
             <Activity className="size-4" />
-            Summary
+            {t('summary')}
           </button>
           <span className="text-sm text-muted-foreground/20">|</span>
           <button
@@ -96,7 +103,7 @@ export function InstrumentalTestDetails({
             }
           >
             <Paperclip className="size-4" />
-            Original Document ({data.attachments.length})
+            {t('originalDocument', { count: data.attachments.length })}
           </button>
           <span className="text-sm text-muted-foreground/20">|</span>
           <button
@@ -108,7 +115,7 @@ export function InstrumentalTestDetails({
             }
           >
             <Settings className="size-4" />
-            Settings
+            {t('settings')}
           </button>
         </div>
       </div>
@@ -127,7 +134,7 @@ export function InstrumentalTestDetails({
           <div className="bg-card border border-border rounded-xl p-6">
             <div className="mb-3">
               <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                Findings
+                {t('findings')}
               </h3>
             </div>
             {data.findings ? (
@@ -136,7 +143,7 @@ export function InstrumentalTestDetails({
               </p>
             ) : (
               <p className="text-sm italic text-muted-foreground/50">
-                No findings recorded
+                {t('noFindings')}
               </p>
             )}
           </div>
@@ -144,7 +151,7 @@ export function InstrumentalTestDetails({
           <div className="bg-card border border-border rounded-xl p-6">
             <div className="mb-3">
               <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                Conclusion / Impression
+                {t('conclusion')}
               </h3>
             </div>
             {data.conclusion ? (
@@ -153,7 +160,7 @@ export function InstrumentalTestDetails({
               </p>
             ) : (
               <p className="text-sm italic text-muted-foreground/50">
-                No conclusion recorded
+                {t('noConclusion')}
               </p>
             )}
           </div>
@@ -162,7 +169,7 @@ export function InstrumentalTestDetails({
         <div className="mt-5 flex w-full min-w-0 flex-1 flex-col min-h-0">
           {data.attachments.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No documents available for this event.
+              {t('noDocuments')}
             </p>
           ) : (
             <div className="flex flex-col gap-3">
@@ -200,7 +207,7 @@ export function InstrumentalTestDetails({
                           className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                         >
                           <Printer className="size-4" />
-                          Print
+                          {t('print')}
                         </button>
                       )}
                       {url && (
@@ -209,7 +216,7 @@ export function InstrumentalTestDetails({
                           className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                         >
                           <Download className="size-4" />
-                          Download
+                          {t('download')}
                         </button>
                       )}
                     </div>
@@ -222,7 +229,7 @@ export function InstrumentalTestDetails({
           {selectedAttachment && (
             <>
               <p className="mt-4 mb-2 text-xs text-muted-foreground">
-                Viewing: {selectedAttachment.name}
+                {t('viewing', { name: selectedAttachment.name })}
               </p>
 
               <div className="flex-1 min-h-0 w-full overflow-hidden rounded-xl border border-border">

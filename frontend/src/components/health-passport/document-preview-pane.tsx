@@ -2,16 +2,22 @@
 
 import dynamic from 'next/dynamic'
 import { X, FileText, ImagePlus } from 'lucide-react'
+import { useTranslations } from 'next-intl'
+
+function ViewerLoading() {
+  const t = useTranslations('preview')
+  return (
+    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+      {t('loadingViewer')}
+    </div>
+  )
+}
 
 const DocumentViewer = dynamic(
   () => import('@/components/shared/DocumentViewer').then((m) => m.DocumentViewer),
   {
     ssr: false,
-    loading: () => (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Loading document viewer...
-      </div>
-    ),
+    loading: () => <ViewerLoading />,
   },
 )
 
@@ -31,14 +37,15 @@ export function DocumentPreviewPane({
   onRemove,
   onAttachClick,
 }: DocumentPreviewPaneProps) {
+  const t = useTranslations('preview')
   return (
     <div className="sticky top-6 relative w-[45%] overflow-hidden rounded-xl border bg-card">
       {objectUrl && (
         <button
           type="button"
           onClick={onRemove}
-          title="Remove document"
-          aria-label="Remove document"
+          title={t('remove')}
+          aria-label={t('remove')}
           className="absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded-full border border-border bg-background/90 text-muted-foreground shadow-sm transition-colors hover:text-foreground"
         >
           <X className="size-3.5" />
@@ -53,17 +60,17 @@ export function DocumentPreviewPane({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={objectUrl}
-                alt={selectedFile?.name ?? 'Uploaded image'}
+                alt={selectedFile?.name ?? t('uploadedImageAlt')}
                 className="h-full w-full object-contain"
               />
             </div>
           </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center p-4">
-            <h2 className="mb-3 text-sm font-semibold text-foreground">Attached Document</h2>
+            <h2 className="mb-3 text-sm font-semibold text-foreground">{t('attachedTitle')}</h2>
             <div className="flex aspect-[3/4] w-full max-w-xs flex-col items-center justify-center gap-3 rounded-lg border border-border bg-muted/60 text-center">
               <FileText className="size-10 text-muted-foreground/60" />
-              <p className="text-xs font-medium text-foreground">{selectedFile?.name ?? 'Document'}</p>
+              <p className="text-xs font-medium text-foreground">{selectedFile?.name ?? t('documentFallback')}</p>
               {selectedFile && (
                 <p className="text-[11px] text-muted-foreground">
                   {(selectedFile.size / 1024).toFixed(0)} KB
@@ -74,7 +81,7 @@ export function DocumentPreviewPane({
         )
       ) : (
         <div className="flex h-full flex-col items-center justify-center p-4">
-          <h2 className="mb-3 text-sm font-semibold text-foreground">Attachments (Optional)</h2>
+          <h2 className="mb-3 text-sm font-semibold text-foreground">{t('emptyTitle')}</h2>
           <button
             type="button"
             onClick={onAttachClick}
@@ -84,9 +91,9 @@ export function DocumentPreviewPane({
               <ImagePlus className="size-6" />
             </div>
             <p className="text-xs font-medium text-foreground">
-              {selectedFile?.name ?? 'Add a photo or scan'}
+              {selectedFile?.name ?? t('emptyCta')}
             </p>
-            <p className="text-[11px] text-muted-foreground">Click to attach</p>
+            <p className="text-[11px] text-muted-foreground">{t('emptyHint')}</p>
           </button>
         </div>
       )}

@@ -2,13 +2,16 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import { Loader2, Mail, ArrowLeft } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { LanguageSwitch } from "@/components/shared/language-switch"
 
 export default function ForgotPasswordPage() {
+  const t = useTranslations("forgotPassword")
   const [email, setEmail] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
@@ -31,40 +34,42 @@ export default function ForgotPasswordPage() {
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.detail || "Something went wrong. Please try again.")
+        setError(data.detail || t("unexpectedError"))
         return
       }
 
       setSent(true)
     } catch {
-      setError("Something went wrong. Please try again.")
+      setError(t("unexpectedError"))
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+    <div className="relative min-h-screen flex items-center justify-center bg-background px-4">
+      <div className="absolute right-4 top-4 z-10">
+        <LanguageSwitch />
+      </div>
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">Forgot password</CardTitle>
+          <CardTitle className="text-2xl font-bold">{t("title")}</CardTitle>
           <CardDescription>
-            Enter your email and we&apos;ll send you a link to reset your password
+            {t("subtitle")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {sent ? (
             <div className="space-y-4">
               <div className="rounded-lg border border-status-normal/20 bg-status-normal/5 p-3 text-sm text-status-normal">
-                If an account exists for this email, a reset link has been sent.
-                Check your inbox (and spam folder) to continue.
+                {t("sentNotice")}
               </div>
               <Link
                 href="/login"
                 className="flex items-center justify-center gap-2 text-sm text-primary hover:underline font-medium"
               >
                 <ArrowLeft className="size-4" />
-                Back to sign in
+                {t("backToSignIn")}
               </Link>
             </div>
           ) : (
@@ -80,14 +85,14 @@ export default function ForgotPasswordPage() {
 
               <div className="space-y-2">
                 <label htmlFor="email" className="block text-sm font-medium mb-1">
-                  Email
+                  {t("email")}
                 </label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="email"
                     type="email"
-                    placeholder="you@example.com"
+                    placeholder={t("emailPlaceholder")}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="pl-10"
@@ -101,19 +106,19 @@ export default function ForgotPasswordPage() {
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 size-4 animate-spin" />
-                    Sending...
+                    {t("sending")}
                   </>
                 ) : (
-                  "Send reset link"
+                  t("submit")
                 )}
               </Button>
             </form>
           )}
 
           <div className="mt-6 text-center text-sm text-muted-foreground">
-            Remembered your password?{" "}
+            {t("remembered")}{" "}
             <Link href="/login" className="text-primary hover:underline font-medium">
-              Sign in
+              {t("signIn")}
             </Link>
           </div>
         </CardContent>

@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react'
 import { Sparkles, AlertCircle, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
 import { useAutoResize } from '@/lib/hooks/useAutoResize'
@@ -45,6 +46,8 @@ import type {
 
 export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const queryClient = useQueryClient()
+  const t = useTranslations('editor')
+  const tUpload = useTranslations('upload')
   const [entryMode, setEntryMode] = useState<EntryMode>('ai')
   const [categories, setCategories] = useState<FormCategory[]>(manualCategories())
   const [documentType, setDocumentType] = useState('blood_test')
@@ -219,7 +222,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     // are dropped, deterministically process the first and say so.
     const file = list[0]
     setMultiFileNotice(
-      list.length > 1 ? 'Only the first document is processed — upload files one at a time.' : null,
+      list.length > 1 ? tUpload('multiFileNotice') : null,
     )
     setSelectedFile(file)
     setObjectUrl(URL.createObjectURL(file))
@@ -302,6 +305,8 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
 
   function addCategory() {
     setCategories((prev) => [
+      // 'New Group' stays English on purpose: it is a DEFAULT CATEGORY NAME
+      // seeded into the editable input and persisted to the DB, not a UI label.
       ...prev,
       { id: `cat-${Date.now()}`, name: 'New Group', rows: [newRow()] },
     ])
@@ -319,11 +324,11 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
       // saved as "today" and a future date broke timeline ordering before.
       const dateStr = dateRef.current?.value ?? ''
       if (!dateStr) {
-        setDateError('Date is required')
+        setDateError(t('dateRequired'))
         return
       }
       if (dateStr > todayLocal) {
-        setDateError('Date can\u2019t be in the future')
+        setDateError(t('dateFuture'))
         return
       }
       // Saving with no valid rows and no document would create an empty
@@ -335,9 +340,12 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         validRowCount === 0 &&
         !selectedFile
       ) {
-        setSaveError('Add at least one biomarker with a name and value.')
+        setSaveError(t('noBiomarkers'))
         return
       }
+      // Auto-titles stay English on purpose: they are DEFAULT TITLES written
+      // to the DB as the entry title, not UI labels — translating them would
+      // change persisted data.
       const autoTitle =
         documentType === 'blood_test'
           ? 'Blood Test Panel'
@@ -377,7 +385,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
           ? await mergeMedicalEntry(selectedMergeTarget.id, fd)
           : await saveMedicalEntry(fd)
       if (!resp.success) {
-        setSaveError(resp.message || 'Failed to save entry')
+        setSaveError(resp.message || t('saveFailed'))
         return
       }
       // Invalidate cached server state so the new entry appears immediately.
@@ -393,11 +401,11 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
       await onSave()
     } catch (err) {
       if (err instanceof UsageLimitError) {
-        toast.error('Storage Limit Reached', {
+        toast.error(t('storageLimitTitle'), {
           description: err.message,
         })
       }
-      const msg = err instanceof Error ? err.message : 'Failed to save entry'
+      const msg = err instanceof Error ? err.message : t('saveFailed')
       setSaveError(msg)
     } finally {
       setSaving(false)
@@ -441,9 +449,9 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
               <div className="mb-4 flex items-start gap-3 rounded-lg border border-status-high/20 bg-status-high/5 p-3">
                 <AlertCircle className="mt-0.5 size-4 shrink-0 text-status-high" />
                 <div className="text-xs text-foreground">
-                  <span className="font-semibold">AI extraction failed</span>
+                  <span className="font-semibold">{t('aiErrorTitle')}</span>
                   <p className="mt-1 text-muted-foreground">{aiError}</p>
-                  <p className="mt-1">Switched to manual entry. Fill in the details below.</p>
+                  <p className="mt-1">{t('aiErrorFallback')}</p>
                 </div>
                 {selectedFile && (
                   <Button
@@ -454,7 +462,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                     onClick={() => runExtraction(selectedFile)}
                   >
                     <RefreshCw className="size-3.5" />
-                    Try again
+                    {t('tryAgain')}
                   </Button>
                 )}
               </div>
@@ -464,29 +472,29 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
               <div className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
                 <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
                 <p className="text-xs text-foreground">
-                  <span className="font-semibold">AI successfully identified</span>{' '}
-                  a{documentType === 'blood_test' ? ' Blood Test Panel' : documentType === 'doctor_visit' ? ' Doctor Visit.' : documentType === 'instrumental_test' ? 'n Instrumental Test Report' : ' medical document'}
+                  <span className="font-semibold">{t('identified')}</span>{' '}
+                  {t('identifiedType', { type: documentType })}
                   {documentType === 'blood_test' && categories.length > 0 && (
-                    <> and extracted {categories.reduce((s, c) => s + c.rows.length, 0)} biomarkers.</>
-                  )}
-                  {' '}Please review for accuracy.
+                    <> {t('extractedBiomarkers', { count: categories.reduce((s, c) => s + c.rows.length, 0) })}</>
+                  )}{' '}
+                  {t('reviewNote')}
                 </p>
               </div>
             )}
 
             <div className={cn('grid gap-3 sm:grid-cols-2', !isManual && !aiError && 'mt-5')}>
-              <Field label="Document Type">
+              <Field label={t('documentType')}>
                 <select
                   value={documentType}
                   onChange={(e) => handleDocumentTypeChange(e.target.value)}
                   className="flex h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm shadow-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
                 >
-                  <option value="blood_test">Blood Test Panel</option>
-                  <option value="doctor_visit">Doctor Visit / Clinical Notes</option>
-                  <option value="instrumental_test">Instrumental Test (MRI, Elastography, ECG...)</option>
+                  <option value="blood_test">{t('optionBloodTest')}</option>
+                  <option value="doctor_visit">{t('optionDoctorVisit')}</option>
+                  <option value="instrumental_test">{t('optionInstrumental')}</option>
                 </select>
               </Field>
-              <Field label="Date *">
+              <Field label={t('date')}>
                 <Input
                   ref={dateRef}
                   type="date"
@@ -502,7 +510,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                 />
                 {dateError && <p className="mt-1 text-xs text-red-500">{dateError}</p>}
               </Field>
-              <Field label={timeRequired && !merging ? 'Time (required)' : 'Time (optional)'}>
+              <Field label={timeRequired && !merging ? t('timeRequired') : t('timeOptional')}>
                 <Input
                   ref={timeRef}
                   type="time"
@@ -512,12 +520,12 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                 />
                 {duplicateWarning && !merging && (
                   <p className="mt-1 text-xs text-red-500">
-                    There&apos;s already a blood test on this date. Time is required.
+                    {t('duplicateWarning')}
                   </p>
                 )}
                 {duplicateCheckFailed && (
                   <p className="mt-1 text-xs text-amber-600">
-                    Couldn&apos;t check for existing tests on this date — saving may create a duplicate entry.
+                    {t('duplicateCheckFailed')}
                   </p>
                 )}
                 {duplicateWarning && existingBloodTests.length > 0 && (
@@ -537,21 +545,19 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                       />
                       <span>
                         <span className="text-sm font-semibold text-foreground">
-                          Merge with this date&apos;s existing blood test
+                          {t('mergeTitle')}
                         </span>
                         <span className="mt-0.5 block text-xs text-muted-foreground">
-                          Add the new biomarkers and attach this document to the existing entry
-                          instead of creating a second one.
+                          {t('mergeDescription')}
                         </span>
                       </span>
                     </label>
                     {mergeBlocked && (
                       <p className="mt-2 text-xs text-red-500">
-                        Can&apos;t merge —{' '}
-                        {mergeConflicts.length === 1
-                          ? 'this biomarker is already'
-                          : 'these biomarkers are already'}{' '}
-                        in the existing test: {mergeConflicts.join(', ')}.
+                        {t('mergeBlocked', {
+                          count: mergeConflicts.length,
+                          names: mergeConflicts.join(', '),
+                        })}
                       </p>
                     )}
                     {mergeSelected && !mergeBlocked && existingBloodTests.length > 1 && (
@@ -560,7 +566,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                           htmlFor="merge-target"
                           className="shrink-0 text-xs font-medium text-muted-foreground"
                         >
-                          Merge into:
+                          {t('mergeInto')}
                         </label>
                         <select
                           id="merge-target"
@@ -580,25 +586,25 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
                   </div>
                 )}
               </Field>
-              <Field label="Clinic / Source">
-                <Input ref={clinicRef} defaultValue={prefillClinic} placeholder="e.g. Invitro Lab" />
+              <Field label={t('clinic')}>
+                <Input ref={clinicRef} defaultValue={prefillClinic} placeholder={t('placeholderClinic')} />
               </Field>
-              <Field label="Provider / Doctor">
-                <Input ref={providerRef} defaultValue={prefillProvider} placeholder="e.g. Dr. Ivanova" />
+              <Field label={t('provider')}>
+                <Input ref={providerRef} defaultValue={prefillProvider} placeholder={t('placeholderProvider')} />
               </Field>
-              <Field label="Title (optional)">
-                <Input ref={titleRef} defaultValue={prefillTitle} placeholder="e.g. Pre-Operative Baseline" />
+              <Field label={t('title')}>
+                <Input ref={titleRef} defaultValue={prefillTitle} placeholder={t('placeholderTitle')} />
               </Field>
             </div>
 
             <div className="mt-3">
-              <Field label="Patient Notes &amp; Context">
+              <Field label={t('notes')}>
                 <textarea
                   ref={notesRef}
                   defaultValue={prefillNotes}
                   onInput={resizeNotes}
                   rows={2}
-                  placeholder="e.g. Fasted for 12 hours, felt slight fatigue..."
+                  placeholder={t('placeholderNotes')}
                   className="flex w-full rounded-lg border border-input bg-background px-2.5 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
                 />
               </Field>
@@ -626,10 +632,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
           {skippedRowCount > 0 && validRowCount > 0 && (
             <div className="flex items-start gap-3 border-t border-border p-4 text-xs text-amber-600">
               <AlertCircle className="mt-0.5 size-4 shrink-0" />
-              <span>
-                {skippedRowCount} {skippedRowCount === 1 ? 'row is' : 'rows are'} missing a name or
-                value and will be skipped on save.
-              </span>
+              <span>{t('skippedRows', { count: skippedRowCount })}</span>
             </div>
           )}
 
@@ -649,13 +652,13 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
               onChange={handleFileRefChange}
             />
             <Button variant="ghost" onClick={onSave} disabled={saving}>
-              Cancel
+              {t('cancel')}
             </Button>
             <Button
               onClick={handleSave}
               disabled={saving || (timeRequired && !timeValue && !merging)}
             >
-              {saving ? 'Saving...' : merging ? 'Merge & Save' : 'Save to HealthPassport'}
+              {saving ? t('saving') : merging ? t('mergeSave') : t('save')}
             </Button>
           </div>
         </div>

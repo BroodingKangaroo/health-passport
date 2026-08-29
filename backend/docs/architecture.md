@@ -429,6 +429,34 @@ extractions "forget" units.
   whole day (tests with distinct times stay plain, tests with the same time —
   or no time — get numbered).
 
+## Response localization (`app/i18n.py`, Accept-Language)
+
+- User-facing backend text — HTTPException `detail` strings, SSE `error`
+  messages, and the small JSON success `message` fields — is localized EN/RU.
+  `app/i18n.py` holds the `MESSAGES` catalog (stable keys → `{en, ru}`;
+  the English values are byte-identical to the pre-localization literals) and
+  `tr(key, **kwargs)` / `tr_opt(key)` lookup helpers.
+- A pure-ASGI `LocaleMiddleware` (mounted in `app/main.py`) parses the request
+  `Accept-Language` header once per request and stores the resolved locale
+  (`en` | `ru`, q-value aware, EN fallback) in a ContextVar. Endpoints, sync
+  handlers (via starlette's context-copying threadpool) and the SSE
+  `event_stream` generator all read the same value. **No header ⇒ byte-identical
+  legacy English behavior**, which the existing suite relies on
+  (`tests/test_i18n.py` covers both).
+- OCR error messages are classified inside an executor thread where the
+  ContextVar is invisible, so `app/api/ai.py` localizes them AFTER the fact
+  from `OCRProcessingError.kind` (`ai.ocr_*` keys; the auth kind carries
+  `http_status` for interpolation). Unmatched kinds fall back to the error's
+  own English message.
+- Still English by design: pydantic/FastAPI 422 validation messages, catch-all
+  SSE errors (raw `str(e)`), DB-persisted strings (entry titles, "Labs",
+  note headings, "Raw OCR text:"), category/panel names, biomarker names and
+  units. The frontend requests RU by sending `Accept-Language` on every API
+  call (see `frontend/docs/architecture.md`).
+- The password-reset email (`app/services/mailer.py`) is bilingual
+  (English block + Russian block, both carrying the reset link) because there
+  is no per-user language preference in the data model.
+
 ## Auth & password reset (`/api/auth`)
 
 - Registration/login are credentials-based; the frontend proxies them through

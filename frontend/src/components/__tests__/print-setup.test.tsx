@@ -4,9 +4,14 @@ import { PrintSetup } from '@/components/health-passport/print-setup'
 import { PrintConfigProvider } from '@/providers/print-config-provider'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
 import { LeaveGuardProvider } from '@/providers/leave-guard-provider'
+import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type { FlowsheetResponse } from '@/lib/types'
 import type { TranslatedName } from '@/services/api'
 import { toast } from 'sonner'
+
+// Wrap renders with the i18n context (English) — PrintSetup uses useTranslations.
+const renderI18n = ((ui: React.ReactElement, options?: Parameters<typeof render>[1]) =>
+  render(<TestI18nProvider>{ui}</TestI18nProvider>, options)) as typeof render
 
 afterEach(() => {
   sessionStorage.clear()
@@ -76,7 +81,7 @@ function translateResult(
 }
 
 function renderComponent() {
-  return render(
+  return renderI18n(
     <LeaveGuardProvider>
       <PrintConfigProvider>
         <PrintSetup />
@@ -616,7 +621,7 @@ describe('PrintSetup', () => {
       suppress = usePrintConfig().suppressSavedTranslations
       return null
     }
-    render(
+    renderI18n(
       <LeaveGuardProvider>
         <PrintConfigProvider>
           <PrintSetup />

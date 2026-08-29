@@ -1,11 +1,16 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { DoctorVisitForm } from '../health-passport/DoctorVisitForm'
+import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type { ExtractedVisitData } from '@/lib/types'
+
+// Wrap renders with the i18n context (English) — DoctorVisitForm uses useTranslations.
+const renderI18n = ((ui: React.ReactElement, options?: Parameters<typeof render>[1]) =>
+  render(<TestI18nProvider>{ui}</TestI18nProvider>, options)) as typeof render
 
 describe('DoctorVisitForm', () => {
   it('renders with empty initialData', () => {
-    render(<DoctorVisitForm />)
+    renderI18n(<DoctorVisitForm />)
 
     expect(screen.getByText('Clinical Notes')).toBeInTheDocument()
     expect(screen.getByText('Primary Diagnosis')).toBeInTheDocument()
@@ -28,7 +33,7 @@ describe('DoctorVisitForm', () => {
       recommendations: [{ original: 'Monitor blood glucose daily', translated_en: 'Monitor blood glucose daily' }, { original: 'Dietary consultation', translated_en: 'Dietary consultation' }],
     }
 
-    render(<DoctorVisitForm initialData={initial} />)
+    renderI18n(<DoctorVisitForm initialData={initial} />)
 
     expect(screen.getByDisplayValue('Diabetes Type 2')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Increased thirst and frequent urination')).toBeInTheDocument()
@@ -42,7 +47,7 @@ describe('DoctorVisitForm', () => {
 
   it('calls onDataChange when diagnosis is typed', () => {
     const onDataChange = vi.fn()
-    render(<DoctorVisitForm onDataChange={onDataChange} />)
+    renderI18n(<DoctorVisitForm onDataChange={onDataChange} />)
 
     const textareas = screen.getAllByRole('textbox')
     fireEvent.change(textareas[0], { target: { value: 'Asthma' } })
@@ -55,7 +60,7 @@ describe('DoctorVisitForm', () => {
   })
 
   it('adds a prescription row when add medication is clicked', async () => {
-    render(<DoctorVisitForm />)
+    renderI18n(<DoctorVisitForm />)
 
     expect(screen.queryByPlaceholderText('Medication name')).not.toBeInTheDocument()
     const addBtn = screen.getByText('Add Medication')

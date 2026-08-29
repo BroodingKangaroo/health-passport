@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { CheckCircle2, AlertTriangle, Languages, ArrowRight } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import type { TranslationSource } from '@/services/api'
@@ -13,38 +14,35 @@ export interface TranslationPreviewItem {
   source: TranslationSource
 }
 
-const CACHED_BADGE = {
-  label: 'already translated',
-  className: 'border-border bg-muted text-muted-foreground',
-}
+const CACHED_BADGE_CLASS = 'border-border bg-muted text-muted-foreground'
 
-const FALLBACK_BADGE = {
-  label: 'English fallback',
-  className: 'border-amber-300 bg-amber-50 text-amber-700',
-}
+const FALLBACK_BADGE_CLASS = 'border-amber-300 bg-amber-50 text-amber-700'
 
-const KEPT_AS_IS_BADGE = {
-  label: 'kept as-is',
-  className: 'border-sky-200 bg-sky-50 text-sky-700',
-}
-
-const UNCHANGED_TOOLTIP =
-  'Returned unchanged — Latin term, acronym, or proper noun that stays identical in this language.'
+const KEPT_AS_IS_BADGE_CLASS = 'border-sky-200 bg-sky-50 text-sky-700'
 
 /**
  * Resolve the badge shown next to the translated name. Fallback rows have no
  * badge here — their "English fallback" label renders in the choice column
  * instead (there is no toggle to show: no translation exists).
  */
-function badgeFor(item: TranslationPreviewItem): {
+function badgeFor(
+  item: TranslationPreviewItem,
+  t: ReturnType<typeof useTranslations>,
+): {
   label: string
   className: string
   title?: string
 } | null {
   if (item.source === 'fallback') return null
-  if (item.source === 'cached') return CACHED_BADGE
+  if (item.source === 'cached') {
+    return { label: t('badges.cached'), className: CACHED_BADGE_CLASS }
+  }
   if (item.source === 'translated' && item.translated === item.english) {
-    return { ...KEPT_AS_IS_BADGE, title: UNCHANGED_TOOLTIP }
+    return {
+      label: t('badges.keptAsIs'),
+      className: KEPT_AS_IS_BADGE_CLASS,
+      title: t('keptAsIsTooltip'),
+    }
   }
   return null
 }
@@ -89,6 +87,7 @@ export function TranslationPreviewDialog({
   onConfirm: (accepted: TranslationPreviewItem[]) => void
   onCancel: () => void
 }) {
+  const t = useTranslations('print.review')
   // Accept-by-default: proceeding without touching anything saves every term,
   // matching the previous all-or-nothing behavior.
   const [rejected, setRejected] = useState<Record<string, boolean>>({})
@@ -128,13 +127,10 @@ export function TranslationPreviewDialog({
           <Languages className="mt-0.5 size-5 shrink-0 text-primary" />
           <div>
             <h2 className="text-lg font-semibold text-foreground">
-              Verify Translations
+              {t('title')}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              AI-translated terminology for the {languageLabel} document.
-              Switch a term to English to use its original name. Accepted
-              terms are saved and reused in future documents; going back
-              discards them.
+              {t('intro', { languageLabel })}
             </p>
           </div>
         </div>
@@ -144,14 +140,14 @@ export function TranslationPreviewDialog({
             per-row `1fr` grids, rows without a toggle computed different
             widths and the columns drifted. */}
         <div className="grid grid-cols-[minmax(0,1fr)_28px_minmax(0,1.4fr)_148px] items-center gap-x-3 px-4 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          <span>Biomarker</span>
+          <span>{t('biomarker')}</span>
           <span />
-          <span>Name used in document</span>
+          <span>{t('nameInDocument')}</span>
           <span />
         </div>
         <div className="max-h-[60vh] overflow-y-auto rounded-lg border border-border">
           {items.map((item) => {
-            const badge = badgeFor(item)
+            const badge = badgeFor(item, t)
             const fixedChoice = fixedChoiceFor(item)
             const isDecidable = fixedChoice === null
             const useEnglish = isDecidable ? !!rejected[item.id] : fixedChoice === 'english'
@@ -195,25 +191,25 @@ export function TranslationPreviewDialog({
                   // No translation exists to choose: the amber label takes
                   // the toggle's place at the right edge.
                   <span
-                    title="The AI could not translate this name."
+                    title={t('fallbackTooltip')}
                     className={cn(
                       'shrink-0 justify-self-end rounded-full border px-1.5 py-0.5 text-[10px] font-medium',
-                      FALLBACK_BADGE.className,
+                      FALLBACK_BADGE_CLASS,
                     )}
                   >
-                    {FALLBACK_BADGE.label}
+                    {t('badges.fallback')}
                   </span>
                 ) : (
                   <div
                     role="radiogroup"
-                    aria-label={`Name used in document for ${item.english}`}
+                    aria-label={t('radioName', { name: item.english })}
                     className="flex shrink-0 justify-self-end overflow-hidden rounded-md border border-border text-[11px] font-medium"
                   >
                     <button
                       type="button"
                       role="radio"
                       aria-checked={!useEnglish}
-                      aria-label={`Use translation for ${item.english}`}
+                      aria-label={t('radioTranslation', { name: item.english })}
                       disabled={!isDecidable}
                       onClick={() => setRejected((p) => ({ ...p, [item.id]: false }))}
                       className={cn(
@@ -224,13 +220,13 @@ export function TranslationPreviewDialog({
                         !isDecidable && 'cursor-not-allowed hover:bg-transparent',
                       )}
                     >
-                      Translation
+                      {t('translation')}
                     </button>
                     <button
                       type="button"
                       role="radio"
                       aria-checked={!!useEnglish}
-                      aria-label={`Use English for ${item.english}`}
+                      aria-label={t('radioEnglish', { name: item.english })}
                       disabled={!isDecidable}
                       onClick={() => setRejected((p) => ({ ...p, [item.id]: true }))}
                       className={cn(
@@ -241,7 +237,7 @@ export function TranslationPreviewDialog({
                         !isDecidable && 'cursor-not-allowed hover:bg-transparent',
                       )}
                     >
-                      English
+                      {t('english')}
                     </button>
                   </div>
                 )}
@@ -253,7 +249,7 @@ export function TranslationPreviewDialog({
         {categories.length > 0 && (
           <div className="mt-3 rounded-lg border border-border px-4 py-3">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Panel headings (applied automatically)
+              {t('panelHeadings')}
             </p>
             <div className="mt-2 space-y-2">
               {categories.map((c) => (
@@ -281,33 +277,34 @@ export function TranslationPreviewDialog({
           <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">
             {hasKeptAsIs && (
               <p>
-                <span className="font-medium text-sky-700">kept as-is</span>
-                {' — Latin term, acronym, or proper noun that stays identical.'}
+                <span className="font-medium text-sky-700">{t('badges.keptAsIs')}</span>
+                {' '}
+                {t('legendKeptAsIs')}
               </p>
             )}
             {hasFallback && (
               <p>
-                <span className="font-medium text-amber-700">English fallback</span>
-                {' — the AI could not translate this name.'}
+                <span className="font-medium text-amber-700">{t('badges.fallback')}</span>
+                {' '}
+                {t('legendFallback')}
               </p>
             )}
           </div>
         )}
 
         <p className="mt-2 text-xs text-muted-foreground">
-          Choosing a name here never removes the biomarker from the document —
-          to leave biomarkers out entirely, use the filter in the print editor.
+          {t('choiceNote')}
         </p>
 
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="ghost" onClick={onCancel}>
-            Back — discard translations
+            {t('back')}
           </Button>
           <Button onClick={() => onConfirm(accepted)} className="gap-1.5">
             <CheckCircle2 className="size-4" />
             {accepted.length > 0
-              ? `Save ${accepted.length} & Generate Document`
-              : 'Generate Document (nothing saved)'}
+              ? t('saveAndGenerate', { count: accepted.length })
+              : t('generateNothingSaved')}
           </Button>
         </div>
       </div>
@@ -316,12 +313,12 @@ export function TranslationPreviewDialog({
 }
 
 export function TranslationFallbackWarning({ count }: { count: number }) {
+  const t = useTranslations('print.review')
   if (count === 0) return null
   return (
     <p className="flex items-start gap-1.5 text-xs text-amber-600">
       <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-      {count} name{count === 1 ? '' : 's'} could not be translated and will
-      appear in English.
+      {t('fallbackWarning', { count })}
     </p>
   )
 }

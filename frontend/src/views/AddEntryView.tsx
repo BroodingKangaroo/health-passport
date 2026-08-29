@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { ArrowLeft } from 'lucide-react'
 
 import { HeaderBar } from '@/components/health-passport/header-bar'
@@ -10,6 +11,7 @@ import { useLeaveGuard } from '@/providers/leave-guard-provider'
 
 export function AddEntryView() {
   const router = useRouter()
+  const t = useTranslations('misc.backLinks')
   const { confirmLeave } = useLeaveGuard()
 
   async function handleBack() {
@@ -30,7 +32,7 @@ export function AddEntryView() {
             className="gap-1.5 text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="size-4" />
-            Back to Dashboard
+            {t('dashboard')}
           </Button>
         </div>
       </nav>

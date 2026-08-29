@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { LeaveGuardProvider, useLeaveGuard } from '@/providers/leave-guard-provider'
+import { TestI18nProvider } from '@/test/i18n-test-provider'
 
 let leaveResolved: boolean | undefined
 let onLeaveFired = 0
@@ -27,9 +28,11 @@ function Harness() {
 
 function renderComponent() {
   return render(
-    <LeaveGuardProvider>
-      <Harness />
-    </LeaveGuardProvider>,
+    <TestI18nProvider>
+      <LeaveGuardProvider>
+        <Harness />
+      </LeaveGuardProvider>
+    </TestI18nProvider>,
   )
 }
 

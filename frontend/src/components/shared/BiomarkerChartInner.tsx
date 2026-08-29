@@ -11,6 +11,7 @@ import {
   YAxis,
   type XAxisTickContentProps,
 } from 'recharts'
+import { useLocale, useTranslations } from 'next-intl'
 
 import type { BiomarkerResult, Reading } from '@/lib/types'
 import { sortReadingsByDate, splitDateLabel } from '@/lib/utils'
@@ -29,6 +30,8 @@ export default function BiomarkerChartInner({
   height = 250,
   compact = false,
 }: BiomarkerChartProps) {
+  const t = useTranslations('timeline.biomarker')
+  const locale = useLocale()
   const rawData = dataProp ?? [
     ...(biomarker.history ?? []),
     { date: biomarker.date, value: biomarker.value, status: biomarker.status },
@@ -74,7 +77,7 @@ export default function BiomarkerChartInner({
   if (numericValues.length === 0) {
     return (
       <div className="flex w-full items-center justify-center text-xs text-muted-foreground" style={{ height }}>
-        {qual ? 'No qualitative readings to chart' : 'No numeric readings to chart'}
+        {qual ? t('noQualitativeReadings') : t('noNumericReadings')}
       </div>
     )
   }
@@ -104,7 +107,7 @@ export default function BiomarkerChartInner({
             tickLine={false}
             axisLine={{ stroke: '#d4d4d8' }}
             tick={(tickProps: XAxisTickContentProps) => {
-              const { label, sub } = splitDateLabel(String(tickProps.payload.value))
+              const { label, sub } = splitDateLabel(String(tickProps.payload.value), locale)
               const fs = compact ? 9 : 11
               const subFs = compact ? 8 : 9
               const dy1 = compact ? 10 : 12
@@ -140,7 +143,7 @@ export default function BiomarkerChartInner({
             }}
             labelStyle={{ color: '#71717a', fontWeight: 500 }}
             labelFormatter={(label) => {
-              const { label: mainLabel, sub } = splitDateLabel(String(label))
+              const { label: mainLabel, sub } = splitDateLabel(String(label), locale)
               return sub ? (
                 <>
                   <span>{mainLabel}</span>
@@ -150,7 +153,7 @@ export default function BiomarkerChartInner({
                 mainLabel
               )
             }}
-            formatter={(value) => [`${value ?? ''} ${biomarker.definition.unit}`, 'Result']}
+            formatter={(value) => [`${value ?? ''} ${biomarker.definition.unit}`, t('result')]}
           />
           <Line
             type="monotone"

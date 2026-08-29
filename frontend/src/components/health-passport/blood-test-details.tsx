@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
+import { useTranslations } from 'next-intl'
 import { FileText, Download, Printer, FlaskConical, Paperclip, Settings } from 'lucide-react'
 
 import { cn, fetchAuthedObjectUrl, printAuthedDocument } from '@/lib/utils'
@@ -9,15 +10,20 @@ import { ResultsPanel } from './results-panel'
 import { EntrySettings } from './entry-settings'
 import type { MedicalEvent, BiomarkerResult } from '@/lib/types'
 
+function ViewerLoadingFallback() {
+  const t = useTranslations('timeline.bloodTest')
+  return (
+    <div className="flex min-h-[300px] items-center justify-center text-sm text-muted-foreground">
+      {t('loadingViewer')}
+    </div>
+  )
+}
+
 const DocumentViewer = dynamic(
   () => import('@/components/shared/DocumentViewer').then((m) => m.DocumentViewer),
   {
     ssr: false,
-    loading: () => (
-      <div className="flex min-h-[300px] items-center justify-center text-sm text-muted-foreground">
-        Loading document viewer...
-      </div>
-    ),
+    loading: () => <ViewerLoadingFallback />,
   },
 )
 
@@ -34,6 +40,7 @@ export function BloodTestDetails({
   onViewDetails,
   onDeleted,
 }: BloodTestDetailsProps) {
+  const t = useTranslations('timeline.bloodTest')
   const [activeTab, setActiveTab] = useState<'results' | 'document' | 'settings'>('results')
 
   const attachments = event.attachments ?? []
@@ -73,7 +80,7 @@ export function BloodTestDetails({
           }
         >
           <FlaskConical className="size-4" />
-          Test Results
+          {t('testResults')}
         </button>
         <span className="text-sm text-muted-foreground/20">|</span>
         <button
@@ -85,7 +92,7 @@ export function BloodTestDetails({
           }
         >
           <Paperclip className="size-4" />
-          Documents ({attachments.length})
+          {t('documents', { count: attachments.length })}
         </button>
         <span className="text-sm text-muted-foreground/20">|</span>
         <button
@@ -97,7 +104,7 @@ export function BloodTestDetails({
           }
         >
           <Settings className="size-4" />
-          Settings
+          {t('settings')}
         </button>
       </div>
 
@@ -109,7 +116,7 @@ export function BloodTestDetails({
         <div className="mt-5 flex w-full min-w-0 flex-1 flex-col min-h-0">
           {attachments.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No documents available for this event.
+              {t('noDocuments')}
             </p>
           ) : (
             <div className="flex flex-col gap-3">
@@ -147,9 +154,9 @@ export function BloodTestDetails({
                          onClick={(e) => { e.stopPropagation(); printAuthedDocument(url) }}
                          className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                        >
-                         <Printer className="size-4" />
-                         Print
-                       </button>
+                        <Printer className="size-4" />
+                        {t('print')}
+                      </button>
                        )}
                        {url && (
                        <button
@@ -157,7 +164,7 @@ export function BloodTestDetails({
                          className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                        >
                          <Download className="size-4" />
-                         Download
+                         {t('download')}
                        </button>
                        )}
                      </div>
@@ -170,8 +177,7 @@ export function BloodTestDetails({
           {selectedAttachment && (
             <>
               <p className="mt-4 mb-2 text-xs text-muted-foreground">
-                Viewing:{' '}
-                {selectedAttachment.name}
+                {t('viewing', { name: selectedAttachment.name })}
               </p>
               <div className="flex-1 min-h-0 w-full overflow-hidden rounded-xl border border-border">
                 <DocumentViewer key={selectedAttachment.url} url={selectedAttachment.url} />

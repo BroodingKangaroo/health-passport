@@ -13,6 +13,7 @@ from mistralai import Mistral
 from mistralai.utils.retries import BackoffStrategy, RetryConfig
 from sqlalchemy.orm import Session
 
+from app import i18n
 from app.api.auth import get_current_user_or_anon
 from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
 from app.db.models import CategoryTranslationCache, Patient
@@ -385,7 +386,7 @@ async def extract_medical_data(
 ):
     _user, user_id, is_anonymous = user_data
     if not file.filename:
-        raise HTTPException(status_code=400, detail="No filename provided")
+        raise HTTPException(status_code=400, detail=i18n.tr("ai.no_filename"))
 
     # Resolve the client BEFORE consuming quota: if MISTRAL_API_KEY is missing
     # the request can never succeed, so we must not burn the user's extraction
@@ -393,7 +394,7 @@ async def extract_medical_data(
     client = _get_client()
     if client is None:
         async def error_stream():
-            yield _sse("error", {"message": "AI extraction unavailable: MISTRAL_API_KEY not configured. Please add the key to backend/.env or enter data manually."})
+            yield _sse("error", {"message": i18n.tr("ai.sse_no_mistral_key")})
         return StreamingResponse(error_stream(), media_type="text/event-stream")
 
     # Check AI extraction limit. Defer the commit (commit=False) so a request
@@ -402,30 +403,24 @@ async def extract_medical_data(
     allowed, current_count, limit = check_and_record_ai_usage(db, user_id, is_anonymous, commit=False)
     if not allowed:
         if is_anonymous:
-            detail = (
-                f"AI extraction limit reached ({current_count}/{limit}). "
-                "Please register for higher limits."
-            )
+            detail = i18n.tr("ai.extraction_limit_anon", current=current_count, limit=limit)
         else:
-            detail = (
-                f"AI extraction limit reached ({current_count}/{limit}). "
-                "Consider upgrading your plan or contact support for a higher limit."
-            )
+            detail = i18n.tr("ai.extraction_limit_registered", current=current_count, limit=limit)
         raise HTTPException(status_code=429, detail=detail)
 
     try:
         bytes_data = await file.read()
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to read file: {e}") from e
+        raise HTTPException(status_code=400, detail=i18n.tr("ai.read_file_failed", error=e)) from e
 
     if not bytes_data:
-        raise HTTPException(status_code=400, detail="Empty file")
+        raise HTTPException(status_code=400, detail=i18n.tr("ai.empty_file"))
 
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in extractor.ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(sorted(extractor.ALLOWED_EXTENSIONS))}",
+            detail=i18n.tr("ai.unsupported_file_type", ext=ext, allowed=", ".join(sorted(extractor.ALLOWED_EXTENSIONS))),
         )
 
     # File validated — persist the extraction-count increment now.
@@ -463,12 +458,20 @@ async def extract_medical_data(
                     yield keepalive
                 markdown = ocr_future.result()
             except extractor.OCRProcessingError as ocr_err:
-                error = ocr_err.message
+                # OCR classification runs in an executor thread where the
+                # locale ContextVar is invisible — localize here, in the
+                # request context, from the typed error's `kind`.
+                if ocr_err.kind == "auth":
+                    error = i18n.tr_opt("ai.ocr_auth", status=getattr(ocr_err, "http_status", "401/403"))
+                else:
+                    error = i18n.tr_opt(f"ai.ocr_{ocr_err.kind}")
+                if error is None:
+                    error = ocr_err.message
             elapsed = time.perf_counter() - t0
             logger.info("OCR took %.2fs — %d chars", elapsed, len(markdown) if markdown else 0)
 
             if not error and not markdown:
-                error = "The document was processed but no text content was found. It may contain only images or scanned signatures."
+                error = i18n.tr("ai.sse_no_text")
 
             # Deterministic source-language detection on the full OCR text —
             # runs once here (never an LLM field) and rides both result events
@@ -750,10 +753,7 @@ async def translate_biomarker_names(
     if not allowed:
         raise HTTPException(
             status_code=429,
-            detail=(
-                f"AI translation limit reached ({current_count}/{limit}). "
-                "Please register for higher limits."
-            ),
+            detail=i18n.tr("ai.translation_limit_reached", current=current_count, limit=limit),
         )
 
     # Seed the prompts with translations already persisted for this language
@@ -860,7 +860,7 @@ async def commit_translated_names(
     if _is_anonymous:
         raise HTTPException(
             status_code=403,
-            detail="Authentication required to persist translations.",
+            detail=i18n.tr("ai.auth_required_persist"),
         )
 
     ids = [item.id for item in payload.items]

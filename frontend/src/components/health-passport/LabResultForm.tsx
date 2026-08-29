@@ -1,6 +1,7 @@
 'use client'
 
 import { Plus, X, ChevronDown } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
@@ -26,11 +27,12 @@ export function LabResultForm({
   removeRow: (catId: string, rowId: string) => void
   addRow: (catId: string) => void
 }) {
+  const t = useTranslations('labForm')
   return (
     <div className="mt-5">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-foreground">
-          Biomarkers
+          {t('title')}
         </h3>
         <Button
           variant="ghost"
@@ -39,7 +41,7 @@ export function LabResultForm({
           className="gap-1.5 text-primary hover:text-primary"
         >
           <Plus className="size-4" />
-          Add Category Group
+          {t('addCategory')}
         </Button>
       </div>
 
@@ -49,15 +51,15 @@ export function LabResultForm({
             <input
               value={cat.name}
               onChange={(e) => updateCategoryName(cat.id, e.target.value)}
-              aria-label="Category name"
+              aria-label={t('categoryName')}
               className="mb-1.5 w-full bg-transparent text-[11px] font-semibold uppercase tracking-wide text-muted-foreground outline-none focus:text-foreground"
             />
             <div className="overflow-hidden rounded-lg border border-border">
               <div className="grid grid-cols-[minmax(220px,3fr)_minmax(150px,1.2fr)_120px_minmax(200px,2fr)_auto] items-center gap-x-2 border-b border-border bg-muted/50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                <span>Biomarker</span>
-                <span>Value</span>
-                <span>Unit</span>
-                <span>Reference range</span>
+                <span>{t('headerBiomarker')}</span>
+                <span>{t('headerValue')}</span>
+                <span>{t('headerUnit')}</span>
+                <span>{t('headerReference')}</span>
                 <span aria-hidden />
               </div>
 
@@ -99,8 +101,8 @@ export function LabResultForm({
                           </select>
                           {out && (
                             <span
-                              aria-label="Outside reference range"
-                              title="Outside reference range"
+                              aria-label={t('outsideReference')}
+                              title={t('outsideReference')}
                               className="pointer-events-none absolute right-6 top-1/2 size-2 -translate-y-1/2 rounded-full bg-status-high"
                             />
                           )}
@@ -121,8 +123,8 @@ export function LabResultForm({
                           />
                           {out && (
                             <span
-                              aria-label="Outside reference range"
-                              title="Outside reference range"
+                              aria-label={t('outsideReference')}
+                              title={t('outsideReference')}
                               className="pointer-events-none absolute right-2 top-1/2 size-2 -translate-y-1/2 rounded-full bg-status-high"
                             />
                           )}
@@ -153,7 +155,7 @@ export function LabResultForm({
                       />
                       {row.canonical_unit_inferred && (
                         <span className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border bg-popover px-2 py-1 text-[11px] text-popover-foreground shadow-sm opacity-0 transition-opacity group-hover:opacity-100">
-                          Unit guessed by AI — verify
+                          {t('unitGuessed')}
                         </span>
                       )}
                     </div>
@@ -178,7 +180,7 @@ export function LabResultForm({
                       />
                     )}
                     <button
-                      aria-label={`Remove ${row.name || 'biomarker'}`}
+                      aria-label={t('removeRow', { name: row.name || t('biomarkerFallback') })}
                       onClick={() => removeRow(cat.id, row.id)}
                       className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-status-high-bg hover:text-status-high"
                     >
@@ -196,7 +198,7 @@ export function LabResultForm({
               className="mt-1.5 gap-1.5 text-primary hover:text-primary"
             >
               <Plus className="size-4" />
-              Add biomarker
+              {t('addBiomarker')}
             </Button>
           </div>
         ))}

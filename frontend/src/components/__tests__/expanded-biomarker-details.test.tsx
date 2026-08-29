@@ -1,7 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { ExpandedBiomarkerDetails } from '../health-passport/expanded-biomarker-details'
+import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type { BiomarkerDefinition, BiomarkerResult, Reading } from '@/lib/types'
+
+// Wrap renders with the i18n context (English) — the component uses useTranslations.
+const renderI18n = ((ui: React.ReactElement, options?: Parameters<typeof render>[1]) =>
+  render(<TestI18nProvider>{ui}</TestI18nProvider>, options)) as typeof render
 
 vi.mock('@/components/shared/BiomarkerChart', () => ({
   BiomarkerChart: ({ data }: { data: Reading[] }) => (
@@ -48,14 +53,14 @@ const biomarker: BiomarkerResult = {
 
 describe('ExpandedBiomarkerDetails with a mid-series selected event', () => {
   it('feeds the chart a chronologically sorted series', () => {
-    render(<ExpandedBiomarkerDetails biomarker={biomarker} />)
+    renderI18n(<ExpandedBiomarkerDetails biomarker={biomarker} />)
     expect(screen.getByTestId('chart').getAttribute('data-dates')).toBe(
       '2026-04-10T09:00:00|2026-04-24T17:01:00|2026-05-16T16:57:00|2026-05-26T17:03:00',
     )
   })
 
   it('renders reading-history chips newest → oldest', () => {
-    render(<ExpandedBiomarkerDetails biomarker={biomarker} />)
+    renderI18n(<ExpandedBiomarkerDetails biomarker={biomarker} />)
     const chips = screen.getAllByRole('listitem')
     expect(chips.map((c) => c.textContent)).toEqual([
       expect.stringContaining('May 26, 2026'),
@@ -66,7 +71,7 @@ describe('ExpandedBiomarkerDetails with a mid-series selected event', () => {
   })
 
   it('keeps ScaleNote metadata attached to the right reading after sorting', () => {
-    render(<ExpandedBiomarkerDetails biomarker={biomarker} />)
+    renderI18n(<ExpandedBiomarkerDetails biomarker={biomarker} />)
     // Only the Apr 10 history reading carries scale metadata; getByTitle fails
     // if the note leaked onto any other chip (the old positional lookup bug).
     expect(

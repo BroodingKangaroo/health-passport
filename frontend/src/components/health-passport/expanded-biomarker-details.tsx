@@ -1,8 +1,10 @@
 'use client'
 
 import { ArrowRight } from 'lucide-react'
+import { useLocale, useTranslations } from 'next-intl'
 
 import { cn, formatDate, formatNumber, sortReadingsByDate } from '@/lib/utils'
+import { localizedStatus } from '@/lib/status-labels'
 import { Button } from '@/components/ui/button'
 import { BiomarkerChart } from '@/components/shared/BiomarkerChart'
 import { ScaleNote } from '@/components/shared/ScaleNote'
@@ -47,6 +49,9 @@ export function ExpandedBiomarkerDetails({
   biomarker: BiomarkerResult
   onViewDetails?: () => void
 }) {
+  const t = useTranslations('timeline.biomarker')
+  const tRoot = useTranslations()
+  const locale = useLocale()
   const history = biomarker.history ?? []
   const current: Reading = {
     entry_id: biomarker.entry_id,
@@ -79,29 +84,31 @@ export function ExpandedBiomarkerDetails({
     <div className="flex flex-col gap-5 rounded-lg bg-muted/60 p-5">
       <div>
         <h3 className="text-sm font-semibold text-foreground">
-          {biomarker.definition.names.en} Dynamics
+          {t('dynamics', { name: biomarker.definition.names.en })}
         </h3>
         <p className="mb-2 text-xs text-muted-foreground">
-          Reference: {formatReference(biomarker.reference ?? biomarker.definition.reference)}
+          {t('reference', {
+            value: formatReference(biomarker.reference ?? biomarker.definition.reference),
+          })}
         </p>
         <BiomarkerChart biomarker={biomarker} data={chartData} height={250} />
       </div>
 
       <div className="flex gap-3">
         <MetricCard
-          label="LATEST"
+          label={t('metricLatest')}
           value={biomarker.value == null ? '—' : formatNumber(biomarker.value)}
           unit={unitDisplay}
           highlight={statusText[biomarker.status]}
         />
         <MetricCard
-          label="PEAK"
+          label={t('metricPeak')}
           value={peak == null ? '—' : formatNumber(peak)}
           unit={unitDisplay}
           highlight={statusText[peakStatus]}
         />
         <MetricCard
-          label="TROUGH"
+          label={t('metricTrough')}
           value={trough == null ? '—' : formatNumber(trough)}
           unit={unitDisplay}
           highlight={statusText[troughStatus]}
@@ -111,7 +118,7 @@ export function ExpandedBiomarkerDetails({
       <div className="flex flex-col gap-4 border-t border-border pt-4 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0 flex-1">
           <h4 className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground">
-            READING HISTORY
+            {t('readingHistory')}
           </h4>
           <ul className="flex flex-wrap gap-2">
             {(() => {
@@ -129,7 +136,7 @@ export function ExpandedBiomarkerDetails({
                     key={`${reading.date}-${i}`}
                     className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs"
                   >
-                    <span className="text-muted-foreground">{formatDate(reading.date)}</span>
+                    <span className="text-muted-foreground">{formatDate(reading.date, locale)}</span>
                     <span className="font-semibold text-foreground">
                       {formatNumber(reading.value)} {unitDisplay}
                       <ScaleNote
@@ -146,7 +153,7 @@ export function ExpandedBiomarkerDetails({
                         statusText[reading.status as Status],
                       )}
                     >
-                      {reading.status}
+                      {localizedStatus(reading.status, tRoot)}
                     </span>
                   </li>
                 )
@@ -159,7 +166,7 @@ export function ExpandedBiomarkerDetails({
           onClick={onViewDetails}
           className="shrink-0 border-primary/30 bg-accent text-accent-foreground hover:bg-accent/70"
         >
-          View Full Biomarker Details
+          {t('viewFullDetails')}
           <ArrowRight className="size-4" />
         </Button>
       </div>
