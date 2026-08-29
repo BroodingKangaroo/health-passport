@@ -17,6 +17,8 @@ from app.services.matcher._cache import (
     _scale_function_cache,
 )
 from app.services.matcher.units_guess import _translated_unit
+from app.services.reference import _ABSENT_CANONICAL
+from config import MISTRAL_CHAT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,7 @@ def _llm_conversion_factor(
         return None
     try:
         chat_response = client.chat.parse(
-            model="mistral-large-latest",
+            model=MISTRAL_CHAT_MODEL,
             temperature=0,
             messages=[
                 {
@@ -164,7 +166,7 @@ def _llm_scale_function(
         return ""
     try:
         chat_response = client.chat.parse(
-            model="mistral-large-latest",
+            model=MISTRAL_CHAT_MODEL,
             temperature=0,
             messages=[
                 {
@@ -263,12 +265,23 @@ def _convert_to_canonical(
     if not canon_unit:
         return value, raw_unit_en, None, False
 
+    # Dimensionless canonical (ratio/index defs): the raw unit column is
+    # noise for these (e.g. a table-wide "lg копий/мл" header on a ratio
+    # row) — a scale conversion would be meaningless, so pass the value
+    # through untouched.
+    if canon_unit.strip().lower() == "ratio":
+        return value, canon_unit, None, False
+
     # If the raw unit is already in the canonical form, no conversion.
     if _units_match(raw_unit_en, canon_unit):
         return value, canon_unit, None, False
 
     # String values ("Not detected", "не обнар", …) aren't convertible.
     if not isinstance(value, (int, float)) or isinstance(value, bool):
+        if isinstance(value, str) and value in _ABSENT_CANONICAL:
+            # An absent result has no measured quantity — the unit mismatch
+            # carries no information and must not surface as needs_review.
+            return value, canon_unit, None, False
         # Keep the raw value but flag the unit mismatch for the UI.
         return value, canon_unit, None, True
 

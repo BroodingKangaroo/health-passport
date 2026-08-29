@@ -52,7 +52,7 @@
       "raw_value": "отрицат.",
       "raw_unit": "",
       "raw_range_string": "",
-      "standard_name_en": "Anti-Opisthorchis IgG",
+      "standard_name_en": "anti-Opisthorchis IgG",
       "standard_value": "Negative",
       "standard_unit": "",
       "reference": {
@@ -72,7 +72,7 @@
       "raw_value": "отрицат.",
       "raw_unit": "",
       "raw_range_string": "",
-      "standard_name_en": "Anti-Giardia IgA+IgM+IgG",
+      "standard_name_en": "anti-Giardia IgA+IgM+IgG",
       "standard_value": "Negative",
       "standard_unit": "",
       "reference": {

@@ -52,6 +52,28 @@ def _prefer_comma_pct(name: str) -> str:
     return name
 
 
+def _suppress_unit_for_qualitative(std_unit: str, defn: BiomarkerDefinitionModel, raw_unit: str) -> str:
+    """Unit display rule for definitions without a usable canonical unit.
+
+    A deliberately-unitless definition (``canonical_unit == ""``, anchored by
+    a qualitative screen) has NO physical unit: never leak a raw unit column
+    (e.g. a table-wide "lg копий/мл" header) or an invented reading-level
+    guess onto its readings — regardless of the effective reference kind (an
+    absent value against an unbounded interval note is still unitless).
+    Legacy defs with no canonical at all keep their unit fallback unless the
+    def itself is unitless AND the document carries no unit either (fix #9:
+    don't invent "U/mL" for serology rows; a LOINC def whose ``unit`` is
+    "%" keeps "%").
+    """
+    if defn.canonical_unit is not None and not (defn.canonical_unit or "").strip():
+        return ""
+    if (not (defn.canonical_unit or "").strip()
+            and not (defn.unit or "").strip()
+            and not (raw_unit or "").strip()):
+        return ""
+    return std_unit
+
+
 def _build_standardized_from_def(
     raw_bm: RawBiomarker,
     defn: BiomarkerDefinitionModel,
@@ -113,6 +135,7 @@ def _build_standardized_from_def(
                             ref["high"] = ch
             elif nr:
                 needs_review = True
+        std_unit = _suppress_unit_for_qualitative(std_unit, defn, raw_bm.unit)
         return StandardizedBiomarker(
             raw_name=raw_bm.name,
             raw_value=raw_bm.value,
@@ -163,8 +186,7 @@ def _build_standardized_from_def(
         # A qualitative screen with neither a printed unit nor a canonical one
         # has NO physical unit: don't let the reading-level unit guess invent
         # "U/mL" (serology rows printed as отрицат./Negative).
-        if not (defn.canonical_unit or "").strip() and not (raw_bm.unit or "").strip():
-            std_unit = ""
+        std_unit = _suppress_unit_for_qualitative(std_unit, defn, raw_bm.unit)
     return StandardizedBiomarker(
         raw_name=raw_bm.name,
         raw_value=raw_bm.value,
@@ -251,10 +273,7 @@ def _build_standardized_local(
     # A qualitative screen with neither a printed unit nor a canonical one has
     # NO physical unit: don't let the reading-level unit guess invent "U/mL"
     # (serology rows printed as отрицат./Negative).
-    if (isinstance(ref, dict) and ref.get("kind") == "qualitative"
-            and not (defn.canonical_unit or "").strip()
-            and not (raw_bm.unit or "").strip()):
-        std_unit = ""
+    std_unit = _suppress_unit_for_qualitative(std_unit, defn, raw_bm.unit)
     return StandardizedBiomarker(
         raw_name=raw_bm.name,
         raw_value=raw_bm.value,

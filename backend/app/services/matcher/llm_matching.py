@@ -24,6 +24,7 @@ from app.services.matcher.name_matching import (
     deterministic_match,
     fuzzy_match,
 )
+from config import MISTRAL_CHAT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +124,7 @@ def _verify_and_correct(
     system_prompt = _VERIFY_PROMPT.format(items=item_lines)
     try:
         chat_response = client.chat.parse(
-            model="mistral-large-latest",
+            model=MISTRAL_CHAT_MODEL,
             temperature=0,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -223,7 +224,7 @@ def _llm_zero_shot_batch(
 
     try:
         chat_response = client.chat.parse(
-            model="mistral-large-latest",
+            model=MISTRAL_CHAT_MODEL,
             temperature=0,
             messages=[
                 {"role": "system", "content": system_prompt},

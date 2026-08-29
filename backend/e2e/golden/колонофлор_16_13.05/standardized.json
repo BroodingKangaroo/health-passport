@@ -25,11 +25,12 @@
       "definition_id": "local-dedc70f59b04",
       "scope": "local",
       "scale_function": "10^x",
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": true
     },
     {
       "raw_name": "Lactobacillus spp.",
-      "raw_value": "5*",
+      "raw_value": "5",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "7 - 8",
       "standard_name_en": "Lactobacillus spp",
@@ -45,7 +46,8 @@
       "definition_id": "local-8c86cf258a11",
       "scope": "local",
       "scale_function": "10^x",
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": true
     },
     {
       "raw_name": "Bifidobacterium spp.",
@@ -65,11 +67,12 @@
       "definition_id": "local-16cf0b0fd973",
       "scope": "local",
       "scale_function": "10^x",
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": true
     },
     {
       "raw_name": "Escherichia coli",
-      "raw_value": "10*",
+      "raw_value": "10",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "6 - 8",
       "standard_name_en": "Escherichia coli",
@@ -85,7 +88,8 @@
       "definition_id": "local-52c34f913a7c",
       "scope": "local",
       "scale_function": "10^x",
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": true
     },
     {
       "raw_name": "Bacteroides spp.",
@@ -105,7 +109,8 @@
       "definition_id": "local-d9f6ee1a7921",
       "scope": "local",
       "scale_function": "10^x",
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": true
     },
     {
       "raw_name": "Faecalibacterium prausnitzii",
@@ -125,16 +130,17 @@
       "definition_id": "local-2988f1cd6b9e",
       "scope": "local",
       "scale_function": "10^x",
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": true
     },
     {
       "raw_name": "Bacteroides thetaiotaomicron",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "",
       "standard_name_en": "Bacteroides thetaiotaomicron",
       "standard_value": "Not detected",
-      "standard_unit": "lg copies/mL",
+      "standard_unit": "",
       "reference": {
         "kind": "qualitative",
         "expected": null
@@ -144,11 +150,12 @@
       "definition_id": "local-eb472412ea39",
       "scope": "local",
       "scale_function": null,
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Akkermansia muciniphila",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 11",
       "standard_name_en": "Akkermansia muciniphila",
@@ -164,11 +171,12 @@
       "definition_id": "local-3134fc747022",
       "scope": "local",
       "scale_function": "10^x",
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": true
     },
     {
       "raw_name": "Enterococcus spp.",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 8",
       "standard_name_en": "Enterococcus spp",
@@ -184,11 +192,12 @@
       "definition_id": "local-d3de7234bfe1",
       "scope": "local",
       "scale_function": "10^x",
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": true
     },
     {
       "raw_name": "Escherichia coli enteropathogenic",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 5",
       "standard_name_en": "Enteropathogenic Escherichia coli",
@@ -204,11 +213,12 @@
       "definition_id": "local-89c27419b864",
       "scope": "local",
       "scale_function": "10^x",
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": true
     },
     {
       "raw_name": "Klebsiella pneumoniae",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 5",
       "standard_name_en": "Klebsiella pneumoniae",
@@ -224,11 +234,12 @@
       "definition_id": "local-7291df8e0881",
       "scope": "local",
       "scale_function": "10^x",
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": true
     },
     {
       "raw_name": "Klebsiella oxytoca",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 5",
       "standard_name_en": "Klebsiella oxytoca",
@@ -244,11 +255,12 @@
       "definition_id": "local-d58b5529c818",
       "scope": "local",
       "scale_function": "10^x",
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": true
     },
     {
       "raw_name": "Candida spp.",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 5",
       "standard_name_en": "Candida spp",
@@ -264,11 +276,12 @@
       "definition_id": "local-531c1dd5fbba",
       "scope": "local",
       "scale_function": "10^x",
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": true
     },
     {
       "raw_name": "Staphylococcus aureus",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 5",
       "standard_name_en": "Staphylococcus aureus",
@@ -284,16 +297,17 @@
       "definition_id": "local-6248ed0a1c72",
       "scope": "local",
       "scale_function": "10^x",
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": true
     },
     {
       "raw_name": "Clostridium difficile",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "не обнаружено",
       "standard_name_en": "Clostridium difficile",
       "standard_value": "Not detected",
-      "standard_unit": "copies/mL",
+      "standard_unit": "",
       "reference": {
         "kind": "qualitative",
         "expected": "Not detected"
@@ -303,16 +317,17 @@
       "definition_id": "local-71fba6245da9",
       "scope": "local",
       "scale_function": null,
-      "needs_review": true
+      "needs_review": false,
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Clostridium perfringens",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "не обнаружено",
       "standard_name_en": "Clostridium perfringens",
       "standard_value": "Not detected",
-      "standard_unit": "copies/mL",
+      "standard_unit": "",
       "reference": {
         "kind": "qualitative",
         "expected": "Not detected"
@@ -322,11 +337,12 @@
       "definition_id": "local-85791070732d",
       "scope": "local",
       "scale_function": null,
-      "needs_review": true
+      "needs_review": false,
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Proteus vulgaris/mirabilis",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 5",
       "standard_name_en": "Proteus vulgaris/mirabilis",
@@ -342,11 +358,12 @@
       "definition_id": "local-bdb93f91d1a9",
       "scope": "local",
       "scale_function": "10^x",
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": true
     },
     {
       "raw_name": "Citrobacter spp.",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 5",
       "standard_name_en": "Citrobacter spp",
@@ -362,11 +379,12 @@
       "definition_id": "local-908fd2df1a95",
       "scope": "local",
       "scale_function": "10^x",
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": true
     },
     {
       "raw_name": "Enterobacter spp.",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 5",
       "standard_name_en": "Enterobacter spp",
@@ -382,16 +400,17 @@
       "definition_id": "local-650ca81cfac9",
       "scope": "local",
       "scale_function": "10^x",
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": true
     },
     {
       "raw_name": "Fusobacterium nucleatum",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "не обнаружено",
       "standard_name_en": "Fusobacterium nucleatum",
       "standard_value": "Not detected",
-      "standard_unit": "copies/mL",
+      "standard_unit": "",
       "reference": {
         "kind": "qualitative",
         "expected": "Not detected"
@@ -401,16 +420,17 @@
       "definition_id": "local-f0d7389b7fa0",
       "scope": "local",
       "scale_function": null,
-      "needs_review": true
+      "needs_review": false,
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Parvimonas micra",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "не обнаружено",
       "standard_name_en": "Parvimonas micra",
       "standard_value": "Not detected",
-      "standard_unit": "copies/mL",
+      "standard_unit": "",
       "reference": {
         "kind": "qualitative",
         "expected": "Not detected"
@@ -420,16 +440,17 @@
       "definition_id": "local-3687c25eeb93",
       "scope": "local",
       "scale_function": null,
-      "needs_review": true
+      "needs_review": false,
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Salmonella spp.",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "не обнаружено",
       "standard_name_en": "Salmonella spp",
       "standard_value": "Not detected",
-      "standard_unit": "copies/mL",
+      "standard_unit": "",
       "reference": {
         "kind": "qualitative",
         "expected": "Not detected"
@@ -439,16 +460,17 @@
       "definition_id": "local-fafbbc7bfac2",
       "scope": "local",
       "scale_function": null,
-      "needs_review": true
+      "needs_review": false,
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Shigella spp.",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "не обнаружено",
       "standard_name_en": "Shigella spp",
       "standard_value": "Not detected",
-      "standard_unit": "copies/mL",
+      "standard_unit": "",
       "reference": {
         "kind": "qualitative",
         "expected": "Not detected"
@@ -458,47 +480,50 @@
       "definition_id": "local-44e1fbccaab1",
       "scope": "local",
       "scale_function": null,
-      "needs_review": true
+      "needs_review": false,
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Blautia spp.",
-      "raw_value": "5*",
+      "raw_value": "5",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "8 - 11",
       "standard_name_en": "Blautia spp",
-      "standard_value": 5.0,
-      "standard_unit": "lg copies/mL",
+      "standard_value": 100000.0,
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
-        "low": 8.0,
-        "high": 11.0
+        "low": 100000000.0,
+        "high": 100000000000.0
       },
       "status": "low",
       "category": "Микробиом",
       "definition_id": "local-6275a9415dbe",
       "scope": "local",
-      "scale_function": null,
-      "needs_review": false
+      "scale_function": "10^x",
+      "needs_review": false,
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Acinetobacter spp.",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 6",
       "standard_name_en": "Acinetobacter spp",
       "standard_value": 0.0,
-      "standard_unit": "lg copies/mL",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
-        "high": 6.0
+        "high": 1000000.0
       },
       "status": "normal",
       "category": "Микробиом",
       "definition_id": "local-7ef87b34396c",
       "scope": "local",
-      "scale_function": null,
-      "needs_review": false
+      "scale_function": "10^x",
+      "needs_review": false,
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Eubacterium rectale",
@@ -506,39 +531,41 @@
       "raw_unit": "lg копий/мл",
       "raw_range_string": "8 - 11",
       "standard_name_en": "Eubacterium rectale",
-      "standard_value": 8.0,
-      "standard_unit": "lg copies/mL",
+      "standard_value": 100000000.0,
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
-        "low": 8.0,
-        "high": 11.0
+        "low": 100000000.0,
+        "high": 100000000000.0
       },
       "status": "normal",
       "category": "Микробиом",
       "definition_id": "local-a254f2137e09",
       "scope": "local",
-      "scale_function": null,
-      "needs_review": false
+      "scale_function": "10^x",
+      "needs_review": false,
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Streptococcus spp.",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 8",
       "standard_name_en": "Streptococcus spp",
       "standard_value": 0.0,
-      "standard_unit": "lg copies/mL",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
-        "high": 8.0
+        "high": 100000000.0
       },
       "status": "normal",
       "category": "Микробиом",
       "definition_id": "local-8a6b37da3050",
       "scope": "local",
-      "scale_function": null,
-      "needs_review": false
+      "scale_function": "10^x",
+      "needs_review": false,
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Roseburia inulinivorans",
@@ -546,19 +573,20 @@
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 10",
       "standard_name_en": "Roseburia inulinivorans",
-      "standard_value": 8.0,
-      "standard_unit": "lg copies/mL",
+      "standard_value": 100000000.0,
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
-        "high": 10.0
+        "high": 10000000000.0
       },
       "status": "normal",
       "category": "Микробиом",
       "definition_id": "local-9dfbbae4477f",
       "scope": "local",
-      "scale_function": null,
-      "needs_review": false
+      "scale_function": "10^x",
+      "needs_review": false,
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Prevotella spp.",
@@ -566,59 +594,62 @@
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 11",
       "standard_name_en": "Prevotella spp",
-      "standard_value": 8.0,
-      "standard_unit": "lg copies/mL",
+      "standard_value": 100000000.0,
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
-        "high": 11.0
+        "high": 100000000000.0
       },
       "status": "normal",
       "category": "Микробиом",
       "definition_id": "local-6d958fcdafd9",
       "scope": "local",
-      "scale_function": null,
-      "needs_review": false
+      "scale_function": "10^x",
+      "needs_review": false,
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Methanobrevibacter smithii",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 10",
       "standard_name_en": "Methanobrevibacter smithii",
       "standard_value": 0.0,
-      "standard_unit": "lg copies/mL",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
-        "high": 10.0
+        "high": 10000000000.0
       },
       "status": "normal",
       "category": "Микробиом",
       "definition_id": "local-d845cf7af9b2",
       "scope": "local",
-      "scale_function": null,
-      "needs_review": false
+      "scale_function": "10^x",
+      "needs_review": false,
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Methanosphaera stadmanae",
-      "raw_value": "не обнар",
+      "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 6",
       "standard_name_en": "Methanosphaera stadmanae",
       "standard_value": 0.0,
-      "standard_unit": "lg copies/mL",
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
-        "high": 6.0
+        "high": 1000000.0
       },
       "status": "normal",
       "category": "Микробиом",
       "definition_id": "local-9600fb0a8d28",
       "scope": "local",
-      "scale_function": null,
-      "needs_review": false
+      "scale_function": "10^x",
+      "needs_review": false,
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Ruminococcus spp.",
@@ -626,19 +657,20 @@
       "raw_unit": "lg копий/мл",
       "raw_range_string": "< 11",
       "standard_name_en": "Ruminococcus spp",
-      "standard_value": 6.0,
-      "standard_unit": "lg copies/mL",
+      "standard_value": 1000000.0,
+      "standard_unit": "copies/mL",
       "reference": {
         "kind": "interval",
         "low": null,
-        "high": 11.0
+        "high": 100000000000.0
       },
       "status": "normal",
       "category": "Микробиом",
       "definition_id": "local-09f1e00244bb",
       "scope": "local",
-      "scale_function": null,
-      "needs_review": false
+      "scale_function": "10^x",
+      "needs_review": false,
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Соотношение Bacteroides spp./ Faecalibacterium prausnitzii",
@@ -647,7 +679,7 @@
       "raw_range_string": "0.01 - 100",
       "standard_name_en": "Bacteroides spp./Faecalibacterium prausnitzii ratio",
       "standard_value": 1.14,
-      "standard_unit": "lg copies/mL",
+      "standard_unit": "ratio",
       "reference": {
         "kind": "interval",
         "low": 0.01,
@@ -658,7 +690,8 @@
       "definition_id": "local-53b51cebc7e9",
       "scope": "local",
       "scale_function": null,
-      "needs_review": false
+      "needs_review": false,
+      "canonical_unit_inferred": true
     }
   ],
   "visit_data": {
@@ -677,7 +710,7 @@
     "prescriptions": [],
     "recommendations": []
   },
-  "imaging_data": {
+  "instrumental_data": {
     "modality": "",
     "findings": "",
     "conclusion": ""

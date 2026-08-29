@@ -65,3 +65,23 @@ def test_whitespace_is_collapsed_and_empty_becomes_general():
     assert normalize_category("  HEM/BC  ") == "Complete Blood Count"
     assert normalize_category("") == "General"
     assert normalize_category(None) == "General"
+
+
+def test_microbiome_heading_family_fallback():
+    # Exact static-map hits keep priority; the family token catches the
+    # run-dependent qualifier/banner variants the extraction emits.
+    assert normalize_category("Микробиом") == "Microbiome"
+    assert (
+        normalize_category("Исследование состава микробиоты толстого кишечника")
+        == "Microbiome"
+    )
+    assert (
+        normalize_category(
+            "Исследование состава микробиоты толстого кишечника у взрослых и детей"
+        )
+        == "Microbiome"
+    )
+    assert normalize_category("Microbiome") == "Microbiome"
+    # Unrelated headings are untouched by the family fallback.
+    assert normalize_category("Клинический анализ крови") == "Complete Blood Count"
+    assert normalize_category("Гормональное исследование") == "Гормональное исследование"

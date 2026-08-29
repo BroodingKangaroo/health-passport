@@ -193,17 +193,96 @@ committed.
     it is now the observed steady state; both-doctor extractions may still
     reappear occasionally). Definitions/ids/values/refs untouched.
 
+13. **Log-scale units never anchor as the canonical unit** (2026-08-29,
+    user-directed; `колонофлор_16_13.05` regenerated). A first-seen
+    `lg копий/мл` row used to anchor the canonical unit `lg copies/mL`
+    (kind `log10`), which meant the 13.05-only bacteria (Blautia,
+    Eubacterium rectale, Prevotella, Ruminococcus, Methanobrevibacter,
+    Methanosphaera, Acinetobacter, Streptococcus, Roseburia inulinivorans,
+    Bacteroides thetaiotaomicron, the Bacteroides/F. prausnitzii ratio)
+    permanently displayed log values while the shared rows showed linear
+    `copies/mL`. `definitions.py _linearized_anchor` now strips the log
+    prefix at anchor time: the canonical lands on `copies/mL` (the `lg`
+    prefix still MEANS log10 — the anchoring document's own value/reference
+    bounds are scaled `10^x`, and readings printed in the log unit convert
+    via the deterministic `10^x` scale function; nothing about the VALUES
+    changed). Ratio-like analytes anchor dimensionless `ratio` (a log
+    prefix on a ratio row is a table-header artifact — value/ref stay
+    unscaled, consistent with the 25.06 sibling). Canonical absent strings
+    (`Not detected`) no longer set `needs_review` on a unit mismatch, and a
+    unitless (qualitative) def never leaks a raw unit column onto readings —
+    which is why BOTH колонофлор goldens' qualitative rows now carry
+    `standard_unit: ""` (the legacy `copies/mL` there was a pre-fix-#9
+    warm-up pin, not fresh-DB behavior). Existing lg-anchored defs in real
+    DBs are converted by `scripts/migrate_lg_to_linear.py` (defs + readings
+    + persisted statuses; backs up the sqlite file first). The
+    fresh-DB anchor-ORDER dependency below is gone: 13.05-unique defs now
+    anchor `copies/mL` even when 13.05 runs first alphabetically.
+
+    Companion fixes shipped in the same change (all golden-review APPROVED
+    2026-08-29, 7 files):
+    - **Batch unit-translator guard** (`units_guess.py`): mistral-medium
+      intermittently returns an EMPTY unit for `lg копий/мл` (violating the
+      prompt) or silently DROPS the log prefix; both would corrupt the
+      canonical anchor. The batch result now falls back to the deterministic
+      identity translation (prefix preserved) and recomputes `kind` from the
+      returned unit's own prefix.
+    - **Qualitative-suppress refinement** (`standardize.py
+      _suppress_unit_for_qualitative`): a deliberately-unitless def
+      (`canonical_unit == ""`) shows `""` on every reading regardless of the
+      effective reference kind; legacy NULL-canonical defs keep their unit
+      fallback unless def.unit AND the raw unit are both empty.
+    - **Microbiome heading-family fallback** (`category_normalize.py`):
+      qualifier-mangled microbiome headings (and the «Микробиом» family)
+      normalize to `Microbiome`; the mistral models leak document banners
+      (`Advanced Diagnostics`) or per-group headers into `category` — the
+      колонофлор goldens keep the previously-verified heading values.
+    - **Forensics junk synonyms cleaned from the dev DB**: the global
+      `Ascaris sp Ab` (74815-2) and `Citrulline` (20640-9) defs had learned
+      `Salmonella spp` / `Shigella spp` / `Citrobacter spp` synonyms from
+      earlier GLM-forensics writes, which hijacked the offline name scan
+      (Salmonella → 74815-2 etc.). Removed from `health_passport.db`
+      directly (ids above; re-running the offline validator re-proves it).
+    - **`warmup_db` pins empty golden units**: a golden row with
+      `standard_unit: ""` now pins the def's canonical to `""` (previously
+      only non-empty pins applied, leaving stale `copies/mL` anchors).
+    - **Offline profile improved to 3 documented diffs** (гастро
+      visit-replay trio; was 6, and the pre-change working tree showed 30+).
+
+## Comparator accommodations (2026-08-29, user-approved golden-variance policy)
+
+Stable extraction variants are folded in via comparator tolerance (never by
+weakening value gates), mirroring the translated_en_alt precedent:
+
+- `e2e/compare.py` pairs a MISSING golden biomarker with a high-similarity
+  (≥0.85) UNEXPECTED observed raw_name (OCR variants: «MCH (ср. содерж. …)»
+  vs «MCH (ср. содер. …)»); every other field still must match, so a truly
+  mis-routed analyte fails.
+- An absent result's two encodings are equivalent: `0.0` + unbounded
+  interval ≡ `"Not detected"` + qualitative (the колонофлор
+  `B. thetaiotaomicron` OCR cell flake is now encoding-independent — this
+  also retires the old ~5/8 pass-rate note for it).
+- `title_alt` / `provider_alt` / `modality_alt` (+ any free-text `*_alt`)
+  accept stable alternative renderings: the колонофлор title's short/long
+  50/50 flip is pinned both ways; рнпц's provider carries both doctors;
+  an ultrasound-based elastography may land on `Elastography` or
+  `Ultrasound`.
+- `time` skips when the OBSERVED side is empty (the extraction prompt
+  explicitly permits omitting it; mistral-medium drops it on биохимия/оак
+  consistently). A wrong time still fails, the date stays exact, and the
+  goldens keep the verified times so a future prompt fix is still validated.
+
 ## Notes
 
 - **Offline validator environment (fresh seeds)**: `validate_offline.py` never
   commits, so on a freshly seeded DB it cannot rebuild the per-user local
-  anchors (English display names, canonical `copies/mL` / `lg copies/mL`
-  units) that historical live extractions had committed — its diff counts
+  anchors (English display names, canonical `copies/mL` units) that
+  historical live extractions had committed — its diff counts
   then drift for environment reasons, not matcher reasons. After any
   reseed, run once:
   `PYTHONPATH=. venv/bin/python -m e2e.warmup_db`
   (from `backend/`; deterministic golden replay with commit, колонофлор_16_25.06
-  anchored first per the ordering rule below, plus golden-truth unit/name
+  anchored first per the convention below, plus golden-truth unit/name
   pinning of the user-default locals). The post-reseed + warm-up offline
   profile is 6 documented diffs (`гастроэнтеролог` visit-translation 3,
   `эластометрия_печени` instrumental pass-through 3); `паразиты_1`,
@@ -248,11 +327,11 @@ committed.
   from an old matcher era; per the documented absent+interval rule
   (fix #6 above) the matcher deterministically emits `0.0`. Goldens
   corrected to `0.0` (confirmed by `validate_offline.py`).
-- `рнпц_омр_генетика` `provider`: as of fix #12 the golden carries the
-  currently-stable single-doctor form `Субоч Е.И.` (five consecutive runs);
-  if a run emits both doctors again (`Бодиловская А.А., Субоч Е.И.`,
-  similarity ~0.53), rerun once — treated as extraction variance, not a
-  golden error.
+- `рнпц_омр_генетика` `provider`: as of the 2026-08-29 golden update the
+  golden carries `Бодиловская А.А.` (mistral-medium's steady pick) with
+  `provider_alt` accepting `Субоч Е.И.` and the both-doctors form — all
+  variants are printed on the document, so no rerun is needed for provider
+  variance anymore.
 - `рнпц_омр_генетика`: the golden's four qualitative mutation biomarkers
   (`Мутация в гене JAK2 (12 exon)`, `JAK2 (14 exon; V617F)`, `CALR (9 exon)`,
   `MPL (10 exon)`) carried `standard_unit: "ratio"` — wrong: these are
@@ -261,17 +340,17 @@ committed.
    `app/services/matcher/units_guess.py`, and `verify_or_create` persists `canonical_unit:
   ""` on first-seen), so the observed output was `""` vs. the golden's
   `"ratio"`. Golden corrected to `standard_unit: ""` 2026-08-03.
-- **Fresh-DB ordering dependency (`колонофлор_16_*`)**: canonical units are
-  first-seen (per `AGENTS.md`). On a fresh `e2e_run.db` the suite runs
-  alphabetically, so `колонофлор_16_13.05` (raw unit `lg копий/мл`) anchors
-  `lg copies/mL` first and BOTH колонофлор goldens fail (log10-converted
-  values against the verified linear `copies/mL` goldens). Warm up the anchor
-  order after any DB reset: run
+- **Fresh-DB ordering dependency (`колонофлор_16_*`)** — OBSOLETE as of fix
+  #13 (2026-08-29): canonical units are first-seen, but log-scale first-seen
+  rows now anchor the LINEAR magnitude (`_linearized_anchor`), so
+  `колонофлор_16_13.05` (raw unit `lg копий/мл`) no longer poisons the
+  anchors when it runs first alphabetically. Both goldens regenerate
+  identically in any order on a fresh `e2e_run.db`. (Historical: before the
+  fix, 13.05-first anchored `lg copies/mL` and BOTH колонофлор cases failed
+  against the linear goldens; the warm-up ordering below was the workaround.)
+  Still harmless and still the convention:
   `venv/bin/python e2e/run_e2e_server.py --case колонофлор_16_25.06` once
-  (empty raw units → `copies/mL`) before the full suite. Discovered
-  2026-08-03; do NOT regenerate the колонофлор goldens to the lg state
-  (25.06's conversion then needs per-row LLM scale functions and the case
-  flakes with `needs_review` rows and a `Bacteroides thetaomicron` name typo).
+  before the full suite after any DB reset.
 - `гастроэнтеролог_ргц_29.06`: the LLM now splits the long
   `Лабораторная и инструментальная диагностика…` recommendation block into
   separate items and truncates the longest texts, so `recommendations` counts
@@ -288,10 +367,9 @@ committed.
   the cell the matcher emits `{kind: interval, low: null, high: null}` +
   `value: 0.0`; when the cell is dropped the matcher emits `{kind:
   qualitative, expected: null}` + `value: "Not detected"`. The two
-  encodings are semantically equivalent (the reference is "any amount is
-  acceptable" either way), but the e2e comparator treats them as distinct
-  because of the value/reference kind mismatch. The test passes ~5/8 runs
-  on average. Rerun `run_e2e_server.py` if the run picks the wrong form.
+  encodings are semantically equivalent and the comparator now accepts both
+  (see the comparator-accommodations section) — the case no longer flaps on
+  this row.
 - LOINC defs are promoted from `data/Loinc.csv` on first demand and persisted.
 - `app/mock_db.py` is **not** part of the server data path — the server seeds
   from `Loinc.csv` via `seed_loinc`. Edits there have no effect.

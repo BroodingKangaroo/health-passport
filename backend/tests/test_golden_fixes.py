@@ -288,3 +288,110 @@ def test_numeric_value_against_boundless_note_keeps_doc_first():
     )
     out = _build_standardized_local(bm, defn, client=None)
     assert out.standard_value == 1.14
+
+
+def test_title_alt_accepts_short_and_long_forms():
+    """The колонофлор_16_* title flips between the short test name and the
+    full section header run-to-run; `title_alt` lets both faithful forms
+    pass (mirrors the translated_en_alt mechanism)."""
+    from e2e.compare import compare_standardized
+
+    short = "КОЛОНОФЛОР-16 [реал-тайм ПЦР]"
+    long = ("Исследование состава микробиоты толстого кишечника у взрослых "
+            "и детей старше 14 лет. КОЛОНОФЛОР-16 [реал-тайм ПЦР]*")
+    golden = {"title": short, "title_alt": [long], "notes": "n"}
+
+    assert compare_standardized({"title": short, "notes": "n"}, golden, 0.88) == []
+    assert compare_standardized({"title": long, "notes": "n"}, golden, 0.88) == []
+    diffs = compare_standardized({"title": "совершенно другой заголовок", "notes": "n"},
+                                 golden, 0.88)
+    assert len(diffs) == 1 and diffs[0].startswith("title")
+
+
+def test_ocr_raw_name_variance_is_paired_not_missing():
+    """OCR keeps the abbreviated «ср. содер.» / full «ср. содерж.» form of the
+    MCH label nondeterministically; the comparator pairs the high-similarity
+    MISSING/UNEXPECTED name and compares the analyte's fields instead of
+    failing on the raw_name spelling alone."""
+    from e2e.compare import compare_standardized
+
+    golden = {"biomarkers": [
+        {"raw_name": "MCH (ср. содерж. Hb в эр.)", "standard_name_en": "MCH",
+         "standard_value": 27.0, "standard_unit": "pg", "scope": "global",
+         "definition_id": "785-6", "reference": {"kind": "interval", "low": 24.0, "high": 30.0}},
+    ]}
+    observed = {"biomarkers": [
+        {"raw_name": "MCH (ср. содер. Hb в эр.)", "standard_name_en": "MCH",
+         "standard_value": 27.0, "standard_unit": "pg", "scope": "global",
+         "definition_id": "785-6", "reference": {"kind": "interval", "low": 24.0, "high": 30.0}},
+    ]}
+    assert compare_standardized(observed, golden, 0.9) == []
+
+    # A genuinely different analyte must NOT be paired away.
+    observed_wrong = {"biomarkers": [
+        {"raw_name": "MCHC (ср. конц. Hb в эр.)", "standard_name_en": "MCHC",
+         "standard_value": 330.0, "standard_unit": "g/L", "scope": "global",
+         "definition_id": "786-4", "reference": {"kind": "interval", "low": 310.0, "high": 350.0}},
+    ]}
+    diffs = compare_standardized(observed_wrong, golden, 0.9)
+    assert any("MISSING" in d for d in diffs) and any("UNEXPECTED" in d for d in diffs)
+
+
+def test_absent_encoding_equivalence_is_accepted():
+    """An absent result is semantically the same fact whether OCR/extraction
+    encodes it as 0.0 + unbounded interval (note cell recovered) or as
+    "Not detected" + qualitative (note cell dropped) — the comparator accepts
+    both encodings of the same absence."""
+    from e2e.compare import compare_standardized
+
+    row = {"raw_name": "Bacteroides thetaiotaomicron", "standard_name_en": "Bacteroides thetaiotaomicron",
+           "standard_unit": "", "scope": "local", "definition_id": "local-x"}
+    golden = {"biomarkers": [dict(row, standard_value=0.0,
+                                  reference={"kind": "interval", "low": None, "high": None})]}
+    observed = {"biomarkers": [dict(row, standard_value="Not detected",
+                                    reference={"kind": "qualitative", "expected": None})]}
+    assert compare_standardized(observed, golden, 0.88) == []
+    # Same encoding on both sides still passes trivially…
+    assert compare_standardized(json.loads(json.dumps(golden)), golden, 0.88) == []
+    # …and a PRESENT value must still fail against an absent golden.
+    observed_present = {"biomarkers": [dict(row, standard_value=1e7,
+                                            reference={"kind": "interval", "low": None, "high": None})]}
+    diffs = compare_standardized(observed_present, golden, 0.88)
+    assert any("standard_value" in d for d in diffs)
+
+
+def test_modality_alt_accepts_equivalent_category_picks():
+    """An ultrasound-based liver elastography legitimately lands on either
+    "Elastography" or "Ultrasound" (both are in the UI's fixed option set)."""
+    from e2e.compare import compare_standardized
+
+    golden = {"instrumental_data": {"modality": "Elastography",
+                                    "modality_alt": ["Ultrasound"],
+                                    "findings": "f", "conclusion": "c"}}
+    assert compare_standardized(
+        {"instrumental_data": {"modality": "Ultrasound", "findings": "f", "conclusion": "c"}},
+        golden, 0.88) == []
+    diffs = compare_standardized(
+        {"instrumental_data": {"modality": "CT", "findings": "f", "conclusion": "c"}},
+        golden, 0.88)
+    assert len(diffs) == 1 and "modality" in diffs[0]
+
+
+def test_time_omission_is_not_a_failure_but_mismatch_is():
+    """The extraction prompt permits omitting the time (only when shown next
+    to the collection date); mistral-medium drops it on some layouts
+    consistently. An omitted observed time passes; a WRONG time still fails.
+    The date stays exact on both sides."""
+    from e2e.compare import compare_standardized
+
+    golden = {"date": "2026-05-26", "time": "17:03", "notes": ""}
+    assert compare_standardized({"date": "2026-05-26", "time": "", "notes": ""},
+                                golden, 0.88) == []
+    assert compare_standardized({"date": "2026-05-26", "time": "17:03", "notes": ""},
+                                golden, 0.88) == []
+    diffs = compare_standardized({"date": "2026-05-26", "time": "09:30", "notes": ""},
+                                 golden, 0.88)
+    assert len(diffs) == 1 and diffs[0].startswith("time")
+    diffs = compare_standardized({"date": "2026-05-27", "time": "17:03", "notes": ""},
+                                 golden, 0.88)
+    assert len(diffs) == 1 and diffs[0].startswith("date")

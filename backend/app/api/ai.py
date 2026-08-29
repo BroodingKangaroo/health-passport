@@ -31,6 +31,7 @@ from app.schemas.ai import (
 from app.services import extractor, matcher
 from app.services.chat_client import build_chat_aware_client
 from app.services.usage_limits import check_and_record_ai_usage, refund_ai_extraction
+from config import MISTRAL_CHAT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -236,7 +237,7 @@ def _chat_parse_translation(
     )
     try:
         chat_response = client.chat.parse(
-            model="mistral-large-latest",
+            model=MISTRAL_CHAT_MODEL,
             temperature=0,
             messages=[
                 {"role": "system", "content": system_prompt},

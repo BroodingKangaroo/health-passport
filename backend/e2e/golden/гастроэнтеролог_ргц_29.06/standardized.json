@@ -37,13 +37,15 @@
         "original": "Экспертный пересмотр гистологических препаратов в консультативном центре «Профессор» (кафедра патологической анатомии БГМУ): 3-я городская детская клиническая больница, ул. Кижеватова, 60, к. 1, лаборант Ивинская Наталья Валерьевна, тел. 641 97 26 (А1) patanat@bsmu.by. С собой иметь направление, гистологические блоки и стекла, протокол исследования, биопсийную карту",
         "translated_en": "Expert review of histological specimens at the Consultative Center «Professor» (Department of Pathological Anatomy, Belarusian State Medical University): 3rd City Children's Clinical Hospital, 60 Kizhevatova St., Room 1, laboratory technician Ivinskaya Natalya Valerievna, tel. +375 17 641 97 26 (A1) patanat@bsmu.by. Bring referral, histological blocks and slides, study protocol, and biopsy card",
         "translated_en_alt": [
-          "Expert review of histological specimens at the consultative center 'Professor' (Department of Pathological Anatomy, BSMU): 3rd City Children's Clinical Hospital, 60 Kizhevatova Street, Building 1, laboratory assistant Ivinskaya Natalia Valeryevna, tel. 641 97 26 (A1) patanat@bsmu.by. Bring with you: referral, histological blocks and slides, examination report, biopsy card"
+          "Expert review of histological specimens at the consultative center 'Professor' (Department of Pathological Anatomy, BSMU): 3rd City Children's Clinical Hospital, 60 Kizhevatova Street, Building 1, laboratory assistant Ivinskaya Natalia Valeryevna, tel. 641 97 26 (A1) patanat@bsmu.by. Bring with you: referral, histological blocks and slides, examination report, biopsy card",
+          "Expert review of histological specimens at the Consultative Center \"Professor\" (Department of Pathological Anatomy, Belarusian State Medical University): 3rd City Children's Clinical Hospital, Kizhevatova St., 60, bldg. 1, lab technician Ivinskaya Natalia Valeryevna, tel. 641 97 26 (A1) patanat@bsmu.by. Bring with you: referral, histological blocks and slides, research protocol, biopsy card"
         ]
       },
       {
         "original": "Повторный осмотр с результатами дообследований на базе РЦГ",
-        "translated_en": "Follow-up examination with results of additional diagnostics at the Republican Clinical Hospital",
+        "translated_en": "Follow-up examination with additional test results at the Republican Center for Gastroenterology",
         "translated_en_alt": [
+          "Follow-up examination with results of additional diagnostics at the Republican Clinical Hospital",
           "Follow-up examination with results of additional investigations at the RCCH (Republican Center for Children's Health)"
         ]
       }

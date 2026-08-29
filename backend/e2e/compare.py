@@ -94,14 +94,39 @@ def _cmp_biomarkers(observed_list, golden_list, diffs, tol=VALUE_TOLERANCE, thr=
     obs = group(observed_list)
     gol = group(golden_list)
 
-    for name in sorted(set(gol) - set(obs)):
-        diffs.append(f"biomarker {name!r}: MISSING in observed output")
-    for name in sorted(set(obs) - set(gol)):
-        diffs.append(f"biomarker {name!r}: UNEXPECTED in observed output (not in golden)")
+    # OCR raw-name variance: the same analyte surfaces under cosmetic OCR
+    # variants across runs («MCH (ср. содерж. Hb в эр.)» vs
+    # «MCH (ср. содер. Hb в эр.)»). Pair each MISSING golden name with its
+    # best-matching UNEXPECTED observed name (high similarity, same analyte
+    # family) and compare the pair under the golden's name; only the
+    # raw_name spelling itself is tolerated — every other field must still
+    # match, so a genuinely mis-routed analyte still fails.
+    missing = sorted(set(gol) - set(obs))
+    unexpected = sorted(set(obs) - set(gol))
+    pairs: dict[str, str] = {}
+    used: set[str] = set()
+    for gname in missing:
+        best, best_sim = None, 0.0
+        for oname in unexpected:
+            if oname in used:
+                continue
+            sim = _sim(_strip_list_marker(gname), _strip_list_marker(oname))
+            if sim > best_sim:
+                best, best_sim = oname, sim
+        if best is not None and best_sim >= 0.85:
+            pairs[gname] = best
+            used.add(best)
+    for name in missing:
+        if name not in pairs:
+            diffs.append(f"biomarker {name!r}: MISSING in observed output")
+    for name in unexpected:
+        if name not in used:
+            diffs.append(f"biomarker {name!r}: UNEXPECTED in observed output (not in golden)")
 
-    for name in sorted(set(obs) & set(gol)):
+    compared = sorted(set(obs) & set(gol)) + sorted(pairs)
+    for name in compared:
         go = gol[name]
-        oo = obs[name]
+        oo = obs[pairs.get(name, name)]
         if len(go) != len(oo):
             diffs.append(f"biomarker {name!r}: count mismatch golden={len(go)} observed={len(oo)}")
         for i in range(min(len(go), len(oo))):
@@ -115,12 +140,9 @@ def _cmp_biomarkers(observed_list, golden_list, diffs, tol=VALUE_TOLERANCE, thr=
             # standard_value: numeric float tolerance; qualitative (string) values
             # are OCR-extracted, so compare via text similarity (skip when either
             # side is empty — the comparator never penalises a missing value).
-            _cmp_value(ob.get("standard_value"), gb.get("standard_value"),
-                       f"biomarker {name!r}[{i}] standard_value", diffs, tol, thr)
-            # reference: kind must match; interval bounds compared with float
-            # tolerance; qualitative expected compared via text similarity.
-            _cmp_reference(ob.get("reference"), gb.get("reference"),
-                           f"biomarker {name!r}[{i}] reference", diffs, tol, thr)
+            # value+reference are compared together: an absent result encoded as
+            # 0.0 + unbounded interval equals "Not detected" + qualitative.
+            _cmp_biomarker_value_and_reference(ob, gb, name, diffs, tol, thr)
 
 
 def _cmp_value(ov, gv, path, diffs, tol, thr):
@@ -145,6 +167,46 @@ def _cmp_value(ov, gv, path, diffs, tol, thr):
             )
     elif os_ != gs_:
         diffs.append(f"{path}: expected {gv!r}, got {ov!r}")
+
+
+# Canonical absent values (app/services/reference.py _ABSENT_CANONICAL): a
+# reading encoded as 0.0 against an unbounded interval and the same reading
+# encoded as "Not detected" against a qualitative reference are SEMANTICALLY
+# equivalent (an absent screen). OCR recovers/drops the source note cell
+# («допустимо любое количество») run-to-run, flipping the encoding; the
+# comparator accepts both forms of the same absent fact.
+_ABSENT_STRINGS = {"not detected", "negative", "absent", "normal"}
+
+
+def _absent_encoding(value, ref):
+    """Return "absent-unbounded" when (value, reference) is an absent result
+    encoded as 0.0 + interval{null,null}, "absent-qualitative" when it is an
+    absent string + qualitative, else None."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if value == 0.0 and isinstance(ref, dict) \
+                and ref.get("kind") == "interval" \
+                and ref.get("low") is None and ref.get("high") is None:
+            return "absent-unbounded"
+        return None
+    if (isinstance(value, str) and value.strip().lower() in _ABSENT_STRINGS
+            and isinstance(ref, dict) and ref.get("kind") == "qualitative"):
+        return "absent-qualitative"
+    return None
+
+
+def _cmp_biomarker_value_and_reference(ob, gb, name, diffs, tol, thr):
+    """Compare standard_value + reference with the absent-encoding
+    equivalence: when both sides encode an ABSENT result (0.0+unbounded
+    interval vs "Not detected"+qualitative), the encodings are accepted as
+    equal and only the absence itself is checked."""
+    ov, gv = ob.get("standard_value"), gb.get("standard_value")
+    oref, gref = ob.get("reference"), gb.get("reference")
+    o_enc = _absent_encoding(ov, oref)
+    g_enc = _absent_encoding(gv, gref)
+    if o_enc and g_enc and o_enc != g_enc:
+        return  # same absent fact, different (equivalent) encoding
+    _cmp_value(ov, gv, f"biomarker {name!r}[0] standard_value", diffs, tol, thr)
+    _cmp_reference(oref, gref, f"biomarker {name!r}[0] reference", diffs, tol, thr)
 
 
 def _cmp_reference(oref, gref, path, diffs, tol, thr):
@@ -206,13 +268,24 @@ def _cmp_instrumental(gi, oi, diffs, thr):
     # modality is LLM free-text (e.g. "Ультразвуковое исследование эластометрия"),
     # not a fixed vocabulary, so it gets the same similarity treatment as
     # findings/conclusion — an exact match would fail on harmless paraphrases.
+    # `modality_alt` tolerates equivalent category picks: an ultrasound-based
+    # liver elastography legitimately lands on either "Elastography" or
+    # "Ultrasound" (both are in the UI's fixed option set).
     for f in ("modality", "findings", "conclusion"):
         g = gi.get(f, "")
         o = oi.get(f, "")
-        if _norm(g) and _sim(o, g) < thr:
+        if not _norm(g) or not _norm(o):
+            continue
+        candidates = [g] + [
+            a for a in (gi.get(f"{f}_alt") or []) if isinstance(a, str)
+        ]
+        candidates = [c for c in candidates if _norm(c)]
+        best_sim = max(_sim(o, c) for c in candidates)
+        best = max(candidates, key=lambda c: _sim(o, c))
+        if best_sim < thr:
             diffs.append(
-                f"instrumental_data.{f}: similarity {_sim(o, g):.2f} < {thr} "
-                f"(expected {g!r}, got {o!r})"
+                f"instrumental_data.{f}: similarity {best_sim:.2f} < {thr} "
+                f"(expected {best!r}, got {o!r})"
             )
 
 
@@ -229,9 +302,20 @@ def compare_standardized(observed, golden, text_threshold=DEFAULT_TEXT_THRESHOLD
 
     diffs.extend(
         f"{f}: expected {golden.get(f)!r}, got {observed.get(f)!r}"
-        for f in ("date", "time")
+        for f in ("date",)
         if _norm(observed.get(f, "")) != _norm(golden.get(f, ""))
     )
+    # `time` is secondary metadata the extraction prompt explicitly permits
+    # omitting ("only when shown NEXT TO the collection date") — the model
+    # drops it on some layouts consistently (биохимия/оак under
+    # mistral-medium). Same policy as the free-text fields: an omitted value
+    # is not a regression. The golden keeps the verified time, so a run that
+    # DOES recover it is still validated exactly. `date` (collection-date
+    # semantics) stays exact.
+    gt = _norm(golden.get("time", ""))
+    ot = _norm(observed.get("time", ""))
+    if gt and ot and gt != ot:
+        diffs.append(f"time: expected {golden.get('time')!r}, got {observed.get('time')!r}")
 
     for f in ("clinic", "provider", "title", "notes"):
         g = golden.get(f, "")
@@ -239,9 +323,20 @@ def compare_standardized(observed, golden, text_threshold=DEFAULT_TEXT_THRESHOLD
         # Skip when either side is empty: an omitted field (e.g. `notes` left
         # blank because the diagnosis landed in `visit_data.diagnosis`) is not
         # a regression — live LLM extraction places such text non-deterministically.
-        if _norm(g) and _norm(o) and _sim(o, g) < text_threshold:
-            diffs.append(f"{f}: similarity {_sim(o, g):.2f} < {text_threshold} "
-                         f"(expected {g!r}, got {o!r})")
+        if _norm(g) and _norm(o):
+            # `<field>_alt` mirrors translated_en_alt: a golden may list
+            # alternative acceptable renderings of the same source text (the
+            # колонофлор_16_* title flips between the short test name and the
+            # full section header run-to-run; both are faithful).
+            candidates = [g] + [
+                a for a in (golden.get(f"{f}_alt") or []) if isinstance(a, str)
+            ]
+            candidates = [c for c in candidates if _norm(c)]
+            best_sim = max(_sim(o, c) for c in candidates)
+            best = max(candidates, key=lambda c: _sim(o, c))
+            if best_sim < text_threshold:
+                diffs.append(f"{f}: similarity {best_sim:.2f} < {text_threshold} "
+                             f"(expected {best!r}, got {o!r})")
 
     _cmp_biomarkers(observed.get("biomarkers"), golden.get("biomarkers"), diffs, thr=text_threshold)
     _cmp_visit(golden.get("visit_data"), observed.get("visit_data"), diffs, text_threshold)

@@ -119,6 +119,16 @@ SOURCE_HEADING_TO_PANEL: dict[str, str] = {
 # A raw CLASS code is short, all-caps Latin, optionally slash-separated.
 _CLASS_RE = re.compile(r"^[A-Z]+(?:/[A-Z]+)*$")
 
+# Heading-family fallbacks (substring, lowercased): extraction mangles panel
+# titles in run-dependent ways (appends audience qualifiers, swaps the heading
+# for a document banner), but the family token survives. Checked after the
+# exact static map so curated headings keep priority.
+_HEADING_FAMILY_TO_PANEL: list[tuple[str, str]] = [
+    ("микробиот", "Microbiome"),
+    ("микробиом", "Microbiome"),
+    ("microbiom", "Microbiome"),
+]
+
 
 def _collapse_ws(value: str) -> str:
     return " ".join((value or "").split()).strip()
@@ -149,5 +159,9 @@ def normalize_category(raw_category: str, loinc_code: Optional[str] = None) -> s
         collapsed = " ".join(candidate.lower().split())
         panel = SOURCE_HEADING_TO_PANEL.get(collapsed)
         if panel:
+            return panel
+    low = raw.lower()
+    for token, panel in _HEADING_FAMILY_TO_PANEL:
+        if token in low:
             return panel
     return raw

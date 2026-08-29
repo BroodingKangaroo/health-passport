@@ -153,6 +153,12 @@ def main() -> int:
             new_unit, kind = _translate_unit(cu)
             if su and all(ord(c) < 128 for c in su):
                 new_unit, kind = su, ("log10" if su.lower().startswith(("lg", "log")) else "linear")
+            elif su == "" and growl is not None:
+                # The golden row is deliberately unitless (a qualitative
+                # screen anchors canonical "") — pin the empty canonical so
+                # stale non-empty anchors (e.g. forensics-era "copies/mL")
+                # don't drift the offline validator.
+                new_unit, kind = "", "linear"
             elif cu and not all(ord(c) < 128 for c in cu):
                 if not new_unit or new_unit == cu:
                     continue

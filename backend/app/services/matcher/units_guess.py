@@ -9,6 +9,7 @@ from mistralai import Mistral
 from app.schemas.ai import RawBiomarker, UnitTranslationBatch
 from app.services.matcher._cache import _local_cache, _unit_translation_cache
 from app.services.matcher._text import _is_ascii
+from config import MISTRAL_CHAT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,17 @@ Return a JSON object with a single key "translations" whose value is an array of
 - unit: the standard English unit (MUST be non-empty even when the input unit is blank — invent one)
 - kind: "linear" | "log10" | "ln"
 - inferred: true if the unit was invented (no source unit), false otherwise"""
+
+
+def _scale_kind_of(unit: str) -> str:
+    """Deterministic scale kind from a unit string's prefix ("lg", "log",
+    "log10" → log10; "ln" → ln; anything else → linear)."""
+    low = (unit or "").strip().lower()
+    if low.startswith(("lg", "log10", "log ")) or low == "log":
+        return "log10"
+    if low.startswith("ln"):
+        return "ln"
+    return "linear"
 
 
 def _heuristic_unit_translation(
@@ -69,19 +81,52 @@ def _translated_unit(raw_unit: str, analyte_name: str = "", category: str = "") 
     # Fall back when the batch translator never ran (e.g. LLM unavailable).
     if not u:
         return _guess_unit(analyte_name, category)
-    low = u.lower()
-    kind = "linear"
-    if low.startswith(("lg", "log10", "log ")) or low == "log":
-        kind = "log10"
-    elif low.startswith("ln"):
-        kind = "ln"
-    return {"unit": u, "kind": kind, "inferred": False}
+    return {"unit": u, "kind": _scale_kind_of(u), "inferred": False}
+
+
+_RATIO_NAME_TOKENS = ("ratio", "соотношение", "отношение", "index", "индекс")
+
+# Deterministic Cyrillic magnitude translation (mirrors the batch-translator
+# contract documented in the module prompt and e2e/warmup_db._UNIT_MAP): used
+# when a log-prefixed unit linearizes offline (client=None), where no LLM
+# translation is available.
+_CYRILLIC_MAGNITUDE_EN = {
+    "копий/мл": "copies/mL",
+    "копии/мл": "copies/mL",
+    "копий/г": "copies/g",
+    "копий/мг": "copies/mg",
+    "клеток": "",
+    "мг/дл": "mg/dL",
+    "ммоль/л": "mmol/L",
+    "г/л": "g/L",
+    "кл/мкл": "/uL",
+}
+
+
+def _cyrillic_magnitude_en(unit: str) -> str:
+    """Deterministic English magnitude for a Cyrillic unit string (offline
+    fallback when the batch translator never ran). Unknown units pass through
+    unchanged."""
+    return _CYRILLIC_MAGNITUDE_EN.get(unit.strip().lower(), unit.strip())
+
+
+def _is_ratio_name(*names: str) -> bool:
+    """True when any analyte-name variant denotes a ratio / index / percent
+    share — a dimensionless quantity that must never carry a concentration
+    unit (see ``_guess_unit``'s ratio branch)."""
+    for n in names:
+        low = (n or "").lower()
+        if not low:
+            continue
+        if any(tok in low for tok in _RATIO_NAME_TOKENS) or "%" in low:
+            return True
+    return False
 
 
 def _guess_unit(analyte_name: str, category: str) -> dict:
     """Best-effort fallback for an empty source unit when the LLM is
     unavailable or failed.  Returns a dict compatible with ``_translated_unit``
-    shape with ``inferred: True``.
+    shape with `inferred: True`.
 
     Returns an empty unit for qualitative-only biomarkers (mutations,
     genetics) — those have no meaningful physical unit.
@@ -98,8 +143,7 @@ def _guess_unit(analyte_name: str, category: str) -> dict:
     # Ratio / dimensionless biomarkers — must come BEFORE the general category
     # checks so a microbiome "species X to species Y ratio" doesn't get
     # labelled "copies/mL".
-    if ("ratio" in an or "соотношение" in an or "отношение" in an
-            or "index" in an or "индекс" in an or "%" in an):
+    if _is_ratio_name(analyte_name):
         return {"unit": "ratio", "kind": "linear", "inferred": True}
 
     # Microbiome / stool / bacterial panels → copies/mL (absolute PCR quant).
@@ -206,7 +250,7 @@ def _translate_units_batch(
     system_prompt = _UNIT_TRANSLATE_PROMPT.format(items=items)
     try:
         chat_response = client.chat.parse(
-            model="mistral-large-latest",
+            model=MISTRAL_CHAT_MODEL,
             temperature=0,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -233,11 +277,17 @@ def _translate_units_batch(
     cache = _local_cache(_unit_translation_cache)
     for g, (raw_unit, _meta) in zip(parsed.translations, needed.items()):
         unit = (g.unit or "").strip()
-        inferred = bool(g.inferred)
-        kind = (g.kind or "linear").strip().lower() or "linear"
-        if kind not in ("linear", "log10", "ln"):
-            kind = "linear"
-        entry = {"unit": unit, "kind": kind, "inferred": inferred}
+        raw_kind = _scale_kind_of(raw_unit)
+        if not unit or (raw_kind in ("log10", "ln") and _scale_kind_of(unit) == "linear"):
+            # The LLM returned an EMPTY unit (mistral-medium does this for
+            # "lg копий/мл", violating the prompt's non-empty rule), or
+            # silently DROPPED the log prefix — a dropped prefix would anchor
+            # a linear canonical for log-scale values and corrupt every
+            # reading of the def. Fall back to the deterministic identity
+            # (prefix preserved); the anchor-time linearizer +
+            # _cyrillic_magnitude_en handle the rest.
+            unit = raw_unit
+        entry = {"unit": unit, "kind": _scale_kind_of(unit), "inferred": bool(g.inferred)}
         cache[raw_unit] = entry
         result[raw_unit] = entry
     return result

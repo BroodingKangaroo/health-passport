@@ -132,9 +132,17 @@ Pending cases do not fail the run.
 * **biomarkers** — compared as a set keyed by `raw_name`. `standard_name_en`,
   `definition_id`, `standard_unit`, `scope` must match **exactly**;
   `standard_value` allows a `1e-6` float tolerance; `status` is recomputed by the
-  server so it is **ignored**; ordering is ignored.
+  server so it is **ignored**; ordering is ignored. OCR raw-name variance
+  (high-similarity MISSING/UNEXPECTED pairs, e.g. abbreviated vs full
+  «ср. содерж.» labels) is paired and compared under the golden's name. An
+  absent result's two encodings are equivalent (`0.0` + unbounded interval ≡
+  `"Not detected"` + qualitative).
 * **visit_data / instrumental_data** — deep-compared. `original` must match exactly
   (frozen on the server); `translated_en` / `findings` / `conclusion` allow a
   similarity threshold (live translation is non-deterministic).
-* **top-level** — `entry_type` exact; `date`/`time` normalized; `clinic`/
-  `provider`/`title`/`notes` via similarity threshold.
+* **top-level** — `entry_type` exact; `date` exact; `time` exact but skips
+  when the observed side is empty (the prompt permits omitting it);
+  `clinic`/`provider`/`title`/`notes` via similarity threshold.
+* **`*_alt` tolerance** — goldens may list alternative acceptable renderings
+  (`translated_en_alt`, `title_alt`, `provider_alt`, `modality_alt`, …);
+  scoring takes the best similarity across primary + alternatives.

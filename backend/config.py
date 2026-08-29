@@ -28,6 +28,13 @@ ANONYMOUS_COOKIE_NAME = "healthpassport_anon_id"
 # phishing domain holding a valid reset token.
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 
+# Chat LLM used by extraction + matcher helpers (OCR always uses the Mistral
+# OCR endpoint and is unaffected by this knob). mistral-large-latest stopped
+# being available on the subscription tier on 2026-08-29 (403 tier_not_allowed),
+# so the default moved to mistral-medium-latest; override via .env if the tier
+# regains a stronger model.
+MISTRAL_CHAT_MODEL = os.environ.get("MISTRAL_CHAT_MODEL", "mistral-medium-latest")
+
 # Email settings (password reset). SMTP_ENABLED gates delivery; when disabled
 # (default, local dev) the reset link is logged instead.
 SMTP_ENABLED = os.environ.get("SMTP_ENABLED", "").lower() in ("1", "true", "yes")

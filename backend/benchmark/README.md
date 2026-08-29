@@ -159,13 +159,13 @@ embellishment).
   anchor rule, AGENTS.md). Repeating a doc on a warm DB would confound
   stability with def-warm-up state. Every run therefore restores one pristine
   seeded snapshot → all runs and iterations measure the same thing.
-- The fresh-DB lg-anchor ordering dependency (`e2e/KNOWN_ISSUES.md`: both
-  колонофлор cases fail when `lg копий/мл` anchors first) is handled the same
-  way as the e2e convention: the runner replays the колонофлор_16_25.06
-  golden through the matcher with `client=None` into every rebuilt snapshot so
-  linear `copies/mL` anchors first. That replay is deterministic and free, and
-  bakes exactly the definitions those documents create on a real user's DB
-  anyway.
+- The fresh-DB lg-anchor ordering dependency is OBSOLETE since the matcher's
+  anchor linearization (2026-08-29, `e2e/KNOWN_ISSUES.md` fix #13):
+  `lg копий/мл` rows anchor the LINEAR `copies/mL` canonical wherever they
+  appear, in any run order. The runner still replays the колонофлор_16_25.06
+  golden through the matcher with `client=None` into every rebuilt snapshot —
+  it is deterministic and free, and bakes exactly the definitions those
+  documents create on a real user's DB anyway.
 
 ## Loop contract (see .opencode/skills/autoresearch/SKILL.md)
 

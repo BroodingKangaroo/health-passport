@@ -2,7 +2,8 @@
 definition copies. This is where first-seen canonical units get anchored."""
 
 import hashlib
-from typing import Optional
+import re
+from typing import Optional, Union
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -19,8 +20,84 @@ from app.services.matcher.name_matching import (
     _strip_trailing_punct,
     canonicalize_gene_mutation_en,
 )
-from app.services.matcher.units_guess import _translated_unit
+from app.services.matcher.units_conversion import _apply_scale_function
+from app.services.matcher.units_guess import (
+    _cyrillic_magnitude_en,
+    _is_ratio_name,
+    _translated_unit,
+)
 from app.services.reference import merge_reference, parse_reference, parse_value
+
+_LOG_PREFIX_RE = re.compile(r"^(log10|log|lg|ln)\s*", re.IGNORECASE)
+
+
+def _linearized_anchor(translation: dict, *names: str) -> tuple[dict, Optional[str]]:
+    """First-seen anchoring never lands on a log-scale canonical unit.
+
+    A raw unit like ``lg копий/мл`` translates to ``lg copies/mL``
+    (kind ``log10``); the def's canonical unit is the linear magnitude
+    (``copies/mL``) and readings printed in the log unit convert via the
+    deterministic ``10^x`` scale function at read time. ``ln``-prefixed
+    units linearize the same way (``exp(x)``). Ratio-like analytes are
+    dimensionless — a log prefix there is a table-header artifact — so the
+    canonical is ``ratio`` and nothing is scaled.
+
+    Returns ``(translation, scale_function)`` where ``scale_function`` is the
+    conversion that must ALSO be applied to the anchoring document's own
+    value/reference (``None`` when nothing was rescaled). The returned dict is
+    a new object whenever linearization applies; the input is never mutated.
+    """
+    unit = (translation.get("unit") or "").strip()
+    kind = (translation.get("kind") or "linear").strip().lower()
+    if not unit or kind not in ("log10", "ln"):
+        return translation, None
+    if _is_ratio_name(*names):
+        return {"unit": "ratio", "kind": "linear", "inferred": True}, None
+    m = _LOG_PREFIX_RE.match(unit)
+    stripped = unit[m.end():].strip() if m else unit
+    if not stripped or stripped == unit:
+        # Log kind without a recognisable textual prefix (or nothing left
+        # after stripping) — leave the translation untouched.
+        return translation, None
+    if not _is_ascii(stripped):
+        # Offline path (client=None): the unit translation is an identity of
+        # the Cyrillic raw string — map the magnitude part deterministically.
+        stripped = _cyrillic_magnitude_en(stripped)
+        if not stripped:
+            return {"unit": "", "kind": "linear", "inferred": False}, (
+                "10^x" if kind == "log10" else "exp(x)"
+            )
+    return (
+        {
+            "unit": stripped,
+            "kind": "linear",
+            "inferred": bool(translation.get("inferred")),
+        },
+        "10^x" if kind == "log10" else "exp(x)",
+    )
+
+
+def _rescale_reference(ref: Optional[dict], scale_function: str) -> Optional[dict]:
+    """Apply a scale function to an interval reference's numeric bounds
+    (used when a definition is anchored from a log-scale document)."""
+    if not isinstance(ref, dict) or ref.get("kind") != "interval":
+        return ref
+    out = dict(ref)
+    for key in ("low", "high"):
+        v = out.get(key)
+        if v is not None:
+            sv = _apply_scale_function(float(v), scale_function)
+            if sv is not None:
+                out[key] = sv
+    return out
+
+
+def _rescale_value(value: Union[float, str, None], scale_function: str):
+    """Apply a scale function to a parsed numeric value (strings pass through)."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        sv = _apply_scale_function(float(value), scale_function)
+        return value if sv is None else sv
+    return value
 
 
 def _is_qualitative_result(raw_biomarker: Optional[RawBiomarker]) -> bool:
@@ -140,16 +217,16 @@ def verify_or_create(
     # for any later reading of the same biomarker. Set on the first reading
     # that creates the def, so e.g. a 25.06 row with an empty unit cell
     # anchors the canonical to whatever the LLM invents (typically
-    # "copies/mL"); a 13.05 row with "lg копий/мл" is then converted into
-    # that canonical via ``_llm_scale_function``.
+    # "copies/mL"); a 13.05 row with "lg копий/мл" linearizes the same way —
+    # the canonical lands on the LINEAR magnitude and the log-scale row
+    # converts into it via the deterministic ``10^x`` scale function
+    # (see ``_linearized_anchor``).
     canonical_unit: Optional[str] = None
     canonical_kind = "linear"
     canonical_unit_inferred = False
     if raw_biomarker:
         doc_ref = parse_reference(raw_biomarker.raw_range_string)
         parsed_val = parse_value(raw_biomarker.value)
-        reference = merge_reference(doc_ref, None, parsed_val)
-        unit = raw_biomarker.unit
         if _is_qualitative_result(raw_biomarker):
             # Qualitative screen (text-only result): no physical unit exists.
             # Force the canonical empty instead of letting _guess_unit / the
@@ -159,9 +236,19 @@ def verify_or_create(
             canonical_unit_inferred = False
         else:
             translation = _translated_unit(raw_biomarker.unit, en_name, raw_biomarker.category)
+            translation, anchor_sf = _linearized_anchor(translation, en_name, raw_name)
             canonical_unit = translation["unit"]
             canonical_kind = translation["kind"]
             canonical_unit_inferred = bool(translation["inferred"])
+            if anchor_sf:
+                # The anchoring document printed its range/value in the log
+                # scale; the def's stored reference must live in the linear
+                # canonical scale so later readings (and the def UI) compare
+                # like-for-like.
+                doc_ref = _rescale_reference(doc_ref, anchor_sf)
+                parsed_val = _rescale_value(parsed_val, anchor_sf)
+        reference = merge_reference(doc_ref, None, parsed_val)
+        unit = raw_biomarker.unit
 
     new_defn = BiomarkerDefinitionModel(
         id=defn_id,
@@ -250,20 +337,24 @@ def _make_local_copy(
     doc_ref = parse_reference(raw_biomarker.raw_range_string)
     parsed_val = parse_value(raw_biomarker.value)
     source_ref = source.reference if source is not None else None
-    reference = merge_reference(doc_ref, source_ref, parsed_val)
 
     # Canonical (English) unit on first sight — anchors the conversion for
-    # any later reading of the same biomarker. See ``verify_or_create`` for
-    # the matching rationale.
+    # any later reading of the same biomarker. Log-scale raw units linearize
+    # here exactly as in ``verify_or_create`` (see ``_linearized_anchor``).
     if _is_qualitative_result(raw_biomarker):
         canonical_unit = ""
         canonical_kind = "linear"
         canonical_unit_inferred = False
     else:
         translation = _translated_unit(raw_biomarker.unit, en_name, category)
+        translation, anchor_sf = _linearized_anchor(translation, en_name, raw_biomarker.name)
         canonical_unit = translation["unit"] or raw_biomarker.unit
         canonical_kind = translation["kind"]
         canonical_unit_inferred = bool(translation["inferred"])
+        if anchor_sf:
+            doc_ref = _rescale_reference(doc_ref, anchor_sf)
+            parsed_val = _rescale_value(parsed_val, anchor_sf)
+    reference = merge_reference(doc_ref, source_ref, parsed_val)
 
     local = BiomarkerDefinitionModel(
         id=defn_id,

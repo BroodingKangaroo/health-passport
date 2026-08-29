@@ -11,6 +11,7 @@ from mistralai.models.file import File
 from PIL import Image
 
 from app.schemas.ai import RawMedicalRecord
+from config import MISTRAL_CHAT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -319,7 +320,7 @@ def llm_extract(markdown: str, client: Mistral) -> RawMedicalRecord:
     """Run LLM extraction on OCR markdown text, returning a RawMedicalRecord."""
     try:
         chat_response = client.chat.parse(
-            model="mistral-large-latest",
+            model=MISTRAL_CHAT_MODEL,
             temperature=0,
             messages=[
                 {"role": "system", "content": RAW_EXTRACTION_PROMPT},

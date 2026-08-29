@@ -15,6 +15,12 @@ code, `/api/extract`, entry persistence, merge/delete, or DB migrations.
 - **Required env**: `MISTRAL_API_KEY` (in `.env`) — needed for
   OCR/extraction/matching in `ai.py`. `.env` and `.jwt_secret` are committed
   here (dev-only secrets; not production-safe).
+- **Chat model knob**: all chat LLM calls (extraction, translation, matcher
+  helpers) use `config.MISTRAL_CHAT_MODEL` (env `MISTRAL_CHAT_MODEL`,
+  default `mistral-medium-latest` since 2026-08-29 — the tier dropped
+  `mistral-large-latest` with 403 `tier_not_allowed`). OCR always uses the
+  Mistral OCR endpoint and ignores this knob. The OpenRouter failover
+  (`CHAT_FAILOVER=openrouter`) fires on chat errors regardless of the model.
 - Tests: `python -m pytest tests/ -v`. `pytest.ini` sets `asyncio_mode =
   auto`; `pytest-asyncio` + `httpx` are used. The test `client` fixture builds
   its own FastAPI app with dependency overrides — it does NOT test `main.py`
@@ -153,7 +159,10 @@ Reference for agents so these aren't re-derived via grep each session:
 - Each biomarker definition stores a canonical unit (`canonical_unit`,
   `canonical_kind` in `linear|log10|ln`, `canonical_unit_inferred` bool), set
   on the FIRST reading that creates the def (first-seen unit wins — no extra
-  LLM call to pick a "better" one).
+  LLM call to pick a "better" one). Log-scale translations are linearized at
+  anchor time (see below), so a freshly anchored def is always `linear`
+  (or unitless/ratio); `log10|ln` kinds only survive on defs anchored before
+  that rule (migrated by `scripts/migrate_lg_to_linear.py`).
 - Every later reading of the same biomarker whose unit differs is converted
   into the canonical unit via a `scale_function` (`"10^x"`, `"log10"`,
   `"exp(x)"`, `"ln"`, `"factor:<N>"`), stored per-reading with `needs_review`
@@ -165,7 +174,17 @@ Reference for agents so these aren't re-derived via grep each session:
 - `_apply_scale_function` keeps an absent/below-detection value of `0.0` at
   `0.0` for `10^x`/`exp(x)` (never `10^0 = 1`).
 - Russian unit prefix **`lg` MEANS log10** (`"lg копий/мл"` → `lg copies/mL`,
-  kind `log10`) — do not "fix" it to linear; that was tried and reverted.
+  kind `log10`) — values are NEVER treated as linear numbers. Since 2026-08-29
+  the canonical unit itself always lands on the LINEAR magnitude
+  (`definitions.py _linearized_anchor`): `lg копий/мл` anchors canonical
+  `copies/mL`, the anchoring document's own value/reference bounds are scaled
+  10^x at creation, and readings printed in the log unit convert via the
+  deterministic `10^x` scale function. Ratio-like analytes (ratio / index /
+  соотношение names) are dimensionless — a log prefix on their unit column is
+  a table-header artifact, so they anchor `ratio` and never scale.
+  Canonical absent strings (`Not detected`, …) against a foreign canonical
+  unit don't set `needs_review` (no quantity to convert), and a unitless
+  (qualitative) def never leaks a raw unit column onto its readings.
 - Empty unit cells are handled per-biomarker by `_guess_unit()` (analyte/
   category heuristics, `inferred: True`), NEVER by the batch LLM translator —
   a shared empty-unit cache entry would let one extraction's guess poison

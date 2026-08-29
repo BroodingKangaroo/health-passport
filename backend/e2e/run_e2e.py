@@ -102,7 +102,11 @@ def call_extract(url, path, token):
     headers = {}
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    with httpx.Client(timeout=300.0) as client:
+    # 15 min: a single /api/extract chains OCR + up to ~10 LLM calls; under
+    # provider throttling each call can stretch to ~1 min. 300s produced
+    # client-side cancels mid-extraction ("cancelled by client — quota
+    # refunded") during degraded windows.
+    with httpx.Client(timeout=900.0) as client:
         resp = client.post(
             url,
             files={"file": (os.path.basename(path), data, mime)},
