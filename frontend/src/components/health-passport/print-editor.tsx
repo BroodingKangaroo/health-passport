@@ -25,6 +25,31 @@ const LANG_NAME: Record<PrintLang, string> = {
   pl: 'Polish',
 }
 
+// Display names for a document's DETECTED source language (backend detector,
+// surfaced on DateHeader.source_language / MatrixRow.original_lang). These
+// are unrelated to the PrintLang 'ru' sentinel above, which selects
+// "original" mode and is not the Russian language.
+const SOURCE_LANG_EN: Record<string, string> = {
+  en: 'English',
+  de: 'German',
+  fr: 'French',
+  es: 'Spanish',
+  pl: 'Polish',
+  ru: 'Russian',
+  he: 'Hebrew',
+}
+
+// Original mode renders Russian chrome, so its label uses Russian names.
+const SOURCE_LANG_RU: Record<string, string> = {
+  en: '\u0410\u043D\u0433\u043B\u0438\u0439\u0441\u043A\u0438\u0439',
+  de: '\u041D\u0435\u043C\u0435\u0446\u043A\u0438\u0439',
+  fr: '\u0424\u0440\u0430\u043D\u0446\u0443\u0437\u0441\u043A\u0438\u0439',
+  es: '\u0418\u0441\u043F\u0430\u043D\u0441\u043A\u0438\u0439',
+  pl: '\u041F\u043E\u043B\u044C\u0441\u043A\u0438\u0439',
+  ru: '\u0420\u0443\u0441\u0441\u043A\u0438\u0439',
+  he: '\u0418\u0432\u0440\u0438\u0442',
+}
+
 const GENDER_RU: Record<string, string> = {
   Male: '\u041C\u0443\u0436\u0447\u0438\u043D\u0430',
   Female: '\u0416\u0435\u043D\u0449\u0438\u043D\u0430',
@@ -168,6 +193,20 @@ export function PrintEditor({
     [dates, selectedDates],
   )
   const visibleDates = visibleDateIndices.map((i) => dates[i])
+
+  // The source-document language behind the selected date columns. A specific
+  // label is only shown when every selected column carries the SAME detected
+  // language; mixed or unknown (legacy/manual) columns fall back to a generic
+  // "Original" label.
+  const uniformSourceLang = useMemo(() => {
+    let lang: string | null = null
+    for (const d of visibleDates) {
+      if (!d.source_language) return null
+      if (lang === null) lang = d.source_language
+      else if (lang !== d.source_language) return null
+    }
+    return lang
+  }, [visibleDates])
 
   const visibleMatrix = useMemo(() => {
     return matrix
@@ -617,8 +656,12 @@ export function PrintEditor({
                     : `Generated: ${formatToday(lang)}`}
                 </div>
                 <div>
-                  {lang === 'ru' ? '\u042F\u0437\u044B\u043A: \u0420\u0443\u0441\u0441\u043A\u0438\u0439' : `Language: ${LANG_NAME[lang]}`}
-                  {bilingual ? ' + RU' : ''}
+                  {lang === 'ru'
+                    ? `\u042F\u0437\u044B\u043A: \u041E\u0440\u0438\u0433\u0438\u043D\u0430\u043B${uniformSourceLang ? ` (${SOURCE_LANG_RU[uniformSourceLang] ?? ''})` : ''}`
+                    : `Language: ${LANG_NAME[lang]}`}
+                  {bilingual
+                    ? ` + ${uniformSourceLang ? `Original (${SOURCE_LANG_EN[uniformSourceLang] ?? ''})` : 'Original'}`
+                    : ''}
                 </div>
               </div>
             </div>

@@ -44,6 +44,7 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.schemas import DeleteEntryResponse, EntriesByDateResponse, SaveEntryResponse
+from app.services.language_detect import SUPPORTED_LANGUAGES
 from app.services.reference import compute_status, merge_reference, normalize_qual, parse_value
 from app.services.usage_limits import check_and_record_storage_usage
 
@@ -500,6 +501,10 @@ async def save_entry(
     provider: str = Form(""),
     title: str = Form(""),
     notes: str = Form(""),
+    # Language of the source document as detected at extraction time (client
+    # relays it from the /api/extract result). Empty string = unknown/manual
+    # entry; values outside the detector's allowlist are stored as NULL.
+    source_language: str = Form(""),
     biomarkers: str = Form("[]"),
     visit_data: str = Form(""),
     instrumental_data: str = Form(""),
@@ -517,6 +522,7 @@ async def save_entry(
     if entry_date.date() > datetime.now(timezone.utc).date():
         raise HTTPException(status_code=400, detail="Date cannot be in the future")
 
+    source_language = source_language if source_language in SUPPORTED_LANGUAGES else None
     entry = MedicalEntryModel(
         id=entry_id,
         patient_id=user_id,
@@ -528,6 +534,7 @@ async def save_entry(
         status="Completed",
         clinic=clinic,
         notes=notes,
+        source_language=source_language,
     )
     db.add(entry)
     db.flush()

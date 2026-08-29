@@ -1371,3 +1371,105 @@ class TestMergeEntry:
         assert merged[0].value_text == "Negative"
         assert merged[0].status == "normal"
 
+
+def _cbc_biomarkers_json() -> str:
+    return json.dumps([
+        {
+            "id": "cat-1",
+            "name": "CBC",
+            "rows": [
+                {"id": "wbc", "name": "WBC", "value": "8.5", "unit": "K/µL", "range": "4.0-11.0"},
+            ],
+        },
+    ])
+
+
+class TestSaveSourceLanguage:
+    async def _save(self, client, source_language: str = "") -> str:
+        data = {
+            "type": "blood_test",
+            "date": "2025-11-15",
+            "title": "Test Panel",
+            "biomarkers": _cbc_biomarkers_json(),
+        }
+        if source_language:
+            data["source_language"] = source_language
+        resp = await client.post("/api/entry", data=data)
+        assert resp.status_code == 200
+        return resp.json()["id"]
+
+    async def test_source_language_persisted_and_surfaced_on_event(self, client):
+        entry_id = await self._save(client, source_language="ru")
+
+        timeline = await client.get("/api/timeline")
+        events = [e for e in timeline.json()["events"] if e["id"] == entry_id]
+        assert len(events) == 1
+        assert events[0]["source_language"] == "ru"
+
+    async def test_source_language_defaults_to_none(self, client):
+        entry_id = await self._save(client)
+
+        timeline = await client.get("/api/timeline")
+        events = [e for e in timeline.json()["events"] if e["id"] == entry_id]
+        assert len(events) == 1
+        assert events[0]["source_language"] is None
+
+    async def test_unknown_source_language_stored_as_none(self, client):
+        # Values outside the detector's allowlist are not persisted.
+        entry_id = await self._save(client, source_language="xx")
+
+        timeline = await client.get("/api/timeline")
+        events = [e for e in timeline.json()["events"] if e["id"] == entry_id]
+        assert len(events) == 1
+        assert events[0]["source_language"] is None
+
+    async def test_source_language_surfaced_on_flowsheet(self, client):
+        # A biomarker name unique to this entry: its matrix row's original
+        # name comes from this entry's first (and only) reading, so the row
+        # carries the same language as the entry's date column.
+        unique_json = json.dumps([
+            {
+                "id": "cat-1",
+                "name": "CBC",
+                "rows": [
+                    {
+                        "id": "wbc-unique-de",
+                        "name": "Unique Analyte DE",
+                        "value": "8.5",
+                        "unit": "K/µL",
+                        "range": "4.0-11.0",
+                        "original_name": "Unique Analyte DE",
+                    },
+                ],
+            },
+        ])
+        resp = await client.post(
+            "/api/entry",
+            data={
+                "type": "blood_test",
+                "date": "2025-11-15",
+                "title": "Test Panel",
+                "source_language": "de",
+                "biomarkers": unique_json,
+            },
+        )
+        assert resp.status_code == 200
+
+        flowsheet = await client.get("/api/flowsheet")
+        data = flowsheet.json()
+
+        matching = [d for d in data["dates"] if d["source_language"] == "de"]
+        assert len(matching) == 1
+        rows = [row for cat in data["matrix"] for row in cat["rows"]]
+        by_original = {row["original"]: row for row in rows if row["original"]}
+        assert by_original["Unique Analyte DE"]["original_lang"] == "de"
+
+    async def test_flowsheet_original_lang_none_without_source_language(self, client):
+        await self._save(client)
+
+        flowsheet = await client.get("/api/flowsheet")
+        data = flowsheet.json()
+        for cat in data["matrix"]:
+            for row in cat["rows"]:
+                assert row["original_lang"] is None
+

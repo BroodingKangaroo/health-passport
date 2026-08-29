@@ -183,6 +183,9 @@ export interface MatrixRow {
   id: string
   name: string
   original: string
+  // Detected source-document language of the entry whose reading supplied
+  // `original`; null = unknown. Lets the print editor label the original name.
+  original_lang?: string | null
   unit: string
   reference: Reference | null
   // True when the row's unit was LLM-invented (no source unit on the
@@ -303,6 +306,9 @@ export interface StandardizedMedicalRecord {
   provider?: string | null
   title?: string | null
   notes?: string | null
+  // Detected source-document language (deterministic detection on the OCR
+  // text, backend-side); null when too short or ambiguous to decide.
+  source_language?: string | null
   biomarkers?: StandardizedBiomarker[] | null
   visit_data?: ExtractedVisitData | null
   instrumental_data?: ExtractedInstrumentalData | null
@@ -348,6 +354,9 @@ export interface TimelineResponse {
 export interface DateHeader {
   label: string
   sub?: string | null
+  // Detected source-document language of the entry behind this column;
+  // null = unknown (legacy / manual entries).
+  source_language?: string | null
 }
 
 export interface FlowsheetResponse {

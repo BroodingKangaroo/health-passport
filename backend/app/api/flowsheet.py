@@ -83,11 +83,11 @@ def _build_date_headers(blood_tests) -> list[DateHeader]:
     pair_counts = Counter(headers)
     seen: dict[tuple[str, Optional[str]], int] = {}
     date_headers: list[DateHeader] = []
-    for label, sub in headers:
+    for entry, (label, sub) in zip(blood_tests, headers):
         if pair_counts[(label, sub)] > 1:
             seen[(label, sub)] = seen.get((label, sub), 0) + 1
             label = f"{label} (#{seen[(label, sub)]})"
-        date_headers.append(DateHeader(label=label, sub=sub))
+        date_headers.append(DateHeader(label=label, sub=sub, source_language=entry.source_language))
     return date_headers
 
 
@@ -140,6 +140,7 @@ def _build_matrix(
     defn_by_id: dict,
     defn_by_loinc: dict,
 ) -> list[MatrixCategory]:
+    entry_language = {bt.id: bt.source_language for bt in blood_tests}
     cat_rows: dict[str, list[MatrixRow]] = {}
     for def_id in _all_referenced_ids(biomarker_readings_map):
         defn = lookup_definition(defn_by_id, defn_by_loinc, def_id)
@@ -156,15 +157,23 @@ def _build_matrix(
             for bt in blood_tests
         ]
         first_reading = next(
-            (bt_readings.get(def_id) for bt_readings in biomarker_readings_map.values() if def_id in bt_readings),
+            (
+                readings.get(def_id)
+                for entry_id, readings in biomarker_readings_map.items()
+                if def_id in readings
+            ),
             None,
         )
         original_name = (first_reading.original_name if first_reading else "") or ""
+        original_lang = (
+            entry_language.get(first_reading.entry_id) if first_reading else None
+        )
         first_ref = effective_reference(first_reading, defn)
         cat_rows.setdefault(cat, []).append(MatrixRow(
             id=def_id,
             name=defn.names.get("en", ""),
             original=original_name,
+            original_lang=original_lang,
             unit=canonical_unit,
             reference=first_ref,
             canonical_unit_inferred=bool(defn.canonical_unit_inferred),

@@ -9,6 +9,9 @@ from .medical_event import InstrumentalData, MedicalEvent, VisitData
 class DateHeader(BaseModel):
     label: str
     sub: Optional[str] = None
+    # Detected source-document language of the entry behind this column
+    # (see app/services/language_detect.py); None = unknown.
+    source_language: Optional[str] = None
 
 
 class TimelineResponse(BaseModel):

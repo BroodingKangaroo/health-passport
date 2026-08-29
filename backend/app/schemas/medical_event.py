@@ -35,6 +35,9 @@ class MedicalEvent(BaseModel):
     category: str = ""
     status: str = ""
     clinic: str = ""
+    # Detected language of the source document (see
+    # app/services/language_detect.py); None = unknown (legacy/manual rows).
+    source_language: Optional[str] = None
     attachments: list[Attachment] = []
 
 

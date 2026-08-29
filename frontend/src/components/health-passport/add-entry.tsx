@@ -66,6 +66,9 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const [prefillProvider, setPrefillProvider] = useState('')
   const [prefillTitle, setPrefillTitle] = useState('')
   const [prefillNotes, setPrefillNotes] = useState('')
+  // Source-document language detected at extraction time, relayed to
+  // POST /api/entry on save (null in manual mode / failed extractions).
+  const [sourceLanguage, setSourceLanguage] = useState<string | null>(null)
 
   const dateRef = useRef<HTMLInputElement>(null)
   const timeRef = useRef<HTMLInputElement>(null)
@@ -87,6 +90,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   function applyExtractedRecord(result: StandardizedMedicalRecord) {
     setEntryMode('ai')
     setDocumentType(result.entry_type)
+    setSourceLanguage(result.source_language ?? null)
 
     if (result.date) {
       setDateValue(result.date)
@@ -123,6 +127,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   function handleExtractionFailed() {
     setEntryMode('manual')
     setCategories(manualCategories())
+    setSourceLanguage(null)
   }
 
   const {
@@ -227,6 +232,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     setUploadState('editor')
     setSelectedFile(null)
     setObjectUrl(null)
+    setSourceLanguage(null)
     clearError()
     setMultiFileNotice(null)
   }
@@ -356,6 +362,7 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         provider: providerRef.current?.value ?? '',
         title: merging ? (titleRef.current?.value ?? '') : (titleRef.current?.value || autoTitle),
         notes: notesRef.current?.value ?? '',
+        source_language: sourceLanguage ?? '',
         biomarkers,
         visit_data:
           documentType === 'doctor_visit' && visitFormData ? visitFormData : null,

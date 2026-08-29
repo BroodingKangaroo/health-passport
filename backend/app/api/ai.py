@@ -30,6 +30,7 @@ from app.schemas.ai import (
 )
 from app.services import extractor, matcher
 from app.services.chat_client import build_chat_aware_client
+from app.services.language_detect import detect_source_language
 from app.services.usage_limits import check_and_record_ai_usage, refund_ai_extraction
 from config import MISTRAL_CHAT_MODEL
 
@@ -469,6 +470,11 @@ async def extract_medical_data(
             if not error and not markdown:
                 error = "The document was processed but no text content was found. It may contain only images or scanned signatures."
 
+            # Deterministic source-language detection on the full OCR text —
+            # runs once here (never an LLM field) and rides both result events
+            # below so the client can persist it on the entry.
+            source_language = detect_source_language(markdown) if markdown else None
+
             # Stage 2: LLM extraction
             if not error:
                 yield _sse("progress", {"stage": "extracting", "markdown_chars": len(markdown)})
@@ -502,6 +508,7 @@ async def extract_medical_data(
                         provider=raw.provider,
                         title=raw.title,
                         notes=raw.notes,
+                        source_language=source_language,
                         biomarkers=[],
                         visit_data=StandardizedVisitData(),
                         instrumental_data=RawInstrumentalData(),
@@ -535,6 +542,7 @@ async def extract_medical_data(
             std_count = len(result.biomarkers) if result.biomarkers else 0
             logger.info("Matching took %.2fs — biomarkers: %d", elapsed, std_count)
 
+            result.source_language = source_language
             yield _sse("result", result.model_dump())
             return
 

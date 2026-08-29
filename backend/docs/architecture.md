@@ -326,6 +326,27 @@ Reference for agents so these aren't re-derived via grep each session:
   Endoscopy, Other` (mirrors the frontend `MODALITIES`); content goes to
   `findings`/`conclusion`; `notes` stays empty (no duplication).
 
+## Source-document language (`medical_entries.source_language`)
+
+- Detected **deterministically** on the full OCR markdown inside the extract
+  stream (`app/services/language_detect.py`: script ranges → Cyrillic `ru`,
+  Hebrew `he`; Latin-script common-word + Polish-diacritic scoring). Never an
+  LLM field — prompt changes would risk e2e golden drift for a field the
+  goldens never compare. Allowlist: `en de fr es pl ru he`; short/ambiguous
+  documents detect as `None`.
+- Rides both `/api/extract` result events on
+  `StandardizedMedicalRecord.source_language`; the client relays it as an
+  optional `source_language` Form field on `POST /api/entry`, which stores it
+  only when it is in the allowlist (else NULL). Nullable column, no backfill —
+  legacy/manual entries are NULL; auto-migrated by `migrate_add_columns()`.
+- Surfaced on timeline `MedicalEvent.source_language`, flowsheet
+  `DateHeader.source_language` (per date column), and
+  `MatrixRow.original_lang` (language of the entry whose first reading
+  supplied the row's `original` — mixed-language document sets make this
+  differ from the column's language). The print editor uses the date-column
+  value to label "Keep Original"/bilingual original content; mixed or unknown
+  columns fall back to a generic "Original" label.
+
 ## CRITICAL — `/api/extract` persists definitions
 
 Matching runs in a worker thread (`backend/app/api/ai.py`,

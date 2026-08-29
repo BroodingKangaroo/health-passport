@@ -69,6 +69,11 @@ class MedicalEntry(Base):
     status = Column(String, default="")
     clinic = Column(String, default="")
     notes = Column(String, default="")
+    # Detected language of the source document (ISO 639-1 style code from the
+    # fixed allowlist in app/services/language_detect.py), or None for legacy
+    # rows, manual entries, and documents too short/ambiguous to classify.
+    # Used by the print/export UI to label the "original" column.
+    source_language = Column(String, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     patient = relationship("Patient", back_populates="entries")

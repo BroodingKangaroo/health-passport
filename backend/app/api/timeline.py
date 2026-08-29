@@ -82,6 +82,7 @@ def _events_from_db(db: Session, patient_id: str):
             category=e.category or "",
             status=e.status or "",
             clinic=e.clinic or "",
+            source_language=e.source_language,
             attachments=[
                 AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size, url=a.file_path)
                 for a in e.attachments

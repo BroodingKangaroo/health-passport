@@ -241,6 +241,10 @@ class StandardizedMedicalRecord(BaseModel):
     provider: str = ""
     title: str = ""
     notes: str = ""
+    # Deterministic script/common-word detection on the OCR markdown (never
+    # an LLM field — prompt changes would risk e2e golden drift). None when
+    # the document is too short or ambiguous to decide.
+    source_language: Optional[str] = None
     biomarkers: list[StandardizedBiomarker] = []
     visit_data: StandardizedVisitData = StandardizedVisitData()
     instrumental_data: RawInstrumentalData = RawInstrumentalData()

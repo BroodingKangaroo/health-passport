@@ -108,6 +108,10 @@ class MatrixRow(BaseModel):
     id: str
     name: str
     original: str
+    # Detected source-document language of the entry whose reading supplied
+    # ``original`` (the first reading across the flowsheet's date columns);
+    # None = unknown. Lets the print editor label the original name.
+    original_lang: Optional[str] = None
     unit: str
     reference: Optional[Reference] = None
     cells: list[MatrixCell]

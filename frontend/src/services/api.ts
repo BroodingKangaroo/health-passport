@@ -408,6 +408,10 @@ export interface SaveEntryFormData {
   provider: string
   title: string
   notes: string
+  // Detected source-document language relayed from the /api/extract result;
+  // empty string = unknown (manual entry). The backend validates against its
+  // allowlist and stores NULL otherwise.
+  source_language?: string
   biomarkers: FormCategory[]
   visit_data?: ExtractedVisitData | null
   instrumental_data?: ExtractedInstrumentalData | null
@@ -427,6 +431,9 @@ export function buildSaveEntryFormData(f: SaveEntryFormData): FormData {
   fd.append('provider', f.provider)
   fd.append('title', f.title)
   fd.append('notes', f.notes)
+  if (f.source_language) {
+    fd.append('source_language', f.source_language)
+  }
   fd.append('biomarkers', JSON.stringify(f.biomarkers))
   if (f.visit_data) {
     fd.append('visit_data', JSON.stringify(f.visit_data))

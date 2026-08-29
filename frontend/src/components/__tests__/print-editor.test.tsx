@@ -278,7 +278,32 @@ describe('PrintEditor', () => {
 
   it('shows bilingual indicator when bilingual is true', () => {
     renderEditor({ lang: 'de', bilingual: true })
-    expect(screen.getByText(/\+ RU/)).toBeTruthy()
+    expect(screen.getByText(/\+ Original/)).toBeTruthy()
+  })
+
+  it('labels the bilingual original with the detected source language', () => {
+    renderEditor({
+      lang: 'de',
+      bilingual: true,
+      dates: mockDates.map((d) => ({ ...d, source_language: 'ru' })),
+    })
+    expect(screen.getByText(/\+ Original \(Russian\)/)).toBeTruthy()
+  })
+
+  it('labels original mode with the detected source language', () => {
+    renderEditor({
+      lang: 'ru',
+      dates: mockDates.map((d) => ({ ...d, source_language: 'de' })),
+    })
+    expect(screen.getByText(/Язык: Оригинал \(Немецкий\)/)).toBeTruthy()
+  })
+
+  it('falls back to a generic original label when source languages are mixed', () => {
+    renderEditor({
+      lang: 'ru',
+      dates: mockDates.map((d, i) => ({ ...d, source_language: i === 0 ? 'ru' : 'de' })),
+    })
+    expect(screen.getByText(/Язык: Оригинал$/)).toBeTruthy()
   })
 
   it('translates biomarker names to Spanish when lang is es', () => {
