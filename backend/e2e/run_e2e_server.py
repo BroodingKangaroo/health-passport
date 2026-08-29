@@ -50,6 +50,40 @@ def _read_token() -> str:
     return out.stdout.strip()
 
 
+def _harness_token(port: int) -> str:
+    """Register (or reuse) a dedicated harness user on the booted server and
+    return its Bearer token.
+
+    A stable per-invocation identity matters since local definitions unify
+    first-seen per user: all cases in a run (and across invocations sharing
+    the same DB) must resolve as the SAME user for cross-document
+    unification (e.g. the two колонофлор wordings of the Bacteroides/F.
+    prausnitzii ratio) to behave like a real user uploading several
+    documents. Falls back to the historical 'default' token if the auth
+    endpoints are unavailable.
+    """
+    import httpx
+
+    base = f"http://localhost:{port}"
+    creds = {"email": "e2e-harness@example.com", "password": "e2e-harness-pass-123",
+             "name": "E2E Harness", "dob": "1990-01-01", "gender": "Other"}
+    try:
+        r = httpx.post(f"{base}/api/auth/register", json=creds, timeout=30)
+        if r.status_code not in (200, 201, 400):  # 400 = already registered
+            r.raise_for_status()
+        r = httpx.post(f"{base}/api/auth/login",
+                       data={"username": creds["email"], "password": creds["password"]},
+                       timeout=30)
+        r.raise_for_status()
+        token = r.json().get("access_token")
+        if token:
+            return token
+    except Exception as exc:
+        print(f"[warn] harness user registration failed ({exc}); falling back to default token",
+              file=sys.stderr)
+    return _read_token()
+
+
 def main():
     ap = argparse.ArgumentParser(description="Run e2e golden harness on an isolated backend")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT,
@@ -100,7 +134,7 @@ def main():
             print("Server exited early; check logs.", file=sys.stderr)
             return 1
 
-        token = args.token or _read_token()
+        token = args.token or _harness_token(args.port)
         cmd = [
             VENV, os.path.join(HERE, "run_e2e.py"),
             "--url", f"http://localhost:{args.port}/api/extract",

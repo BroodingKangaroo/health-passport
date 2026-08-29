@@ -133,6 +133,16 @@ def _build_standardized_from_def(
                         ch = _apply_scale_function(float(high), sf)
                         if ch is not None:
                             ref["high"] = ch
+            elif (not nr and (cu or "").strip()
+                  and cu == (defn.canonical_unit or "")
+                  and cu != std_unit):
+                # The reading's own unit translation equals the def's canonical
+                # (no conversion needed), but the doc/def raw unit columns are
+                # empty or generic — adopt the canonical. Covers dimensionless
+                # "ratio" canonicals (a table-wide "lg копий/мл" header is
+                # noise on a ratio row) and locally-unified rows whose def
+                # anchored a real unit the document itself never printed.
+                std_unit = cu
             elif nr:
                 needs_review = True
         std_unit = _suppress_unit_for_qualitative(std_unit, defn, raw_bm.unit)

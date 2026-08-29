@@ -98,10 +98,12 @@ BENCHMARK_USER_ID = "default"
 # fan-out beyond that would silently serialize on pool acquire.
 MAX_STAGE_CONCURRENCY = 8
 
-# Documented in e2e/KNOWN_ISSUES.md: on a fresh DB, alphabetical order anchors
-# `lg копий/мл` -> log10 for the колонофлор analytes unless the 25.06 doc
-# (empty raw units) lands FIRST and anchors linear `copies/mL`.
-WARMUP_CASE = "колонофлор_16_25.06"
+# Warm-up anchor goldens: local defs unify first-seen (names/ids — the
+# cross-lab unification, 2026-08-29), so the pristine snapshot must anchor
+# the колонофлор locals in the SAME order the e2e suite runs them
+# (alphabetical: _16_13.05 before _16_25.06) for goldens to agree across
+# worlds. The pre-task-1 reason (lg-anchor ordering) is obsolete.
+WARMUP_CASES = ["колонофлор_16_13.05", "колонофлор_16_25.06"]
 
 
 class BenchmarkBroken(Exception):
@@ -810,19 +812,18 @@ def main(argv=None) -> int:
 
     ensure_seeded_db(args.db, args.fresh_db)
 
-    # Warm-up anchor goldens (documented lg-anchor ordering fix).
+    # Warm-up anchor goldens (cross-lab local unification order — see
+    # WARMUP_CASES above).
     warmup = []
-    wanted_warmup = None
-    for name, _path, golden in cases:
-        if name == WARMUP_CASE:
-            wanted_warmup = golden
-            break
-    if wanted_warmup is not None:
-        warmup.append(wanted_warmup)
-    elif not args.cases:
+    wanted = {name: golden for name, _path, golden in cases}
+    for name in WARMUP_CASES:
+        golden = wanted.get(name)
+        if golden is not None:
+            warmup.append(golden)
+    if not warmup and not args.cases:
         print(
-            f"[warn] corpus lacks the '{WARMUP_CASE}' warm-up case — "
-            "unit-anchor ordering caveat (see e2e/KNOWN_ISSUES.md) is unhandled",
+            f"[warn] corpus lacks the {WARMUP_CASES} warm-up cases — "
+            "local-def anchor ordering caveat (see e2e/KNOWN_ISSUES.md) is unhandled",
             file=sys.stderr,
         )
 

@@ -45,11 +45,12 @@ INPUT_DIR = os.path.join(ROOT, "e2e", "inputs")
 GOLDEN_DIR = os.path.join(ROOT, "e2e", "golden")
 USER_ID = "default"
 
-# Documented anchor-ordering convention (e2e/KNOWN_ISSUES.md): the
-# колонофлор_16_25.06 document (empty raw units) MUST anchor the linear
-# "copies/mL" canonical BEFORE any "lg копий/мл" row is seen, otherwise both
-# колонофлор cases convert against a log-scale canonical.
-ORDER_FIRST = ["колонофлор_16_25.06"]
+# Anchor-ordering convention: local defs unify first-seen (names/ids, like
+# units pre-task-1), so the replay order must match the e2e suite's
+# alphabetical order (колонофлор_16_13.05 before _25.06) — which is already
+# the default; the old 25.06-first override (lg-anchor ordering) is obsolete
+# since the anchor linearization (2026-08-29).
+ORDER_FIRST: list[str] = []
 
 # Mirrors the units_guess.py batch-translator contract; extended with the
 # other Russian lab units seen in real documents.

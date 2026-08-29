@@ -249,6 +249,50 @@ committed.
     - **Offline profile improved to 3 documented diffs** (гастро
       visit-replay trio; was 6, and the pre-change working tree showed 30+).
 
+14. **Cross-document local-definition unification** (2026-08-29, user-directed):
+    the same locally-defined biomarker worded differently by two labs used to
+    spawn TWO local defs (Инвитро «Соотношение Bacteroides spp./
+    F. prausnitzii» vs Хеликс «Отношение Bacteroides spp и
+    F. prausnitzii»; LLM translations "… ratio" vs "Ratio of … to …";
+    «динамика»/"Dynamics" report-column suffixes). The user's OWN local defs
+    were never match candidates (`build_name_index` indexed globals only), so
+    every wording variant anchored a new def.
+    - `name_matching.py` adds `build_local_name_index` +
+      `match_local_def`: exact match on dynamics-stripped normalized
+      names/synonyms, then a LOCAL fuzzy rule — WRatio ≥ 78 (lower than the
+      global 90) PLUS plain-ratio ≥ 55 PLUS a token-SUBSET guard (a query
+      whose tokens are a strict subset of the candidate's never merges:
+      "Escherichia coli" must not fold into "Escherichia coli
+      enteropathogenic") PLUS the carrier-collision guard. The subset guard
+      is what makes the lower WRatio cutoff safe ("Shigella spp" vs
+      "Salmonella spp" still never merges).
+    - Measurement-KIND gate in the pipeline: a unitless (qualitative-screen)
+      local def never absorbs a numeric row and vice versa (13.05's
+      qualitative «Bacteroides thetaiotaomicron» and 25.06's numeric
+      «Bacteroides thetaomicron» stay separate — OCR-twin spellings with
+      incompatible anchors).
+    - Local matches are TRUSTED (skip the LLM verification backstop) — an LLM
+      rejection must not resurrect duplicate local defs.
+    - `_build_standardized_from_def` now adopts the def's canonical unit when
+      the reading's own unit translation equals it and no scale conversion
+      applies (previously it kept the raw `doc_unit or defn.unit` column,
+      which could be empty or the first-seen raw form like «lg копий/мл»).
+      This bug only surfaced once rows started matching existing local defs
+      instead of always going through the local builder.
+    - Harness alignment: `run_e2e.py` now uses ONE HTTP client (cookie jar)
+      for the whole run and `run_e2e_server.py` registers a dedicated
+      harness user (`e2e-harness@example.com`) — the suite simulates ONE
+      account uploading documents sequentially, so per-user unification
+      behaves like real usage. The benchmark warm-up replays BOTH
+      колонофлор goldens in alphabetical order (`WARMUP_CASES`) so the
+      pristine world anchors the same first-seen defs as the e2e suite.
+    - First-seen ordering caveat: WHICH def id/name a merged analyte gets
+      depends on which document was processed first (13.05 before 25.06
+      alphabetically in the harness/benchmark worlds) — same principle as
+      unit anchoring. The dev DB's pre-existing duplicate
+      (`local-aaddae1b1c91`, 1 reading) was merged into the survivor
+      (`local-53b51cebc7e9`) with a backup taken.
+
 ## Comparator accommodations (2026-08-29, user-approved golden-variance policy)
 
 Stable extraction variants are folded in via comparator tolerance (never by
@@ -340,17 +384,16 @@ weakening value gates), mirroring the translated_en_alt precedent:
    `app/services/matcher/units_guess.py`, and `verify_or_create` persists `canonical_unit:
   ""` on first-seen), so the observed output was `""` vs. the golden's
   `"ratio"`. Golden corrected to `standard_unit: ""` 2026-08-03.
-- **Fresh-DB ordering dependency (`колонофлор_16_*`)** — OBSOLETE as of fix
-  #13 (2026-08-29): canonical units are first-seen, but log-scale first-seen
-  rows now anchor the LINEAR magnitude (`_linearized_anchor`), so
-  `колонофлор_16_13.05` (raw unit `lg копий/мл`) no longer poisons the
-  anchors when it runs first alphabetically. Both goldens regenerate
-  identically in any order on a fresh `e2e_run.db`. (Historical: before the
-  fix, 13.05-first anchored `lg copies/mL` and BOTH колонофлор cases failed
-  against the linear goldens; the warm-up ordering below was the workaround.)
-  Still harmless and still the convention:
-  `venv/bin/python e2e/run_e2e_server.py --case колонофлор_16_25.06` once
-  before the full suite after any DB reset.
+- **Fresh-DB ordering dependency (`колонофлор_16_*`)** — since fixes #13/#14
+  (2026-08-29) the ordering requirement is the REVERSE of the historical one
+  and matches the suite's alphabetical order: `колонофлор_16_13.05` runs
+  before `колонофлор_16_25.06`, so 13.05's defs (units AND names/ids) anchor
+  first and 25.06 unifies into them (see fix #14). No warm-up ordering is
+  needed anymore: on a fresh DB the suite's natural order is correct, the
+  benchmark replays both goldens in that order (`WARMUP_CASES`), and
+  `warmup_db.ORDER_FIRST` is empty. (Historical: pre-task-1, 13.05-first
+  anchored `lg copies/mL` and BOTH cases failed — the 25.06-first warm-up was
+  that era's workaround.)
 - `гастроэнтеролог_ргц_29.06`: the LLM now splits the long
   `Лабораторная и инструментальная диагностика…` recommendation block into
   separate items and truncates the longest texts, so `recommendations` counts

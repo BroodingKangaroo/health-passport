@@ -189,6 +189,20 @@ Reference for agents so these aren't re-derived via grep each session:
   category heuristics, `inferred: True`), NEVER by the batch LLM translator —
   a shared empty-unit cache entry would let one extraction's guess poison
   another's.
+- **Cross-document local unification** (2026-08-29, `name_matching.py
+  build_local_name_index` + `match_local_def`, pipeline step 1d2): the user's
+  OWN local definitions are match candidates. The same analyte worded
+  differently by different labs (соотношение/отношение, "… ratio" vs
+  "Ratio of … to …", «динамика» suffixes — stripped before matching) resolves
+  to the first-seen local def instead of spawning a duplicate. Guards:
+  WRatio ≥ 78 + plain-ratio ≥ 55 + token-subset rejection (a query strictly
+  contained in the candidate's tokens never merges) + carrier-collision
+  guard + a measurement-KIND gate (unitless qualitative defs never absorb
+  numeric rows and vice versa). Local matches are trusted (no LLM
+  verification backstop). Globals always win collisions; def ids/EN names
+  stay first-seen (which document processed first decides the merged def's
+  identity — harness/benchmark replay order mirrors the suite's
+  alphabetical order).
 - Surface on the wire: `standard_unit`, `scale_function`, `needs_review`,
   `canonical_unit_inferred`.
 

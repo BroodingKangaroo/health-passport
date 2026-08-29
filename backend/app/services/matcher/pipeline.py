@@ -20,7 +20,7 @@ from app.services.matcher._cache import (
     _scale_function_cache,
     _unit_translation_cache,
 )
-from app.services.matcher.definitions import verify_or_create
+from app.services.matcher.definitions import _is_qualitative_result, verify_or_create
 from app.services.matcher.llm_matching import (
     _common_biomarker_guide,
     _llm_zero_shot_batch,
@@ -35,10 +35,12 @@ from app.services.matcher.loinc_store import (
 from app.services.matcher.name_matching import (
     _fraction_variant,
     _is_percent_unit,
+    build_local_name_index,
     build_name_index,
     deterministic_match,
     fuzzy_match,
     is_grounded,
+    match_local_def,
 )
 from app.services.matcher.standardize import (
     _apply_status,
@@ -90,8 +92,14 @@ def _match_and_convert_impl(
     std_biomarkers: list[StandardizedBiomarker] = []
     unmatched: list[RawBiomarker] = []
     matched_pairs: list[tuple[RawBiomarker, BiomarkerDefinitionModel]] = []
+    # Biomarkers matched to the user's OWN local definitions (cross-document
+    # unification of differently-worded locals). Trusted like curated matches:
+    # the deterministic thresholds + measurement-kind gate already accepted
+    # them, and an LLM rejection must not resurrect duplicate local defs.
+    local_matched_ids: set[int] = set()
 
     index = build_name_index(definitions)
+    local_index = build_local_name_index(definitions, user_id)
     biomarkers = list(raw.biomarkers or [])
 
     # Step 0: Translate non-English names to English so they can reuse the
@@ -179,6 +187,23 @@ def _match_and_convert_impl(
         if match is None:
             match = fuzzy_match(search_name, index, extra)
 
+        # 1d2. Cross-document local unification: the same locally-defined
+        # analyte worded differently by another lab («Соотношение X/Y» vs
+        # «Отношение X и Y», "… ratio" vs "Ratio of … to …", «динамика»
+        # suffixes). Exact (dynamics-stripped) first, then the guarded local
+        # fuzzy rule. A match is only accepted when the measurement KIND is
+        # compatible (a unitless qualitative screen never absorbs a numeric
+        # row and vice versa) — otherwise leave unmatched so the row keeps
+        # its own local definition exactly as before.
+        if match is None and local_index:
+            local = match_local_def(search_name, local_index, (b.name,) if b.name != search_name else ())
+            if local is not None:
+                def_unitless = not (local.canonical_unit or "").strip()
+                row_qualitative = _is_qualitative_result(b)
+                if def_unitless == row_qualitative:
+                    match = local
+                    local_matched_ids.add(id(b))
+
         # 1e. Unit-aware re-route: a percent result must land on the fraction
         # ("… %") variant of the analyte, not the absolute-count variant. The
         # document unit — not the LOINC property — decides, so "Эозинофилы, %"
@@ -199,8 +224,14 @@ def _match_and_convert_impl(
     # unmatched pool so it can be resolved/localized instead of shown wrong.
     # Curated multilingual matches are trusted and skipped (see curated_ids).
     if matched_pairs and client:
-        to_verify = [(b, m) for (b, m) in matched_pairs if id(b) not in curated_ids]
-        curated_kept = [(b, m) for (b, m) in matched_pairs if id(b) in curated_ids]
+        to_verify = [
+            (b, m) for (b, m) in matched_pairs
+            if id(b) not in curated_ids and id(b) not in local_matched_ids
+        ]
+        curated_kept = [
+            (b, m) for (b, m) in matched_pairs
+            if id(b) in curated_ids or id(b) in local_matched_ids
+        ]
         verified, rejected = _verify_and_correct(to_verify, index, db, client)
         matched_pairs = verified + curated_kept
         unmatched.extend(rejected)

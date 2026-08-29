@@ -5,7 +5,7 @@
   "clinic": "ИООО \"Независимая лаборатория ИНВИТРО\"",
   "provider": "Выдрицкий А.В",
   "title": "",
-  "notes": "Снижено количество Lactobacillus spp. Повышено количество Escherichia coli. Снижено количество Blautia spp.",
+  "notes": "Снижено количество Lactobacillus spp. Повышено количество Escherichia coli Снижено количество Blautia spp.",
   "biomarkers": [
     {
       "raw_name": "Общая бактериальная масса",
@@ -26,7 +26,7 @@
       "scope": "local",
       "scale_function": "10^x",
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Lactobacillus spp.",
@@ -47,7 +47,7 @@
       "scope": "local",
       "scale_function": "10^x",
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Bifidobacterium spp.",
@@ -68,7 +68,7 @@
       "scope": "local",
       "scale_function": "10^x",
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Escherichia coli",
@@ -89,7 +89,7 @@
       "scope": "local",
       "scale_function": "10^x",
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Bacteroides spp.",
@@ -110,7 +110,7 @@
       "scope": "local",
       "scale_function": "10^x",
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Faecalibacterium prausnitzii",
@@ -131,13 +131,13 @@
       "scope": "local",
       "scale_function": "10^x",
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Bacteroides thetaiotaomicron",
       "raw_value": "не обнаруж",
       "raw_unit": "lg копий/мл",
-      "raw_range_string": "",
+      "raw_range_string": "допустимо любое количество",
       "standard_name_en": "Bacteroides thetaiotaomicron",
       "standard_value": "Not detected",
       "standard_unit": "",
@@ -172,7 +172,7 @@
       "scope": "local",
       "scale_function": "10^x",
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Enterococcus spp.",
@@ -193,7 +193,7 @@
       "scope": "local",
       "scale_function": "10^x",
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Escherichia coli enteropathogenic",
@@ -214,7 +214,7 @@
       "scope": "local",
       "scale_function": "10^x",
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Klebsiella pneumoniae",
@@ -235,7 +235,7 @@
       "scope": "local",
       "scale_function": "10^x",
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Klebsiella oxytoca",
@@ -256,7 +256,7 @@
       "scope": "local",
       "scale_function": "10^x",
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Candida spp.",
@@ -277,7 +277,7 @@
       "scope": "local",
       "scale_function": "10^x",
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Staphylococcus aureus",
@@ -298,7 +298,7 @@
       "scope": "local",
       "scale_function": "10^x",
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Clostridium difficile",
@@ -359,7 +359,7 @@
       "scope": "local",
       "scale_function": "10^x",
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Citrobacter spp.",
@@ -380,7 +380,7 @@
       "scope": "local",
       "scale_function": "10^x",
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Enterobacter spp.",
@@ -401,7 +401,7 @@
       "scope": "local",
       "scale_function": "10^x",
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Fusobacterium nucleatum",
@@ -677,7 +677,7 @@
       "raw_value": "1.14",
       "raw_unit": "lg копий/мл",
       "raw_range_string": "0.01 - 100",
-      "standard_name_en": "Bacteroides spp./Faecalibacterium prausnitzii ratio",
+      "standard_name_en": "Bacteroides spp. / Faecalibacterium prausnitzii ratio",
       "standard_value": 1.14,
       "standard_unit": "ratio",
       "reference": {

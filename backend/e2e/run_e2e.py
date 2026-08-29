@@ -94,7 +94,7 @@ def extract_result(body):
     return None, "No 'result' or 'error' event found in SSE body"
 
 
-def call_extract(url, path, token):
+def call_extract(client, url, path, token):
     ext = os.path.splitext(path)[1].lower()
     mime = MIME_BY_EXT.get(ext, "application/octet-stream")
     with open(path, "rb") as fh:
@@ -106,12 +106,11 @@ def call_extract(url, path, token):
     # provider throttling each call can stretch to ~1 min. 300s produced
     # client-side cancels mid-extraction ("cancelled by client — quota
     # refunded") during degraded windows.
-    with httpx.Client(timeout=900.0) as client:
-        resp = client.post(
-            url,
-            files={"file": (os.path.basename(path), data, mime)},
-            headers=headers,
-        )
+    resp = client.post(
+        url,
+        files={"file": (os.path.basename(path), data, mime)},
+        headers=headers,
+    )
     return resp.text
 
 
@@ -141,68 +140,74 @@ def main():
         return 0
 
     passed = pending = failed = 0
-    for name, cdir, files in cases:
-        path = os.path.join(cdir, files[0])
-        if len(files) > 1:
-            print(f"[warn] case '{name}' has multiple files; using {files[0]}")
-        print(f"\n=== Case: {name} ===")
-        print(f"  input : {path}")
+    # One HTTP client (and thus one cookie jar) for the whole run: the suite
+    # simulates a SINGLE user uploading documents sequentially, so anonymous
+    # sessions persist across cases and per-user local definitions
+    # (first-seen anchoring + cross-document unification) behave exactly as
+    # they do for a real account.
+    with httpx.Client(timeout=900.0) as client:
+        for name, cdir, files in cases:
+            path = os.path.join(cdir, files[0])
+            if len(files) > 1:
+                print(f"[warn] case '{name}' has multiple files; using {files[0]}")
+            print(f"\n=== Case: {name} ===")
+            print(f"  input : {path}")
 
-        try:
-            body = call_extract(args.url, path, args.token)
-        except Exception as exc:  # network / server down
-            print(f"  ERROR calling endpoint: {exc}")
-            failed += 1
-            continue
+            try:
+                body = call_extract(client, args.url, path, args.token)
+            except Exception as exc:  # network / server down
+                print(f"  ERROR calling endpoint: {exc}")
+                failed += 1
+                continue
 
-        observed, err = extract_result(body)
-        if err:
-            print(f"  ENDPOINT ERROR: {err}")
-            failed += 1
-            continue
+            observed, err = extract_result(body)
+            if err:
+                print(f"  ENDPOINT ERROR: {err}")
+                failed += 1
+                continue
 
-        if args.dump_observed:
-            with open(args.dump_observed, "w", encoding="utf-8") as fh:
-                json.dump(observed, fh, indent=2, ensure_ascii=False)
-            print(f"  wrote observed -> {args.dump_observed}")
+            if args.dump_observed:
+                with open(args.dump_observed, "w", encoding="utf-8") as fh:
+                    json.dump(observed, fh, indent=2, ensure_ascii=False)
+                print(f"  wrote observed -> {args.dump_observed}")
 
-        golden_path = os.path.join(GOLDEN_DIR, name, "standardized.json")
-        pending_path = os.path.join(GOLDEN_DIR, name, "standardized.pending.json")
+            golden_path = os.path.join(GOLDEN_DIR, name, "standardized.json")
+            pending_path = os.path.join(GOLDEN_DIR, name, "standardized.pending.json")
 
-        if args.regen_golden:
-            os.makedirs(os.path.dirname(golden_path), exist_ok=True)
-            observed["_status"] = REVIEW_STATUS
-            with open(golden_path, "w", encoding="utf-8") as fh:
-                json.dump(observed, fh, indent=2, ensure_ascii=False)
-            print(f"  wrote FOR-REVIEW golden -> {golden_path}")
-            pending += 1
-            continue
+            if args.regen_golden:
+                os.makedirs(os.path.dirname(golden_path), exist_ok=True)
+                observed["_status"] = REVIEW_STATUS
+                with open(golden_path, "w", encoding="utf-8") as fh:
+                    json.dump(observed, fh, indent=2, ensure_ascii=False)
+                print(f"  wrote FOR-REVIEW golden -> {golden_path}")
+                pending += 1
+                continue
 
-        if not os.path.isfile(golden_path):
-            os.makedirs(os.path.dirname(pending_path), exist_ok=True)
-            observed["_status"] = PENDING_STATUS
-            with open(pending_path, "w", encoding="utf-8") as fh:
-                json.dump(observed, fh, indent=2, ensure_ascii=False)
-            print(f"  PENDING VERIFICATION (stub written) -> {pending_path}")
-            pending += 1
-            continue
+            if not os.path.isfile(golden_path):
+                os.makedirs(os.path.dirname(pending_path), exist_ok=True)
+                observed["_status"] = PENDING_STATUS
+                with open(pending_path, "w", encoding="utf-8") as fh:
+                    json.dump(observed, fh, indent=2, ensure_ascii=False)
+                print(f"  PENDING VERIFICATION (stub written) -> {pending_path}")
+                pending += 1
+                continue
 
-        with open(golden_path, encoding="utf-8") as fh:
-            golden = json.load(fh)
-        if golden.get("_status") == PENDING_STATUS:
-            print(f"  PENDING VERIFICATION (stub not yet reviewed) -> {golden_path}")
-            pending += 1
-            continue
+            with open(golden_path, encoding="utf-8") as fh:
+                golden = json.load(fh)
+            if golden.get("_status") == PENDING_STATUS:
+                print(f"  PENDING VERIFICATION (stub not yet reviewed) -> {golden_path}")
+                pending += 1
+                continue
 
-        diffs = compare_standardized(observed, golden, args.text_threshold)
-        if diffs:
-            print(f"  MISMATCH ({len(diffs)} issue(s)):")
-            for d in diffs:
-                print(f"    - {d}")
-            failed += 1
-        else:
-            print("  PASS")
-            passed += 1
+            diffs = compare_standardized(observed, golden, args.text_threshold)
+            if diffs:
+                print(f"  MISMATCH ({len(diffs)} issue(s)):")
+                for d in diffs:
+                    print(f"    - {d}")
+                failed += 1
+            else:
+                print("  PASS")
+                passed += 1
 
     print(f"\n=== Summary: {passed} passed, {pending} pending, {failed} failed ===")
     return 1 if failed else 0

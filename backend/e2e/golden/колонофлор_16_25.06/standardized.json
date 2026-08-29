@@ -26,7 +26,7 @@
       "scope": "local",
       "scale_function": null,
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Lactobacillus spp",
@@ -47,7 +47,7 @@
       "scope": "local",
       "scale_function": null,
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Bifidobacterium spp",
@@ -68,7 +68,7 @@
       "scope": "local",
       "scale_function": null,
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Escherichia coli",
@@ -89,7 +89,7 @@
       "scope": "local",
       "scale_function": null,
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Bacteroides spp",
@@ -110,7 +110,7 @@
       "scope": "local",
       "scale_function": null,
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Faecalibacterium prausnitzii",
@@ -131,7 +131,7 @@
       "scope": "local",
       "scale_function": null,
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Bacteroides thetaomicron",
@@ -173,7 +173,7 @@
       "scope": "local",
       "scale_function": null,
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Enterococcus spp",
@@ -194,7 +194,7 @@
       "scope": "local",
       "scale_function": null,
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Escherichia coli enteropathogenic",
@@ -215,7 +215,7 @@
       "scope": "local",
       "scale_function": null,
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Klebsiella pneumoniae",
@@ -236,7 +236,7 @@
       "scope": "local",
       "scale_function": null,
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Klebsiella oxytoca",
@@ -257,7 +257,7 @@
       "scope": "local",
       "scale_function": null,
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Candida spp",
@@ -278,7 +278,7 @@
       "scope": "local",
       "scale_function": null,
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Staphylococcus aureus",
@@ -299,7 +299,7 @@
       "scope": "local",
       "scale_function": null,
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Clostridium difficile",
@@ -360,7 +360,7 @@
       "scope": "local",
       "scale_function": null,
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Citrobacter spp",
@@ -381,7 +381,7 @@
       "scope": "local",
       "scale_function": null,
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Enterobacter spp",
@@ -402,7 +402,7 @@
       "scope": "local",
       "scale_function": null,
       "needs_review": false,
-      "canonical_unit_inferred": true
+      "canonical_unit_inferred": false
     },
     {
       "raw_name": "Fusobacterium nucleatum",
@@ -489,7 +489,7 @@
       "raw_value": "8,75",
       "raw_unit": "",
       "raw_range_string": "0,01-100",
-      "standard_name_en": "Ratio of Bacteroides spp to Faecalibacterium prausnitzii",
+      "standard_name_en": "Bacteroides spp. / Faecalibacterium prausnitzii ratio",
       "standard_value": 8.75,
       "standard_unit": "ratio",
       "reference": {
@@ -499,7 +499,7 @@
       },
       "status": "normal",
       "category": "Исследование состава микробиоты толстого кишечника",
-      "definition_id": "local-aaddae1b1c91",
+      "definition_id": "local-53b51cebc7e9",
       "scope": "local",
       "scale_function": null,
       "needs_review": false,

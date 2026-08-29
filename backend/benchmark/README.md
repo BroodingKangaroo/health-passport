@@ -162,10 +162,12 @@ embellishment).
 - The fresh-DB lg-anchor ordering dependency is OBSOLETE since the matcher's
   anchor linearization (2026-08-29, `e2e/KNOWN_ISSUES.md` fix #13):
   `lg копий/мл` rows anchor the LINEAR `copies/mL` canonical wherever they
-  appear, in any run order. The runner still replays the колонофлор_16_25.06
-  golden through the matcher with `client=None` into every rebuilt snapshot —
-  it is deterministic and free, and bakes exactly the definitions those
-  documents create on a real user's DB anyway.
+  appear, in any run order. The runner still replays the колонофлор goldens
+  through the matcher with `client=None` into every rebuilt snapshot — now in
+  ALPHABETICAL order (`WARMUP_CASES`, fix #14: local defs unify first-seen per
+  name/id, so the pristine world must anchor the same defs as the e2e suite).
+  The replay is deterministic and free, and bakes exactly the definitions
+  those documents create on a real user's DB anyway.
 
 ## Loop contract (see .opencode/skills/autoresearch/SKILL.md)
 
