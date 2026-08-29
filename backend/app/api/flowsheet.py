@@ -159,7 +159,7 @@ def _build_matrix(
             (bt_readings.get(def_id) for bt_readings in biomarker_readings_map.values() if def_id in bt_readings),
             None,
         )
-        original_name = first_reading.original_name if first_reading and first_reading.original_name else defn.names.get("ru", "")
+        original_name = (first_reading.original_name if first_reading else "") or ""
         first_ref = effective_reference(first_reading, defn)
         cat_rows.setdefault(cat, []).append(MatrixRow(
             id=def_id,

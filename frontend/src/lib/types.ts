@@ -200,9 +200,9 @@ export interface MatrixCategory {
 export type PrintLang = 'ru' | 'en' | 'de' | 'fr' | 'es' | 'he' | 'pl'
 
 // Languages a document can be translated into for print/export (English ->
-// target). `ru` is never a translation target: "original" mode renders the
-// source-document name directly (see ISSUES.md #29 — it lives under the
-// `ru` key regardless of the document's real language).
+// target). `ru` is never a translation target: it is the internal sentinel
+// for "original" mode (Keep Original), which renders the source-document
+// name directly (row.original), regardless of the document's real language.
 export type TranslateLang = 'de' | 'fr' | 'es' | 'he' | 'pl'
 
 /* ----- Form Types ----- */

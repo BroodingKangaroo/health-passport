@@ -19,26 +19,33 @@ files as they stand now.
 
 ## Proposed features (not yet built)
 
-### 29. Source-language modeling: `names['ru']` doubles as the "source name" slot (deferred)
+### 36. Persisted source-document language (`medical_entries.source_language`)
 
-- The data model has **no persisted source language**. `BiomarkerDefinition.names['ru']`
-  doubles as the slot for the name exactly as printed in the source document
-  (whatever its language), `reading.original_name` carries the same per
-  reading, and several consumers rely on that conflation:
-  - `app/api/entries.py` resolves manually-typed rows by matching against
-    `names['ru']`.
-  - `app/api/flowsheet.py` falls back to `names.get("ru")` when building the
-    matrix `original` column.
-  - `print-editor.tsx` renders `row.original` for the `ru` output language.
-- Consequence: a non-Russian document stores e.g. German text under the
-  `ru` key. Everything works today because the same string is meant
-  throughout, but the semantics are wrong and block honest features like
-  "translate from source → X for any X" or per-document language stats.
-- A real fix needs a dedicated field (e.g. `names[src]` or a
-  `source_language` column + migration), matcher/serializer/entry-resolution
-  updates, and backfill for existing rows. Deferred — no code changes
-  planned; the user-facing label was neutralized instead ("Keep Original",
-  no "(Russian)").
+- The data model persists **no source language** anywhere: `RawMedicalRecord`
+  (`app/schemas/ai.py`), `medical_entries`, `biomarker_definitions.names`,
+  and `biomarker_readings` all carry none (verified 2026-08-29). The de-facto
+  source-name slots are language-agnostic: `reading.original_name`
+  (per-reading, exactly as printed) and `defn.synonyms` (raw name appended at
+  definition creation); definition `names` holds only real translations keyed
+  by real codes (`en` + persisted `de|fr|es|he|pl` from
+  `/api/translate-biomarkers`).
+- Blocked user-visible features: an "Original (German)"-style label on the
+  print/export "Keep Original" mode (it renders `row.original` unlabeled) and
+  per-document language stats. `PrintLang`'s `'ru'` member is the internal
+  "original mode" sentinel (persisted as `targetLanguage: 'ru'`), unrelated
+  to real Russian.
+- Proposed approach: a nullable `source_language` column on `medical_entries`
+  (NULL = unknown; no backfill for existing rows), auto-migrated by
+  `migrate_add_columns()` (`app/db/session.py`). Detect deterministically at
+  extraction time via script heuristics (Cyrillic → `ru`, Hebrew script →
+  `he`; Latin-script languages need common-word heuristics) — do **not** add
+  an LLM field to the extraction prompt: prompt changes risk e2e golden drift
+  and benchmark spend for a field the goldens never compare. Surface through
+  the entry serializers so the frontend can label the original column.
+- Rejected: a def-level `names[src]` slot — cross-document local unification
+  (`eda09b5`) deliberately merges multiple labs' wordings under one
+  first-seen def, so a def-level "source name" is ambiguous;
+  `reading.original_name` is already the honest per-reading slot.
 
 ---
 

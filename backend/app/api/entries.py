@@ -125,7 +125,6 @@ def _resolve_definition(db: Session, user_id: str, name: str, row_defn_id: Optio
             .filter(
                 or_(
                     func.lower(BiomarkerDefinitionModel.names['en'].as_string()).ilike(name_lower),
-                    func.lower(BiomarkerDefinitionModel.names['ru'].as_string()).ilike(name_lower),
                     func.lower(BiomarkerDefinitionModel.names['es'].as_string()).ilike(name_lower),
                     func.lower(BiomarkerDefinitionModel.names['de'].as_string()).ilike(name_lower),
                     func.lower(BiomarkerDefinitionModel.names['fr'].as_string()).ilike(name_lower),
