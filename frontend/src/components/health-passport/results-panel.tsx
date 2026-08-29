@@ -25,7 +25,7 @@ import { ExpandedBiomarkerDetails } from './expanded-biomarker-details'
 import type { BiomarkerResult, MergedSource, Status } from '@/lib/types'
 
 const GRID_COLS =
-  'grid grid-cols-[1.5fr_1.5fr_1fr_1fr_1fr_1.2fr_40px] items-center gap-x-3'
+  'grid grid-cols-[1.5fr_1.5fr_1fr_1fr_1.3fr_1.2fr_40px] items-center gap-x-3'
 
 type SortCol = 'name' | 'original' | 'value' | 'unit' | 'reference' | 'status'
 type SortDir = 'asc' | 'desc'
@@ -242,7 +242,7 @@ export function ResultsPanel({
       </div>
 
       <div className="overflow-x-auto">
-        <div className="min-w-[720px]">
+        <div className="min-w-[768px]">
           <div
             className={cn(
               GRID_COLS,
@@ -326,11 +326,11 @@ function SortHeaderCell({
         title={t('sortTooltip')}
         onClick={() => onCycle(col)}
         className={cn(
-          'flex min-w-0 items-center gap-1 text-left transition-colors',
+          'flex w-full min-w-0 items-center gap-1 text-left transition-colors',
           active ? 'text-foreground' : 'hover:text-foreground',
         )}
       >
-        <span className="min-w-0 truncate">{label}</span>
+        <span className="min-w-0">{label}</span>
         {active && dir === 'asc' && (
           <ArrowUp className="size-3 shrink-0 text-primary" aria-hidden />
         )}
