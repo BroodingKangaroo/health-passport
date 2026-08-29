@@ -95,6 +95,18 @@ describe('normalizedValue', () => {
     expect(normalizedValue(0, ref)).toBeCloseTo(0)
     expect(normalizedValue(1, ref)).toBeCloseTo(100)
   })
+
+  it('charts zero-bound references as binary compliance instead of NaN', () => {
+    const oneSided: Reference = { kind: 'interval', low: null, high: 0 }
+    expect(normalizedValue(0, oneSided)).toBe(0)
+    expect(normalizedValue(3, oneSided)).toBe(100)
+    const exactZero: Reference = { kind: 'interval', low: 0, high: 0 }
+    expect(normalizedValue(0, exactZero)).toBe(0)
+    expect(normalizedValue(2, exactZero)).toBe(100)
+    const zeroLower: Reference = { kind: 'interval', low: 0, high: null }
+    expect(normalizedValue(0, zeroLower)).toBe(0)
+    expect(normalizedValue(2, zeroLower)).toBe(100)
+  })
 })
 
 describe('CorrelationChart', () => {
@@ -339,6 +351,62 @@ describe('CorrelationChart', () => {
       />,
     )
     expect(screen.queryByRole('button', { name: /×/ })).not.toBeInTheDocument()
+  })
+
+  it('suggests pairs with exactly 4 shared readings', () => {
+    const mk = (id: string, name: string) =>
+      makeBiomarker(id, name, {
+        dates: [
+          { date: '2026-01-01', value: 5 },
+          { date: '2026-02-01', value: 6 },
+          { date: '2026-03-01', value: 7 },
+          { date: '2026-04-01', value: 8 },
+        ],
+        value: 7,
+      })
+    renderI18n(
+      <CorrelationChart biomarkers={[mk('a1', 'Hemoglobin'), mk('b1', 'WBC')]} />,
+    )
+    expect(screen.getAllByRole('button', { name: /×/ })).toHaveLength(1)
+  })
+
+  it('does not suggest pairs with only 3 shared readings', () => {
+    const mk = (id: string, name: string) =>
+      makeBiomarker(id, name, {
+        dates: [
+          { date: '2026-01-01', value: 5 },
+          { date: '2026-02-01', value: 6 },
+          { date: '2026-03-01', value: 7 },
+        ],
+        value: 7,
+      })
+    renderI18n(
+      <CorrelationChart biomarkers={[mk('a1', 'Hemoglobin'), mk('b1', 'WBC')]} />,
+    )
+    expect(screen.queryByRole('button', { name: /×/ })).not.toBeInTheDocument()
+    expect(screen.getByText(/4\+ shared readings/)).toBeInTheDocument()
+  })
+
+  it('plots readings with zero values instead of dropping them', () => {
+    const zeroRef: Reference = { kind: 'interval', low: null, high: 0 }
+    const mk = (id: string, name: string) =>
+      makeBiomarker(id, name, {
+        dates: [
+          { date: '2026-01-01', value: 0 },
+          { date: '2026-02-01', value: 0 },
+          { date: '2026-03-01', value: 0 },
+        ],
+        value: 0,
+        reference: zeroRef,
+      })
+    const { container } = renderI18n(
+      <CorrelationChart biomarkers={[mk('b1', 'Blasts %'), mk('b2', 'Plasma cells %')]} />,
+    )
+    const curves = container.querySelectorAll('.recharts-line-curve')
+    expect(curves.length).toBeGreaterThan(0)
+    curves.forEach((curve) => {
+      expect(curve.getAttribute('d')).not.toBe('')
+    })
   })
 
   it('surfaces more than three suggested pairs when many qualify', () => {

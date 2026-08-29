@@ -68,7 +68,13 @@ export function pairwiseCorrelations(
       for (let k = 0; k < n; k++) {
         const av = a[k]
         const bv = b[k]
-        if (av == null || bv == null) continue
+        if (
+          av == null ||
+          bv == null ||
+          !Number.isFinite(av) ||
+          !Number.isFinite(bv)
+        )
+          continue
         xs.push(av)
         ys.push(bv)
       }

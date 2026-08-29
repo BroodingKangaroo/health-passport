@@ -41,7 +41,7 @@ export const correlationMessages = {
       },
       empty: {
         noData: 'No biomarker data yet — add a blood test to get started.',
-        noPairs: 'No pairs with 5+ shared readings yet — check the {tab} tab.',
+        noPairs: 'No pairs with 4+ shared readings yet — check the {tab} tab.',
         noMatching: 'No matching biomarkers.',
         selectAtLeastOne:
           'Select at least one biomarker to display the correlation chart.',
@@ -101,7 +101,7 @@ export const correlationMessages = {
         noData:
           'Пока нет данных по биомаркерам — добавьте анализ крови, чтобы начать.',
         noPairs:
-          'Пока нет пар с 5+ общими показаниями — откройте вкладку «{tab}».',
+          'Пока нет пар с 4+ общими показаниями — откройте вкладку «{tab}».',
         noMatching: 'Подходящих биомаркеров не найдено.',
         selectAtLeastOne:
           'Выберите хотя бы один биомаркер, чтобы построить график корреляций.',

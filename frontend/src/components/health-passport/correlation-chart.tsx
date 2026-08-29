@@ -48,6 +48,8 @@ export function hasReadings(b: BiomarkerResult): boolean {
  *   one-sided high   -> v / high * 100                   (100 = at the bound)
  *   one-sided low    -> v / low * 100                    (100 = at the bound)
  *   exact (low=high) -> v / low * 100                    (100 = at the expected value)
+ *   zero bound at 0  -> 0 when at the bound, 100 for any excess
+ *                       (proportional scaling would divide by zero)
  *   qualitative/other-> v * 100 on a 0/1 scale
  */
 export function normalizedValue(
@@ -56,13 +58,23 @@ export function normalizedValue(
 ): number | null {
   const bounds = intervalBounds(ref) ?? { low: 0, high: 1 }
   const { low, high } = bounds
+  const scale = (v: number) => (Number.isFinite(v) ? v : null)
   if (low != null && high != null) {
     const range = high - low
-    if (range === 0) return low === 0 ? null : (value / low) * 100
-    return ((value - low) / range) * 100
+    if (range === 0) {
+      if (low === 0) return value === 0 ? 0 : 100
+      return scale((value / low) * 100)
+    }
+    return scale(((value - low) / range) * 100)
   }
-  if (high != null) return (value / high) * 100
-  if (low != null) return (value / low) * 100
+  if (high != null) {
+    if (high === 0) return value === 0 ? 0 : 100
+    return scale((value / high) * 100)
+  }
+  if (low != null) {
+    if (low === 0) return value === 0 ? 0 : 100
+    return scale((value / low) * 100)
+  }
   return null
 }
 
@@ -371,12 +383,12 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
   }, [allChartable])
 
   // Pairs with enough shared readings to be meaningful. |r| >= 0.5 avoids
-  // surfacing noise; n >= 5 keeps tiny samples (where a perfect fit is trivial)
-  // from dominating the list with spurious r = ±1.
+  // surfacing noise; n >= 4 keeps tiny samples (where a perfect fit is
+  // trivial) from dominating the list with spurious r = ±1.
   const suggestedPairs = useMemo(
     () =>
       Object.entries(allPairStats)
-        .filter(([, s]) => s.n >= 5 && Math.abs(s.r) >= 0.5)
+        .filter(([, s]) => s.n >= 4 && Math.abs(s.r) >= 0.5)
         .sort(
           (a, b) =>
             Math.abs(b[1].r) - Math.abs(a[1].r) || b[1].n - a[1].n,
@@ -438,7 +450,7 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
       const entry: Record<string, number | string | null> = { date }
       selected.forEach((b) => {
         const point = byId[b.id].get(date)
-        if (point) {
+        if (point != null) {
           const numericVal =
             typeof point === 'number' && Number.isFinite(point)
               ? point

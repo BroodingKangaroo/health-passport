@@ -172,9 +172,12 @@ Mirror of the backend's reference model (see `backend/docs/architecture.md`):
 - Values are normalized to a 0–100 scale in `correlation-chart.tsx`
   (`normalizedValue`, exported for tests): interval → `(v−low)/(high−low)·100`,
   one-sided → percent of the bound, exact (low=high) → percent of the expected
-  value, qualitative 0/1 → 0/100.
-- Suggested-pair threshold: **n ≥ 5 shared readings and |r| ≥ 0.5** — the
-  n≥5 floor keeps tiny samples (where a perfect fit is trivial) from flooding
+  value, qualitative 0/1 → 0/100. A zero bound at 0 (e.g. `{low: null,
+  high: 0}` "nothing expected" references) can't scale proportionally, so it
+  maps binary: at the bound → 0, any excess → 100 — this keeps all-zero
+  readings (blasts, plasma cells, …) chartable instead of producing NaN.
+- Suggested-pair threshold: **n ≥ 4 shared readings and |r| ≥ 0.5** — the
+  n≥4 floor keeps tiny samples (where a perfect fit is trivial) from flooding
   the list with spurious r = ±1.
 - Confidence is shown in plain language, never p-values: p < 0.05 →
   "likely a real relationship", else "could still be chance", n < 3 → "too
