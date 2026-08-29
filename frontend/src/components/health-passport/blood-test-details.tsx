@@ -110,7 +110,7 @@ export function BloodTestDetails({
 
       {activeTab === 'results' ? (
         <div className="mt-5 flex-1 overflow-y-auto">
-          <ResultsPanel date={event.date} labName={event.clinic} biomarkers={biomarkers} onViewDetails={onViewDetails} />
+          <ResultsPanel date={event.date} labName={event.clinic} entryId={event.id} biomarkers={biomarkers} onViewDetails={onViewDetails} />
         </div>
       ) : activeTab === 'document' ? (
         <div className="mt-5 flex w-full min-w-0 flex-1 flex-col min-h-0">
