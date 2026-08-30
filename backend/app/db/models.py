@@ -192,6 +192,19 @@ class PasswordResetToken(Base):
     patient = relationship("Patient")
 
 
+class ExtractionTimingSample(Base):
+    __tablename__ = "extraction_timing_samples"
+
+    # Rolling per-stage latency samples (one row per completed extraction
+    # stage) powering the SSE progress `estimate_s` values. Pruned to the
+    # last N rows per stage by timing_stats.record; no PII.
+    id = Column(Integer, primary_key=True)
+    stage = Column(String, nullable=False)  # "ocr" | "extract" | "match"
+    seconds = Column(Float, nullable=False)
+    chars = Column(Integer, nullable=False, default=0)  # markdown size, extract only
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class UsageLimit(Base):
     __tablename__ = "usage_limits"
 

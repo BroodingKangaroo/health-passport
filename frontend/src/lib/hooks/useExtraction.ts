@@ -95,16 +95,20 @@ export function useExtraction({ onSuccess, onFailure }: UseExtractionOptions) {
               markdownCharsRef.current = payload.markdown_chars
               setMarkdownChars(payload.markdown_chars)
               setStageStart(now)
-              const estExt = estimateExtractionTime(payload.markdown_chars)
+              // Preferred: the backend's measured estimate (median of recent
+              // runs). The local heuristic only covers an older backend that
+              // doesn't send estimate_s yet.
+              const estExt = payload.estimate_s ?? estimateExtractionTime(payload.markdown_chars)
               const estBm = Math.round(payload.markdown_chars * 0.007)
-              const estMatch = estimateMatchingTime(estBm, payload.markdown_chars)
-              setStageEstimate(Math.round(estExt + estMatch))
+              const estMatch = estimateMatchingTime(estBm)
+              setStageEstimate(Math.round(payload.estimate_s != null ? estExt : estExt + estMatch))
             }
             if (payload.biomarker_count != null) {
               setBiomarkerCount(payload.biomarker_count)
               setStageStart(now)
-              const chars = markdownCharsRef.current ?? 0
-              setStageEstimate(Math.round(estimateMatchingTime(payload.biomarker_count, chars)))
+              setStageEstimate(
+                Math.round(payload.estimate_s ?? estimateMatchingTime(payload.biomarker_count))
+              )
             }
             if (stageTimeoutRef.current !== null) clearTimeout(stageTimeoutRef.current)
             stageTimeoutRef.current = null

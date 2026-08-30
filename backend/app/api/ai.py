@@ -29,7 +29,7 @@ from app.schemas.ai import (
     TranslationBatch,
     TranslationItem,
 )
-from app.services import extractor, matcher
+from app.services import extractor, matcher, timing_stats
 from app.services.chat_client import build_chat_aware_client
 from app.services.language_detect import detect_source_language
 from app.services.usage_limits import check_and_record_ai_usage, refund_ai_extraction
@@ -469,6 +469,10 @@ async def extract_medical_data(
                     error = ocr_err.message
             elapsed = time.perf_counter() - t0
             logger.info("OCR took %.2fs — %d chars", elapsed, len(markdown) if markdown else 0)
+            if markdown:
+                # Only successful OCR samples feed the timing stats — a
+                # failure's duration is time-to-error, not latency data.
+                timing_stats.record(timing_stats.STAGE_OCR, elapsed)
 
             if not error and not markdown:
                 error = i18n.tr("ai.sse_no_text")
@@ -480,7 +484,11 @@ async def extract_medical_data(
 
             # Stage 2: LLM extraction
             if not error:
-                yield _sse("progress", {"stage": "extracting", "markdown_chars": len(markdown)})
+                yield _sse("progress", {
+                    "stage": "extracting",
+                    "markdown_chars": len(markdown),
+                    "estimate_s": round(timing_stats.estimate(timing_stats.STAGE_EXTRACT, len(markdown)), 1),
+                })
                 t0 = time.perf_counter()
                 llm_future = asyncio.get_running_loop().run_in_executor(
                     None, extractor.llm_extract, markdown, client
@@ -491,6 +499,7 @@ async def extract_medical_data(
                 elapsed = time.perf_counter() - t0
                 bm_count = len(raw.biomarkers) if raw.biomarkers else 0
                 logger.info("Extraction took %.2fs — type: %s, biomarkers: %d", elapsed, raw.entry_type, bm_count)
+                timing_stats.record(timing_stats.STAGE_EXTRACT, elapsed, len(markdown))
 
             if error:
                 # The extraction count was committed before OCR/LLM ran; refund
@@ -520,7 +529,11 @@ async def extract_medical_data(
                 return
 
             # Stage 3: Matching
-            yield _sse("progress", {"stage": "matching", "biomarker_count": bm_count})
+            yield _sse("progress", {
+                "stage": "matching",
+                "biomarker_count": bm_count,
+                "estimate_s": round(timing_stats.estimate(timing_stats.STAGE_MATCH), 1),
+            })
             t0 = time.perf_counter()
 
             def _match_in_thread():
@@ -544,6 +557,7 @@ async def extract_medical_data(
             elapsed = time.perf_counter() - t0
             std_count = len(result.biomarkers) if result.biomarkers else 0
             logger.info("Matching took %.2fs — biomarkers: %d", elapsed, std_count)
+            timing_stats.record(timing_stats.STAGE_MATCH, elapsed)
 
             result.source_language = source_language
             yield _sse("result", result.model_dump())

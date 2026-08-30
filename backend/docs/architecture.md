@@ -225,6 +225,17 @@ Reference for agents so these aren't re-derived via grep each session:
 - During the long silent OCR/LLM/matching phases the SSE stream emits
   `: keep-alive` comment lines every 15s (ignored by SSE clients and the e2e
   harness) so a healthy-but-slow extraction isn't mistaken for a dead one.
+- The `extracting` and `matching` SSE `progress` events also carry
+  `estimate_s` — the backend's own estimate of how long THAT stage will take,
+  computed from the median of the last ~20 recorded stage durations
+  (`extraction_timing_samples` table, maintained by
+  `app/services/timing_stats.py`: one row per completed stage, pruned on
+  write; the extract estimate is a per-character-ratio median so it scales
+  with document size). Until a stage has ≥5 samples the estimate falls back
+  to constants fitted from historical timings. Samples record only
+  successful stages; `timing_stats` failures never break the stream. The
+  frontend displays this value and keeps its own constants only as a
+  fallback for older backends.
 
 ## Biomarker name translation (`POST /api/translate-biomarkers`)
 

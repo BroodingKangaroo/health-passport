@@ -1,12 +1,15 @@
-// Wall-clock estimates (seconds) powering the add-entry scan-screen progress
-// bar. Pure heuristics calibrated against typical OCR/LLM latencies — not
-// meant to be exact, only to keep the wait from feeling stuck.
+// Wall-clock fallback estimates (seconds) powering the add-entry scan-screen
+// progress bar. Only used when the backend doesn't send `estimate_s` in its
+// SSE progress events (the backend's own median-of-recent-runs estimate is
+// preferred — it tracks current provider latency; these constants can't).
+// Fitted against recent app.log stage timings, not meant to be exact.
 
 export function estimateExtractionTime(chars: number): number {
-  return Math.max(5, chars * 0.006)
+  return Math.max(4, 2 + chars * 0.003)
 }
 
-export function estimateMatchingTime(biomarkers: number, chars: number): number {
-  if (biomarkers > 0) return Math.max(12, biomarkers * 1.2 + 8)
-  return Math.max(15, chars * 0.025)
+export function estimateMatchingTime(biomarkers: number): number {
+  // Matching latency is nearly flat in practice (weak biomarker-count
+  // dependence) — a small per-biomarker term covers the largest panels.
+  return Math.max(5, 3 + biomarkers * 0.04)
 }

@@ -215,6 +215,9 @@ export type ProgressEventPayload = {
   stage: ProgressStage
   markdown_chars?: number
   biomarker_count?: number
+  // Backend-measured stage estimate (median of recent runs); absent from
+  // older backends — callers fall back to the local heuristics then.
+  estimate_s?: number
 }
 export type EntryMode = 'ai' | 'manual'
 
