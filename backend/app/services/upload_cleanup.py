@@ -21,6 +21,27 @@ UPLOAD_DIR = os.path.join(_BASE_DIR, "static", "uploads")
 _PATH_PREFIX = "/static/uploads/"
 
 
+def unlink_upload_file(file_path: str, upload_dir: Optional[str] = None) -> int:
+    """Unlink a single uploaded file given its stored web path
+    (``/static/uploads/<name>``). Traversal-guarded and best-effort — an
+    OSError never propagates. Returns the freed bytes (0 when nothing was
+    removed), so callers can use it as a cleanup safety net (ISSUES.md #54)."""
+    if not file_path or not file_path.startswith(_PATH_PREFIX):
+        return 0
+    filename = file_path[len(_PATH_PREFIX):]
+    if not filename or ".." in filename or filename.startswith("/"):
+        return 0
+    full_path = os.path.join(upload_dir or UPLOAD_DIR, filename)
+    try:
+        if os.path.isfile(full_path):
+            freed = os.path.getsize(full_path)
+            os.remove(full_path)
+            return freed
+    except OSError as e:
+        logger.warning("Failed to remove uploaded file %s: %s", full_path, e)
+    return 0
+
+
 def unlink_unreferenced_files(db: Session, file_paths: list, upload_dir: Optional[str] = None) -> int:
     """Unlink on-disk uploads that no Attachment row still references.
 
@@ -48,11 +69,5 @@ def unlink_unreferenced_files(db: Session, file_paths: list, upload_dir: Optiona
         )
         if still_referenced is not None:
             continue
-        full_path = os.path.join(upload_dir, filename)
-        try:
-            if os.path.isfile(full_path):
-                freed += os.path.getsize(full_path)
-                os.remove(full_path)
-        except OSError as e:
-            logger.warning("Failed to remove uploaded file %s: %s", full_path, e)
+        freed += unlink_upload_file(file_path, upload_dir)
     return freed

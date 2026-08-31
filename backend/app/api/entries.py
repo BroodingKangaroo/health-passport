@@ -1,3 +1,4 @@
+import contextlib
 import hashlib
 import json
 import logging
@@ -50,7 +51,7 @@ from app.services.extractor import ALLOWED_EXTENSIONS as ATTACHMENT_EXTENSIONS
 from app.services.extractor import FileTooLargeError, read_capped
 from app.services.language_detect import SUPPORTED_LANGUAGES
 from app.services.reference import compute_status, merge_reference, normalize_qual, parse_value
-from app.services.upload_cleanup import unlink_unreferenced_files
+from app.services.upload_cleanup import unlink_unreferenced_files, unlink_upload_file
 from app.services.usage_limits import check_and_record_storage_usage
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -462,8 +463,15 @@ async def _save_attachment(
         size=f"{len(content) // 1024} KB",
         file_path=f"/static/uploads/{saved_name}",
     )
-    db.add(att)
-    db.flush()
+    try:
+        db.add(att)
+        db.flush()
+    except BaseException:
+        # The file is on disk but its Attachment row could not be flushed —
+        # don't orphan it (ISSUES.md #54).
+        with contextlib.suppress(OSError):
+            os.remove(save_path)
+        raise
     return att
 
 
@@ -564,6 +572,33 @@ async def save_entry(
     if entry_date.date() > datetime.now(timezone.utc).date():
         raise HTTPException(status_code=400, detail=i18n.tr("entries.date_in_future"))
 
+    # Validate every client-supplied JSON payload BEFORE the attachment is
+    # written to disk (ISSUES.md #54): a 400 raised after _save_attachment
+    # would roll the DB rows back but leave the file on disk with no DB row
+    # referencing it (upload_cleanup only runs on delete).
+    categories_data = None
+    if type == "blood_test" and biomarkers and biomarkers != "[]":
+        try:
+            categories_data = json.loads(biomarkers)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail=i18n.tr("entries.invalid_biomarkers_json")) from None
+    vd = None
+    if visit_data and visit_data != "":
+        try:
+            vd = json.loads(visit_data)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=i18n.tr("entries.invalid_visit_data_json", error=e)) from e
+        if not isinstance(vd, dict):
+            raise HTTPException(status_code=400, detail=i18n.tr("entries.visit_data_not_object"))
+    idv = None
+    if instrumental_data and instrumental_data != "":
+        try:
+            idv = json.loads(instrumental_data)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=i18n.tr("entries.invalid_instrumental_data_json", error=e)) from e
+        if not isinstance(idv, dict):
+            raise HTTPException(status_code=400, detail=i18n.tr("entries.instrumental_data_not_object"))
+
     source_language = source_language if source_language in SUPPORTED_LANGUAGES else None
     entry = MedicalEntryModel(
         id=entry_id,
@@ -581,44 +616,36 @@ async def save_entry(
     db.add(entry)
     db.flush()
 
+    att = None
     if file and file.filename:
-        await _save_attachment(db, entry_id, user_id, is_anonymous, file)
+        att = await _save_attachment(db, entry_id, user_id, is_anonymous, file)
 
-    # Biomarker readings belong on blood-test entries only. A doctor-visit or
-    # instrumental-test save must never persist readings — even if the client
-    # sends stale rows (e.g. extraction leftovers after a document-type
-    # switch), they would be invisible everywhere (timeline/flowsheet read
-    # blood tests only) yet still create definitions and pollute matching.
-    if type == "blood_test" and biomarkers and biomarkers != "[]":
-        try:
-            categories_data = json.loads(biomarkers)
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail=i18n.tr("entries.invalid_biomarkers_json")) from None
-        specs = _parse_biomarker_rows(db, user_id, categories_data)
-        _create_reading_rows(db, entry_id, specs, merged=False)
-        db.flush()
+    try:
+        # Biomarker readings belong on blood-test entries only. A doctor-visit or
+        # instrumental-test save must never persist readings — even if the client
+        # sends stale rows (e.g. extraction leftovers after a document-type
+        # switch), they would be invisible everywhere (timeline/flowsheet read
+        # blood tests only) yet still create definitions and pollute matching.
+        if categories_data is not None:
+            specs = _parse_biomarker_rows(db, user_id, categories_data)
+            _create_reading_rows(db, entry_id, specs, merged=False)
+            db.flush()
 
-    if visit_data and visit_data != "":
-        try:
-            vd = json.loads(visit_data)
-        except json.JSONDecodeError as e:
-            raise HTTPException(status_code=400, detail=i18n.tr("entries.invalid_visit_data_json", error=e)) from e
-        if not isinstance(vd, dict):
-            raise HTTPException(status_code=400, detail=i18n.tr("entries.visit_data_not_object"))
-        db.add(_build_visit_data_model(entry_id, vd, title, provider, entry_date, clinic))
-        db.flush()
+        if vd is not None:
+            db.add(_build_visit_data_model(entry_id, vd, title, provider, entry_date, clinic))
+            db.flush()
 
-    if instrumental_data and instrumental_data != "":
-        try:
-            idv = json.loads(instrumental_data)
-        except json.JSONDecodeError as e:
-            raise HTTPException(status_code=400, detail=i18n.tr("entries.invalid_instrumental_data_json", error=e)) from e
-        if not isinstance(idv, dict):
-            raise HTTPException(status_code=400, detail=i18n.tr("entries.instrumental_data_not_object"))
-        db.add(_build_instrumental_data_model(entry_id, idv))
-        db.flush()
+        if idv is not None:
+            db.add(_build_instrumental_data_model(entry_id, idv))
+            db.flush()
 
-    db.commit()
+        db.commit()
+    except BaseException:
+        # Safety net (ISSUES.md #54): nothing past this point may leave the
+        # saved file on disk without its committed DB row.
+        if att is not None and att.file_path:
+            unlink_upload_file(att.file_path, UPLOAD_DIR)
+        raise
     return SaveEntryResponse(success=True, message=i18n.tr("entries.message_entry_saved"), id=entry_id)
 
 

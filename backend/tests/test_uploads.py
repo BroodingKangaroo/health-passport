@@ -123,7 +123,9 @@ class TestFileUpload:
     async def test_upload_with_invalid_visit_data_rolls_back_entry(self, client, db_session):
         """Regression: storage quota used to commit inside save_entry, leaving
         a committed-but-incomplete entry when a later step (invalid visit_data)
-        failed. The whole save must roll back together."""
+        failed. The whole save must roll back together. Since ISSUES.md #54
+        the invalid payload is rejected BEFORE the upload is written, so no
+        orphaned file can be left on disk either."""
         from app.db.models import MedicalEntry
 
         content = b"%PDF-1.4 fake pdf content"
@@ -138,7 +140,7 @@ class TestFileUpload:
                 "date": "2025-12-15",
                 "title": "Upload Test",
                 "biomarkers": biomarkers_json,
-                # Deliberately malformed visit_data JSON -> 400 further down.
+                # Deliberately malformed visit_data JSON -> 400 (before write).
                 "visit_data": "{not valid json",
             },
             files={"file": ("report.pdf", content, "application/pdf")},
@@ -151,6 +153,60 @@ class TestFileUpload:
         # and confirm nothing durable was written.
         db_session.rollback()
         assert db_session.query(MedicalEntry).count() == before
+        # ISSUES.md #54: nothing may be orphaned on disk.
+        from app.api.entries import UPLOAD_DIR
+        assert os.listdir(UPLOAD_DIR) == []
+
+    async def test_upload_with_invalid_instrumental_data_leaves_no_file(
+        self, client
+    ):
+        """ISSUES.md #54: malformed instrumental_data is rejected before the
+        upload is written to disk."""
+        from app.api.entries import UPLOAD_DIR
+
+        before = set(os.listdir(UPLOAD_DIR))
+        resp = await client.post(
+            "/api/entry",
+            data={
+                "type": "instrumental_test",
+                "date": "2025-12-15",
+                "title": "Upload Test",
+                # Deliberately malformed instrumental_data JSON -> 400.
+                "instrumental_data": "{not valid json",
+            },
+            files={"file": ("report.pdf", b"%PDF-1.4 fake", "application/pdf")},
+        )
+        assert resp.status_code == 400
+        assert set(os.listdir(UPLOAD_DIR)) == before
+
+    async def test_late_failure_unlinks_saved_file(
+        self, client, db_session, monkeypatch
+    ):
+        """ISSUES.md #54 safety net: when something raises AFTER the file was
+        written, the file must be unlinked instead of orphaned with no DB
+        row (upload_cleanup only runs on delete)."""
+        import app.api.entries as entries_mod
+        from app.api.entries import UPLOAD_DIR
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("late failure")
+
+        monkeypatch.setattr(entries_mod, "_build_visit_data_model", boom)
+        with pytest.raises(RuntimeError, match="late failure"):
+            await client.post(
+                "/api/entry",
+                data={
+                    "type": "doctor_visit",
+                    "date": "2025-12-15",
+                    "title": "Upload Test",
+                    # Valid JSON — parsing passes, the forced builder failure
+                    # happens after _save_attachment wrote the file.
+                    "visit_data": json.dumps({"diagnosis": {"original": "x"}}),
+                },
+                files={"file": ("report.pdf", b"%PDF-1.4 fake", "application/pdf")},
+            )
+        assert os.listdir(UPLOAD_DIR) == []
+        db_session.rollback()
 
     async def test_uploaded_file_url_in_timeline_response(self, client):
         # given
