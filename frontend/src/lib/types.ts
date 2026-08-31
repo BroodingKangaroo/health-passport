@@ -97,6 +97,10 @@ export interface BiomarkerResult {
   original_range?: string
   merged?: boolean
   merged_source?: MergedSource | null
+  // Scale conversion applied to the top-level reading ("10^x" / "factor:…").
+  scale_function?: string | null
+  // True when the top-level reading couldn't be converted cross-scale.
+  needs_review?: boolean
 }
 
 /* ----- Events ----- */
@@ -121,6 +125,9 @@ export interface MedicalEvent {
   category?: string
   status?: string
   attachments?: EventAttachment[]
+  // Detected source-document language of the entry (backend sends it; used
+  // by detail views to label the original text).
+  source_language?: string | null
 }
 
 /* ----- Visit Data ----- */
@@ -188,9 +195,6 @@ export interface MatrixRow {
   original_lang?: string | null
   unit: string
   reference: Reference | null
-  // True when the row's unit was LLM-invented (no source unit on the
-  // first reading). Surfaced in the UI so the user can verify it.
-  canonical_unit_inferred?: boolean
   cells: MatrixCell[]
 }
 

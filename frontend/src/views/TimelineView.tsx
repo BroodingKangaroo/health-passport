@@ -127,7 +127,16 @@ export function biomarkersAtDate(biomarkers: BiomarkerResult[], entryId: string)
     .map((b): BiomarkerResult | null => {
       const all: Reading[] = [
         ...(b.history ?? []),
-        { entry_id: b.entry_id, date: b.date, value: b.value, status: b.status },
+        {
+          entry_id: b.entry_id,
+          date: b.date,
+          value: b.value,
+          status: b.status,
+          // The top-level reading's scale/review flags (ISSUES.md #68) so the
+          // selected event's chip renders its ScaleNote like the rest.
+          scale_function: b.scale_function,
+          needs_review: b.needs_review,
+        },
       ]
       const idx = all.findIndex((r) => r.entry_id === entryId)
       if (idx === -1) return null
@@ -155,6 +164,11 @@ export function biomarkersAtDate(biomarkers: BiomarkerResult[], entryId: string)
         original_unit: isLatest ? b.original_unit : current.original_unit,
         original_range: isLatest ? b.original_range : current.original_range,
         reference: isLatest ? b.reference : current.reference,
+        // Same for the cross-scale conversion flags (ISSUES.md #68): the
+        // selected event's chip must render its ScaleNote like every other
+        // reading in the history list.
+        scale_function: isLatest ? b.scale_function : current.scale_function,
+        needs_review: isLatest ? b.needs_review : current.needs_review,
         // Full history of the biomarker (all readings except the one at this
         // blood test), not just the readings that occurred before it — so the
         // inline graph and reading list show the complete trend regardless of

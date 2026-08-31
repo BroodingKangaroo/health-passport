@@ -142,6 +142,11 @@ def result_schema(
         original_range=reading.original_range or "",
         merged=merged,
         merged_source=merged_source,
+        # Scale/review flags of the latest reading, so the selected event's
+        # chip can render its ScaleNote like every history reading
+        # (ISSUES.md #68).
+        scale_function=reading.scale_function,
+        needs_review=bool(reading.needs_review),
     )
 
 

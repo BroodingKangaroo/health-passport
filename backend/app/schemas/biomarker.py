@@ -73,6 +73,13 @@ class BiomarkerResult(BaseModel):
     merged: bool = False
     # Source upload metadata for the latest reading when it was merged in.
     merged_source: Optional[MergedSource] = None
+    # Scale conversion applied to land the latest reading's value in the
+    # canonical unit: "10^x" / "log10" / "factor:1.5" / None. History
+    # readings carry their own; this is the reading AT the result's entry.
+    scale_function: Optional[str] = None
+    # True when the LLM couldn't determine a cross-scale conversion for the
+    # latest reading; the value stays raw and the UI surfaces a warning.
+    needs_review: bool = False
 
 
 class BiomarkerDefinitionResponse(BaseModel):
