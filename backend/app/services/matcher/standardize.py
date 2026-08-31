@@ -116,36 +116,41 @@ def _build_standardized_from_def(
         std_unit = doc_unit or defn.unit
         scale_function: Optional[str] = None
         needs_review = False
-        if isinstance(std_value, (int, float)) and not isinstance(std_value, bool):
-            cv, cu, sf, nr = _convert_to_canonical(std_value, raw_bm, defn, client)
-            if sf is not None:
-                std_value = cv
-                std_unit = cu
-                scale_function = sf
-                needs_review = nr
-                if isinstance(ref, dict) and ref.get("kind") == "interval":
-                    low = ref.get("low")
-                    high = ref.get("high")
-                    if low is not None:
-                        cl = _apply_scale_function(float(low), sf)
-                        if cl is not None:
-                            ref["low"] = cl
-                    if high is not None:
-                        ch = _apply_scale_function(float(high), sf)
-                        if ch is not None:
-                            ref["high"] = ch
-            elif (not nr and (cu or "").strip()
-                  and cu == (defn.canonical_unit or "")
-                  and cu != std_unit):
-                # The reading's own unit translation equals the def's canonical
-                # (no conversion needed), but the doc/def raw unit columns are
-                # empty or generic — adopt the canonical. Covers dimensionless
-                # "ratio" canonicals (a table-wide "lg копий/мл" header is
-                # noise on a ratio row) and locally-unified rows whose def
-                # anchored a real unit the document itself never printed.
-                std_unit = cu
-            elif nr:
-                needs_review = True
+        # Called for string values too (ISSUES.md #47): _convert_to_canonical
+        # short-circuits absent-canonical strings (no flag) but flags a
+        # PRESENT qualitative string whose unit mismatches the def's
+        # canonical — the no-doc path flags the identical input, so the
+        # doc-range path must not silently pass it. Strings never yield a
+        # scale function, so the reference rescale below stays numeric-only.
+        cv, cu, sf, nr = _convert_to_canonical(std_value, raw_bm, defn, client)
+        if sf is not None:
+            std_value = cv
+            std_unit = cu
+            scale_function = sf
+            needs_review = nr
+            if isinstance(ref, dict) and ref.get("kind") == "interval":
+                low = ref.get("low")
+                high = ref.get("high")
+                if low is not None:
+                    cl = _apply_scale_function(float(low), sf)
+                    if cl is not None:
+                        ref["low"] = cl
+                if high is not None:
+                    ch = _apply_scale_function(float(high), sf)
+                    if ch is not None:
+                        ref["high"] = ch
+        elif (not nr and (cu or "").strip()
+              and cu == (defn.canonical_unit or "")
+              and cu != std_unit):
+            # The reading's own unit translation equals the def's canonical
+            # (no conversion needed), but the doc/def raw unit columns are
+            # empty or generic — adopt the canonical. Covers dimensionless
+            # "ratio" canonicals (a table-wide "lg копий/мл" header is
+            # noise on a ratio row) and locally-unified rows whose def
+            # anchored a real unit the document itself never printed.
+            std_unit = cu
+        elif nr:
+            needs_review = True
         std_unit = _suppress_unit_for_qualitative(std_unit, defn, raw_bm.unit)
         return StandardizedBiomarker(
             raw_name=raw_bm.name,

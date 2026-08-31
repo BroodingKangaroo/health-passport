@@ -136,3 +136,30 @@ def test_legacy_log_scale_target_refused(db_session, hallucinated_factor):
     assert res.standard_value == 5.0
     assert res.standard_unit == "copies/mL"
     assert res.needs_review is False
+
+
+def test_doc_range_present_string_flags_unit_mismatch(db_session):
+    """ISSUES.md #47: with a printed (interval) range, a PRESENT qualitative
+    string whose unit mismatches the def's canonical must be flagged
+    needs_review — the guard was numeric-only, so the no-doc path flagged the
+    identical input while the doc-range path passed it silently."""
+    defn = _lg_anchored_def(db_session)  # canonical copies/mL
+    res = std_mod._build_standardized_from_def(
+        _raw("Blautia spp.", "обнаружено", "мг/дл", "0.5 - 2.0", en="Blautia spp"),
+        defn, None,
+    )
+    assert res.standard_value == "Detected"
+    assert res.needs_review is True
+
+
+def test_doc_range_absent_string_stays_unflagged(db_session):
+    """The absent-canonical short-circuit keeps an absent qualitative string
+    unflagged on the doc-range path (qualitative doc range keeps the value a
+    string; no quantity to convert)."""
+    defn = _lg_anchored_def(db_session)
+    res = std_mod._build_standardized_from_def(
+        _raw("Blautia spp.", "не обнар", "мг/дл", "не обнаружено", en="Blautia spp"),
+        defn, None,
+    )
+    assert res.standard_value == "Not detected"
+    assert res.needs_review is False
