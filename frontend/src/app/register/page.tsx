@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { LanguageSwitch } from "@/components/shared/language-switch"
-import { fetchUsageLimits, fetchTimelineEvents } from "@/services/api"
+import { fetchUsageLimits, fetchTimelineEvents, registerUser } from "@/services/api"
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -66,27 +66,16 @@ export default function RegisterPage() {
 
     setLoading(true)
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || ''
-      const res = await fetch(`${API_URL}/api/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
-          dob: formData.dob,
-          gender: formData.gender,
-          migrate_data: migrateData,
-        }),
+      // Through the shared api layer (ISSUES.md #62): localized backend
+      // errors + 422 validation arrays rendered as readable text.
+      await registerUser({
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        dob: formData.dob,
+        gender: formData.gender,
+        migrate_data: migrateData,
       })
-
-      const data = await res.json()
-      
-      if (!res.ok) {
-        setError(data.detail || t("registrationFailed"))
-        return
-      }
 
       // Auto-login after registration via next-auth so the session/JWT is established.
       const result = await signIn("credentials", {
@@ -108,8 +97,10 @@ export default function RegisterPage() {
       })
       router.push("/")
       router.refresh()
-    } catch {
-      setError(t("unexpectedError"))
+    } catch (err) {
+      // registerUser throws ApiError with an already-readable message
+      // (localized backend detail or a 422 validation summary).
+      setError(err instanceof Error ? err.message : t("unexpectedError"))
     } finally {
       setLoading(false)
     }

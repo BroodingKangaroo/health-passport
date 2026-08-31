@@ -548,6 +548,44 @@ export async function deleteAccount(): Promise<DeleteAccountResponse> {
   return res.json() as Promise<DeleteAccountResponse>
 }
 
+export interface RegisterPayload {
+  name: string
+  email: string
+  password: string
+  dob: string
+  gender: string
+  migrate_data: boolean
+}
+
+export interface RegisterResponse {
+  id: string
+  email: string
+  name: string
+  dob: string
+  gender: string
+  external_id: string
+}
+
+/**
+ * Register a new account. Goes through the shared api layer so the request
+ * carries Accept-Language (localized backend errors) and a 422 validation
+ * array becomes readable text instead of crashing on `[object Object]`
+ * (ISSUES.md #62).
+ */
+export async function registerUser(payload: RegisterPayload): Promise<RegisterResponse> {
+  const res = await fetch(`${API_BASE}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...baseHeaders() },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new ApiError(res.status, extractDetail(body, apiFallback('registerFailed')))
+  }
+  return res.json() as Promise<RegisterResponse>
+}
+
 function contentDispositionFilename(header: string | null, fallback: string): string {
   if (!header) return fallback
   const m = /filename="?([^";]+)"?/.exec(header)
