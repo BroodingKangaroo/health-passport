@@ -84,14 +84,17 @@ def _translate_names_batch(
     """Translate non-English biomarker names to English via a single LLM call.
 
     Returns a mapping raw_name -> standard English analyte name for the names
-    that were translated. Names already in ASCII are skipped (assumed English).
+    that were translated. A biomarker is skipped only when it already carries
+    an ASCII ``standard_name_en``; Latin-script non-English names (e.g.
+    Spanish "Bilirrubina total") have an empty effective English name and
+    MUST be included — ASCII alone does not mean English (ISSUES.md #50).
     """
     need: list[RawBiomarker] = []
     for b in biomarkers:
         en = (b.standard_name_en or "").strip()
         if en and _is_ascii(en):
             continue
-        if b.name and not _is_ascii(b.name):
+        if b.name:
             need.append(b)
     if not need or client is None:
         return {}
