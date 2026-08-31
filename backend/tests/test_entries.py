@@ -877,6 +877,31 @@ class TestMergeEntry:
         assert len(events) == 1
         assert events[0]["id"] == target_id
 
+    async def test_merge_rejects_future_dated_target(self, client, db_session):
+        """ISSUES.md #55: save_entry refuses future dates; merge must apply
+        the same rule instead of attaching readings to a future-dated entry."""
+        from datetime import datetime, timedelta, timezone
+
+        from app.db.models import MedicalEntry
+
+        future = datetime.now(timezone.utc) + timedelta(days=7)
+        db_session.add(MedicalEntry(
+            id="future-entry",
+            patient_id=TEST_USER_ID,
+            type="blood_test",
+            date=future,
+            title="Future Panel",
+            clinic="Lab",
+        ))
+        db_session.commit()
+
+        resp = await client.post(
+            "/api/entry/future-entry/merge",
+            data={"biomarkers": _biomarkers_json([_row("Creatinine", "0.9")])},
+        )
+        assert resp.status_code == 400
+        assert "future" in resp.json()["detail"].lower()
+
     async def test_merge_marks_reading_in_timeline(self, client):
         """The merged reading surfaces with ``merged: true`` on the wire, so the
         UI can distinguish original vs merged-in results."""
@@ -1473,3 +1498,26 @@ class TestSaveSourceLanguage:
             for row in cat["rows"]:
                 assert row["original_lang"] is None
 
+
+
+class TestNormalizeDate:
+    """ISSUES.md #55: _normalize_date must CONVERT an already tz-aware value
+    to UTC, not clobber its real offset with .replace(tzinfo=utc)."""
+
+    def test_naive_becomes_utc(self):
+        from app.api.entries import _normalize_date
+
+        dt = _normalize_date("2026-01-05")
+        assert dt.tzinfo is not None
+        assert dt.utcoffset().total_seconds() == 0
+
+    def test_aware_offset_is_converted_not_clobbered(self):
+        from datetime import timezone as tz
+
+        from app.api.entries import _normalize_date
+
+        dt = _normalize_date("2026-01-05T23:30:00+02:00")
+        assert dt.tzinfo is not None
+        assert dt.utcoffset() == tz.utc.utcoffset(dt)
+        # 23:30+02:00 == 21:30 UTC — the wall-clock shift proves conversion.
+        assert (dt.hour, dt.minute) == (21, 30)

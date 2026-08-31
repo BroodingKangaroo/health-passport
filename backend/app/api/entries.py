@@ -79,7 +79,12 @@ def _normalize_date(date_str: str, time_str: str = "") -> datetime:
         dt = datetime.fromisoformat(f"{date_str}T{time_str}")
     else:
         dt = datetime.fromisoformat(date_str)
-    return dt.replace(tzinfo=timezone.utc)
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    # Already tz-aware: CONVERT to UTC instead of .replace(tzinfo=utc),
+    # which clobbers the real offset (ISSUES.md #55 — safe only while
+    # SQLite strips tzinfo, and wrong on any offset-preserving backend).
+    return dt.astimezone(timezone.utc)
 
 
 class _ReadingSpec:
@@ -486,7 +491,7 @@ async def get_entries_by_date(
 ):
     _user, user_id, _is_anonymous = user_data
     try:
-        target = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
+        target = _normalize_date(date)
     except ValueError:
         raise HTTPException(status_code=400, detail=i18n.tr("entries.invalid_date_format", date=date)) from None
     q = db.query(MedicalEntryModel).filter(
@@ -689,16 +694,20 @@ async def merge_entry(
         raise HTTPException(status_code=404, detail=i18n.tr("entries.entry_not_found", entry_id=entry_id))
     if entry.type != "blood_test":
         raise HTTPException(status_code=400, detail=i18n.tr("entries.merge_only_blood_test"))
+    entry_day = entry.date
+    if entry_day.tzinfo is None:
+        entry_day = entry_day.replace(tzinfo=timezone.utc)
+    # Same future-date rule as save_entry (ISSUES.md #55): a merge must not
+    # attach readings to a future-dated entry.
+    if entry_day.date() > datetime.now(timezone.utc).date():
+        raise HTTPException(status_code=400, detail=i18n.tr("entries.date_in_future"))
     if date:
         try:
-            target_date = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
+            target_date = _normalize_date(date)
         except ValueError:
             raise HTTPException(status_code=400, detail=i18n.tr("entries.invalid_date_format", date=date)) from None
         # Compare in Python: sqlite stores naive datetimes, and passing mixed
         # naive/tz-aware values through SQL func.date() is unreliable.
-        entry_day = entry.date
-        if entry_day.tzinfo is None:
-            entry_day = entry_day.replace(tzinfo=timezone.utc)
         if entry_day.date() != target_date.date():
             raise HTTPException(status_code=400, detail=i18n.tr("entries.merge_date_mismatch"))
 
