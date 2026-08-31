@@ -59,14 +59,20 @@ def _promote_loinc_from_csv(db: Session, code: str) -> Optional[BiomarkerDefinit
     if not defn_dict.get("id"):
         return None
     new_defn = BiomarkerDefinitionModel(**defn_dict)
+    # The INSERT runs inside a SAVEPOINT: a concurrent-promotion
+    # IntegrityError must only discard this insert, not the caller's pending
+    # work in the same transaction (ISSUES.md #40).
+    nested = db.begin_nested()
     db.add(new_defn)
     try:
         db.flush()
     except IntegrityError:
-        db.rollback()
+        nested.rollback()
         return db.query(BiomarkerDefinitionModel).filter(
             BiomarkerDefinitionModel.id == code
         ).first()
+    else:
+        nested.commit()
     logger.info("Promoted LOINC %s to global definition", code)
     return new_defn
 

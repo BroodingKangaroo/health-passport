@@ -172,14 +172,25 @@ def _resolve_definition(db: Session, user_id: str, name: str, row_defn_id: Optio
                 scope="local",
                 user_id=user_id,
             )
+            # Recover from a concurrent insert via a SAVEPOINT, not a
+            # session-wide rollback: save_entry has already flushed the entry
+            # (and earlier rows' definitions) into this transaction, and a
+            # full rollback would discard that pending work while the code
+            # keeps going — with FK enforcement off the final commit would
+            # then persist readings pointing at a nonexistent entry. The def
+            # is added INSIDE the savepoint so a rollback expunges it instead
+            # of leaving a zombie pending row that re-raises at the next flush.
+            nested = db.begin_nested()
             db.add(defn)
             try:
                 db.flush()
             except IntegrityError:
-                db.rollback()
+                nested.rollback()
                 defn = db.query(BiomarkerDefinitionModel).filter(
                     BiomarkerDefinitionModel.id == defn_id
                 ).first()
+            else:
+                nested.commit()
     return defn
 
 

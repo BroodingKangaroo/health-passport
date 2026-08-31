@@ -70,7 +70,11 @@ def check_and_record_ai_usage(db: Session, user_id: str, is_anonymous: bool, com
         if usage is not None:
             # Row exists but already at/over the limit.
             return (False, usage.ai_extraction_count, max_ai)
-        # No row yet: create one atomically.
+        # No row yet: create one atomically. The INSERT runs inside a
+        # SAVEPOINT so a concurrent-insert IntegrityError only discards the
+        # usage row — a session-wide rollback here would destroy the caller's
+        # pending work (e.g. the flushed entry/attachment of an in-flight
+        # upload when commit=False).
         usage = UsageLimit(
             user_id=user_id,
             is_anonymous=is_anonymous,
@@ -78,15 +82,15 @@ def check_and_record_ai_usage(db: Session, user_id: str, is_anonymous: bool, com
             total_upload_size_bytes=0,
             last_activity=now,
         )
+        # Push any pending caller work out of the savepoint's reach.
+        db.flush()
+        nested = db.begin_nested()
         db.add(usage)
         try:
-            if commit:
-                db.commit()
-            else:
-                db.flush()
+            db.flush()
         except IntegrityError:
             # Another request created the row first; retry the increment.
-            db.rollback()
+            nested.rollback()
             db.execute(
                 update(UsageLimit)
                 .where(
@@ -96,10 +100,11 @@ def check_and_record_ai_usage(db: Session, user_id: str, is_anonymous: bool, com
                 )
                 .values(ai_extraction_count=UsageLimit.ai_extraction_count + 1, last_activity=now)
             )
-            if commit:
-                db.commit()
-            else:
-                db.flush()
+            db.flush()
+        else:
+            nested.commit()
+        if commit:
+            db.commit()
         usage = db.query(UsageLimit).filter(
             UsageLimit.user_id == user_id,
             UsageLimit.is_anonymous == is_anonymous,
@@ -190,14 +195,17 @@ def check_and_record_storage_usage(
             total_upload_size_bytes=size_bytes,
             last_activity=now,
         )
+        # Push any pending caller work out of the savepoint's reach: called
+        # with commit=False from _save_attachment, the in-flight entry is
+        # already flushed but must never be rolled back by a concurrent-insert
+        # recovery (ISSUES.md #40).
+        db.flush()
+        nested = db.begin_nested()
         db.add(usage)
         try:
-            if commit:
-                db.commit()
-            else:
-                db.flush()
+            db.flush()
         except IntegrityError:
-            db.rollback()
+            nested.rollback()
             db.execute(
                 update(UsageLimit)
                 .where(
@@ -207,10 +215,11 @@ def check_and_record_storage_usage(
                 )
                 .values(total_upload_size_bytes=UsageLimit.total_upload_size_bytes + size_bytes, last_activity=now)
             )
-            if commit:
-                db.commit()
-            else:
-                db.flush()
+            db.flush()
+        else:
+            nested.commit()
+        if commit:
+            db.commit()
         usage = db.query(UsageLimit).filter(
             UsageLimit.user_id == user_id,
             UsageLimit.is_anonymous == is_anonymous,

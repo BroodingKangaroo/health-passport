@@ -272,11 +272,18 @@ def verify_or_create(
         canonical_kind=canonical_kind,
         canonical_unit_inferred=canonical_unit_inferred,
     )
+    # The INSERT runs inside a SAVEPOINT: a concurrent-insert IntegrityError
+    # must only discard this definition, not the earlier uncommitted
+    # definitions of the same batch (a session-wide rollback would expunge
+    # them and the final commit would persist readings pointing at defs that
+    # no longer exist — ISSUES.md #40). The def is added INSIDE the savepoint
+    # so a rollback expunges it instead of leaving a zombie pending row.
+    nested = db.begin_nested()
     db.add(new_defn)
     try:
         db.flush()
     except IntegrityError:
-        db.rollback()
+        nested.rollback()
         existing = db.query(BiomarkerDefinitionModel).filter(
             BiomarkerDefinitionModel.id == defn_id,
             BiomarkerDefinitionModel.user_id == user_id,
@@ -284,6 +291,8 @@ def verify_or_create(
         if existing:
             return existing
         raise
+    else:
+        nested.commit()
     return new_defn
 
 
