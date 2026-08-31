@@ -361,3 +361,57 @@ def test_batch_translator_rejects_empty_and_prefix_dropping_answers():
     out = _translate_units_batch(rows[:1], client)
     assert out["lg копий/мл"] == {"unit": "lg copies/mL", "kind": "log10", "inferred": False}
     _unit_translation_cache.clear()
+
+
+def test_batch_translator_keys_on_echoed_raw_unit():
+    """ISSUES.md #49: answers are keyed on the raw unit each item echoes, so
+    a REORDERED answer list can no longer mis-key the translation cache
+    (previously a positional zip paired each answer with whatever unit
+    happened to sit at the same index)."""
+    from app.services.matcher._cache import _unit_translation_cache
+    from app.services.matcher.units_guess import _translate_units_batch
+
+    _unit_translation_cache.clear()
+    rows = [
+        RawBiomarker(name="Alpha", value="5", unit="мг/дл", standard_name_en="Alpha"),
+        RawBiomarker(name="Blautia spp", value="5", unit="lg копий/мл",
+                     standard_name_en="Blautia spp"),
+    ]
+    client = _fake_client({"translations": [
+        {"raw_unit": "lg копий/мл", "unit": "lg copies/mL", "kind": "log10", "inferred": False},
+        {"raw_unit": "мг/дл", "unit": "mg/dL", "kind": "linear", "inferred": False},
+    ]})
+    out = _translate_units_batch(rows, client)
+    assert out["lg копий/мл"] == {"unit": "lg copies/mL", "kind": "log10", "inferred": False}
+    assert out["мг/дл"] == {"unit": "mg/dL", "kind": "linear", "inferred": False}
+    _unit_translation_cache.clear()
+
+
+def test_batch_translator_dedupes_shared_unit_first_meta_wins():
+    """Biomarkers sharing one unit string produce a single LLM item (the
+    cache is keyed by unit), and the first-seen name/category is used."""
+    import json as _json
+    from types import SimpleNamespace
+
+    from app.services.matcher._cache import _unit_translation_cache
+    from app.services.matcher.units_guess import _translate_units_batch
+
+    _unit_translation_cache.clear()
+    rows = [
+        RawBiomarker(name="Альфа", value="5", unit="ммоль/л", standard_name_en="Alpha"),
+        RawBiomarker(name="Бета", value="4", unit="ммоль/л", standard_name_en="Beta"),
+    ]
+    seen = {}
+
+    def parse(**kw):
+        seen["system"] = kw["messages"][0]["content"]
+        return _FakeResp(_json.dumps({"translations": [
+            {"raw_unit": "ммоль/л", "unit": "mmol/L", "kind": "linear", "inferred": False},
+        ]}))
+
+    client = SimpleNamespace(chat=SimpleNamespace(parse=parse))
+    out = _translate_units_batch(rows, client)
+    assert out["ммоль/л"] == {"unit": "mmol/L", "kind": "linear", "inferred": False}
+    assert seen["system"].count("| 'ммоль/л'") == 1
+    assert "Alpha" in seen["system"] and "Beta" not in seen["system"]
+    _unit_translation_cache.clear()

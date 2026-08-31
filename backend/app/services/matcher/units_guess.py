@@ -26,7 +26,8 @@ Rules:
 Items (each line: english analyte name | category | raw unit):
 {items}
 
-Return a JSON object with a single key "translations" whose value is an array of objects, one per input in the same order. Each object has:
+Return a JSON object with a single key "translations" whose value is an array of objects, one per input line in the same order. Each object has:
+- raw_unit: the raw unit string from the item, echoed back EXACTLY as given (verbatim, including any "lg" / "ln" prefix and Cyrillic characters)
 - unit: the standard English unit (MUST be non-empty even when the input unit is blank — invent one)
 - kind: "linear" | "log10" | "ln"
 - inferred: true if the unit was invented (no source unit), false otherwise"""
@@ -221,7 +222,7 @@ def _translate_units_batch(
     Already-English units with a recognised scale prefix are handled
     heuristically (no LLM call) so the helper is fast on the common case.
     """
-    needed: dict[str, dict] = {}  # raw_unit -> {analyte, category}
+    needed: dict[str, dict] = {}  # raw_unit -> {name, category}
     cache = _local_cache(_unit_translation_cache)
     for b in biomarkers:
         u = (b.unit or "").strip()
@@ -232,13 +233,14 @@ def _translate_units_batch(
         if not u:
             continue
         if u in cache:
-            needed.pop(u, None)
             continue
         heur = _heuristic_unit_translation(u, b.name, b.category)
         if heur is not None:
             cache[u] = heur
             continue
-        needed[u] = {"name": b.standard_name_en or b.name, "category": b.category}
+        # First-seen meta wins: several biomarkers may share one unit string,
+        # and the cache is keyed by the unit, not the biomarker.
+        needed.setdefault(u, {"name": b.standard_name_en or b.name, "category": b.category})
 
     if not needed or client is None:
         return {}
@@ -275,7 +277,19 @@ def _translate_units_batch(
 
     result: dict[str, dict] = {}
     cache = _local_cache(_unit_translation_cache)
-    for g, (raw_unit, _meta) in zip(parsed.translations, needed.items()):
+    needed_keys = list(needed.keys())
+    for idx, g in enumerate(parsed.translations):
+        # Key each answer on the raw unit the model ECHOES for that item
+        # (ISSUES.md #49): the previous positional zip silently mis-keyed
+        # the cache whenever the model reordered its answer list. Positional
+        # attribution is kept only as a per-item fallback for models that
+        # ignore the echo instruction.
+        echo = (g.raw_unit or "").strip()
+        raw_unit = echo if echo in needed else (
+            needed_keys[idx] if idx < len(needed_keys) else None
+        )
+        if not raw_unit:
+            continue
         unit = (g.unit or "").strip()
         raw_kind = _scale_kind_of(raw_unit)
         if not unit or (raw_kind in ("log10", "ln") and _scale_kind_of(unit) == "linear"):

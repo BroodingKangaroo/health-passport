@@ -110,6 +110,11 @@ class ConversionFactor(BaseModel):
 # +++++ LLM-assisted unit translation (raw -> English canonical) +++++
 
 class UnitTranslation(BaseModel):
+    # The raw unit string the item asked about, echoed back by the model.
+    # Responses are keyed on this echo (ISSUES.md #49) so a reordered answer
+    # list can never mis-key the translation cache; empty when the model
+    # ignores the echo instruction (positional attribution is then used).
+    raw_unit: str = ""
     # The standard English form of the unit (e.g. "copies/mL", "mg/dL",
     # "lg copies/mL"). Empty when the LLM couldn't decide.
     unit: str = ""
