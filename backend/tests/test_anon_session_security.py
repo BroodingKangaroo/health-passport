@@ -313,3 +313,57 @@ class TestNoTenantLeakOnTheWire:
         ]
         assert "foreign-local-def" not in [r["id"] for r in rows]
         assert "Foreign Analyte" not in [r["name"] for r in rows]
+
+
+class TestExpiredTokenNeverFallsBackToAnon:
+    """ISSUES.md #52: the anon fallback used to detect expiry by comparing
+    the localized detail STRING — a reworded message silently converted
+    expired tokens into anonymous sessions. Detection is now a typed marker
+    (TokenExpiredError); expiry forces re-auth, other 401s still fall back."""
+
+    @pytest_asyncio.fixture
+    async def whoami_client(self, sec_db_session):
+        from fastapi import Depends, FastAPI
+        from httpx import ASGITransport, AsyncClient
+
+        from app.api.auth import get_current_user_or_anon
+
+        app = FastAPI()
+
+        @app.get("/whoami")
+        async def whoami(user_data=Depends(get_current_user_or_anon)):
+            _user, user_id, is_anon = user_data
+            return {"user_id": user_id, "is_anonymous": is_anon}
+
+        async def override_get_db():
+            yield sec_db_session
+
+        app.dependency_overrides[get_db] = override_get_db
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
+
+    async def test_expired_token_is_rejected_not_anonymized(
+        self, whoami_client
+    ):
+        from datetime import timedelta
+
+        from app.auth import create_access_token
+
+        expired = create_access_token(
+            data={"sub": "someone", "email": "x@y.z"},
+            expires_delta=timedelta(seconds=-10),
+        )
+        resp = await whoami_client.get(
+            "/whoami", headers={"Authorization": f"Bearer {expired}"}
+        )
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == "Token expired"
+
+    async def test_invalid_token_still_falls_back_to_anon(self, whoami_client):
+        resp = await whoami_client.get(
+            "/whoami", headers={"Authorization": "Bearer garbage"}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["is_anonymous"] is True
+        assert resp.json()["user_id"].startswith("anon-")

@@ -45,6 +45,13 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=Fals
 PASSWORD_MIN_LENGTH = 8
 
 
+class TokenExpiredError(HTTPException):
+    """Marker subclass: lets ``get_current_user_or_anon`` distinguish an
+    expired token (force re-auth) from any other 401 (fall back to an
+    anonymous session) without string-comparing localized detail messages,
+    which silently broke whenever a message was reworded (ISSUES.md #52)."""
+
+
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
@@ -83,7 +90,7 @@ async def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Se
     except ExpiredSignatureError:
         # Surface expiry distinctly so the frontend can prompt a re-login
         # rather than silently falling back to an empty anonymous session.
-        raise HTTPException(
+        raise TokenExpiredError(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=i18n.tr("auth.token_expired"),
             headers={"WWW-Authenticate": "Bearer"},
@@ -135,8 +142,11 @@ async def get_current_user_or_anon(
         # Try authenticated user first
         user = await get_current_user(token, db)
         return (user, user.id, False)
+    except TokenExpiredError:
+        # Expired tokens must force re-auth, never an anonymous session.
+        raise
     except HTTPException as e:
-        if e.status_code == status.HTTP_401_UNAUTHORIZED and e.detail != i18n.tr("auth.token_expired"):
+        if e.status_code == status.HTTP_401_UNAUTHORIZED:
             # No valid token (missing/invalid), use anonymous session
             from app.api.anon_session import get_or_create_anon_id
             anon_id = get_or_create_anon_id(request, response)
