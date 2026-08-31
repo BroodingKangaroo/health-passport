@@ -41,7 +41,11 @@ export function useMergePreflight(
     const controller = new AbortController()
     const t = setTimeout(async () => {
       try {
-        const res = await fetchEntriesByDate(dateValue, 'blood_test')
+        const res = await fetchEntriesByDate(dateValue, 'blood_test', {
+          // Actually cancel the in-flight request on unmount/date change
+          // (ISSUES.md #67) instead of only filtering its late response.
+          signal: controller.signal,
+        })
         // Ignore stale responses
         if (controller.signal.aborted) return
         setExistingBloodTests(res.entries ?? [])
@@ -56,6 +60,9 @@ export function useMergePreflight(
           prev && res.entries?.some((e) => e.id === prev) ? prev : res.entries?.[0]?.id ?? null,
         )
       } catch {
+        // An abort means the effect re-ran / unmounted — the new request is
+        // in charge, so don't flag a failure.
+        if (controller.signal.aborted) return
         // The duplicate/merge pre-flight failed — say so instead of letting
         // the warning silently vanish while Save stays enabled (which is how
         // duplicate entries happen).

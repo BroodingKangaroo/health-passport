@@ -144,9 +144,24 @@ export async function fetchBiomarkerDetail(id: string): Promise<BiomarkerResult>
 export async function fetchEntriesByDate(
   date: string,
   type?: string,
+  opts?: { signal?: AbortSignal },
 ): Promise<EntriesByDateResponse> {
   const params = `date=${date}${type ? `&type=${type}` : ''}`
-  return apiGet<EntriesByDateResponse>(`/entries/by-date?${params}`)
+  const res = await fetch(`${API_BASE}/entries/by-date?${params}`, {
+    headers: { ...baseHeaders() },
+    credentials: 'include',
+    // Abortable (ISSUES.md #67): callers with AbortControllers (e.g. the
+    // merge preflight debounce) can cancel stale in-flight requests.
+    signal: opts?.signal,
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new ApiError(
+      res.status,
+      extractDetail(body, `GET /entries/by-date failed: ${res.statusText}`),
+    )
+  }
+  return res.json()
 }
 
 /* ----- Biomarker Definitions ----- */
