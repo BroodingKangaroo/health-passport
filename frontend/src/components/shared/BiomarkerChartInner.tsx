@@ -9,13 +9,13 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-  type XAxisTickContentProps,
 } from 'recharts'
 import { useLocale, useTranslations } from 'next-intl'
 
 import type { BiomarkerResult, Reading } from '@/lib/types'
 import { sortReadingsByDate, splitDateLabel } from '@/lib/utils'
-import { intervalBounds, isQualitative, qualitativeToNumber } from '@/lib/reference'
+import { isQualitative } from '@/lib/reference'
+import { coerceChartValue, chartReferenceBounds, dateTickRenderer } from '@/lib/chart-series'
 
 interface BiomarkerChartProps {
   biomarker: BiomarkerResult
@@ -45,17 +45,13 @@ export default function BiomarkerChartInner({
   const data = sortReadingsByDate(
     rawData
       .map((d) => {
-        if (typeof d.value === 'number' && Number.isFinite(d.value)) return { ...d, value: d.value as number }
-        if (qual) {
-          const qn = qualitativeToNumber(d.value)
-          if (qn != null) return { ...d, value: qn }
-        }
-        return null
+        const v = coerceChartValue(d.value, qual)
+        return v == null ? null : { ...d, value: v }
       })
       .filter((d) => d != null),
   ) as { date: string; value: number; status: string }[]
   const numericValues = data.map((d) => d.value)
-  const bounds = qual ? { low: 0, high: 1 } : intervalBounds(effRef)
+  const bounds = chartReferenceBounds(effRef)
   const rm = bounds?.high ?? null
   const dataMax = rm != null ? Math.max(...numericValues, rm) : (numericValues.length > 0 ? Math.max(...numericValues) : 0)
   const yMax = rm != null ? Math.max(dataMax, rm * 1.2) : (numericValues.length > 0 ? dataMax * 1.2 : 1)
@@ -106,25 +102,7 @@ export default function BiomarkerChartInner({
             dataKey="date"
             tickLine={false}
             axisLine={{ stroke: '#d4d4d8' }}
-            tick={(tickProps: XAxisTickContentProps) => {
-              const { label, sub } = splitDateLabel(String(tickProps.payload.value), locale)
-              const fs = compact ? 9 : 11
-              const subFs = compact ? 8 : 9
-              const dy1 = compact ? 10 : 12
-              const dy2 = compact ? 20 : 24
-              return (
-                <g transform={`translate(${tickProps.x},${tickProps.y})`}>
-                  <text x={0} y={0} dy={dy1} textAnchor="middle" fill="#71717a" fontSize={fs}>
-                    {label}
-                  </text>
-                  {sub && (
-                    <text x={0} y={0} dy={dy2} textAnchor="middle" fill="#a1a1aa" fontSize={subFs}>
-                      {sub}
-                    </text>
-                  )}
-                </g>
-              )
-            }}
+            tick={dateTickRenderer(locale, { compact })}
           />
           <YAxis
             domain={[0, Math.ceil(yMax)]}

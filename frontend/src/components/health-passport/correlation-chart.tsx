@@ -12,13 +12,14 @@ import {
   ReferenceArea,
   Tooltip,
   type TooltipContentProps,
-  type XAxisTickContentProps,
 } from 'recharts'
 
 import { cn, splitDateLabel } from '@/lib/utils'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { intervalBounds, qualitativeToNumber } from '@/lib/reference'
+import { isQualitative } from '@/lib/reference'
+import { coerceChartValue, dateTickRenderer } from '@/lib/chart-series'
 import { pairwiseCorrelations, type PairStats } from '@/lib/stats'
 import type { BiomarkerResult } from '@/lib/types'
 
@@ -102,13 +103,13 @@ function buildAlignedSeries(biomarkers: BiomarkerResult[]) {
   )
   const series: Record<string, Array<number | null>> = {}
   biomarkers.forEach((b) => {
+    const ref = b.reference ?? b.definition.reference
     series[b.id] = sorted.map((d) => {
       const v = byId[b.id].get(d)
       if (v == null) return null
-      const numericVal =
-        typeof v === 'number' && Number.isFinite(v) ? v : qualitativeToNumber(v)
+      const numericVal = coerceChartValue(v, isQualitative(ref))
       if (numericVal == null) return null
-      return normalizedValue(numericVal, b.reference ?? b.definition.reference)
+      return normalizedValue(numericVal, ref)
     })
   })
   return { dates: sorted, byId, series }
@@ -639,24 +640,7 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
                   tickLine={false}
                   axisLine={{ stroke: '#d4d4d8' }}
                   padding={{ left: 20, right: 20 }}
-                  tick={(tickProps: XAxisTickContentProps) => {
-                    const { label, sub } = splitDateLabel(
-                      String(tickProps.payload.value),
-                      locale,
-                    )
-                    return (
-                      <g transform={`translate(${tickProps.x},${tickProps.y})`}>
-                        <text x={0} y={0} dy={12} textAnchor="middle" fill="#71717a" fontSize={11}>
-                          {label}
-                        </text>
-                        {sub && (
-                          <text x={0} y={0} dy={24} textAnchor="middle" fill="#a1a1aa" fontSize={9}>
-                            {sub}
-                          </text>
-                        )}
-                      </g>
-                    )
-                  }}
+                  tick={dateTickRenderer(locale)}
                 />
                 <YAxis hide domain={yDomain} />
                 <ReferenceArea

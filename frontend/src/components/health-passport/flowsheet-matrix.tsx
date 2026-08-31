@@ -10,7 +10,8 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Sparkline } from '@/components/shared/Sparkline'
 import { ScaleNote } from '@/components/shared/ScaleNote'
-import { formatReference, intervalBounds, qualitativeToNumber, isQualitative } from '@/lib/reference'
+import { formatReference, isQualitative } from '@/lib/reference'
+import { coerceChartValue, chartReferenceBounds } from '@/lib/chart-series'
 import { qualitativeLabel } from '@/lib/qualitative-labels'
 import { activateOnKey } from '@/lib/a11y'
 import type { DateHeader, MatrixCategory, MatrixCell, BiomarkerResult, Status } from '@/lib/types'
@@ -132,16 +133,15 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
               </div>
               {cat.rows.map((row) => {
                 const bioResults = biomarkers.filter((b) => b.definition.id === row.id)
+                const qual = isQualitative(row.reference)
                 const history = bioResults
                   .map((b) => {
-                    if (typeof b.value === 'number' && Number.isFinite(b.value)) return { value: b.value as number, status: b.status }
-                    const qn = qualitativeToNumber(b.value)
-                    if (qn != null) return { value: qn, status: b.status }
-                    return null
+                    const v = coerceChartValue(b.value, qual)
+                    return v == null ? null : { value: v, status: b.status }
                   })
                   .filter((h) => h != null) as { value: number; status: string }[]
                 const hasBio = bioResults.length > 0
-                const bounds = isQualitative(row.reference) ? { low: 0, high: 1 } : intervalBounds(row.reference)
+                const bounds = chartReferenceBounds(row.reference)
                 return (
                   <div
                     key={row.id}
