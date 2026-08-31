@@ -190,3 +190,41 @@ class TestDeterministicLoincFallback:
             )
         )
         assert "scope" in clause and "user_id" in clause
+
+
+class TestLikeWildcardEscaping:
+    """ISSUES.md #56: the fuzzy-resolution ILIKE used a client-supplied name
+    as a LIKE pattern unescaped — a name of '%' matched arbitrary existing
+    definitions instead of behaving literally."""
+
+    def test_wildcard_name_is_matched_literally(self, vis_db_session):
+        from app.api.entries import _escape_like
+
+        assert _escape_like("100% glu") == "100\\% glu"
+        assert _escape_like("a_b") == "a\\_b"
+        assert _escape_like("a\\b") == "a\\\\b"
+
+        # A bare '%' row must NOT resolve to any seeded definition — it
+        # becomes its own local definition.
+        defn = _resolve_definition(vis_db_session, "wildcard-user", "%", None, "General")
+        assert defn is not None
+        assert defn.user_id == "wildcard-user"
+        assert defn.names["en"] == "%"
+        assert defn.scope == "local"
+
+    def test_underscore_name_is_matched_literally(self, vis_db_session):
+        # An underscore must not act as a single-char wildcard: "G_u%ose"
+        # must not substring-match seeded synonyms like "Glucose".
+        defn = _resolve_definition(
+            vis_db_session, "wildcard-user", "zz_quiet_nope", None, "General"
+        )
+        assert defn is not None
+        assert defn.user_id == "wildcard-user"
+        assert defn.names["en"] == "zz_quiet_nope"
+
+    def test_regular_names_still_fuzzy_match(self, vis_db_session):
+        defn = _resolve_definition(
+            vis_db_session, "wildcard-user", "Glucose", None, "General"
+        )
+        assert defn is not None
+        assert defn.scope in ("global", "local")

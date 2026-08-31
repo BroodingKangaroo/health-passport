@@ -69,6 +69,13 @@ def _is_loinc(code: Optional[str]) -> bool:
     return bool(code) and bool(_LOINC_RE.match(code))
 
 
+def _escape_like(value: str) -> str:
+    """Escape LIKE/ILIKE wildcards so a client-supplied name containing
+    ``%`` or ``_`` matches literally instead of arbitrarily (ISSUES.md #56;
+    use with ``ilike(..., escape="\\")``)."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 router = APIRouter()
 
 
@@ -136,7 +143,9 @@ def _resolve_definition(db: Session, user_id: str, name: str, row_defn_id: Optio
 
     # Fallback: fuzzy match by name using SQL ILIKE
     if not defn:
-        name_lower = name.lower()
+        # Escape LIKE wildcards (ISSUES.md #56): a client-supplied name
+        # containing % or _ must match literally, not arbitrarily.
+        name_lower = _escape_like(name.lower())
         # Only match definitions visible to this user: global,
         # system-shared (user_id IS NULL), or this user's own local
         # definitions. This prevents a user's reading from being
@@ -147,11 +156,11 @@ def _resolve_definition(db: Session, user_id: str, name: str, row_defn_id: Optio
             db.query(BiomarkerDefinitionModel)
             .filter(
                 or_(
-                    func.lower(BiomarkerDefinitionModel.names['en'].as_string()).ilike(name_lower),
-                    func.lower(BiomarkerDefinitionModel.names['es'].as_string()).ilike(name_lower),
-                    func.lower(BiomarkerDefinitionModel.names['de'].as_string()).ilike(name_lower),
-                    func.lower(BiomarkerDefinitionModel.names['fr'].as_string()).ilike(name_lower),
-                    func.lower(BiomarkerDefinitionModel.names['he'].as_string()).ilike(name_lower),
+                    func.lower(BiomarkerDefinitionModel.names['en'].as_string()).ilike(name_lower, escape="\\"),
+                    func.lower(BiomarkerDefinitionModel.names['es'].as_string()).ilike(name_lower, escape="\\"),
+                    func.lower(BiomarkerDefinitionModel.names['de'].as_string()).ilike(name_lower, escape="\\"),
+                    func.lower(BiomarkerDefinitionModel.names['fr'].as_string()).ilike(name_lower, escape="\\"),
+                    func.lower(BiomarkerDefinitionModel.names['he'].as_string()).ilike(name_lower, escape="\\"),
                 ),
                 ownership,
             )
@@ -162,7 +171,7 @@ def _resolve_definition(db: Session, user_id: str, name: str, row_defn_id: Optio
             defn = (
                 db.query(BiomarkerDefinitionModel)
                 .filter(
-                    func.lower(cast(BiomarkerDefinitionModel.synonyms, String)).ilike(f'%{name_lower}%'),
+                    func.lower(cast(BiomarkerDefinitionModel.synonyms, String)).ilike(f'%{name_lower}%', escape="\\"),
                     ownership,
                 )
                 .first()
