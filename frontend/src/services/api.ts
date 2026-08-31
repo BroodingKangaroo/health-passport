@@ -106,7 +106,13 @@ async function apiGet<T>(path: string): Promise<T> {
     headers: { ...baseHeaders() },
     credentials: 'include',
   })
-  if (!res.ok) throw new ApiError(res.status, `GET ${path} failed: ${res.statusText}`)
+  if (!res.ok) {
+    // Same localized-detail extraction as every POST/DELETE path (ISSUES.md
+    // #66): the backend's localized `detail` must reach the UI, not a
+    // generic status text.
+    const body = await res.json().catch(() => null)
+    throw new ApiError(res.status, extractDetail(body, `GET ${path} failed: ${res.statusText}`))
+  }
   return res.json()
 }
 
@@ -288,7 +294,7 @@ export async function extractMedicalData(
   if (!res.ok) {
     if (res.status === 429) {
       const body = await res.json().catch(() => null)
-      throw new UsageLimitError(res.status, extractDetail(body, 'Usage limit reached'))
+      throw new UsageLimitError(res.status, extractDetail(body, apiFallback('usageLimitReached')))
     }
     const body = await res.json().catch(() => null)
       throw new ApiError(res.status, extractDetail(body, apiFallback('postExtractFailed')))
@@ -471,7 +477,7 @@ export async function saveMedicalEntry(formData: FormData): Promise<SaveEntryRes
   if (!res.ok) {
     if (res.status === 429) {
       const body = await res.json().catch(() => null)
-      throw new UsageLimitError(res.status, extractDetail(body, 'Usage limit reached'))
+      throw new UsageLimitError(res.status, extractDetail(body, apiFallback('usageLimitReached')))
     }
     const body = await res.json().catch(() => null)
     throw new ApiError(res.status, extractDetail(body, apiFallback('postEntryFailed')))
@@ -493,7 +499,7 @@ export async function mergeMedicalEntry(
   if (!res.ok) {
     if (res.status === 429) {
       const body = await res.json().catch(() => null)
-      throw new UsageLimitError(res.status, extractDetail(body, 'Usage limit reached'))
+      throw new UsageLimitError(res.status, extractDetail(body, apiFallback('usageLimitReached')))
     }
     const body = await res.json().catch(() => null)
     throw new ApiError(res.status, extractDetail(body, apiFallback('postEntryMergeFailed')))
@@ -641,18 +647,26 @@ export async function fetchUsageLimits(): Promise<UsageLimits> {
 export async function fetchCurrentUser(token: string | null | undefined): Promise<CurrentUser | null> {
   if (!token) return null
   const res = await fetch(`${API_BASE}/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
+    // Accept-Language too (ISSUES.md #66): a 401/403 detail from this call
+    // is shown to the user, so it must arrive localized.
+    headers: { Authorization: `Bearer ${token}`, 'Accept-Language': getApiLocale() },
     credentials: 'include',
   })
   if (res.status === 401) return null
-  if (!res.ok) throw new ApiError(res.status, 'GET /auth/me failed')
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new ApiError(res.status, extractDetail(body, 'GET /auth/me failed'))
+  }
   return res.json()
 }
 
 /** Fetch the anonymous session id (creates one server-side on first call). */
 export async function fetchAnonId(): Promise<string | null> {
   try {
-    const res = await fetch(`${API_BASE}/auth/anon-id`, { credentials: 'include' })
+    const res = await fetch(`${API_BASE}/auth/anon-id`, {
+      credentials: 'include',
+      headers: { 'Accept-Language': getApiLocale() },
+    })
     if (!res.ok) return null
     const data = (await res.json()) as { anon_id: string }
     return data.anon_id || null
