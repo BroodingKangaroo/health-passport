@@ -15,6 +15,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jwt import ExpiredSignatureError
 from pydantic import BaseModel, EmailStr
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import i18n
@@ -182,14 +183,33 @@ def register(
     # checkbox defaults to checked, so an unchecked box means decline).
     should_migrate = user_data.migrate_data
 
-    # Create new user
-    user = create_user(db, user_data.email, user_data.password, user_data.name, user_data.dob, user_data.gender)
-    
-    # Copy anonymous data if applicable
-    if should_migrate and anon_id:
-        copy_anonymous_data(db, anon_id, user.id)
-        # Note: We DON'T delete the anonymous data or usage limits
-        # User can still access it if they log out
+    # Create the account and copy anonymous data in ONE transaction: if the
+    # migration fails, the account creation is rolled back too, instead of
+    # leaving a half-registered account behind (a retry would then hit the
+    # email/PK constraints with an unhandled IntegrityError).
+    try:
+        user = create_user(
+            db,
+            user_data.email,
+            user_data.password,
+            user_data.name,
+            user_data.dob,
+            user_data.gender,
+            commit=False,
+        )
+        if should_migrate and anon_id:
+            copy_anonymous_data(db, anon_id, user.id, commit=False)
+            # Note: We DON'T delete the anonymous data or usage limits
+            # User can still access it if they log out
+        db.commit()
+    except IntegrityError:
+        # TOCTOU on the email uniqueness check (concurrent registration):
+        # the INSERT fails at commit/flush time — surface it as a 409.
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=i18n.tr("auth.email_already_registered"),
+        ) from None
     
     return UserResponse(
         id=user.id,

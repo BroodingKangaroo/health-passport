@@ -36,11 +36,15 @@ def has_anonymous_data(db: Session, anon_id: str) -> bool:
     return def_count > 0
 
 
-def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str) -> dict:
+def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str, commit: bool = True) -> dict:
     """
     Copy all anonymous user data to new registered user.
     Generates new IDs for entries so anonymous data remains intact.
     Returns a summary of what was copied.
+
+    Pass ``commit=False`` when the caller owns the transaction (e.g. the
+    register endpoint, which must create the account and copy the data
+    atomically); the work is flushed but not committed.
     """
     summary = {
         "entries_copied": 0,
@@ -203,7 +207,7 @@ def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str) -> dict:
     if anon_usage:
         registered_usage = db.query(UsageLimit).filter(
             UsageLimit.user_id == new_user_id,
-            not UsageLimit.is_anonymous,
+            ~UsageLimit.is_anonymous,
         ).first()
         if registered_usage is None:
             db.add(UsageLimit(
@@ -215,5 +219,6 @@ def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str) -> dict:
             ))
             db.flush()
 
-    db.commit()
+    if commit:
+        db.commit()
     return summary

@@ -92,8 +92,14 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[models
     return user
 
 
-def create_user(db: Session, email: str, password: str, name: str, dob: str, gender: str) -> models.Patient:
-    """Create a new user."""
+def create_user(db: Session, email: str, password: str, name: str, dob: str, gender: str, commit: bool = True) -> models.Patient:
+    """Create a new user.
+
+    Pass ``commit=False`` when the caller owns the transaction (e.g. the
+    register endpoint, which must create the account and copy anonymous data
+    atomically); the user is flushed so the id is assigned and a duplicate
+    email surfaces as an IntegrityError before the outer commit.
+    """
     user_id = uuid.uuid4().hex
     hashed_password = get_password_hash(password)
     external_id = f"HP-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{secrets.randbelow(10000):04d}"
@@ -108,6 +114,9 @@ def create_user(db: Session, email: str, password: str, name: str, dob: str, gen
         external_id=external_id,
     )
     db.add(user)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(user)
     return user
