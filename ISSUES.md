@@ -93,17 +93,6 @@ uses nondeterministic `.first()` where the matcher ranks by `common_rank`.
 Apply the same visibility predicate as the fuzzy path; make the fallback
 deterministic.
 
-**#44 [medium] Glued-unit numeric range degrades to a junk qualitative
-reference → false "abnormal".** `"3.9-6.1 ммоль/л"`:
-`reference.py:223-230` — `_parse_numeric_token("6.1 ммоль/л")` → None, so the
-range branch is skipped and `parse_reference` returns
-`{kind:"qualitative", expected:"3.9-6.1 ммоль/л"}`; `_qual_status`
-(`:343-368`) then marks any numeric value "abnormal", and
-`definitions.py:250` persists the junk reference on the definition. Fix: strip
-known unit suffixes in the range branch; unparseable → `None` (unknown ref);
-`_qual_status` returns `""` (unknown), not "abnormal", for unrecognized
-expected + numeric value.
-
 **#45 [medium] Double unit conversion can silently corrupt values (no
 printed-range path).** `matcher/standardize.py:172-185` — `convert_units`
 runs toward `defn.unit`, which for local defs is the anchor document's *raw*
@@ -202,13 +191,6 @@ char (`"spp.)"` → different def id) and misses typographic quotes;
 used only by tests.
 
 ### Medium — frontend correctness
-
-**#61 [medium] Delete doesn't invalidate the flowsheet cache.**
-`TimelineView.tsx:81-107` only refetches `['timeline']`; `['flowsheet']`
-(staleTime 5 min) keeps serving the deleted entry across navigation.
-Centralize delete invalidation in `entry-settings.handleDelete` with the same
-`['timeline'] + ['flowsheet'] + ['biomarker-definitions']` set add-entry uses
-(`add-entry.tsx:392-396`).
 
 **#62 [medium] Register page bypasses the api layer.**
 `app/register/page.tsx:69-89` — raw `fetch`, no `Accept-Language`, and

@@ -1,12 +1,23 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { EntrySettings } from '../health-passport/entry-settings'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type { BiomarkerResult, MedicalEvent, VisitData } from '@/lib/types'
 
-// Wrap renders with the i18n context (English) — EntrySettings uses useTranslations.
-const renderI18n = ((ui: React.ReactElement, options?: Parameters<typeof render>[1]) =>
-  render(<TestI18nProvider>{ui}</TestI18nProvider>, options)) as typeof render
+// Wrap renders with the i18n context (English) and a QueryClient —
+// EntrySettings uses useTranslations and useQueryClient (delete invalidation).
+const renderI18n = ((ui: React.ReactElement, options?: Parameters<typeof render>[1]) => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return render(
+    <TestI18nProvider>
+      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+    </TestI18nProvider>,
+    options,
+  )
+}) as typeof render
 
 const baseEvent: MedicalEvent = {
   id: 'test-event-1',
@@ -176,6 +187,40 @@ describe('EntrySettings', () => {
 
     await waitFor(() => {
       expect(onDeleted).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('invalidates timeline, flowsheet, and biomarker-definitions caches on delete', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, id: 'test-event-1', deleted_visit_data: false, freed_bytes: 0 }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    render(
+      <TestI18nProvider>
+        <QueryClientProvider client={queryClient}>
+          <EntrySettings event={baseEvent} biomarkers={[]} onDeleted={vi.fn()} />
+        </QueryClientProvider>
+      </TestI18nProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Delete this entry/ }))
+    const confirmButton = await screen.findByTestId('delete-confirm-button')
+    fireEvent.click(confirmButton)
+
+    await waitFor(() => {
+      const keys = invalidateSpy.mock.calls.map(
+        (call) => (call[0] as { queryKey: readonly unknown[] }).queryKey,
+      )
+      expect(keys).toEqual(
+        expect.arrayContaining([['timeline'], ['flowsheet'], ['biomarker-definitions']]),
+      )
     })
   })
 

@@ -1,12 +1,24 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DoctorVisitDetails } from '../health-passport/doctor-visit-details'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type { VisitData } from '@/lib/types'
 
-// Wrap renders with the i18n context (English) — the component uses useTranslations.
-const renderI18n = ((ui: React.ReactElement, options?: Parameters<typeof render>[1]) =>
-  render(<TestI18nProvider>{ui}</TestI18nProvider>, options)) as typeof render
+// Wrap renders with the i18n context (English) and a QueryClient — the
+// component uses useTranslations and EntrySettings (Settings tab) uses
+// useQueryClient.
+const renderI18n = ((ui: React.ReactElement, options?: Parameters<typeof render>[1]) => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return render(
+    <TestI18nProvider>
+      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+    </TestI18nProvider>,
+    options,
+  )
+}) as typeof render
 
 vi.mock('next/dynamic', () => ({
   default: () => {

@@ -54,7 +54,11 @@ committed.
      ranges (``N1 - N2`` with scientific notation / Russian comma / en/em
      dash on either side) and the "any amount allowed" form
      ``допустимо любое количество`` / ``любое количество`` → unbounded
-     interval `{low: null, high: null}`.
+     interval `{low: null, high: null}`. Range sides may carry a glued unit
+     suffix (``3.9-6.1 ммоль/л`` → interval); a numeric-looking range that
+     still fails to parse returns ``None`` (unknown reference) instead of a
+     junk qualitative expected, and a numeric value against an unrecognized
+     qualitative expected computes status `""` (unknown), not "abnormal" (#44).
 
 5. **Quantitative biomarkers keep their numeric `standard_value`** (the
    `колонофлор_16_25.06` golden is the regression test). Prior to this fix,

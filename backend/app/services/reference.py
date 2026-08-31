@@ -46,6 +46,17 @@ _PREFIX_NUM_RE = re.compile(
 _SCI_RANGE_RE = re.compile(
     r"^\s*(.+?)\s*[\u2013\u2014\-]\s*(.+?)\s*$"
 )
+# Leading-number extraction for a range side glued to a unit suffix
+# (``6.1 ммоль/л`` → 6.1, ``10^12/л`` → 1e12, ``9*10^7 копий/мл`` → 9e7).
+# Group 2 is the ``N*10^K`` scientific exponent, group 3 the bare ``N^K``
+# mathematical exponent — same semantics as in ``_parse_numeric_token``.
+_LEADING_NUM_RE = re.compile(
+    r"^\s*(\d+(?:[.,]\d+)?)(?:\s*[*×·x]\s*10\s*\^?\s*(\d+)|\s*\^\s*(\d+))?"
+)
+# What may trail the leading number of a range side: a unit-like tail
+# (letters, digits, spaces and unit punctuation). Anything structured
+# (``:``, ``(``, ``-``, …) means the side is not a clean number+unit.
+_UNIT_TAIL_RE = re.compile(r"^[A-Za-zА-Яа-яЁё0-9\sµ%×·*/^+]*$")
 # "допустимо любое количество" / "любое количество" — no-bound interval
 # (any value is acceptable for this analyte).
 _ANY_AMOUNT_RE = re.compile(
@@ -173,6 +184,39 @@ def _parse_numeric_token(text: str) -> Optional[float]:
     return val if math.isfinite(val) else None
 
 
+def _parse_range_side(text: str) -> Optional[float]:
+    """Parse one side of a numeric range, tolerating a glued unit suffix.
+
+    ``"6.1 ммоль/л"`` → 6.1, ``"10^12/л"`` → 1e12, ``"9*10^7 копий/мл"``
+    → 9e7, ``"8,75 ммоль/л"`` → 8.75.  Returns ``None`` when the side is
+    not a clean number (optionally followed by a unit-like tail) — a
+    structured remainder (``1:20``, a dash, a parenthesis) is rejected so
+    the caller can treat the whole range as unparseable.
+    """
+    if not text:
+        return None
+    s = str(text).strip()
+    if not s:
+        return None
+    val = _parse_numeric_token(s)
+    if val is not None:
+        return val
+    m = _LEADING_NUM_RE.match(s)
+    if not m:
+        return None
+    if not _UNIT_TAIL_RE.match(s[m.end():]):
+        return None
+    try:
+        num = float(m.group(1).replace(',', '.'))
+        if m.group(2) is not None:
+            num = num * (10 ** int(m.group(2)))
+        elif m.group(3) is not None:
+            num = num ** int(m.group(3))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return num if math.isfinite(num) else None
+
+
 def parse_reference(text: Optional[str]) -> Optional[dict]:
     """Parse a free-text reference string (as printed by a lab) into a
     structured reference dict, or ``None`` when empty.
@@ -186,7 +230,14 @@ def parse_reference(text: Optional[str]) -> Optional[dict]:
       - ``< N`` / ``> N`` (and ``<= N`` / ``>= N`` / ``≤ N`` / ``≥ N``)
       - ``менее N`` / ``более N`` / ``не более N`` / ``не менее N``
       - ``N1 - N2`` (also ``N1^N2 - N3^N4``, ``N1,N2 - N3,N4``, en/em dash)
+        — each side may carry a glued unit suffix (``3.9-6.1 ммоль/л``)
       - ``допустимо любое количество`` / ``любое количество`` → unbounded
+
+    A numeric-looking string (contains a digit and a dash) that still cannot
+    be parsed into two numbers returns ``None`` — an *unknown* reference,
+    never a junk qualitative expected string (which would mark numeric
+    values "abnormal" downstream). Strings without digits keep the
+    qualitative fallback.
     """
     if not text:
         return None
@@ -222,12 +273,19 @@ def parse_reference(text: Optional[str]) -> Optional[dict]:
         return {"kind": "interval", "low": None, "high": None}
 
     # Numeric range (possibly with scientific notation / Russian comma).
+    # A side may carry a glued unit suffix ("3.9-6.1 ммоль/л") — strip it.
     rng = _SCI_RANGE_RE.match(s)
     if rng:
-        low = _parse_numeric_token(rng.group(1))
-        high = _parse_numeric_token(rng.group(2))
+        low = _parse_range_side(rng.group(1))
+        high = _parse_range_side(rng.group(2))
         if low is not None and high is not None:
             return {"kind": "interval", "low": low, "high": high}
+        if any(ch.isdigit() for ch in s):
+            # Numeric-looking but unparseable (titer "1:20-1:40", a date,
+            # a half-numeric range): return None (unknown reference) — never
+            # a junk qualitative expected string, which would mark numeric
+            # values "abnormal" downstream.
+            return None
 
     return {"kind": "qualitative", "expected": normalize_qual(s)}
 
@@ -354,7 +412,8 @@ def _qual_status(value: Any, expected: str) -> str:
 
     1. Normalise the value string to canonical English (if textual).
     2. Compare with the already-normalised expected.
-    3. For numeric values bridge via presence / absence category.
+    3. For numeric values bridge via presence / absence category; an
+       expected term in neither category yields "" (unknown).
     """
     if value is None:
         return "abnormal"
@@ -366,13 +425,23 @@ def _qual_status(value: Any, expected: str) -> str:
             return "normal"
         return "abnormal"
 
-    # (2) numeric value ─ bridge via category.
+    # (2) numeric value ─ bridge via presence / absence category.  An
+    # expected term in neither category (free text, a legacy junk range
+    # remnant) is UNRECOGNISED: return "" (unknown) rather than a false
+    # "abnormal" — a numeric value says nothing about an unknown expectation.
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         num = float(value)
         if num == 0:
-            return "normal" if expected in _ABSENT_CANONICAL else "abnormal"
+            if expected in _ABSENT_CANONICAL:
+                return "normal"
+            if expected in _PRESENT_CANONICAL:
+                return "abnormal"
         else:
-            return "normal" if expected in _PRESENT_CANONICAL else "abnormal"
+            if expected in _PRESENT_CANONICAL:
+                return "normal"
+            if expected in _ABSENT_CANONICAL:
+                return "abnormal"
+        return ""
 
     return "abnormal"
 

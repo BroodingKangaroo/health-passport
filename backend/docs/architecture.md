@@ -64,7 +64,8 @@ Replaces the old `range_min`/`range_max` + qualitative-flag model:
   - `{kind:'qualitative', expected}` — text results (e.g. "Negative")
 - There is **no separate `result_type`**; the kind is the sole discriminator.
 - `status` is `low|normal|high` for interval results, `normal|abnormal` for
-  qualitative (mismatch), **computed at save time by
+  qualitative (mismatch), `""` (unknown) for a numeric value against an
+  unrecognized qualitative expected, **computed at save time by
   `app/services/reference.py` (`compute_status`) and persisted** to
   `biomarker_readings.status` — it is NOT recomputed on read; serializers
   serve the stored column.

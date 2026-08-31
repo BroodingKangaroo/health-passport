@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   Settings,
   Trash2,
@@ -108,6 +109,7 @@ export function EntrySettings({
   const t = useTranslations('timeline.entrySettings')
   const tc = useTranslations('common')
   const locale = useLocale()
+  const queryClient = useQueryClient()
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -163,6 +165,14 @@ export function EntrySettings({
     setError(null)
     try {
       await deleteEntry(event.id)
+      // Invalidate cached server state so the deletion is reflected
+      // everywhere immediately (the flowsheet caches for 5 min, so
+      // invalidating only ['timeline'] would serve the deleted entry).
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['timeline'] }),
+        queryClient.invalidateQueries({ queryKey: ['flowsheet'] }),
+        queryClient.invalidateQueries({ queryKey: ['biomarker-definitions'] }),
+      ])
       setConfirmOpen(false)
       onDeleted()
     } catch (e) {
