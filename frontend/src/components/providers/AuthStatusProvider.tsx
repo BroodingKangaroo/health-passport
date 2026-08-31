@@ -23,11 +23,21 @@ interface AuthStatusContextValue {
 
 const AuthStatusContext = createContext<AuthStatusContextValue | null>(null)
 
+// Bounded retries for the backend token verification: a transient network
+// error or 5xx must not leave the header skeleton stuck on 'loading' forever
+// (ISSUES.md #63). After the retries are exhausted the provider degrades to
+// 'unauthenticated' (recoverable via refresh()/login).
+const VERIFY_ATTEMPTS = 3
+const VERIFY_RETRY_BASE_MS = 1500
+
 export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const { data: session, status: sessionStatus } = useSession()
   const [user, setUser] = useState<CurrentUser | null>(null)
   const [anonId, setAnonId] = useState<string | null>(null)
   const [authed, setAuthed] = useState(false)
+  // True when token verification failed for good (retries exhausted): the
+  // status then degrades to 'unauthenticated' instead of a stuck skeleton.
+  const [verifyFailed, setVerifyFailed] = useState(false)
   const [nonce, setNonce] = useState(0)
 
   const token = session?.accessToken ?? null
@@ -39,6 +49,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   if (prevToken !== token) {
     setPrevToken(token)
     setAuthed(false)
+    setVerifyFailed(false)
     setUser(null)
     setAnonId(null)
   }
@@ -49,33 +60,50 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
       : token
         ? authed
           ? 'authenticated'
-          : 'loading'
+          : verifyFailed
+            ? 'unauthenticated'
+            : 'loading'
         : 'unauthenticated'
 
   useEffect(() => {
     if (sessionStatus === 'loading') return
     let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
 
     if (token) {
-      fetchCurrentUser(token)
-        .then((me) => {
-          if (cancelled) return
-          if (me) {
-            setUser(me)
-            setAuthed(true)
-          } else {
-            // Token is invalid/expired on the backend but NextAuth still has a
-            // session — clear it so the menu and data stay consistent.
-            setUser(null)
-            setAuthed(false)
-            signOut({ callbackUrl: '/' })
-          }
-        })
-        .catch(() => {
-          if (cancelled) return
-          setUser(null)
-          setAuthed(false)
-        })
+      const attempt = (left: number) => {
+        fetchCurrentUser(token)
+          .then((me) => {
+            if (cancelled) return
+            if (me) {
+              setUser(me)
+              setAuthed(true)
+            } else {
+              // Token is invalid/expired on the backend but NextAuth still has a
+              // session — clear it so the menu and data stay consistent.
+              setUser(null)
+              setAuthed(false)
+              signOut({ callbackUrl: '/' })
+            }
+          })
+          .catch(() => {
+            if (cancelled) return
+            if (left > 1) {
+              // Transient failure: retry with linear backoff…
+              timer = setTimeout(
+                () => attempt(left - 1),
+                VERIFY_RETRY_BASE_MS * (VERIFY_ATTEMPTS - left + 1),
+              )
+            } else {
+              // …then degrade to unauthenticated instead of a permanent
+              // skeleton (ISSUES.md #63).
+              setVerifyFailed(true)
+              setUser(null)
+              setAuthed(false)
+            }
+          })
+      }
+      attempt(VERIFY_ATTEMPTS)
     } else {
       fetchAnonId()
         .then((id) => {
@@ -88,6 +116,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true
+      if (timer) clearTimeout(timer)
     }
   }, [token, sessionStatus, nonce])
 
