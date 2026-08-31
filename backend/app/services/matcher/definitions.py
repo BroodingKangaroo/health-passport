@@ -77,6 +77,27 @@ def _linearized_anchor(translation: dict, *names: str) -> tuple[dict, Optional[s
     )
 
 
+def _anchor_translation(
+    raw_unit: str, en_name: str, raw_name: str, category: str
+) -> tuple[dict, Optional[str]]:
+    """Decide a definition's first-seen canonical anchor.
+
+    Ratio-like analytes are dimensionless: the ratio anchor is forced BEFORE
+    any unit translation, so a concentration unit leaking from the table
+    (e.g. a 'мг/дл' column header on a ratio row) never becomes the
+    canonical — the ``_convert_to_canonical`` ratio pass-through would never
+    fire for a concentration canonical (ISSUES.md #46). Otherwise translate
+    the raw unit and linearize log-scale anchors (see ``_linearized_anchor``).
+
+    Returns ``(translation, scale_function)`` like ``_linearized_anchor``.
+    """
+    if _is_ratio_name(en_name, raw_name):
+        return {"unit": "ratio", "kind": "linear", "inferred": True}, None
+    return _linearized_anchor(
+        _translated_unit(raw_unit, en_name, category), en_name, raw_name
+    )
+
+
 def _rescale_reference(ref: Optional[dict], scale_function: str) -> Optional[dict]:
     """Apply a scale function to an interval reference's numeric bounds
     (used when a definition is anchored from a log-scale document)."""
@@ -240,8 +261,9 @@ def verify_or_create(
             canonical_kind = "linear"
             canonical_unit_inferred = False
         else:
-            translation = _translated_unit(raw_biomarker.unit, en_name, raw_biomarker.category)
-            translation, anchor_sf = _linearized_anchor(translation, en_name, raw_name)
+            translation, anchor_sf = _anchor_translation(
+                raw_biomarker.unit, en_name, raw_name, raw_biomarker.category
+            )
             canonical_unit = translation["unit"]
             canonical_kind = translation["kind"]
             canonical_unit_inferred = bool(translation["inferred"])

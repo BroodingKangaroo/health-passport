@@ -143,6 +143,30 @@ def test_ratio_row_anchors_ratio_unit_without_scaling(db_session):
     assert compute_status(res.standard_value, res.reference) == "normal"
 
 
+def test_ratio_row_anchors_ratio_over_leaked_concentration_unit(db_session):
+    """ISSUES.md #46: a ratio analyte whose table leaks a LINEAR
+    concentration unit (мг/дл column header) must anchor 'ratio', not the
+    concentration — previously the ratio check only ran for log-kind/empty
+    units, so the _convert_to_canonical ratio pass-through never fired and
+    every later reading of the def was measured against a concentration
+    canonical."""
+    name = "Соотношение Bacteroides и Prevotella"
+    en = "Bacteroides/Prevotella ratio"
+    defn = verify_or_create(
+        db_session, name, None, "user-a",
+        _raw(name, "1.2", "мг/дл", "0.5 - 2.0", en=en),
+    )
+    assert defn.canonical_unit == "ratio"
+    assert defn.canonical_kind == "linear"
+    res = _build_standardized_local(
+        _raw(name, "1.2", "мг/дл", "0.5 - 2.0", en=en), defn, None,
+    )
+    assert res.standard_value == 1.2
+    assert res.standard_unit == "ratio"
+    assert res.scale_function is None
+    assert res.needs_review is False
+
+
 def test_qualitative_lg_row_anchors_unitless(db_session):
     defn = verify_or_create(
         db_session, "Bacteroides thetaiotaomicron", None, "user-a",
