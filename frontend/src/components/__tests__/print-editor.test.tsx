@@ -1,3 +1,4 @@
+import { dateId } from '@/lib/print-document'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { useEffect } from 'react'
@@ -124,10 +125,6 @@ const mockBiomarkers: BiomarkerResult[] = [
     status: 'high',
   },
 ]
-
-function dateId(d: DateHeader): string {
-  return d.label + (d.sub ? '--' + d.sub : '')
-}
 
 function PrintEditorInit(props: {
   dates: DateHeader[]

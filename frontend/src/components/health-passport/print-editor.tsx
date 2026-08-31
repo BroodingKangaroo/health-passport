@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
 import { formatReference } from '@/lib/reference'
 import { qualitativeLabel } from '@/lib/qualitative-labels'
+import { dateId } from '@/lib/print-document'
 import type { PrintLang, DateHeader, MatrixCategory, BiomarkerResult, BiomarkerDefinition, CurrentUser } from '@/lib/types'
 
 const LANG_NAME: Record<PrintLang, string> = {
@@ -116,10 +117,6 @@ const TABLE_HEADINGS: Record<PrintLang, { biomarker: string; title: string; note
     title: 'Wyniki bada\u0144 laboratoryjnych w czasie',
     note: '* Warto\u015Bci poza zakresem referencyjnym',
   },
-}
-
-function dateId(d: DateHeader): string {
-  return d.label + (d.sub ? '--' + d.sub : '')
 }
 
 

@@ -7,6 +7,7 @@ import { fetchFlowsheetData } from '@/services/api'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
 import { useAuthStatus } from '@/components/providers/AuthStatusProvider'
 import { PrintEditor } from '@/components/health-passport/print-editor'
+import { dateId } from '@/lib/print-document'
 import type { FlowsheetResponse, PrintLang } from '@/lib/types'
 
 export function PrintEditorView() {
@@ -22,7 +23,7 @@ export function PrintEditorView() {
     fetchFlowsheetData()
       .then((res: FlowsheetResponse) => {
         setData(res)
-        const allDateLabels = res.dates.map((d) => d.label + (d.sub ? '--' + d.sub : ''))
+        const allDateLabels = res.dates.map(dateId)
         const allRowIds = res.matrix.flatMap((cat) => cat.rows.map((r) => r.id))
         initFilters(allDateLabels, allRowIds)
       })
