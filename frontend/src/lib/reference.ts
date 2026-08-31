@@ -151,6 +151,11 @@ const _PRESENT_LOWER = new Set([..._PRESENT].map((v) => v.toLowerCase()))
 
 /** Build an interval reference, or null when both bounds are null. */
 export function intervalReference(low: number | null, high: number | null): ReferenceInterval | null {
+  // Non-finite numbers must not survive (ISSUES.md #64): JSON.stringify
+  // turns NaN into null, silently reshaping a two-sided interval into a
+  // one-sided one on save.
+  if (low != null && !Number.isFinite(low)) low = null
+  if (high != null && !Number.isFinite(high)) high = null
   if (low == null && high == null) return null
   return { kind: 'interval', low, high }
 }

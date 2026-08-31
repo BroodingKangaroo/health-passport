@@ -27,18 +27,28 @@ function parseType(ref: Reference | null): { type: RefType; lo: string; hi: stri
   return { type: 'none', lo: '', hi: '' }
 }
 
+function parseNumber(s: string): number | null {
+  if (!s) return null
+  const v = Number.parseFloat(s)
+  return Number.isFinite(v) ? v : null
+}
+
 function buildReference(type: RefType, lo: string, hi: string): Reference | null {
+  const low = parseNumber(lo)
+  const high = parseNumber(hi)
   switch (type) {
     case 'interval':
-      // A two-sided interval needs BOTH bounds. If only one is filled, emit
-      // nothing rather than a broken "5–0" that would flag every value as
-      // abnormal. (Use the < / > types for single-bound references.)
-      if (!lo || !hi) return null
-      return intervalReference(Number.parseFloat(lo), Number.parseFloat(hi))
+      // A two-sided interval needs BOTH bounds to be numeric. If one is
+      // missing OR non-numeric, emit nothing rather than a NaN bound —
+      // that would render "NaN – 5" and, via JSON.stringify(NaN → null),
+      // silently reshape the interval into one-sided on save
+      // (ISSUES.md #64). (Use the < / > types for single-bound references.)
+      if (low == null || high == null) return null
+      return intervalReference(low, high)
     case 'lt':
-      return hi ? intervalReference(null, Number.parseFloat(hi)) : null
+      return high != null ? intervalReference(null, high) : null
     case 'gt':
-      return lo ? intervalReference(Number.parseFloat(lo), null) : null
+      return low != null ? intervalReference(low, null) : null
     case 'none':
       return null
   }
