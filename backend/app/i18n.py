@@ -142,6 +142,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Incorrect email or password",
         "ru": "Неверный email или пароль",
     },
+    "auth.too_many_login_attempts": {
+        "en": "Too many login attempts. Try again later.",
+        "ru": "Слишком много попыток входа. Попробуйте позже.",
+    },
     "auth.too_many_reset_requests": {
         "en": "Too many reset requests. Try again later.",
         "ru": "Слишком много запросов на сброс пароля. Попробуйте позже.",

@@ -222,16 +222,39 @@ def register(
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    """Login with email and password."""
+def login(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
+    """Login with email and password.
+
+    Failed attempts are throttled per-email and per-IP (ISSUES.md #51) —
+    brute-forcing is no longer unthrottled while forgot-password already
+    carries per-email/per-IP windows."""
+    client_ip = request.client.host if request.client else "unknown"
+    email_key = f"login:email:{form_data.username.lower()}"
+    ip_key = f"login:ip:{client_ip}"
+    if (
+        _throttled(email_key, _LOGIN_FAIL_EMAIL_LIMIT, _LOGIN_FAIL_WINDOW, record=False)
+        or _throttled(ip_key, _LOGIN_FAIL_IP_LIMIT, _LOGIN_FAIL_WINDOW, record=False)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=i18n.tr("auth.too_many_login_attempts"),
+        )
+    _prune_throttle_keys()
+
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
+        _record_throttle(email_key)
+        _record_throttle(ip_key)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=i18n.tr("auth.incorrect_email_or_password"),
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.id, "email": user.email},
@@ -377,34 +400,51 @@ class ResetPasswordRequest(BaseModel):
 
 RESET_TOKEN_TTL_MINUTES = 30
 
-# In-memory rate limiting for the request endpoint (no infra): per-email and
-# per-IP windows keep the endpoint from being abused to spam mailboxes.
-_reset_attempts: dict[str, deque] = defaultdict(deque)
-_RESET_EMAIL_LIMIT = 5
-_RESET_IP_LIMIT = 20
-_RESET_WINDOW = timedelta(hours=1)
-_RESET_ATTEMPTS_MAX_KEYS = 10_000
+# In-memory rate limiting (no infra): per-key sliding windows keep the auth
+# endpoints from being abused. The forgot-password endpoint throttles every
+# request per-email and per-IP; login throttles FAILED attempts only so
+# legitimate users sharing an IP are never locked out (ISSUES.md #51).
+_throttle_windows: dict[str, deque] = defaultdict(deque)
+_THROTTLE_MAX_KEYS = 10_000
 
 
-def _reset_throttled(key: str, limit: int) -> bool:
-    """Return True if `key` has exceeded `limit` requests in the window."""
+def _throttled(key: str, limit: int, window: timedelta, record: bool = True) -> bool:
+    """Return True if `key` has reached `limit` entries in the window.
+
+    Records the current attempt unless ``record=False`` — failed-attempt
+    throttles check first and append only via :func:`_record_throttle` when
+    the attempt actually fails."""
     now = datetime.now(timezone.utc)
-    q = _reset_attempts[key]
-    while q and now - q[0] > _RESET_WINDOW:
+    q = _throttle_windows[key]
+    while q and now - q[0] > window:
         q.popleft()
     if len(q) >= limit:
         return True
-    q.append(now)
+    if record:
+        q.append(now)
     return False
 
 
-def _prune_reset_attempts() -> None:
+def _record_throttle(key: str) -> None:
+    _throttle_windows[key].append(datetime.now(timezone.utc))
+
+
+def _prune_throttle_keys() -> None:
     """Bound the in-memory throttle: drop keys whose windows have emptied."""
-    if len(_reset_attempts) < _RESET_ATTEMPTS_MAX_KEYS:
+    if len(_throttle_windows) < _THROTTLE_MAX_KEYS:
         return
-    for key, q in list(_reset_attempts.items()):
+    for key, q in list(_throttle_windows.items()):
         if not q:
-            del _reset_attempts[key]
+            del _throttle_windows[key]
+
+
+_RESET_EMAIL_LIMIT = 5
+_RESET_IP_LIMIT = 20
+_RESET_WINDOW = timedelta(hours=1)
+
+_LOGIN_FAIL_EMAIL_LIMIT = 10
+_LOGIN_FAIL_IP_LIMIT = 30
+_LOGIN_FAIL_WINDOW = timedelta(minutes=15)
 
 
 def _hash_reset_token(token: str) -> str:
@@ -429,14 +469,14 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest, db: Ses
     client_ip = request.client.host if request.client else "unknown"
     email_key = body.email.lower()
     if (
-        _reset_throttled(f"email:{email_key}", _RESET_EMAIL_LIMIT)
-        or _reset_throttled(f"ip:{client_ip}", _RESET_IP_LIMIT)
+        _throttled(f"reset:email:{email_key}", _RESET_EMAIL_LIMIT, _RESET_WINDOW)
+        or _throttled(f"reset:ip:{client_ip}", _RESET_IP_LIMIT, _RESET_WINDOW)
     ):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=i18n.tr("auth.too_many_reset_requests"),
         )
-    _prune_reset_attempts()
+    _prune_throttle_keys()
 
     _purge_stale_tokens(db)
 

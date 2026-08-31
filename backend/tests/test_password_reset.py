@@ -12,13 +12,13 @@ import pytest_asyncio
 from app.api import auth as auth_api
 from app.auth import authenticate_user
 from app.db.models import PasswordResetToken, Patient
-from tests.seed_data import TEST_USER_EMAIL
+from tests.seed_data import TEST_USER_EMAIL, seed_test_db
 
 
 @pytest.fixture(autouse=True)
 def _clear_throttle():
     """The throttle is module-global state; keep tests independent."""
-    auth_api._reset_attempts.clear()
+    auth_api._throttle_windows.clear()
     yield
 
 
@@ -240,3 +240,79 @@ class TestRegisterValidation:
         )
         assert resp.status_code == 400
         assert "at least" in resp.json()["detail"]
+
+
+class TestLoginThrottle:
+    """ISSUES.md #51: failed login attempts are throttled per-email and
+    per-IP; successful logins never count against the window."""
+
+    @pytest.fixture
+    def login_client(self):
+        """A dedicated client on a StaticPool in-memory DB: `login` is a sync
+        endpoint executed in the threadpool, so a plain in-memory engine
+        (SingletonThreadPool) would hand the thread an empty database."""
+        from fastapi import FastAPI
+        from httpx import ASGITransport, AsyncClient
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+
+        from app.db.session import Base
+
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        Base.metadata.create_all(bind=engine)
+        session = TestingSessionLocal()
+        seed_test_db(session)
+
+        from app.db.session import get_db
+
+        app = FastAPI()
+        app.include_router(auth_api.router)
+
+        async def override_get_db():
+            yield session
+
+        app.dependency_overrides[get_db] = override_get_db
+        transport = ASGITransport(app=app)
+        yield AsyncClient(transport=transport, base_url="http://test")
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+
+    async def test_locks_out_after_repeated_failures(self, login_client):
+        body = {"username": TEST_USER_EMAIL, "password": "wrong-password"}
+        for _ in range(10):
+            resp = await login_client.post("/api/auth/login", data=body)
+            assert resp.status_code == 401
+        throttled = await login_client.post("/api/auth/login", data=body)
+        assert throttled.status_code == 429
+
+    async def test_correct_password_after_failures_still_throttled(
+        self, login_client
+    ):
+        from tests.seed_data import TEST_USER_PASSWORD
+
+        body = {"username": TEST_USER_EMAIL, "password": "wrong-password"}
+        for _ in range(10):
+            await login_client.post("/api/auth/login", data=body)
+        # Even the CORRECT password is refused while the failure window is
+        # full — that is what makes the throttle a brute-force defense.
+        resp = await login_client.post(
+            "/api/auth/login",
+            data={"username": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD},
+        )
+        assert resp.status_code == 429
+
+    async def test_successful_logins_do_not_consume_window(
+        self, login_client
+    ):
+        from tests.seed_data import TEST_USER_PASSWORD
+
+        good = {"username": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD}
+        for _ in range(15):
+            resp = await login_client.post("/api/auth/login", data=good)
+            assert resp.status_code == 200
