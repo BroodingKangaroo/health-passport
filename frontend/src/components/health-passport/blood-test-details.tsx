@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl'
 import { FileText, Download, Printer, FlaskConical, Paperclip, Settings } from 'lucide-react'
 
 import { cn, fetchAuthedObjectUrl, printAuthedDocument } from '@/lib/utils'
+import { activateOnKey } from '@/lib/a11y'
 import { ResultsPanel } from './results-panel'
 import { EntrySettings } from './entry-settings'
 import type { MedicalEvent, BiomarkerResult } from '@/lib/types'
@@ -126,9 +127,13 @@ export function BloodTestDetails({
                 return (
                   <div
                     key={att.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isActive}
                     onClick={() => setActiveAttachmentId(att.id)}
+                    onKeyDown={(e) => activateOnKey(e, () => setActiveAttachmentId(att.id))}
                     className={cn(
-                      'flex cursor-pointer items-center justify-between rounded-xl border p-4 transition-colors',
+                      'flex cursor-pointer items-center justify-between rounded-xl border p-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                       isActive
                         ? 'border-muted-foreground/50 bg-muted/20'
                         : 'border-border bg-card hover:bg-muted/10',

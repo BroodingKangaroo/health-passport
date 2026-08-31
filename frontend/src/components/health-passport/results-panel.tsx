@@ -22,6 +22,7 @@ import {
   displayUnit,
 } from '@/lib/reference'
 import { qualitativeLabel } from '@/lib/qualitative-labels'
+import { activateOnKey } from '@/lib/a11y'
 import { ExpandedBiomarkerDetails } from './expanded-biomarker-details'
 import type { BiomarkerResult, MergedSource, Status } from '@/lib/types'
 
@@ -319,6 +320,7 @@ function SortHeaderCell({
   const dir = active ? sort.dir : null
   return (
     <div
+      role="columnheader"
       className="group min-w-0"
       aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : undefined}
     >
@@ -366,11 +368,17 @@ function FlowRow({
   return (
     <div className={cn('border-b border-border', isOpen && 'bg-muted/40')}>
       <div
+        role={expandable ? 'button' : undefined}
+        tabIndex={expandable ? 0 : undefined}
+        aria-expanded={expandable ? isOpen : undefined}
         onClick={onToggle}
+        onKeyDown={(e) => {
+          if (expandable) activateOnKey(e, onToggle)
+        }}
         className={cn(
           GRID_COLS,
           'px-4 py-3 text-sm transition-colors',
-          expandable && 'cursor-pointer hover:bg-muted/50',
+          expandable && 'cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none',
         )}
       >
         <span className="truncate font-semibold text-foreground">

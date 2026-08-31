@@ -12,6 +12,7 @@ import { Sparkline } from '@/components/shared/Sparkline'
 import { ScaleNote } from '@/components/shared/ScaleNote'
 import { formatReference, intervalBounds, qualitativeToNumber, isQualitative } from '@/lib/reference'
 import { qualitativeLabel } from '@/lib/qualitative-labels'
+import { activateOnKey } from '@/lib/a11y'
 import type { DateHeader, MatrixCategory, MatrixCell, BiomarkerResult, Status } from '@/lib/types'
 
 const statusText: Record<Status, string> = {
@@ -144,16 +145,22 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
                 return (
                   <div
                     key={row.id}
+                    role={hasBio ? 'button' : undefined}
+                    tabIndex={hasBio ? 0 : undefined}
+                    aria-disabled={hasBio ? undefined : true}
                     onClick={() => {
                       if (hasBio) {
                         router.push('/details?id=' + row.id + '&from=flowsheet')
                       }
                     }}
+                    onKeyDown={(e) => {
+                      if (hasBio) activateOnKey(e, () => router.push('/details?id=' + row.id + '&from=flowsheet'))
+                    }}
                     className={cn(
                       'grid',
                       GRID_COLS,
                       'border-b border-border px-4 py-3 text-sm transition-colors',
-                      hasBio && 'cursor-pointer hover:bg-muted/50',
+                      hasBio && 'cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none',
                     )}
                     style={{ gridTemplateColumns: gridTemplateCols }}
                   >
