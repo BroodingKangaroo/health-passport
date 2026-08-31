@@ -116,6 +116,29 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
 
+def _sse_response(response: Response, body) -> StreamingResponse:
+    """SSE StreamingResponse carrying the headers dependencies set on the
+    injected ``Response``. FastAPI only merges dependency-set headers when the
+    endpoint returns a plain (non-Response) value, so returning a
+    StreamingResponse directly would silently drop the anonymous session
+    ``Set-Cookie`` issued by ``get_current_user_or_anon`` (ISSUES.md #38)."""
+    resp = StreamingResponse(
+        body,
+        media_type="text/event-stream",
+        headers={
+            # Prevent proxies (nginx, etc.) from buffering the SSE stream so
+            # progress events reach the client incrementally instead of all at once.
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+    for name, value in response.raw_headers:
+        if name.lower() == b"set-cookie":
+            resp.raw_headers.append((name, value))
+    return resp
+
+
 KEEPALIVE_INTERVAL_S = 15.0
 
 
@@ -395,7 +418,7 @@ async def extract_medical_data(
     if client is None:
         async def error_stream():
             yield _sse("error", {"message": i18n.tr("ai.sse_no_mistral_key")})
-        return StreamingResponse(error_stream(), media_type="text/event-stream")
+        return _sse_response(response, error_stream())
 
     # Check AI extraction limit. Defer the commit (commit=False) so a request
     # that fails file validation below does not burn the user's extraction
@@ -584,17 +607,7 @@ async def extract_medical_data(
             refund_ai_extraction(db, user_id, is_anonymous)
             yield _sse("error", {"message": error})
 
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            # Prevent proxies (nginx, etc.) from buffering the SSE stream so
-            # progress events reach the client incrementally instead of all at once.
-            "Cache-Control": "no-cache, no-transform",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
-    )
+    return _sse_response(response, event_stream())
 
 
 def _category_translations(

@@ -182,15 +182,20 @@ def verify_or_create(
     # raw name is still stored as a synonym so future exact-match by the raw
     # form still works.
     canonical_name = _normalize_name(raw_name)
-    defn_id = f"local-{hashlib.md5(canonical_name.encode()).hexdigest()[:12]}"
+    # Per-user id (same scheme as the manual-entry path in entries.py): two
+    # users extracting the same novel analyte must get isolated definitions,
+    # never collide on a shared primary key.
+    defn_id = f"local-{user_id}-{hashlib.md5(canonical_name.encode()).hexdigest()[:12]}"
 
     # Early existence check: within one uncommitted session (offline validators,
     # batch tools) a definition created for an earlier document is still PENDING
     # — re-inserting the same id would raise UNIQUE-violation, and recovering
     # after db.rollback() is impossible because rollback discards that very
-    # object. Mirrors _make_local_copy's check-before-insert behavior.
+    # object. Ownership-filtered so a def is only ever reused by its owner.
+    # Mirrors _make_local_copy's check-before-insert behavior.
     existing_local = db.query(BiomarkerDefinitionModel).filter(
-        BiomarkerDefinitionModel.id == defn_id
+        BiomarkerDefinitionModel.id == defn_id,
+        BiomarkerDefinitionModel.user_id == user_id,
     ).first()
     if existing_local is not None:
         return existing_local
@@ -273,7 +278,8 @@ def verify_or_create(
     except IntegrityError:
         db.rollback()
         existing = db.query(BiomarkerDefinitionModel).filter(
-            BiomarkerDefinitionModel.id == defn_id
+            BiomarkerDefinitionModel.id == defn_id,
+            BiomarkerDefinitionModel.user_id == user_id,
         ).first()
         if existing:
             return existing
@@ -297,9 +303,10 @@ def _make_local_copy(
     # so cosmetic variants collapse to the same local definition. See
     # ``verify_or_create`` for the full rationale.
     canonical_name = _normalize_name(raw_biomarker.name)
-    defn_id = f"local-{hashlib.md5(canonical_name.encode()).hexdigest()[:12]}"
+    defn_id = f"local-{user_id}-{hashlib.md5(canonical_name.encode()).hexdigest()[:12]}"
     existing = db.query(BiomarkerDefinitionModel).filter(
-        BiomarkerDefinitionModel.id == defn_id
+        BiomarkerDefinitionModel.id == defn_id,
+        BiomarkerDefinitionModel.user_id == user_id,
     ).first()
     if existing:
         return existing
@@ -376,7 +383,8 @@ def _make_local_copy(
     except IntegrityError:
         db.rollback()
         existing = db.query(BiomarkerDefinitionModel).filter(
-            BiomarkerDefinitionModel.id == defn_id
+            BiomarkerDefinitionModel.id == defn_id,
+            BiomarkerDefinitionModel.user_id == user_id,
         ).first()
         if existing:
             return existing

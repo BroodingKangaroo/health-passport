@@ -48,35 +48,8 @@ Findings verified against the current working tree (HEAD `8c0a969`) by four
 parallel deep-dive reviews (backend API/DB, matcher package, frontend data
 layer, frontend components); top findings re-verified manually. Line numbers
 refer to files as they stand now. Severity in brackets. Plan of record:
-P0 = #37–#38; P1 = #39–#50 (backend data/security); P2 = #61–#68 (frontend
-correctness); P3 = refactors/lows.
-
-### High
-
-**#37 [high] Matcher local-definition ids collide across users.**
-`app/services/matcher/definitions.py:185` builds `local-{md5(name)[:12]}`
-with no `user_id`, and the existence check (`:192-196`) and IntegrityError
-recovery (`:275-280`) filter by bare id — user B extracting the same novel
-analyte user A anchored gets A's definition (names/reference/canonical unit).
-`entries.py:153-156` already uses `local-{user_id}-{md5}`; the matcher path
-both breaks tenancy and introduces a third id scheme (duplicates vs manual
-path). Fix: switch to the entries.py scheme, add ownership filters, migrate
-existing rows (`^local-[0-9a-f]{12}$` with non-NULL user_id → rename + remap
-`biomarker_readings.definition_id`; on collision with a same-owner def, remap
-readings and delete the old row; NULL-user curated locals keep sentinel ids).
-`backend/docs/architecture.md:45` pins the id format — update in the same
-change.
-
-**#38 [high] `/api/extract` never delivers the anonymous session cookie.**
-`app/api/ai.py:396-398, 587-597` return `StreamingResponse` directly while
-`get_current_user_or_anon` sets the anon `Set-Cookie` on the injected
-`Response`; FastAPI merges dependency-set headers only when the endpoint
-returns a non-`Response` value (verified against FastAPI 0.115.0). A visitor
-whose first API call is `/api/extract` gets no cookie → the 5-extraction anon
-limit is bypassable (each request mints a new principal) and orphaned
-`UsageLimit` rows accumulate. Fix: extend the streaming response's raw headers
-with the injected response's (or set the cookie in middleware). Regression
-test: `Set-Cookie` present on first extract.
+P1 = #39–#50 (backend data/security); P2 = #61–#68 (frontend correctness);
+P3 = refactors/lows.
 
 ### Medium — backend data integrity / security
 

@@ -42,7 +42,10 @@ code, `/api/extract`, entry persistence, merge/delete, or DB migrations.
   tables.
 - Ungrounded biomarkers extracted from a document are created dynamically as
   `scope=local` definitions at extraction time (id
-  `local-{md5(name)[:12]}`), never pre-seeded.
+  `local-{user_id}-{md5(name)[:12]}` — per-user, the same scheme as the
+  manual-entry path; legacy tenant-blind `local-{md5(name)[:12]}` rows are
+  renamed and their readings remapped by `migrate_local_definition_ids()`
+  at startup, ISSUES.md #37), never pre-seeded.
 - Seeding also writes `data/loinc_aliases.json` (folded-code → survivor-code
   map from the dedupe step). It is **committed** and load-bearing: the
   matcher's curated-code redirect (`matcher/loinc_store.py`) silently degrades

@@ -1,6 +1,16 @@
 import json
 from unittest.mock import patch
 
+import pytest
+import pytest_asyncio
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app.api.anon_session import verify_anon_cookie
+from app.db.session import Base, get_db
 from app.schemas.ai import (
     RawBiomarker,
     RawInstrumentalData,
@@ -12,6 +22,7 @@ from app.schemas.ai import (
     TranslatedText,
 )
 from app.services.extractor import OCRProcessingError
+from config import ANONYMOUS_COOKIE_NAME
 
 
 def _parse_sse_result(body: str) -> dict:
@@ -454,3 +465,81 @@ class TestExtractEndpoint:
                 files={"file": (filename, b"fake content", "application/octet-stream")},
             )
             assert resp.status_code == 200, f"Failed for {filename}"
+
+
+@pytest.fixture(scope="function")
+def anon_db_session():
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+    session = TestingSessionLocal()
+    yield session
+    session.close()
+    Base.metadata.drop_all(bind=engine)
+
+
+@pytest_asyncio.fixture
+async def anon_extract_client(anon_db_session):
+    """Real auth dependencies (no principal override): a request with no token
+    takes the production anonymous-session path, where
+    ``get_current_user_or_anon`` sets the signed ``Set-Cookie`` on the injected
+    ``Response``."""
+    app = FastAPI()
+    from app.api.ai import router as ai_router
+
+    app.include_router(ai_router)
+
+    async def override_get_db():
+        yield anon_db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+
+class TestAnonCookieDelivery:
+    """ISSUES.md #38 — the anon session cookie must survive the SSE
+    StreamingResponse: FastAPI drops dependency-set headers when an endpoint
+    returns a Response object directly, which previously made a first
+    /api/extract visit cookieless (each request minted a fresh principal and
+    the anon extraction limit was bypassable)."""
+
+    async def test_error_stream_delivers_anon_cookie_on_first_extract(
+        self, anon_extract_client, monkeypatch
+    ):
+        monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+
+        resp = await anon_extract_client.post(
+            "/api/extract",
+            files={"file": ("lab.pdf", b"fake pdf content", "application/pdf")},
+        )
+
+        assert resp.status_code == 200
+        assert "event: error" in resp.text
+        minted = resp.cookies.get(ANONYMOUS_COOKIE_NAME)
+        assert minted and verify_anon_cookie(minted) == minted.split(".")[0]
+
+    @patch("app.api.ai.extractor.llm_extract")
+    @patch("app.api.ai.extractor.ocr_document")
+    async def test_result_stream_delivers_anon_cookie_on_first_extract(
+        self, mock_ocr, mock_llm, anon_extract_client, monkeypatch
+    ):
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        mock_ocr.return_value = "OCR markdown text"
+        mock_llm.return_value = RawMedicalRecord(entry_type="unknown")
+
+        resp = await anon_extract_client.post(
+            "/api/extract",
+            files={"file": ("lab.pdf", b"fake pdf content", "application/pdf")},
+        )
+
+        assert resp.status_code == 200
+        data = _parse_sse_result(resp.text)
+        assert data["entry_type"] == "unknown"
+        minted = resp.cookies.get(ANONYMOUS_COOKIE_NAME)
+        assert minted and verify_anon_cookie(minted) == minted.split(".")[0]
