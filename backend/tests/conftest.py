@@ -86,6 +86,7 @@ def auth_token(db_session):
 
 @pytest_asyncio.fixture
 async def client(db_session, auth_token):
+    from app.api.account import router as account_router
     from app.api.ai import router as ai_router
     from app.api.auth import get_current_user, get_current_user_or_anon
     from app.api.biomarkers import router as biomarkers_router
@@ -102,6 +103,7 @@ async def client(db_session, auth_token):
     app.include_router(entries_router)
     app.include_router(ai_router)
     app.include_router(biomarkers_router)
+    app.include_router(account_router)
     app.include_router(usage_limits_router)
 
     async def override_get_db():

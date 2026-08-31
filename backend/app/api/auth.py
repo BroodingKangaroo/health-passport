@@ -26,11 +26,13 @@ from app.auth import (
     decode_token,
     get_password_hash,
     get_user_by_email,
+    verify_password,
 )
 from app.db import models
 from app.db.session import get_db
 from app.services.data_migration import copy_anonymous_data
 from app.services.mailer import send_reset_email
+from app.services.upload_cleanup import unlink_unreferenced_files
 from config import ANONYMOUS_COOKIE_NAME, FRONTEND_URL
 
 logger = logging.getLogger(__name__)
@@ -247,6 +249,105 @@ def read_anon_id(
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.post("/change-password")
+def change_password(
+    body: ChangePasswordRequest,
+    current_user: models.Patient = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Set a new password after verifying the current one (registered only).
+
+    Anonymous principals fail `get_current_user` with 401 (not authenticated),
+    mirroring /api/auth/me. Existing JWT sessions stay valid until their normal
+    expiry — same semantics as password reset.
+    """
+    if len(body.new_password) < PASSWORD_MIN_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=i18n.tr("auth.password_too_short", min_length=PASSWORD_MIN_LENGTH),
+        )
+    if not verify_password(body.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=i18n.tr("auth.incorrect_password"),
+        )
+    current_user.hashed_password = get_password_hash(body.new_password)
+    db.commit()
+    return {"message": i18n.tr("auth.message_password_changed")}
+
+
+@router.delete("/account")
+async def delete_account(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    user_data: tuple[Optional[models.Patient], str, bool] = Depends(get_current_user_or_anon),
+):
+    """Permanently delete the caller's data — the whole account for a
+    registered principal, the anonymous session's data otherwise.
+
+    Cascade order mirrors `DELETE /api/entry`: entries first (the ORM
+    `all, delete-orphan` cascade removes readings, visit_data, instrumental_data
+    and attachment rows), then on-disk files are unlinked only when no other
+    Attachment row still references them (the anon→user migration duplicates
+    rows across principals), then the caller's local definitions, reset
+    tokens, usage-limit row and — for registered — the Patient row.
+    """
+    user, user_id, is_anonymous = user_data
+
+    entries = (
+        db.query(models.MedicalEntry)
+        .filter(models.MedicalEntry.patient_id == user_id)
+        .all()
+    )
+    # Snapshot file paths BEFORE the cascade deletes the attachment rows.
+    attachment_paths = [
+        a.file_path
+        for e in entries
+        for a in e.attachments
+        if a.file_path
+    ]
+
+    for entry in entries:
+        db.delete(entry)
+    db.flush()  # surface cascades + let the unlink guard see remaining rows
+
+    freed_bytes = unlink_unreferenced_files(db, attachment_paths)
+
+    # Readings are gone with the entries, so the caller's local definitions
+    # are now reading-free and safe to remove.
+    db.query(models.BiomarkerDefinition).filter(
+        models.BiomarkerDefinition.user_id == user_id,
+        models.BiomarkerDefinition.scope == "local",
+    ).delete(synchronize_session=False)
+    db.query(models.PasswordResetToken).filter(
+        models.PasswordResetToken.patient_id == user_id,
+    ).delete(synchronize_session=False)
+    db.query(models.UsageLimit).filter(
+        models.UsageLimit.user_id == user_id,
+    ).delete(synchronize_session=False)
+
+    if user is not None:
+        db.delete(user)
+    db.commit()
+
+    if is_anonymous:
+        # A fresh session on the next visit: the old anon id no longer
+        # resolves to anything.
+        response.delete_cookie(ANONYMOUS_COOKIE_NAME)
+
+    return {
+        "message": i18n.tr("auth.message_account_deleted"),
+        "deleted_entries": len(entries),
+        "freed_bytes": freed_bytes,
+    }
 
 
 class ResetPasswordRequest(BaseModel):

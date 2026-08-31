@@ -47,6 +47,7 @@ from app.db.session import get_db
 from app.schemas import DeleteEntryResponse, EntriesByDateResponse, SaveEntryResponse
 from app.services.language_detect import SUPPORTED_LANGUAGES
 from app.services.reference import compute_status, merge_reference, normalize_qual, parse_value
+from app.services.upload_cleanup import unlink_unreferenced_files
 from app.services.usage_limits import check_and_record_storage_usage
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -745,35 +746,7 @@ async def delete_entry(
     db.delete(entry)
     db.flush()  # surface cascade + unlink before we touch the filesystem
 
-    freed_bytes = 0
-    for file_path in attachment_paths:
-        # Path stored as "/static/uploads/{name}" (entries.py:149). Skip
-        # anything outside our uploads directory defensively.
-        if not file_path.startswith("/static/uploads/"):
-            continue
-        filename = file_path[len("/static/uploads/"):]
-        if not filename or ".." in filename or filename.startswith("/"):
-            continue
-
-        still_referenced = (
-            db.query(AttachmentModel)
-            .filter(AttachmentModel.file_path == file_path)
-            .first()
-        )
-        if still_referenced is not None:
-            # Another entry (e.g. the migrated-anon copy) still owns a row that
-            # points at the same file. Do not unlink, do not refund.
-            continue
-
-        full_path = os.path.join(UPLOAD_DIR, filename)
-        try:
-            if os.path.isfile(full_path):
-                freed_bytes += os.path.getsize(full_path)
-                os.remove(full_path)
-        except OSError as e:
-            # The DB rows are already gone; don't let a stray FS error reverse
-            # the cascade. Log and continue.
-            logger.warning("Failed to remove uploaded file %s: %s", full_path, e)
+    freed_bytes = unlink_unreferenced_files(db, attachment_paths, UPLOAD_DIR)
 
     if freed_bytes > 0:
         # Prefer the on-disk size (truth) over the parsed human string

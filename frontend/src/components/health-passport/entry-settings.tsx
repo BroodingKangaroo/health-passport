@@ -58,7 +58,7 @@ function parseSizeToBytes(size: string | undefined): number {
 const BYTE_UNITS_EN = ['B', 'KB', 'MB', 'GB'] as const
 const BYTE_UNITS_RU = ['Б', 'КБ', 'МБ', 'ГБ'] as const
 
-function formatBytes(bytes: number, locale: string): string {
+export function formatBytes(bytes: number, locale: string): string {
   const units = locale.toLowerCase().startsWith('ru') ? BYTE_UNITS_RU : BYTE_UNITS_EN
   if (bytes <= 0) return `0 ${units[0]}`
   if (bytes < 1024) return `${bytes} ${units[0]}`

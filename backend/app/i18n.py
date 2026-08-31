@@ -158,6 +158,18 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Password updated. You can now sign in with your new password.",
         "ru": "Пароль обновлён. Теперь вы можете войти с новым паролем.",
     },
+    "auth.incorrect_password": {
+        "en": "Current password is incorrect",
+        "ru": "Текущий пароль указан неверно",
+    },
+    "auth.message_password_changed": {
+        "en": "Password changed.",
+        "ru": "Пароль изменён.",
+    },
+    "auth.message_account_deleted": {
+        "en": "Your data has been permanently deleted.",
+        "ru": "Ваши данные безвозвратно удалены.",
+    },
     # ----- app/api/entries.py -----
     "entries.file_too_large": {
         "en": "File too large ({kb} KB). Maximum allowed size is {max_mb} MB.",
@@ -312,6 +324,11 @@ MESSAGES: dict[str, dict[str, str]] = {
     "timeline.visit_not_found": {
         "en": "Visit '{id}' not found",
         "ru": "Визит '{id}' не найден",
+    },
+    # ----- app/api/account.py -----
+    "export.invalid_format": {
+        "en": "Invalid export format '{format}'. Supported: json, csv.",
+        "ru": "Недопустимый формат экспорта '{format}'. Поддерживается: json, csv.",
     },
     # ----- app/main.py -----
     "main.forbidden": {

@@ -327,6 +327,47 @@ stored strings, so translation happens only at render sites:
 - The view-level `TimelineView` passes an `onDeleted` callback that clears the
   local selection and refetches the timeline.
 
+## Settings page (`/settings`, Account & Data)
+
+- `views/SettingsView.tsx` composes four cards from
+  `components/health-passport/settings/`: `profile-card`, `usage-card`,
+  `data-export-card`, `danger-zone-card`. Entry point: a **Settings** item in
+  the header user dropdown (`header-bar.tsx`, next to Sign out — registered
+  users only; anonymous sessions have no dropdown and reach `/settings` by
+  URL), routed through the leave-guard
+  `confirmLeave()` like every other header action (no AI process runs on this
+  page, so the guard only matters when the user navigates here mid-extraction).
+- Auth state comes from `AuthStatusProvider` via the view — cards receive
+  `status`/`user`/`anonId` as props (no context lookups inside cards, so
+  tests render them directly without provider mocks).
+- **Profile card**: registered → name/email/dob/gender rows (gender labels
+  reuse the `header.gender*` keys); anonymous → explainer + Register CTA
+  (router.push — this project's `Button` has no `asChild`) + session id.
+- **Usage card**: renders `fetchUsageLimits()` — AI extractions and storage
+  as progress bars ("{used} of {total} used", `Limit reached` when a meter is
+  exhausted). This is the ONLY place quota is surfaced proactively; upload
+  flows still learn limits reactively via 429 toasts. `formatBytes` is
+  shared from `entry-settings.tsx` (exported there).
+- **Data-export card**: `downloadAccountExport('json' | 'csv')`
+  (`services/api.ts`) — authenticated fetch of `GET /api/export` through the
+  proxy (a plain anchor cannot send the Authorization header), then blob →
+  anchor download. Filename from the backend's `Content-Disposition`, else a
+  dated fallback (`healthpassport-backup-YYYYMMDD.json` /
+  `healthpassport-readings-YYYYMMDD.csv`). Errors toast via sonner.
+- **Danger zone card**: registered users get the change-password form
+  (client-side mismatch + ≥8-char checks mirroring register/reset; backend
+  errors surface through `ApiError.message` — the server's localized
+  detail) and a Popover-confirmed **Delete account** (same destructive
+  pattern as `entry-settings.tsx`) which calls `deleteAccount()` then
+  `signOut({ callbackUrl: '/' })`. Anonymous users see only session-data
+  deletion, which ends with `window.location.assign('/')` — a full reload
+  onto the fresh anonymous session the backend's cookie-clear provides.
+- i18n: the `settings` tree lives in `src/i18n/messages/settings.ts`
+  (en/ru parity auto-guarded); the header gear label is `header.settings` in
+  `shared.ts`. Tests: `src/components/__tests__/settings-cards.test.tsx`
+  (mocks `@/services/api`, `next-auth/react`, `next/navigation`) and
+  `src/services/__tests__/export-download.test.ts`.
+
 ## UI localization EN/RU (next-intl, cookie-driven)
 
 - **No URL-based locale routing.** The locale lives ONLY in the `NEXT_LOCALE`

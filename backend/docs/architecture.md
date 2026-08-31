@@ -440,6 +440,38 @@ extractions "forget" units.
   whole day (tests with distinct times stay plain, tests with the same time —
   or no time — get numbered).
 
+## Full-data export (`GET /api/export`, `app/api/account.py`)
+
+- Read-only backup of the caller's structured data: no LLM calls, no quota
+  charge, no `UsageLimit` row touched (export is not AI usage). Auth is
+  `get_current_user_or_anon` — anonymous sessions export their own data too.
+- JSON (default): versioned envelope `{format: "healthpassport-export/v1",
+  exported_at, account, usage, entries, biomarker_definitions}`:
+  - `account` — the Patient profile (id/email/name/dob/gender) for registered
+    principals; `{id, is_anonymous: true}` for anonymous;
+  - `usage` — the same payload as `GET /api/usage/limits` (via `get_limits`);
+  - `entries[]` — every entry of the caller (ordered `(date, created_at, id)`
+    like the timeline) with entry columns (incl. `notes`, `source_language`,
+    `created_at`) and nested `biomarker_readings[]` (ALL columns: value /
+    value_text / reference snapshot / status / original_* / scale_function /
+    needs_review / merged / merged_source), `attachments[]` metadata (incl.
+    `file_path`), `visit_data` (object|null), `instrumental_data`
+    (object|null);
+  - `biomarker_definitions[]` — the caller's `scope=local` rows only,
+    column-for-column; global LOINC definitions are derivable from the
+    dictionary and are NOT exported.
+- `?format=csv` — one row per reading across the caller's entries (joined
+  with the owning entry and the reading's — possibly LOINC-legacy —
+  definition), `text/csv` UTF-8 with BOM,
+  `Content-Disposition: attachment;
+  filename="healthpassport-readings-YYYYMMDD.csv"`. A `0.0` value or
+  reference bound stays `0.0` in the cell (never collapsed by falsiness);
+  readings whose definition row is unresolvable still export with empty
+  name/unit cells. The format value is case/space-insensitive; anything
+  other than json/csv → 400 with localized detail (`export.invalid_format`).
+- Tenant scoping mirrors every other endpoint: entries by `patient_id`,
+  local definitions by `user_id` — a principal can never see another's rows.
+
 ## Response localization (`app/i18n.py`, Accept-Language)
 
 - User-facing backend text — HTTPException `detail` strings, SSE `error`
@@ -493,6 +525,27 @@ extractions "forget" units.
     a min 8-char password, replaces `patients.hashed_password`, and marks the
     token used (replay → 400). Existing JWT sessions stay valid until their
     normal expiry; the new password takes effect on the next login.
+
+- **In-app password change**: `POST /api/auth/change-password
+  {current_password, new_password}` — registered only (anonymous principals
+  fail `get_current_user` with 401, mirroring `/api/auth/me`), verifies the
+  current bcrypt hash (wrong → 400 `auth.incorrect_password`), enforces the
+  same ≥ 8-char rule, and re-hashes. Existing JWT sessions stay valid until
+  their normal expiry — same semantics as reset.
+
+- **Account self-deletion**: `DELETE /api/auth/account` — works for BOTH
+  principals (registered delete the whole account, anonymous wipe their
+  session's data). Cascade order mirrors `DELETE /api/entry`: entries first
+  (the ORM cascade removes readings, visit_data, instrumental_data and
+  attachment rows) → on-disk files unlinked only when no other `Attachment`
+  row still references the path (the anon→user migration duplicates rows
+  across principals; shared helper `app/services/upload_cleanup.py
+  unlink_unreferenced_files`, also used by `DELETE /api/entry`) → the
+  caller's `scope=local` definitions (reading-free by then) →
+  `PasswordResetToken` rows → the `UsageLimit` row → the `Patient` row
+  (registered only; anonymous principals have no Patient row). An anonymous
+  deletion also clears the anon cookie so the next visit starts a fresh
+  session. Response: `{message (localized), deleted_entries, freed_bytes}`.
 
 ## DB migrations
 

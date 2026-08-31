@@ -18,6 +18,7 @@ logging.getLogger().setLevel(logging.INFO)
 logging.getLogger().addHandler(log_file)
 
 from app import i18n
+from app.api.account import router as account_router
 from app.api.ai import router as ai_router
 from app.api.auth import get_current_user_or_anon
 from app.api.auth import router as auth_router
@@ -59,6 +60,7 @@ app.include_router(flowsheet_router)
 app.include_router(entries_router)
 app.include_router(ai_router)
 app.include_router(biomarkers_router)
+app.include_router(account_router)
 app.include_router(auth_router)
 app.include_router(usage_limits_router)
 

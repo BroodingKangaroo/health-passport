@@ -37,6 +37,9 @@ const API_FALLBACKS = {
     postTranslateFailed: 'POST /translate-biomarkers failed',
     postTranslateCommitFailed: 'POST /translate-biomarkers/commit failed',
     deleteEntryFailed: 'DELETE /entry failed',
+    exportFailed: 'GET /export failed',
+    changePasswordFailed: 'POST /auth/change-password failed',
+    deleteAccountFailed: 'DELETE /auth/account failed',
     extractionFailed: 'Extraction failed',
     extractionTimedOut:
       'AI extraction timed out — the connection stalled. Please try again.',
@@ -51,6 +54,9 @@ const API_FALLBACKS = {
     postTranslateFailed: 'Не удалось перевести названия',
     postTranslateCommitFailed: 'Не удалось сохранить перевод',
     deleteEntryFailed: 'Не удалось удалить запись',
+    exportFailed: 'Не удалось экспортировать данные',
+    changePasswordFailed: 'Не удалось изменить пароль',
+    deleteAccountFailed: 'Не удалось удалить аккаунт',
     extractionFailed: 'Не удалось распознать документ',
     extractionTimedOut:
       'Время ожидания распознавания истекло — соединение прервалось. Попробуйте ещё раз.',

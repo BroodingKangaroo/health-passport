@@ -11,6 +11,7 @@ import type {
   ExtractedInstrumentalData,
   FormCategory,
   DeleteEntryResponse,
+  DeleteAccountResponse,
   UsageLimits,
   CurrentUser,
   TranslateLang,
@@ -19,6 +20,7 @@ import type {
 // Re-exported for callers that historically imported these from the api module.
 export type {
   DeleteEntryResponse,
+  DeleteAccountResponse,
   UsageLimits,
   CurrentUser,
 } from '@/lib/types'
@@ -511,6 +513,80 @@ export async function deleteEntry(id: string): Promise<DeleteEntryResponse> {
     throw new ApiError(res.status, extractDetail(body, apiFallback('deleteEntryFailed')))
   }
   return res.json() as Promise<DeleteEntryResponse>
+}
+
+/* ----- Account & Data (settings) ----- */
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/change-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...baseHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new ApiError(res.status, extractDetail(body, apiFallback('changePasswordFailed')))
+  }
+}
+
+export async function deleteAccount(): Promise<DeleteAccountResponse> {
+  const res = await fetch(`${API_BASE}/auth/account`, {
+    method: 'DELETE',
+    headers: { ...baseHeaders() },
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new ApiError(res.status, extractDetail(body, apiFallback('deleteAccountFailed')))
+  }
+  return res.json() as Promise<DeleteAccountResponse>
+}
+
+function contentDispositionFilename(header: string | null, fallback: string): string {
+  if (!header) return fallback
+  const m = /filename="?([^";]+)"?/.exec(header)
+  return m?.[1] || fallback
+}
+
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+/**
+ * Download the caller's full data export (GET /api/export) as a file. Goes
+ * through the same authenticated proxy as every other API call (a plain
+ * anchor navigation cannot send the Authorization header). The filename is
+ * taken from the backend's Content-Disposition when present, else derived
+ * from the format + date.
+ */
+export async function downloadAccountExport(format: 'json' | 'csv'): Promise<void> {
+  const res = await fetch(`${API_BASE}/export?format=${format}`, {
+    headers: { ...baseHeaders() },
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new ApiError(res.status, extractDetail(body, apiFallback('exportFailed')))
+  }
+  const blob = await res.blob()
+  const dateStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  const fallback = format === 'csv'
+    ? `healthpassport-readings-${dateStamp}.csv`
+    : `healthpassport-backup-${dateStamp}.json`
+  triggerBlobDownload(blob, contentDispositionFilename(res.headers.get('content-disposition'), fallback))
 }
 
 /* ----- Usage Limits ----- */

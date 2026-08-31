@@ -389,6 +389,12 @@ export interface UsageLimits {
   total_upload_limit_bytes: number
 }
 
+export interface DeleteAccountResponse {
+  message: string
+  deleted_entries: number
+  freed_bytes: number
+}
+
 export interface CurrentUser {
   id: string
   email: string
