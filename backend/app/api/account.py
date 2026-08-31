@@ -238,7 +238,9 @@ def _csv_rows(db: Session, user_id: str) -> list[list]:
     if not rows:
         return []
 
-    defn_by_id, defn_by_loinc = resolve_definitions(db, {r.biomarker_id for r, _ in rows})
+    defn_by_id, defn_by_loinc = resolve_definitions(
+        db, {r.biomarker_id for r, _ in rows}, user_id=user_id
+    )
     csv_rows: list[list] = []
     for reading, entry in rows:
         defn = lookup_definition(defn_by_id, defn_by_loinc, reading.biomarker_id)

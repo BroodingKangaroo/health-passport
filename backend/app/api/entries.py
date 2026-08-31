@@ -23,6 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import i18n
+from app.api._serializers import definition_rank_order, definition_visibility
 from app.api.auth import get_current_user_or_anon
 from app.db.models import (
     Attachment as AttachmentModel,
@@ -101,15 +102,30 @@ def _resolve_definition(db: Session, user_id: str, name: str, row_defn_id: Optio
     1) by definition_id (or LOINC code, since the matcher emits LOINC as id);
     2) fuzzy by name against definitions visible to this user;
     3) create a per-user local definition.
-    Mirrors the historical save_entry resolution chain exactly."""
+    Mirrors the historical save_entry resolution chain exactly.
+    Client-supplied ids are visibility-filtered (ISSUES.md #43): they must
+    never resolve to another tenant's local definition."""
     defn = None
     if row_defn_id:
-        defn = db.query(BiomarkerDefinitionModel).filter(BiomarkerDefinitionModel.id == row_defn_id).first()
+        defn = (
+            db.query(BiomarkerDefinitionModel)
+            .filter(
+                BiomarkerDefinitionModel.id == row_defn_id,
+                definition_visibility(user_id),
+            )
+            .first()
+        )
         # Also resolve by LOINC code (the matcher emits LOINC as definition_id)
         if not defn and _is_loinc(row_defn_id):
-            defn = db.query(BiomarkerDefinitionModel).filter(
-                BiomarkerDefinitionModel.loinc_code == row_defn_id
-            ).first()
+            defn = (
+                db.query(BiomarkerDefinitionModel)
+                .filter(
+                    BiomarkerDefinitionModel.loinc_code == row_defn_id,
+                    definition_visibility(user_id),
+                )
+                .order_by(*definition_rank_order())
+                .first()
+            )
 
     # Fallback: fuzzy match by name using SQL ILIKE
     if not defn:
@@ -118,11 +134,7 @@ def _resolve_definition(db: Session, user_id: str, name: str, row_defn_id: Optio
         # system-shared (user_id IS NULL), or this user's own local
         # definitions. This prevents a user's reading from being
         # linked to another user's private local definition.
-        ownership = or_(
-            BiomarkerDefinitionModel.scope == "global",
-            BiomarkerDefinitionModel.user_id.is_(None),
-            BiomarkerDefinitionModel.user_id == user_id,
-        )
+        ownership = definition_visibility(user_id)
         # Build OR conditions for names and synonyms
         defn = (
             db.query(BiomarkerDefinitionModel)

@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from app import i18n
 from app.api._serializers import (
+    definition_rank_order,
+    definition_visibility,
     is_loinc,
     lookup_definition,
     reading_merged_source,
@@ -159,7 +161,7 @@ def _biomarkers_from_db(db: Session, patient_id: str):
         )
         all_biomarker_ids.update(r.biomarker_id for r in readings)
 
-    defn_by_id, defn_by_loinc = resolve_definitions(db, all_biomarker_ids)
+    defn_by_id, defn_by_loinc = resolve_definitions(db, all_biomarker_ids, user_id=patient_id)
 
     results = []
     for bid in sorted(all_biomarker_ids):
@@ -301,7 +303,7 @@ async def get_biomarker_detail(
     # The flowsheet passes composite ids of the form "{biomarker_id}-{date-label}"
     # (e.g. "713-8-may-26", "local-774a579f1f27-may-26"). Recover the underlying
     # definition id so flowsheet and timeline callers resolve to the same analyte.
-    base_id, defn = _resolve_biomarker_base_id(db, biomarker_id)
+    base_id, defn = _resolve_biomarker_base_id(db, biomarker_id, user_id)
     if defn is None:
         raise HTTPException(status_code=404, detail=i18n.tr("timeline.biomarker_not_found", id=biomarker_id))
 
@@ -313,33 +315,44 @@ async def get_biomarker_detail(
 
 
 def _resolve_biomarker_base_id(
-    db: Session, biomarker_id: str
+    db: Session, biomarker_id: str, user_id: str
 ) -> tuple[str, Optional[BiomarkerDefinitionModel]]:
     """Resolve a timeline or flowsheet-style biomarker id back to the underlying
     definition. Handles plain ids, legacy LOINC codes, and the
     "{biomarker_id}-{month}-{day}" composites the flowsheet emits."""
     base_id = biomarker_id
-    defn = _find_definition_by_id_or_loinc(db, base_id)
+    defn = _find_definition_by_id_or_loinc(db, base_id, user_id)
     if not defn:
         stripped = _FLOW_SHEET_LABEL_RE.sub("", base_id)
         if stripped != base_id:
             base_id = stripped
-            defn = _find_definition_by_id_or_loinc(db, base_id)
+            defn = _find_definition_by_id_or_loinc(db, base_id, user_id)
     return base_id, defn
 
 
 def _find_definition_by_id_or_loinc(
-    db: Session, identifier: str
+    db: Session, identifier: str, user_id: str
 ) -> Optional[BiomarkerDefinitionModel]:
+    # Visibility-filtered (ISSUES.md #43): a client-supplied id must never
+    # resolve to another tenant's local definition, and the LOINC fallback is
+    # deterministic (matcher preference order) instead of an arbitrary
+    # .first().
     defn = (
         db.query(BiomarkerDefinitionModel)
-        .filter(BiomarkerDefinitionModel.id == identifier)
+        .filter(
+            BiomarkerDefinitionModel.id == identifier,
+            definition_visibility(user_id),
+        )
         .first()
     )
     if not defn and is_loinc(identifier):
         defn = (
             db.query(BiomarkerDefinitionModel)
-            .filter(BiomarkerDefinitionModel.loinc_code == identifier)
+            .filter(
+                BiomarkerDefinitionModel.loinc_code == identifier,
+                definition_visibility(user_id),
+            )
+            .order_by(*definition_rank_order())
             .first()
         )
     return defn

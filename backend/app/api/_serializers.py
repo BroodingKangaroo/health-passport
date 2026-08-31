@@ -9,6 +9,7 @@ and removes the previous copy-pasted 18-field construction blocks.
 import re
 from typing import Optional
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.api._format import effective_reference, reading_value
@@ -29,6 +30,31 @@ _LOINC_RE = re.compile(r"^\d+-\d+(\.\d+)?$")
 
 def is_loinc(code: Optional[str]) -> bool:
     return bool(code) and bool(_LOINC_RE.match(code))
+
+
+def definition_visibility(user_id: Optional[str]):
+    """Ownership filter for definition lookups driven by client-supplied ids
+    (ISSUES.md #43): a definition is visible when it is global, system-shared
+    (user_id IS NULL, e.g. curated local-only analytes), or the caller's own
+    local definition. Without this filter another tenant's local def — whose
+    id itself leaks the owner's user_id — resolves for anyone who guesses it."""
+    return or_(
+        BiomarkerDefinitionModel.scope == "global",
+        BiomarkerDefinitionModel.user_id.is_(None),
+        BiomarkerDefinitionModel.user_id == user_id,
+    )
+
+
+def definition_rank_order():
+    """Deterministic preference order for definitions sharing a lookup key
+    (mirrors the matcher's ranking: global scope first, then the most common
+    LOINC test — lowest COMMON_TEST_RANK, NULLs last, id as final tiebreak)."""
+    return (
+        (BiomarkerDefinitionModel.scope == "global").desc(),
+        BiomarkerDefinitionModel.common_rank.is_(None),
+        BiomarkerDefinitionModel.common_rank,
+        BiomarkerDefinitionModel.id,
+    )
 
 
 def definition_schema(defn: BiomarkerDefinitionModel) -> BiomarkerDefinitionSchema:
@@ -120,23 +146,29 @@ def result_schema(
 
 
 def resolve_definitions(
-    db: Session, ids: set[str]
+    db: Session, ids: set[str], user_id: str
 ) -> tuple[dict[str, BiomarkerDefinitionModel], dict[str, BiomarkerDefinitionModel]]:
     """Fetch the definitions referenced by a set of reading ids (which may
     themselves be LOINC codes from legacy ingestion). Returns both an id-keyed
-    and a LOINC-keyed lookup."""
+    and a LOINC-keyed lookup.
+
+    Definitions are visibility-filtered to the calling tenant (ISSUES.md #43)
+    and returned in deterministic preference order, so a LOINC code shared by
+    several definitions always resolves to the same row."""
     if not ids:
         return {}, {}
-    defns = (
-        db.query(BiomarkerDefinitionModel)
-        .filter(
-            (BiomarkerDefinitionModel.id.in_(ids))
-            | (BiomarkerDefinitionModel.loinc_code.in_(ids))
-        )
-        .all()
+    query = db.query(BiomarkerDefinitionModel).filter(
+        (BiomarkerDefinitionModel.id.in_(ids))
+        | (BiomarkerDefinitionModel.loinc_code.in_(ids))
     )
-    by_id = {d.id: d for d in defns}
-    by_loinc = {d.loinc_code: d for d in defns if d.loinc_code}
+    query = query.filter(definition_visibility(user_id))
+    defns = query.order_by(*definition_rank_order()).all()
+    by_id: dict[str, BiomarkerDefinitionModel] = {}
+    by_loinc: dict[str, BiomarkerDefinitionModel] = {}
+    for d in defns:
+        by_id.setdefault(d.id, d)
+        if d.loinc_code:
+            by_loinc.setdefault(d.loinc_code, d)
     return by_id, by_loinc
 
 
