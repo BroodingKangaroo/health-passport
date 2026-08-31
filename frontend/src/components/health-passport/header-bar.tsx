@@ -73,7 +73,12 @@ export function HeaderBar() {
 
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border bg-card px-5 py-3 print:hidden">
-      <div className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={() => navigate('/')}
+        aria-label={t('home')}
+        className="flex cursor-pointer items-center gap-3 rounded-lg text-left transition-opacity hover:opacity-80"
+      >
         <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
           <HeartPulse className="size-5" />
         </div>
@@ -102,7 +107,7 @@ export function HeaderBar() {
             )}
           </p>
         </div>
-      </div>
+      </button>
 
       <div className="flex items-center gap-2">
         <Button size="sm" onClick={() => navigate('/add-entry')}>

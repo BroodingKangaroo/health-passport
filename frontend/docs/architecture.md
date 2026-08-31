@@ -334,9 +334,10 @@ stored strings, so translation happens only at render sites:
   `data-export-card`, `danger-zone-card`. Entry point: a **Settings** item in
   the header user dropdown (`header-bar.tsx`, next to Sign out — registered
   users only; anonymous sessions have no dropdown and reach `/settings` by
-  URL), routed through the leave-guard
-  `confirmLeave()` like every other header action (no AI process runs on this
-  page, so the guard only matters when the user navigates here mid-extraction).
+  URL). The view has a ghost "Back to Dashboard" sub-nav bar (reusing
+  `misc.backLinks.dashboard`, leave-guard routed, same pattern as
+  `PrintSetupView`), and the header logo block is a button that navigates
+  to `/` through the same leave-guard (`header.home` aria-label).
 - Auth state comes from `AuthStatusProvider` via the view — cards receive
   `status`/`user`/`anonId` as props (no context lookups inside cards, so
   tests render them directly without provider mocks).
