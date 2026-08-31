@@ -105,17 +105,7 @@ first-time visitors don't hand over their first document.
 - Note: `copy_anonymous_data` does not copy `InstrumentalData` — gap to fix
   when touching that service (tracked in Phase 5).
 
-### 0.4 One-click PDF download of the passport
-
-- Today the passport ends in `window.print()`
-  (`frontend/src/components/health-passport/print-editor.tsx`); the document is
-  plain DOM + print CSS; no PDF-generation dependency exists (only
-  `pdfjs-dist`, used for viewing).
-- Plan: client-side PDF generation (jsPDF/html2canvas family) over the
-  existing print DOM; no backend changes. Fallback remains "print → Save as
-  PDF".
-
-### 0.5 Working password reset (+ email change)
+### 0.4 Working password reset (+ email change)
 
 - The whole reset flow already exists (`PasswordResetToken` model,
   `POST /api/auth/forgot-password` with throttling, token-consuming
@@ -126,13 +116,13 @@ first-time visitors don't hand over their first document.
 - Add email change (missing entirely; email is read-only in
   `settings/profile-card.tsx`).
 
-### 0.6 AGENTS.md doc-drift fix
+### 0.5 AGENTS.md doc-drift fix
 
 - AGENTS.md claims `backend/.env` and `backend/.jwt_secret` are "committed
   dev-only secrets"; they are in fact gitignored and untracked. Correct the
-  statement in the same change that touches auth-adjacent code (0.5).
+  statement in the same change that touches auth-adjacent code (0.4).
 
-### 0.7 Timeline scannability
+### 0.6 Timeline scannability
 
 - Problem: timeline rows are visually generic — blood tests vs doctor visits
   are not distinguishable at a glance.
@@ -191,7 +181,9 @@ a live, revocable link).
   `backend/app/main.py` must accept share-token scope as an alternative to
   owner scope.
 - Frontend: public route outside the authed app, read-only, reusing
-  results-panel-style components; print/PDF from the shared view reuses 0.4.
+  results-panel-style components; PDF/print from the shared view relies on the
+  browser's print → Save-as-PDF for now (one-click PDF generation is a
+  deferred candidate).
 
 ### 1.2 AI biomarker explanations ("Decoded")
 
@@ -237,7 +229,7 @@ Serves all personas; compounds everything above. Developer-driven, no rebrand.
   exists in `history-list.tsx`).
 - Mobile comfort pass (the recipient-first shared view sets the bar).
 - Consistency audit: cards, spacing, typography across views.
-- Color-semantics audit: finish and enforce the Phase 0.7 type/status color
+- Color-semantics audit: finish and enforce the Phase 0.6 type/status color
   rule product-wide.
 - First-run guidance: a gentle checklist, not a modal tour.
 
@@ -395,5 +387,8 @@ Serves ② primarily.
 - Export envelope v2 with attachment files (zip) + full restore including
   files.
 - One-click PDF as an email attachment for share recipients.
+- One-click PDF download of the passport (client-side generation over the
+  existing print DOM; until then `window.print()` → Save-as-PDF remains the
+  path).
 - Full visual rebrand (typography/colors/logo) — revisit after first-user
   feedback.
