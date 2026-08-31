@@ -113,7 +113,7 @@ working.
 | `units_guess.py` | Unit translation to English + `_guess_unit()` empty-unit heuristics |
 | `units_conversion.py` | Conversion factors (`convert_units`), cross-scale functions, canonical-unit landing |
 | `translation.py` | Biomarker-name + visit-data LLM translation with fallbacks, date/time normalize |
-| `definitions.py` | `verify_or_create` / `_make_local_copy` — definition resolution & persistence (first-seen canonical units anchor here) |
+| `definitions.py` | `verify_or_create` — definition resolution & persistence (first-seen canonical units anchor here) |
 | `standardize.py` | `StandardizedBiomarker` builders, status apply, LLM-free fallback path |
 | `pipeline.py` | The `match_and_convert` orchestrator |
 

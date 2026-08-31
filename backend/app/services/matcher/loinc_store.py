@@ -79,6 +79,7 @@ def _promote_loinc_from_csv(db: Session, code: str) -> Optional[BiomarkerDefinit
 
 # Cache of multilingual synonym lookups (name -> loinc_code) for the request.
 _loinc_alias_cache: Optional[dict[str, str]] = None
+_multilingual_lookup_cache: Optional[dict[str, str]] = None
 
 
 def _load_loinc_aliases() -> dict[str, str]:
@@ -113,19 +114,25 @@ def _load_loinc_aliases() -> dict[str, str]:
 
 
 def _load_multilingual_lookup() -> dict[str, str]:
-    """Flat (lowercased) multilingual name -> LOINC code map."""
+    """Flat (lowercased) multilingual name -> LOINC code map (parsed once,
+    then memoized — the JSON never changes at runtime, ISSUES.md #60)."""
+    global _multilingual_lookup_cache
+    if _multilingual_lookup_cache is not None:
+        return _multilingual_lookup_cache
     path = os.path.abspath(
         os.path.join(
             os.path.dirname(__file__), "..", "..", "..", "data", "multilingual_synonyms.json"
         )
     )
     if not os.path.isfile(path):
-        return {}
+        _multilingual_lookup_cache = {}
+        return _multilingual_lookup_cache
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
     except Exception:
-        return {}
+        _multilingual_lookup_cache = {}
+        return _multilingual_lookup_cache
     lookup: dict[str, str] = {}
     for mapping in data.values():
         for name, code in mapping.items():
@@ -133,6 +140,7 @@ def _load_multilingual_lookup() -> dict[str, str]:
             # Also index a punctuation-normalized variant so OCR noise like
             # "СОЭ (по Вестергрену)" or trailing punctuation still resolves.
             lookup.setdefault(_normalize_name(name), code)
+    _multilingual_lookup_cache = lookup
     return lookup
 
 

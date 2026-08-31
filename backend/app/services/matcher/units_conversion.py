@@ -263,7 +263,7 @@ def _convert_to_canonical(
 
     # No canonical set yet → no conversion needed (the def is either a
     # legacy LOINC def or a fresh local def whose canonical is about to
-    # be populated by ``verify_or_create`` / ``_make_local_copy``).
+    # be populated by ``verify_or_create``).
     if not canon_unit:
         return value, raw_unit_en, None, False
 

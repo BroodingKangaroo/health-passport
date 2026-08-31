@@ -160,18 +160,24 @@ def _verify_and_correct(
 
         # Disagreement: try to ground the LLM's proposed correction.
         corrected = _resolve_correction(v, index, db)
-        if corrected is not None and corrected.loinc_code != defn.loinc_code:
-            logger.info(
-                "Verifier corrected %r: %s -> %s",
-                b.name, defn.loinc_code, corrected.loinc_code,
-            )
-            kept.append((b, corrected))
-        else:
+        if corrected is None:
             logger.info(
                 "Verifier rejected %r matched to %s (no grounded correction)",
                 b.name, defn.loinc_code,
             )
             rejected.append(b)
+        elif corrected.id == defn.id:
+            # The verifier's grounded correction points at the SAME
+            # definition (same row / same LOINC): the disagreement is
+            # spurious — keep the match instead of demoting it to the
+            # unmatched pool (ISSUES.md #60).
+            kept.append((b, defn))
+        else:
+            logger.info(
+                "Verifier corrected %r: %s -> %s",
+                b.name, defn.loinc_code, corrected.loinc_code,
+            )
+            kept.append((b, corrected))
     return kept, rejected
 
 

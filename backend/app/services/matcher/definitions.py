@@ -213,7 +213,7 @@ def verify_or_create(
     # — re-inserting the same id would raise UNIQUE-violation, and recovering
     # after db.rollback() is impossible because rollback discards that very
     # object. Ownership-filtered so a def is only ever reused by its owner.
-    # Mirrors _make_local_copy's check-before-insert behavior.
+    # Check-before-insert behavior.
     existing_local = db.query(BiomarkerDefinitionModel).filter(
         BiomarkerDefinitionModel.id == defn_id,
         BiomarkerDefinitionModel.user_id == user_id,
@@ -316,108 +316,3 @@ def verify_or_create(
     else:
         nested.commit()
     return new_defn
-
-
-def _make_local_copy(
-    db: Session,
-    user_id: str,
-    source: Optional[BiomarkerDefinitionModel],
-    raw_biomarker: RawBiomarker,
-) -> BiomarkerDefinitionModel:
-    """Create a user-local definition for an ungrounded guess.
-
-    Copies metadata from a global `source` when available (so the user still
-    gets units/ranges), but keeps it in `scope='local'` so a wrong LLM guess
-    never pollutes the shared global dictionary.
-    """
-    # Use the normalized name (trailing punctuation stripped) for the def id
-    # so cosmetic variants collapse to the same local definition. See
-    # ``verify_or_create`` for the full rationale.
-    canonical_name = _normalize_name(raw_biomarker.name)
-    defn_id = f"local-{user_id}-{hashlib.md5(canonical_name.encode()).hexdigest()[:12]}"
-    existing = db.query(BiomarkerDefinitionModel).filter(
-        BiomarkerDefinitionModel.id == defn_id,
-        BiomarkerDefinitionModel.user_id == user_id,
-    ).first()
-    if existing:
-        return existing
-
-    if source is not None:
-        names = dict(source.names or {"en": raw_biomarker.name})
-        synonyms = list(source.synonyms or [])
-        unit = source.unit or ""
-        category = normalize_category(
-            source.category or (raw_biomarker.category or "General"),
-            loinc_code=source.loinc_code if source else None,
-        )
-    else:
-        # Prefer the translated English name as the canonical "en" name; keep
-        # the original source-language name as a synonym for future matching.
-        # Only strip OCR-attached trailing punctuation so the human-readable
-        # casing is preserved.
-        en_name = raw_biomarker.name
-        if raw_biomarker.standard_name_en and _is_ascii(
-            raw_biomarker.standard_name_en
-        ):
-            en_name = canonicalize_gene_mutation_en(
-                _strip_trailing_punct(raw_biomarker.standard_name_en.strip())
-            )
-        names = {"en": en_name}
-        synonyms = [raw_biomarker.name]
-        if en_name and en_name != raw_biomarker.name and en_name not in synonyms:
-            synonyms.append(en_name)
-        unit = raw_biomarker.unit or ""
-        category = normalize_category(raw_biomarker.category or "General")
-
-    if raw_biomarker.name not in synonyms:
-        synonyms.append(raw_biomarker.name)
-
-    doc_ref = parse_reference(raw_biomarker.raw_range_string)
-    parsed_val = parse_value(raw_biomarker.value)
-    source_ref = source.reference if source is not None else None
-
-    # Canonical (English) unit on first sight — anchors the conversion for
-    # any later reading of the same biomarker. Log-scale raw units linearize
-    # here exactly as in ``verify_or_create`` (see ``_linearized_anchor``).
-    if _is_qualitative_result(raw_biomarker):
-        canonical_unit = ""
-        canonical_kind = "linear"
-        canonical_unit_inferred = False
-    else:
-        translation = _translated_unit(raw_biomarker.unit, en_name, category)
-        translation, anchor_sf = _linearized_anchor(translation, en_name, raw_biomarker.name)
-        canonical_unit = translation["unit"] or raw_biomarker.unit
-        canonical_kind = translation["kind"]
-        canonical_unit_inferred = bool(translation["inferred"])
-        if anchor_sf:
-            doc_ref = _rescale_reference(doc_ref, anchor_sf)
-            parsed_val = _rescale_value(parsed_val, anchor_sf)
-    reference = merge_reference(doc_ref, source_ref, parsed_val)
-
-    local = BiomarkerDefinitionModel(
-        id=defn_id,
-        names=names,
-        synonyms=synonyms,
-        category=category,
-        reference=reference,
-        unit=unit,
-        scope="local",
-        user_id=user_id,
-        reference_source=source.reference_source if source is not None else "pdf_extracted",
-        canonical_unit=canonical_unit,
-        canonical_kind=canonical_kind,
-        canonical_unit_inferred=canonical_unit_inferred,
-    )
-    db.add(local)
-    try:
-        db.flush()
-    except IntegrityError:
-        db.rollback()
-        existing = db.query(BiomarkerDefinitionModel).filter(
-            BiomarkerDefinitionModel.id == defn_id,
-            BiomarkerDefinitionModel.user_id == user_id,
-        ).first()
-        if existing:
-            return existing
-        raise
-    return local

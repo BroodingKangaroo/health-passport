@@ -232,9 +232,12 @@ def _match_and_convert_impl(
             (b, m) for (b, m) in matched_pairs
             if id(b) in curated_ids or id(b) in local_matched_ids
         ]
-        verified, rejected = _verify_and_correct(to_verify, index, db, client)
-        matched_pairs = verified + curated_kept
-        unmatched.extend(rejected)
+        # Skip the LLM entirely when nothing needs verification — an empty
+        # batch would fire a wasted request (ISSUES.md #60).
+        if to_verify:
+            verified, rejected = _verify_and_correct(to_verify, index, db, client)
+            matched_pairs = verified + curated_kept
+            unmatched.extend(rejected)
 
     for b, match in matched_pairs:
         std_biomarkers.append(_build_standardized_from_def(b, match, db, user_id, client))
@@ -254,10 +257,11 @@ def _match_and_convert_impl(
 
             # A curated local-only analyte (e.g. "Activated lymphocytes") must
             # never be promoted to a global LOINC the LLM happens to guess, even
-            # if the guess looks grounded. Force it to a per-user local def.
+            # if the guess looks grounded. Force it to a per-user local def via
+            # force_local below — verify_or_create ignores grounded when
+            # force_local is set, so no separate grounded flag is needed here.
             if id(b) in curated_local_ids:
                 guessed_loinc = None
-                grounded = False
 
             # Was this guess grounded in a real (close) candidate? If not, keep
             # any promotion local so a blind guess can't corrupt global defs.

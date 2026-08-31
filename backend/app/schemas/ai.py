@@ -116,11 +116,11 @@ class UnitTranslation(BaseModel):
     # ignores the echo instruction (positional attribution is then used).
     raw_unit: str = ""
     # The standard English form of the unit (e.g. "copies/mL", "mg/dL",
-    # "lg copies/mL"). Empty when the LLM couldn't decide.
+    # "lg copies/mL"). Empty when the LLM couldn't decide. The scale kind is
+    # deliberately NOT requested from the model: it is recomputed
+    # deterministically from the unit's own prefix (lg/log10/ln) so a
+    # hallucinated kind can never corrupt a canonical anchor.
     unit: str = ""
-    # "linear" (default) or "log10". Used to pick 10^x vs log10(x) when
-    # scaling across scales.
-    kind: str = "linear"
     # True when the canonical unit was invented by the LLM (the source PDF
     # had no unit cell) rather than translated from an existing unit.
     inferred: bool = False

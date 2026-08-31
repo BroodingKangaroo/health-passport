@@ -18,7 +18,6 @@ Number = Union[int, float]
 _NUM_RE = re.compile(r"-?\d+(?:[.,]\d+)?")
 _LT_RE = re.compile(r"<\s*([\d.]+)")
 _GT_RE = re.compile(r">\s*([\d.]+)")
-_R_RANGE_RE = re.compile(r"([\d.]+)\s*[\u2013-]\s*([\d.]+)")
 # A single numeric token may be:
 #   - ``N*10^K``  (e.g. ``9*10^7`` → 9e7)   — scientific notation
 #   - ``N×10^K`` / ``N·10^K`` / ``Nx10^K``   — same, with different multipliers

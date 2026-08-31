@@ -17,25 +17,6 @@ from app.db.models import (
 )
 
 
-def has_anonymous_data(db: Session, anon_id: str) -> bool:
-    """Check if anonymous user has any data."""
-    # Check for entries
-    entry_count = db.query(MedicalEntry).filter(
-        MedicalEntry.patient_id == anon_id
-    ).count()
-
-    if entry_count > 0:
-        return True
-
-    # Check for custom biomarker definitions
-    def_count = db.query(BiomarkerDefinition).filter(
-        BiomarkerDefinition.user_id == anon_id,
-        BiomarkerDefinition.scope == "local"
-    ).count()
-
-    return def_count > 0
-
-
 def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str, commit: bool = True) -> dict:
     """
     Copy all anonymous user data to new registered user.

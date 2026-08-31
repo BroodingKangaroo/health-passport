@@ -14,7 +14,7 @@ Module map:
 - ``units_guess``     unit translation to English + empty-unit guessing
 - ``units_conversion`` conversion factors, cross-scale functions, canonical landing
 - ``translation``     biomarker-name and visit-data translation (+ fallbacks)
-- ``definitions``     verify_or_create / local definition copies
+- ``definitions``     verify_or_create — definition resolution & persistence
 - ``standardize``     StandardizedBiomarker builders, status apply, fallback path
 - ``pipeline``        the match_and_convert orchestrator
 """
@@ -27,10 +27,7 @@ from app.services.matcher._cache import (
     _unit_translation_cache,
 )
 from app.services.matcher._text import _is_ascii
-from app.services.matcher.definitions import (
-    _make_local_copy,
-    verify_or_create,
-)
+from app.services.matcher.definitions import verify_or_create
 from app.services.matcher.llm_matching import (
     _VERIFY_PROMPT,
     LLM_CANDIDATE_COUNT,
@@ -63,10 +60,12 @@ from app.services.matcher.name_matching import (
     _is_percent_unit,
     _normalize_name,
     _strip_trailing_punct,
+    build_local_name_index,
     build_name_index,
     deterministic_match,
     fuzzy_match,
     is_grounded,
+    match_local_def,
 )
 from app.services.matcher.pipeline import match_and_convert
 from app.services.matcher.standardize import (
@@ -147,7 +146,6 @@ __all__ = [
     "_load_loinc_rows",
     "_load_multilingual_lookup",
     "_local_cache",
-    "_make_local_copy",
     "_multilingual_code",
     "_normalize_date",
     "_normalize_name",
@@ -164,11 +162,13 @@ __all__ = [
     "_unit_translation_cache",
     "_units_match",
     "_verify_and_correct",
+    "build_local_name_index",
     "build_name_index",
     "convert_units",
     "deterministic_match",
     "fuzzy_match",
     "is_grounded",
     "match_and_convert",
+    "match_local_def",
     "verify_or_create",
 ]

@@ -21,7 +21,6 @@ Rules:
 - Preserve log-scale prefixes ("lg", "log", "ln") and translate only the magnitude part (e.g. "lg копий/мл" -> "lg copies/mL", "ln копий/мл" -> "ln copies/mL", "log10 копий/мл" -> "lg copies/mL").
 - For an EMPTY raw unit string, invent a sensible unit based on the analyte name and category (e.g. stool microbiome panels without a unit cell usually mean "copies/mL" or "copies/g"). You MUST always return a non-empty `unit` for every item — never leave it blank.
 - For already-English units, return them verbatim and set `inferred: false`.
-- `kind` is "linear" by default, "log10" if the unit starts with "lg" / "log10" / "log" (case-insensitive), "ln" if the unit starts with "ln" (natural log).
 
 Items (each line: english analyte name | category | raw unit):
 {items}
@@ -29,7 +28,6 @@ Items (each line: english analyte name | category | raw unit):
 Return a JSON object with a single key "translations" whose value is an array of objects, one per input line in the same order. Each object has:
 - raw_unit: the raw unit string from the item, echoed back EXACTLY as given (verbatim, including any "lg" / "ln" prefix and Cyrillic characters)
 - unit: the standard English unit (MUST be non-empty even when the input unit is blank — invent one)
-- kind: "linear" | "log10" | "ln"
 - inferred: true if the unit was invented (no source unit), false otherwise"""
 
 
@@ -44,9 +42,7 @@ def _scale_kind_of(unit: str) -> str:
     return "linear"
 
 
-def _heuristic_unit_translation(
-    raw_unit: str, analyte_name: str = "", category: str = ""
-) -> Optional[dict]:
+def _heuristic_unit_translation(raw_unit: str) -> Optional[dict]:
     """Cheap deterministic translation for units the parser can already
     recognise. Returns a UnitTranslation-shaped dict or None when the unit
     needs the LLM (e.g. Cyrillic / invented for empty)."""
@@ -56,13 +52,7 @@ def _heuristic_unit_translation(
     # The Cyrillic lowercase letters mean the LLM has to translate; skip.
     if not _is_ascii(u):
         return None
-    low = u.lower()
-    kind = "linear"
-    if low.startswith(("lg", "log10", "log ")) or low == "log":
-        kind = "log10"
-    elif low.startswith("ln"):
-        kind = "ln"
-    return {"unit": u, "kind": kind, "inferred": False}
+    return {"unit": u, "kind": _scale_kind_of(u), "inferred": False}
 
 
 def _translated_unit(raw_unit: str, analyte_name: str = "", category: str = "") -> dict:
@@ -234,7 +224,7 @@ def _translate_units_batch(
             continue
         if u in cache:
             continue
-        heur = _heuristic_unit_translation(u, b.name, b.category)
+        heur = _heuristic_unit_translation(u)
         if heur is not None:
             cache[u] = heur
             continue

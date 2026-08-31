@@ -26,7 +26,7 @@ from app.db.models import (
     MedicalEntry,
 )
 from app.db.session import Base, get_db
-from app.services.data_migration import copy_anonymous_data, has_anonymous_data
+from app.services.data_migration import copy_anonymous_data
 from app.services.usage_limits import (
     check_and_record_ai_usage,
     check_and_record_storage_usage,
@@ -243,26 +243,6 @@ class TestUsageLimits:
 
 class TestDataMigration:
     """Test data migration from anonymous to registered user."""
-
-    def test_has_anonymous_data_false_when_empty(self, anon_db_session):
-        """Test that has_anonymous_data returns False when no data."""
-        assert has_anonymous_data(anon_db_session, TEST_ANON_ID) is False
-
-    def test_has_anonymous_data_true_with_entries(self, anon_db_session):
-        """Test that has_anonymous_data returns True when entries exist."""
-        # Create an entry for anonymous user
-        entry = MedicalEntry(
-            id="anon-entry-1",
-            patient_id=TEST_ANON_ID,
-            type="blood_test",
-            date=datetime.fromisoformat("2026-01-01T00:00:00").replace(tzinfo=timezone.utc),
-            title="Anon Test Entry",
-            clinic="Test Clinic",
-        )
-        anon_db_session.add(entry)
-        anon_db_session.commit()
-
-        assert has_anonymous_data(anon_db_session, TEST_ANON_ID) is True
 
     def test_copy_anonymous_data_copies_entries(self, anon_db_session):
         """Test that copy_anonymous_data copies entries to new user."""

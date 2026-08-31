@@ -108,8 +108,11 @@ def _is_percent_unit(unit: Optional[str]) -> bool:
     return token.endswith("%") or token.endswith("/100")
 
 
-# Punctuation commonly attached to biomarker names by OCR
-_PUNCT_RE = re.compile(r'[,:;.()\[\]{}"\'\-–—/\\|#@!?]\s*$')
+# Punctuation commonly attached to biomarker names by OCR. Repetition
+# matters: "Bifidobacterium spp.)" must collapse to "Bifidobacterium spp"
+# (same def id as the period-less variant), and typographic quotes count
+# too (ISSUES.md #60).
+_PUNCT_RE = re.compile(r'[,:;.()\[\]{}"\'\-–—/\\|#@!?“”„‟‘’«»]+\s*$')
 
 
 def _strip_trailing_punct(name: str) -> str:
