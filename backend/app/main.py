@@ -2,8 +2,10 @@
 # imports: app.db.session reads DATABASE_URL from the environment at import time.
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 from typing import Optional
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
@@ -108,7 +110,24 @@ async def serve_upload(
 
     if not os.path.isfile(requested_path):
         raise HTTPException(status_code=404, detail=i18n.tr("main.file_not_found"))
-    return FileResponse(requested_path)
+    # Stored-XSS guard (ISSUES.md #42): uploads are user-supplied content, so
+    # never let the browser render them inline on the API origin. The
+    # attachment disposition forces a download on direct navigation; nosniff
+    # stops MIME-sniffing an untrusted body into executable content. The
+    # frontend previews uploads via fetch + blob object URLs, which are
+    # unaffected by these headers.
+    att_name = next((a.name for a in attachments if a.name), "") or os.path.basename(file_path)
+    ascii_name = re.sub(r"[^A-Za-z0-9 ._-]", "_", att_name).strip("_ ") or "upload"
+    return FileResponse(
+        requested_path,
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": (
+                f'attachment; filename="{ascii_name}"; '
+                f"filename*=UTF-8''{quote(att_name)}"
+            ),
+        },
+    )
 
 
 @app.get("/")

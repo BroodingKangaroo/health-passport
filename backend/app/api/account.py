@@ -42,6 +42,20 @@ router = APIRouter(tags=["account"])
 
 EXPORT_FORMAT_VERSION = "healthpassport-export/v1"
 
+# CSV formula-injection guard (ISSUES.md #57): spreadsheet apps execute a cell
+# whose text begins with one of these trigger characters. Exported string
+# cells come from user-entered data (titles, notes, original names/units), so
+# on write each such cell is prefixed with a single quote — Excel/Numbers/
+# Sheets then treat it as literal text (and hide the quote). Numeric cells
+# are passed through untouched.
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(cell):
+    if isinstance(cell, str) and cell.startswith(_CSV_FORMULA_PREFIXES):
+        return "'" + cell
+    return cell
+
 _CSV_COLUMNS = [
     "entry_id",
     "entry_type",
@@ -287,7 +301,7 @@ async def export_account_data(
         writer = csv.writer(buffer)
         writer.writerow(_CSV_COLUMNS)
         for row in _csv_rows(db, user_id):
-            writer.writerow(row)
+            writer.writerow(_csv_safe(cell) for cell in row)
         date_stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
         return Response(
             content=buffer.getvalue().encode("utf-8-sig"),

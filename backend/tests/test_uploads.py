@@ -21,6 +21,62 @@ class TestFileUpload:
         if os.path.exists(p):
             os.remove(p)
 
+    async def test_upload_disallowed_extension_rejected(self, client):
+        """ISSUES.md #42: the client-supplied extension must not be kept
+        verbatim — an .html/.svg upload served same-origin is a stored-XSS
+        vector. Only the document/image allowlist is accepted."""
+        from app.api.entries import UPLOAD_DIR
+
+        before = set(os.listdir(UPLOAD_DIR))
+        resp = await client.post(
+            "/api/entry",
+            data={
+                "type": "blood_test",
+                "date": "2025-12-15",
+                "title": "XSS Attempt",
+                "biomarkers": json.dumps([{"id": "cat-1", "name": "CBC", "rows": []}]),
+            },
+            files={"file": ("payload.html", b"<script>alert(1)</script>", "text/html")},
+        )
+
+        assert resp.status_code == 400
+        assert "Unsupported file type '.html'" in resp.json()["detail"]
+        # Nothing persisted: no file written, no entry/attachment row.
+        assert set(os.listdir(UPLOAD_DIR)) == before
+
+    async def test_upload_svg_extension_rejected(self, client):
+        resp = await client.post(
+            "/api/entry",
+            data={
+                "type": "doctor_visit",
+                "date": "2025-12-16",
+                "title": "SVG Attempt",
+            },
+            files={"file": ("vector.svg", b"<svg onload='alert(1)'/>", "image/svg+xml")},
+        )
+        assert resp.status_code == 400
+        assert "Unsupported file type '.svg'" in resp.json()["detail"]
+
+    async def test_upload_extension_case_insensitive(self, client):
+        """The allowlist check is case-insensitive; the original extension is
+        still kept in the saved name."""
+        resp = await client.post(
+            "/api/entry",
+            data={
+                "type": "blood_test",
+                "date": "2025-12-17",
+                "title": "Uppercase Ext",
+                "biomarkers": json.dumps([{"id": "cat-1", "name": "CBC", "rows": []}]),
+            },
+            files={"file": ("report.PDF", b"%PDF-1.4 upper", "application/pdf")},
+        )
+        assert resp.status_code == 200
+        entry_id = resp.json()["id"]
+        timeline = await client.get("/api/timeline")
+        entry = next(e for e in timeline.json()["events"] if e["id"] == entry_id)
+        assert entry["attachments"][0]["url"].endswith(".PDF")
+        await self._cleanup(entry["attachments"][0]["url"])
+
     async def test_upload_pdf_creates_file_on_disk(self, client):
         # given
         from app.api.entries import UPLOAD_DIR
@@ -254,3 +310,101 @@ class TestFileUpload:
         url1 = e1["attachments"][0]["url"]
         url2 = e2["attachments"][0]["url"]
         assert url1 != url2
+
+
+class TestServeUploadHeaders:
+    """ISSUES.md #42: served uploads must never render inline on the API
+    origin. Exercises the real route on app.main (the `client` fixture builds
+    its own app without the /static/uploads route)."""
+
+    async def test_served_upload_gets_nosniff_and_attachment(self, db_session, tmp_path, monkeypatch):
+        from datetime import datetime, timezone
+
+        from fastapi import Request, Response
+        from httpx import ASGITransport, AsyncClient
+
+        from app.api.auth import get_current_user_or_anon
+        from app.db.models import Attachment, MedicalEntry, Patient
+        from app.db.session import get_db
+        from app.main import app as main_app
+        from tests.seed_data import TEST_USER_EMAIL, TEST_USER_ID
+
+        monkeypatch.chdir(tmp_path)
+        uploads = tmp_path / "static" / "uploads"
+        uploads.mkdir(parents=True)
+        (uploads / "att.pdf").write_bytes(b"%PDF-1.4 served upload")
+
+        user = db_session.query(Patient).filter(Patient.id == TEST_USER_ID).first()
+        if not user:
+            from app.auth import create_user
+            user = create_user(db_session, TEST_USER_EMAIL, "testpassword123", "Test User", "1990-01-01", "Other")
+            db_session.commit()
+
+        db_session.add(MedicalEntry(
+            id="serve-entry",
+            patient_id=TEST_USER_ID,
+            type="blood_test",
+            date=datetime(2025, 6, 1, tzinfo=timezone.utc),
+            title="Serve Test",
+        ))
+        db_session.add(Attachment(
+            id="att-serve",
+            entry_id="serve-entry",
+            name="Отчёт анализ.pdf",
+            type="Uploaded Document",
+            size="1 KB",
+            file_path="/static/uploads/att.pdf",
+        ))
+        db_session.commit()
+
+        async def override_get_db():
+            yield db_session
+
+        async def override_principal(request: Request, response: Response):
+            return (user, TEST_USER_ID, False)
+
+        main_app.dependency_overrides[get_db] = override_get_db
+        main_app.dependency_overrides[get_current_user_or_anon] = override_principal
+        try:
+            transport = ASGITransport(app=main_app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.get("/static/uploads/att.pdf")
+        finally:
+            main_app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        assert resp.headers["x-content-type-options"] == "nosniff"
+        cd = resp.headers["content-disposition"]
+        assert cd.startswith("attachment;")
+        # ASCII fallback is sanitized; the RFC 5987 form keeps the Cyrillic name.
+        assert 'filename="' in cd
+        assert "filename*=UTF-8''" in cd
+        assert "%D0%9E%D1%82%D1%87%D1%91%D1%82" in cd
+
+    async def test_served_upload_missing_file_404(self, db_session, tmp_path, monkeypatch):
+        from fastapi import Request, Response
+        from httpx import ASGITransport, AsyncClient
+
+        from app.api.auth import get_current_user_or_anon
+        from app.db.session import get_db
+        from app.main import app as main_app
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "static" / "uploads").mkdir(parents=True)
+
+        async def override_get_db():
+            yield db_session
+
+        async def override_principal(request: Request, response: Response):
+            return (None, "anon-x", True)
+
+        main_app.dependency_overrides[get_db] = override_get_db
+        main_app.dependency_overrides[get_current_user_or_anon] = override_principal
+        try:
+            transport = ASGITransport(app=main_app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                resp = await ac.get("/static/uploads/nope.pdf")
+        finally:
+            main_app.dependency_overrides.clear()
+
+        assert resp.status_code == 404

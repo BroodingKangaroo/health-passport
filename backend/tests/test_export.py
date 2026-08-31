@@ -298,6 +298,37 @@ class TestExportCSV:
         assert row[header.index("value")] == "0.0"
         assert row[header.index("reference_low")] == "0.0"
 
+    async def test_csv_formula_prefix_escaped(self, client, db_session):
+        """ISSUES.md #57: string cells starting with a formula trigger
+        character are prefix-escaped on write so a spreadsheet treats them as
+        text; numeric cells are never touched."""
+        _add_local_def(db_session, "local-custom-a", TEST_USER_ID, "=SUM(A1:A2)")
+        db_session.add(BiomarkerReading(
+            entry_id="blood-feb",
+            biomarker_id="local-custom-a",
+            value=-1.5,
+            reference={"kind": "interval", "low": 0.0, "high": 10.0},
+            status="low",
+            original_name="+ionic marker",
+            original_unit="-мг/л",
+        ))
+        db_session.commit()
+
+        import csv as csv_mod
+        import io
+
+        resp = await client.get("/api/export?format=csv")
+        rows = list(csv_mod.reader(io.StringIO(resp.text.lstrip("\ufeff"))))
+        header, data_rows = rows[0], rows[1:]
+
+        row = next(r for r in data_rows if r[header.index("biomarker_id")] == "local-custom-a")
+        assert row[header.index("name")] == "'=SUM(A1:A2)"
+        assert row[header.index("original_name")] == "'+ionic marker"
+        assert row[header.index("original_unit")] == "'-мг/л"
+        # Numbers pass through verbatim.
+        assert row[header.index("value")] == "-1.5"
+        assert row[header.index("reference_low")] == "0.0"
+
 
 class TestExportErrors:
     async def test_invalid_format_400_english(self, client):

@@ -76,14 +76,6 @@ readings/attachments pointing at a nonexistent entry (silent orphan rows), or
 session-wide rollback; matcher side may also discard earlier uncommitted defs
 of the same batch.
 
-**#42 [medium] Attachment uploads are a stored-XSS vector.**
-`entries.py:410-424` keeps the client-supplied extension verbatim;
-`serve_upload` (`app/main.py:70-111`) serves inline with a guessed content
-type and no `Content-Disposition`/`nosniff`. An uploaded `.html`/`.svg` at
-same-origin `/static/uploads/…` executes JS on the API origin (anon cookie is
-`SameSite=None` on HTTPS). Fix: extension allowlist, `Content-Disposition:
-attachment`, `X-Content-Type-Options: nosniff`.
-
 **#43 [medium] Definition-id lookup has no ownership filter (IDOR).**
 `entries.py:105-111` resolves client-supplied `definition_id` against any row
 (including another tenant's local def — the id itself leaks the owner's
@@ -158,10 +150,6 @@ safe today only because SQLite strips tzinfo (fragile if Postgres ever).
 **#56 [low] LIKE wildcard injection in fuzzy resolution.** `entries.py:130-148`
 — `name_lower` interpolated into `ilike(f'%{name_lower}%')` unescaped; a name
 containing `%` matches arbitrarily (not SQL injection). Escape `%`/`_`.
-
-**#57 [low] CSV formula injection in export.** `account.py:286-291` — cells
-starting with `=`/`+`/`-` written unescaped (self-inflicted, own data).
-Prefix-escape on write.
 
 **#58 [low] Matcher LLM calls lack per-call timeouts.**
 `llm_matching.py:126,226`, `translation.py:102,156`, `units_guess.py:252`,

@@ -45,6 +45,7 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.schemas import DeleteEntryResponse, EntriesByDateResponse, SaveEntryResponse
+from app.services.extractor import ALLOWED_EXTENSIONS as ATTACHMENT_EXTENSIONS
 from app.services.language_detect import SUPPORTED_LANGUAGES
 from app.services.reference import compute_status, merge_reference, normalize_qual, parse_value
 from app.services.upload_cleanup import unlink_unreferenced_files
@@ -392,6 +393,20 @@ async def _save_attachment(
     upload together with the entry instead of orphaning either."""
     if not file or not file.filename:
         return None
+    # Stored-XSS guard: the extension is kept verbatim in the saved name and
+    # serve_upload hands files to the browser, so only document/image types
+    # that cannot carry same-origin scripts are accepted (same allowlist as
+    # the OCR/extract path and the frontend accept attributes).
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ATTACHMENT_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=i18n.tr(
+                "ai.unsupported_file_type",
+                ext=ext or "(none)",
+                allowed=", ".join(sorted(ATTACHMENT_EXTENSIONS)),
+            ),
+        )
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail=i18n.tr("entries.file_too_large", kb=len(content) // 1024, max_mb=MAX_FILE_SIZE // (1024 * 1024)))
