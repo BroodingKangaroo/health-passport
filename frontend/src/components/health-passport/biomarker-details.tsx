@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card'
 import { BiomarkerChart } from '@/components/shared/BiomarkerChart'
 import { useBiomarkerData } from '@/hooks/useBiomarkerData'
 import { formatReference, unitLabel, isQualitative } from '@/lib/reference'
+import { qualitativeLabel } from '@/lib/qualitative-labels'
 import type { Status, BiomarkerResult } from '@/lib/types'
 
 const statusText: Record<Status, string> = {
@@ -19,9 +20,9 @@ const statusText: Record<Status, string> = {
   abnormal: 'text-status-high',
 }
 
-function refText(b: Pick<BiomarkerResult, 'reference' | 'definition'>): string {
+function refText(b: Pick<BiomarkerResult, 'reference' | 'definition'>, lang: string): string {
   const ref = b.reference ?? b.definition.reference
-  return isQualitative(ref) ? formatReference(ref) : formatReference(ref, b.definition.unit)
+  return isQualitative(ref) ? formatReference(ref, null, { lang }) : formatReference(ref, b.definition.unit, { lang })
 }
 
 export function BiomarkerDetails() {
@@ -60,7 +61,7 @@ export function BiomarkerDetails() {
             <span className="text-muted-foreground/70">/ {biomarker.definition.names.ru}</span>
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t('referenceRange', { value: refText(biomarker) })}
+            {t('referenceRange', { value: refText(biomarker, locale) })}
           </p>
         </div>
         <div
@@ -85,7 +86,7 @@ export function BiomarkerDetails() {
             {t('current')}
           </p>
           <p className={cn('text-lg font-bold', statusText[biomarker.status])}>
-            {formatNumber(biomarker.value) || '—'} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}{' '}
+            {formatNumber(biomarker.value) || '—'} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference, locale)}{' '}
             <span className="text-sm font-semibold capitalize">
               ({localizedStatus(biomarker.status, tRoot)})
             </span>
@@ -100,7 +101,7 @@ export function BiomarkerDetails() {
               {t('allTimeDynamics')}
             </h2>
             <p className="mb-3 text-xs text-muted-foreground">
-              {t('historicalTrend', { value: refText(biomarker) })}
+              {t('historicalTrend', { value: refText(biomarker, locale) })}
             </p>
             <BiomarkerChart biomarker={biomarker} data={chartData} height={350} />
           </Card>
@@ -130,7 +131,7 @@ export function BiomarkerDetails() {
                         statusText[entry.status],
                       )}
                     >
-                      {formatNumber(entry.value)} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference)}
+                      {qualitativeLabel(formatNumber(entry.value), locale)} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference, locale)}
                     </span>
                     <span
                       className={cn(
@@ -158,9 +159,9 @@ export function BiomarkerDetails() {
             <p className="text-sm leading-relaxed text-muted-foreground">
               {t('aboutSentence', {
                 name: biomarker.definition.names.en,
-                value: formatNumber(biomarker.value) || '—',
-                unit: unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference),
-                ref: refText(biomarker),
+                value: qualitativeLabel(formatNumber(biomarker.value) || '—', locale),
+                unit: unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference, locale),
+                ref: refText(biomarker, locale),
               })}
             </p>
           </Card>

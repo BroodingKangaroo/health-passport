@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { Check, ChevronsUpDown, Plus, AlertTriangle } from 'lucide-react'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/command'
 import { useBiomarkerDefinitions } from '@/lib/hooks/useBiomarkerDefinitions'
 import { formatReference } from '@/lib/reference'
+import { unitLabelRu } from '@/lib/unit-labels'
 import type { Reference } from '@/lib/types'
 
 interface Props {
@@ -38,9 +39,10 @@ interface Props {
 
 type ComboboxT = ReturnType<typeof useTranslations>
 
-function formatRangeHint(t: ComboboxT, def: { unit: string; reference: Reference | null }): string {
-  const ref = formatReference(def.reference)
-  return ref === '—' ? t('rangeHintUnitOnly', { unit: def.unit }) : t('rangeHintWithRef', { unit: def.unit, ref })
+function formatRangeHint(t: ComboboxT, def: { unit: string; reference: Reference | null }, lang: string): string {
+  const ref = formatReference(def.reference, null, { lang })
+  const unit = lang === 'ru' ? unitLabelRu(def.unit) : def.unit
+  return ref === '—' ? t('rangeHintUnitOnly', { unit }) : t('rangeHintWithRef', { unit, ref })
 }
 
 export function BiomarkerCombobox({
@@ -54,6 +56,7 @@ export function BiomarkerCombobox({
   onScopeChange,
 }: Props) {
   const t = useTranslations('biomarkerCombobox')
+  const locale = useLocale()
   const { definitions, loading, error } = useBiomarkerDefinitions()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState(value)
@@ -195,7 +198,7 @@ export function BiomarkerCombobox({
                       />
                       <span className="flex-1 truncate">{def.names.en}</span>
                       <span className="ml-2 truncate text-[11px] text-muted-foreground">
-                        {formatRangeHint(t, def)}
+                        {formatRangeHint(t, def, locale)}
                       </span>
                     </CommandItem>
                   ))}

@@ -1,5 +1,7 @@
 import type { Reference, ReferenceInterval, ReferenceQualitative, BiomarkerDefinition } from './types'
 import { formatNumber, formatNumberFull } from './utils'
+import { qualitativeLabel, qualitativeUnitLabel } from './qualitative-labels'
+import { unitLabelRu } from './unit-labels'
 
 /** Canonical qualitative values matching the backend's normalisation enum. */
 export const QUALITATIVE_VALUES = [
@@ -37,22 +39,34 @@ export const QUALITATIVE_VALUES = [
  * Pass `{ full: true }` for official exports (print editor): bounds render at
  * full precision with thousands separators (e.g. `1,250,000`) instead of
  * compact form (`1.25M`).
+ *
+ * Pass `{ lang }` for display-time localization (UI locale or, in the print
+ * editor, the DOCUMENT language): a qualitative expected text is translated
+ * via `qualitativeLabel` (canonical enum values only — unknown text passes
+ * through) and, for `lang: 'ru'`, the unit suffix goes through
+ * `unitLabelRu`. Stored data is never touched.
  */
 export function formatReference(
   ref: Reference | null | undefined,
   unit?: string | null,
-  opts?: { full?: boolean },
+  opts?: { full?: boolean; lang?: string },
 ): string {
   if (!ref) return '—'
   if (ref.kind === 'interval') {
-    return formatInterval(ref, unit, opts?.full ?? false)
+    return formatInterval(ref, unit, opts?.full ?? false, opts?.lang)
   }
   // qualitative: the expected text IS the reference — no unit suffix.
   const q = ref as ReferenceQualitative
-  return q.expected && q.expected.trim() ? q.expected.trim() : '—'
+  if (!q.expected || !q.expected.trim()) return '—'
+  return qualitativeLabel(q.expected.trim(), opts?.lang)
 }
 
-function formatInterval(ref: ReferenceInterval, unit?: string | null, full = false): string {
+function formatInterval(
+  ref: ReferenceInterval,
+  unit?: string | null,
+  full = false,
+  lang?: string,
+): string {
   const fmt = (n: number | null) =>
     n == null ? '' : full ? formatNumberFull(n) : formatNumber(n)
   const { low, high } = ref
@@ -65,7 +79,9 @@ function formatInterval(ref: ReferenceInterval, unit?: string | null, full = fal
   } else {
     body = `≤ ${fmt(high)}`
   }
-  return unit ? `${body} ${unit}`.trim() : body
+  if (!unit) return body
+  const suffix = lang === 'ru' ? unitLabelRu(unit) : unit
+  return `${body} ${suffix}`.trim()
 }
 
 /** Extract numeric bounds when the reference is an interval; null otherwise. */
@@ -98,9 +114,19 @@ export function isQualitative(ref: Reference | null | undefined): boolean {
   return !!ref && ref.kind === 'qualitative'
 }
 
-/** The label for a unit column: "Qualitative" when the reference is qualitative. */
-export function unitLabel(unit: string, ref: Reference | null | undefined): string {
-  return isQualitative(ref) ? 'Qualitative' : unit
+/**
+ * The label for a unit column: the localized "Qualitative" word when the
+ * reference is qualitative, otherwise the unit (Russian-rendered for
+ * `lang: 'ru'`, verbatim otherwise). Sorting keys must call this WITHOUT
+ * `lang` so grouping stays canonical.
+ */
+export function unitLabel(
+  unit: string,
+  ref: Reference | null | undefined,
+  lang: string = 'en',
+): string {
+  if (isQualitative(ref)) return qualitativeUnitLabel(lang)
+  return lang === 'ru' ? unitLabelRu(unit) : unit
 }
 
 /** Map a qualitative value to a number for charting: absence → 0, presence → 1. */

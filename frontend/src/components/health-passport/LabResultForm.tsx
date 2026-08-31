@@ -1,7 +1,7 @@
 'use client'
 
 import { Plus, X, ChevronDown } from 'lucide-react'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
@@ -10,6 +10,7 @@ import { BiomarkerCombobox } from './biomarker-combobox'
 import { ReferenceInput } from './reference-input'
 import { UnitCombobox } from './unit-combobox'
 import { isOutsideReference, QUALITATIVE_VALUES } from '@/lib/reference'
+import { qualitativeLabel } from '@/lib/qualitative-labels'
 import type { FormCategory, FormBiomarkerRow, Reference } from '@/lib/types'
 
 export function LabResultForm({
@@ -28,6 +29,10 @@ export function LabResultForm({
   addRow: (catId: string) => void
 }) {
   const t = useTranslations('labForm')
+  const locale = useLocale()
+  // <option value> stays the canonical English enum (what the backend stores
+  // and what isOutsideReference compares); only the visible label translates.
+  const qualOption = (v: string) => <option key={v} value={v}>{qualitativeLabel(v, locale)}</option>
   return (
     <div className="mt-5">
       <div className="mb-2 flex items-center justify-between">
@@ -95,9 +100,7 @@ export function LabResultForm({
                             )}
                           >
                             <option value="">—</option>
-                            {QUALITATIVE_VALUES.map((v) => (
-                              <option key={v} value={v}>{v}</option>
-                            ))}
+                            {QUALITATIVE_VALUES.map(qualOption)}
                           </select>
                           {out && (
                             <span
@@ -169,9 +172,7 @@ export function LabResultForm({
                         className="h-8 w-full rounded-lg border border-input bg-background px-2 text-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
                       >
                         <option value="">—</option>
-                        {QUALITATIVE_VALUES.map((v) => (
-                          <option key={v} value={v}>{v}</option>
-                        ))}
+                        {QUALITATIVE_VALUES.map(qualOption)}
                       </select>
                     ) : (
                       <ReferenceInput

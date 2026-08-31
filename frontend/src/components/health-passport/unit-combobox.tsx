@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { Check, ChevronsUpDown, Plus } from 'lucide-react'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,8 @@ import {
   CommandItem,
 } from '@/components/ui/command'
 import { useBiomarkerDefinitions } from '@/lib/hooks/useBiomarkerDefinitions'
+import { qualitativeUnitLabel } from '@/lib/qualitative-labels'
+import { unitLabelRu } from '@/lib/unit-labels'
 
 const QUALITATIVE_UNIT = 'Qualitative'
 const ALWAYS_SHOWN = [QUALITATIVE_UNIT]
@@ -36,10 +38,20 @@ export function UnitCombobox({
   placeholder,
 }: UnitComboboxProps) {
   const t = useTranslations('unitCombobox')
+  const locale = useLocale()
   const resolvedPlaceholder = placeholder ?? t('searchPlaceholder')
   const { definitions, loading } = useBiomarkerDefinitions()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState(value)
+
+  // Display-only localization: the 'Qualitative' sentinel (compared verbatim
+  // by callers) renders localized, and in RU known units render Russian
+  // (unknown units pass through). The row's stored/typed value is never
+  // rewritten — search and "add new" still operate on the canonical string.
+  const displayUnitLabel = (u: string) => {
+    if (u === 'Qualitative') return qualitativeUnitLabel(locale)
+    return locale === 'ru' ? unitLabelRu(u) : u
+  }
 
   const units = [...new Set([...ALWAYS_SHOWN, ...definitions.map((d) => d.unit).filter(Boolean)])]
 
@@ -78,7 +90,7 @@ export function UnitCombobox({
             !value && 'text-muted-foreground',
           )}
         >
-          {value || resolvedPlaceholder}
+          {value ? displayUnitLabel(value) : resolvedPlaceholder}
           <ChevronsUpDown className="ml-2 size-3 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -115,7 +127,7 @@ export function UnitCombobox({
                         value === unit ? 'opacity-100' : 'opacity-0',
                       )}
                     />
-                    <span className="flex-1 truncate">{unit}</span>
+                    <span className="flex-1 truncate">{displayUnitLabel(unit)}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>

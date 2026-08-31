@@ -21,6 +21,7 @@ import {
   unitLabel,
   displayUnit,
 } from '@/lib/reference'
+import { qualitativeLabel } from '@/lib/qualitative-labels'
 import { ExpandedBiomarkerDetails } from './expanded-biomarker-details'
 import type { BiomarkerResult, MergedSource, Status } from '@/lib/types'
 
@@ -361,6 +362,7 @@ function FlowRow({
   onToggle: () => void
   onViewDetails?: (id: string) => void
 }) {
+  const locale = useLocale()
   return (
     <div className={cn('border-b border-border', isOpen && 'bg-muted/40')}>
       <div
@@ -378,13 +380,13 @@ function FlowRow({
           {biomarker.original_name || biomarker.definition.names.ru}
         </span>
         <span className="font-medium text-foreground">
-          {formatNumber(biomarker.value) || '—'}
+          {qualitativeLabel(formatNumber(biomarker.value), locale) || '—'}
         </span>
         <span className="text-muted-foreground">
-          {unitLabel(displayUnit(biomarker.definition), biomarker.reference ?? biomarker.definition.reference)}
+          {unitLabel(displayUnit(biomarker.definition), biomarker.reference ?? biomarker.definition.reference, locale)}
         </span>
         <span className="text-muted-foreground">
-          {formatReference(biomarker.reference ?? biomarker.definition.reference)}
+          {formatReference(biomarker.reference ?? biomarker.definition.reference, null, { lang: locale })}
         </span>
         <span>
           <StatusBadge status={biomarker.status} />

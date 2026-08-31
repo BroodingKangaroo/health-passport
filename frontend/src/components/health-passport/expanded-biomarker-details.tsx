@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { BiomarkerChart } from '@/components/shared/BiomarkerChart'
 import { ScaleNote } from '@/components/shared/ScaleNote'
 import { formatReference, unitLabel, displayUnit } from '@/lib/reference'
+import { qualitativeLabel } from '@/lib/qualitative-labels'
 import type { BiomarkerResult, Reading, Status } from '@/lib/types'
 
 const statusText: Record<Status, string> = {
@@ -69,7 +70,7 @@ export function ExpandedBiomarkerDetails({
   // biomarker-details.tsx.
   const chartData = sortReadingsByDate([...history, current])
   const effRef = biomarker.reference ?? biomarker.definition.reference
-  const unitDisplay = unitLabel(displayUnit(biomarker.definition), effRef)
+  const unitDisplay = unitLabel(displayUnit(biomarker.definition), effRef, locale)
   const numericValues = chartData
     .map((d) => d.value)
     .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
@@ -88,7 +89,7 @@ export function ExpandedBiomarkerDetails({
         </h3>
         <p className="mb-2 text-xs text-muted-foreground">
           {t('reference', {
-            value: formatReference(biomarker.reference ?? biomarker.definition.reference),
+            value: formatReference(biomarker.reference ?? biomarker.definition.reference, null, { lang: locale }),
           })}
         </p>
         <BiomarkerChart biomarker={biomarker} data={chartData} height={250} />
@@ -97,7 +98,7 @@ export function ExpandedBiomarkerDetails({
       <div className="flex gap-3">
         <MetricCard
           label={t('metricLatest')}
-          value={biomarker.value == null ? '—' : formatNumber(biomarker.value)}
+          value={biomarker.value == null ? '—' : qualitativeLabel(formatNumber(biomarker.value), locale)}
           unit={unitDisplay}
           highlight={statusText[biomarker.status]}
         />
@@ -138,7 +139,7 @@ export function ExpandedBiomarkerDetails({
                   >
                     <span className="text-muted-foreground">{formatDate(reading.date, locale)}</span>
                     <span className="font-semibold text-foreground">
-                      {formatNumber(reading.value)} {unitDisplay}
+                      {qualitativeLabel(formatNumber(reading.value), locale)} {unitDisplay}
                       <ScaleNote
                         className="ml-1"
                         scaleFunction={corresponding?.scale_function}

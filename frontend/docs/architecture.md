@@ -154,6 +154,47 @@ Mirror of the backend's reference model (see `backend/docs/architecture.md`):
   string); `frontend/src/components/health-passport/reference-input.tsx` is
   its interval editor.
 
+## Display-time RU translation (qualitative values + units)
+
+Stored data is ALWAYS canonical English — reading values, `reference.expected`
+and `canonical_unit`/`unit`. Status computation (save-time, backend),
+`isOutsideReference`, `qualitativeToNumber`, matching and sorting all compare
+stored strings, so translation happens only at render sites:
+
+- `src/lib/qualitative-labels.ts` — the backend's closed qualitative enum
+  (`normalize_qual`: Negative, Positive, Detected, Not detected, Absent,
+  Present, Normal, Abnormal) mapped to neutral Russian forms plus the
+  "Qualitative"/«Качественный» unit-column word. `qualitativeLabel(value,
+  lang)` matches canonically and EXACTLY (case-sensitive); raw document text,
+  already-Russian strings and formatted numbers pass through untouched. These
+  are domain/document terms — deliberately NOT in the next-intl catalogs
+  (same policy as the print editor's own language maps).
+- `src/lib/unit-labels.ts` — curated static EN→RU dictionary for the dominant
+  canonical units (`mg/dL`→`мг/дл`, `copies/mL`→`копий/мл`, `10*3/uL`→
+  `×10³/мкл`, …). Matching normalizes case/`µ`/whitespace; the UCUM long tail
+  (`[arb'U]/mL`, `{score}`-style oddballs beyond the curated set) passes
+  through verbatim. Units are precision-critical — NEVER route them through
+  an LLM translation.
+- `formatReference(ref, unit, { full?, lang? })` translates a qualitative
+  expected text via `qualitativeLabel` and, for `lang: 'ru'`, the interval
+  unit suffix via `unitLabelRu`. `unitLabel(unit, ref, lang = 'en')` localizes
+  both the Qualitative word and the unit. Callers pass `useLocale()` (UI) or
+  the print editor's document `lang` — only the `ru` maps hit; every other
+  language is a passthrough, so all EN-default tests are unchanged.
+- Wired render sites: `results-panel` (value/unit/reference cells — but its
+  `unitKeyOf` sort key must stay canonical, i.e. call `unitLabel` WITHOUT
+  `lang`), `flowsheet-matrix` (cells + reference tooltip), `biomarker-details`
+  (+ share text), `expanded-biomarker-details`, `biomarker-combobox` range
+  hint, `LabResultForm` qualitative dropdowns (`<option value>` stays the
+  canonical enum; only the visible label translates),
+  `unit-combobox` (display-only localization in the unit picker: the
+  'Qualitative' sentinel renders «Качественный» and, in RU, known units
+  render Russian — the sentinel string and the row's stored/typed value are
+  still compared/used verbatim; search and "add new" operate on the
+  canonical text. `unit-conflict-dialog` keeps `rawUnit`/`standardUnit`
+  verbatim on purpose — they show exactly what is stored and compared),
+  `print-editor` (cells + reference line, document-language driven).
+
 ## Insights & Correlation view
 
 - `views/CorrelationView.tsx` → `components/health-passport/correlation-chart.tsx`.
@@ -323,4 +364,6 @@ Mirror of the backend's reference model (see `backend/docs/architecture.md`):
   labels ("May 26" — server-formatted and embedded in composite ids), the
   printed document's language maps in `print-editor.tsx` (those localize the
   DOCUMENT per its target language, independent of the UI locale), and
-  technical identifiers (units, modality values, `EN` badges).
+  technical identifiers (modality values, `EN` badges). Unit strings and
+  qualitative values are NOT in this list anymore — they are translated at
+  display time for `ru` (see the display-time RU translation section).

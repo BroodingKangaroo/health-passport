@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { Search, ChevronRight, ArrowDown, ArrowUp } from 'lucide-react'
 
 import { cn, formatNumber } from '@/lib/utils'
@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Sparkline } from '@/components/shared/Sparkline'
 import { ScaleNote } from '@/components/shared/ScaleNote'
 import { formatReference, intervalBounds, qualitativeToNumber, isQualitative } from '@/lib/reference'
+import { qualitativeLabel } from '@/lib/qualitative-labels'
 import type { DateHeader, MatrixCategory, MatrixCell, BiomarkerResult, Status } from '@/lib/types'
 
 const statusText: Record<Status, string> = {
@@ -21,6 +22,7 @@ const statusText: Record<Status, string> = {
 }
 
 function Cell({ cell }: { cell: MatrixCell }) {
+  const locale = useLocale()
   const isOut = cell.status !== 'normal'
   return (
     <span
@@ -29,7 +31,7 @@ function Cell({ cell }: { cell: MatrixCell }) {
         isOut ? cn('font-bold', statusText[cell.status]) : 'text-foreground',
       )}
     >
-      {formatNumber(cell.value)}
+      {qualitativeLabel(formatNumber(cell.value), locale)}
       <ScaleNote
         className="ml-0.5"
         scaleFunction={cell.scale_function}
@@ -50,6 +52,7 @@ interface FlowsheetMatrixProps {
 export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixProps) {
   const router = useRouter()
   const t = useTranslations('timeline.flowsheet')
+  const locale = useLocale()
   const [query, setQuery] = useState('')
 
   const dateCols = dates.map(() => '1fr').join(' ')
@@ -159,7 +162,7 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
                         {row.name}
                       </p>
                       <p className="truncate text-xs text-muted-foreground/70">
-                        {row.original} · {formatReference(row.reference, row.unit)}
+                        {row.original} · {formatReference(row.reference, row.unit, { lang: locale })}
 
                       </p>
                     </div>

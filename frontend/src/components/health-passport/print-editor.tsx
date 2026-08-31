@@ -14,6 +14,7 @@ import { cn, formatNumber, formatNumberFull } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
 import { formatReference } from '@/lib/reference'
+import { qualitativeLabel } from '@/lib/qualitative-labels'
 import type { PrintLang, DateHeader, MatrixCategory, BiomarkerResult, BiomarkerDefinition, CurrentUser } from '@/lib/types'
 
 const LANG_NAME: Record<PrintLang, string> = {
@@ -717,7 +718,7 @@ export function PrintEditor({
                             <span className="font-medium">{rowLabel(row)}</span>
                             {showReferences && row.reference && (
                               <span className="block text-[0.75em] text-gray-400 leading-tight">
-                                {formatReference(row.reference, row.unit, { full: !compactNumbers })}
+                                {formatReference(row.reference, row.unit, { full: !compactNumbers, lang })}
                               </span>
                             )}
                           </td>
@@ -741,7 +742,7 @@ export function PrintEditor({
                                   cell.status !== 'normal' && 'font-semibold text-red-600',
                                 )}
                               >
-                                {compactNumbers ? formatNumber(cell.value) : formatNumberFull(cell.value)}
+                                {qualitativeLabel(compactNumbers ? formatNumber(cell.value) : formatNumberFull(cell.value), lang)}
                                 {cell.status !== 'normal' ? '\u00A0*' : ''}
                               </td>
                             )
