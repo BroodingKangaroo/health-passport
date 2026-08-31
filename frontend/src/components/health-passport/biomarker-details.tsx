@@ -11,14 +11,8 @@ import { BiomarkerChart } from '@/components/shared/BiomarkerChart'
 import { useBiomarkerData } from '@/hooks/useBiomarkerData'
 import { formatReference, unitLabel, isQualitative } from '@/lib/reference'
 import { qualitativeLabel } from '@/lib/qualitative-labels'
-import type { Status, BiomarkerResult } from '@/lib/types'
-
-const statusText: Record<Status, string> = {
-  normal: 'text-status-normal',
-  low: 'text-status-low',
-  high: 'text-status-high',
-  abnormal: 'text-status-high',
-}
+import type { BiomarkerResult } from '@/lib/types'
+import { STATUS_TEXT_CLASS as statusText } from '@/lib/status-labels'
 
 function refText(b: Pick<BiomarkerResult, 'reference' | 'definition'>, lang: string): string {
   const ref = b.reference ?? b.definition.reference

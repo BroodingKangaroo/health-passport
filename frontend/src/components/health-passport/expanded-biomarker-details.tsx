@@ -4,20 +4,13 @@ import { ArrowRight } from 'lucide-react'
 import { useLocale, useTranslations } from 'next-intl'
 
 import { cn, formatDate, formatNumber, sortReadingsByDate } from '@/lib/utils'
-import { localizedStatus } from '@/lib/status-labels'
+import { localizedStatus, STATUS_TEXT_CLASS as statusText } from '@/lib/status-labels'
 import { Button } from '@/components/ui/button'
 import { BiomarkerChart } from '@/components/shared/BiomarkerChart'
 import { ScaleNote } from '@/components/shared/ScaleNote'
 import { formatReference, unitLabel, displayUnit } from '@/lib/reference'
 import { qualitativeLabel } from '@/lib/qualitative-labels'
 import type { BiomarkerResult, Reading, Status } from '@/lib/types'
-
-const statusText: Record<Status, string> = {
-  normal: 'text-status-normal',
-  low: 'text-status-low',
-  high: 'text-status-high',
-  abnormal: 'text-status-high',
-}
 
 function MetricCard({
   label,

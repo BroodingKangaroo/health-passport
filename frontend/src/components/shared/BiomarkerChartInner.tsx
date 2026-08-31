@@ -16,6 +16,7 @@ import type { BiomarkerResult, Reading } from '@/lib/types'
 import { sortReadingsByDate, splitDateLabel } from '@/lib/utils'
 import { isQualitative } from '@/lib/reference'
 import { coerceChartValue, chartReferenceBounds, dateTickRenderer } from '@/lib/chart-series'
+import { statusColor } from '@/lib/status-labels'
 
 interface BiomarkerChartProps {
   biomarker: BiomarkerResult
@@ -140,8 +141,7 @@ export default function BiomarkerChartInner({
             strokeWidth={compact ? 2 : 2.5}
             dot={(props: { cx?: number; cy?: number; payload: { status?: string } }) => {
               if (props.cx == null || props.cy == null) return null
-              const abnormal = props.payload.status && props.payload.status !== 'normal'
-              const color = abnormal ? '#ef4444' : '#3b82f6'
+              const color = statusColor(props.payload.status)
               const r = compact ? 3 : 4
               return (
                 <circle key={`dot-${props.cx}-${props.cy}`} cx={props.cx} cy={props.cy} r={r}
@@ -150,8 +150,7 @@ export default function BiomarkerChartInner({
             }}
             activeDot={(props: { cx?: number; cy?: number; payload: { status?: string } }) => {
               if (props.cx == null || props.cy == null) return null
-              const abnormal = props.payload.status && props.payload.status !== 'normal'
-              const color = abnormal ? '#ef4444' : '#3b82f6'
+              const color = statusColor(props.payload.status)
               return (
                 <circle key={`active-${props.cx}-${props.cy}`} cx={props.cx} cy={props.cy}
                   r={compact ? 5 : 6} fill={color} stroke="none" />

@@ -14,14 +14,8 @@ import { formatReference, isQualitative } from '@/lib/reference'
 import { coerceChartValue, chartReferenceBounds } from '@/lib/chart-series'
 import { qualitativeLabel } from '@/lib/qualitative-labels'
 import { activateOnKey } from '@/lib/a11y'
-import type { DateHeader, MatrixCategory, MatrixCell, BiomarkerResult, Status } from '@/lib/types'
-
-const statusText: Record<Status, string> = {
-  normal: 'text-foreground',
-  low: 'text-status-low',
-  high: 'text-status-high',
-  abnormal: 'text-status-high',
-}
+import { STATUS_TEXT_CLASS as statusText } from '@/lib/status-labels'
+import type { DateHeader, MatrixCategory, MatrixCell, BiomarkerResult } from '@/lib/types'
 
 function Cell({ cell }: { cell: MatrixCell }) {
   const locale = useLocale()

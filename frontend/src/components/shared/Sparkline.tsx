@@ -2,6 +2,8 @@
 
 import { ResponsiveContainer, LineChart, Line, YAxis } from 'recharts'
 
+import { statusColor } from '@/lib/status-labels'
+
 interface SparklineProps {
   id: string
   history: { value: number; status?: string }[]
@@ -94,7 +96,7 @@ export function Sparkline({ id, history, refMin, refMax }: SparklineProps) {
                         cx={props.cx}
                         cy={props.cy}
                         r={abnormal ? 3.5 : 2.5}
-                        fill={abnormal ? '#ef4444' : '#3b82f6'}
+                        fill={statusColor(abnormal ? 'abnormal' : 'normal')}
                         stroke={abnormal ? '#ef4444' : '#3b82f6'}
                         strokeWidth={1.5}
                       />
@@ -113,7 +115,7 @@ export function Sparkline({ id, history, refMin, refMax }: SparklineProps) {
                         cx={props.cx}
                         cy={props.cy}
                         r={4}
-                        fill={abnormal ? '#ef4444' : '#3b82f6'}
+                        fill={statusColor(abnormal ? 'abnormal' : 'normal')}
                         stroke="none"
                       />
                     )
