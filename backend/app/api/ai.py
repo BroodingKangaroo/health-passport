@@ -39,6 +39,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Cap (bytes) on the upload read for the OCR/extract endpoint — same size as
+# the attachment limit in entries.py. Enforced at read time (read_capped) so
+# an oversized body never lands in memory in full (ISSUES.md #53).
+MAX_EXTRACT_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
+
 TRANSLATE_BIOMARKER_PROMPT = """You are a professional medical translator for laboratory reports. Translate each English biomarker name into {lang}.
 
 Rules:
@@ -432,7 +437,16 @@ async def extract_medical_data(
         raise HTTPException(status_code=429, detail=detail)
 
     try:
-        bytes_data = await file.read()
+        bytes_data = await extractor.read_capped(file, MAX_EXTRACT_FILE_SIZE)
+    except extractor.FileTooLargeError as e:
+        raise HTTPException(
+            status_code=413,
+            detail=i18n.tr(
+                "ai.file_too_large",
+                kb=e.size // 1024,
+                max_mb=MAX_EXTRACT_FILE_SIZE // (1024 * 1024),
+            ),
+        ) from None
     except Exception as e:
         raise HTTPException(status_code=400, detail=i18n.tr("ai.read_file_failed", error=e)) from e
 

@@ -264,6 +264,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Failed to read file: {error}",
         "ru": "Не удалось прочитать файл: {error}",
     },
+    "ai.file_too_large": {
+        "en": "File too large ({kb} KB). Maximum allowed size is {max_mb} MB.",
+        "ru": "Файл слишком большой ({kb} КБ). Максимально допустимый размер — {max_mb} МБ.",
+    },
     "ai.empty_file": {
         "en": "Empty file",
         "ru": "Пустой файл",

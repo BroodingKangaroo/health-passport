@@ -47,6 +47,7 @@ from app.db.models import (
 from app.db.session import get_db
 from app.schemas import DeleteEntryResponse, EntriesByDateResponse, SaveEntryResponse
 from app.services.extractor import ALLOWED_EXTENSIONS as ATTACHMENT_EXTENSIONS
+from app.services.extractor import FileTooLargeError, read_capped
 from app.services.language_detect import SUPPORTED_LANGUAGES
 from app.services.reference import compute_status, merge_reference, normalize_qual, parse_value
 from app.services.upload_cleanup import unlink_unreferenced_files
@@ -430,9 +431,10 @@ async def _save_attachment(
                 allowed=", ".join(sorted(ATTACHMENT_EXTENSIONS)),
             ),
         )
-    content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail=i18n.tr("entries.file_too_large", kb=len(content) // 1024, max_mb=MAX_FILE_SIZE // (1024 * 1024)))
+    try:
+        content = await read_capped(file, MAX_FILE_SIZE)
+    except FileTooLargeError as e:
+        raise HTTPException(status_code=413, detail=i18n.tr("entries.file_too_large", kb=e.size // 1024, max_mb=MAX_FILE_SIZE // (1024 * 1024))) from None
 
     # Enforce storage quota for ALL users (anon: 50MB, registered: 200MB — see config.py).
     allowed, _current_bytes, limit_bytes, _remaining = check_and_record_storage_usage(

@@ -39,6 +39,29 @@ class OCRProcessingError(Exception):
         self.kind = kind
 
 
+class FileTooLargeError(Exception):
+    """Raised by :func:`read_capped` when an upload exceeds its size cap."""
+
+    def __init__(self, size: int, cap: int):
+        self.size = size
+        self.cap = cap
+        super().__init__(f"upload is {size} bytes, cap is {cap}")
+
+
+async def read_capped(file, max_bytes: int) -> bytes:
+    """Read an UploadFile capped at ``max_bytes`` (ISSUES.md #53).
+
+    Reads at most ``max_bytes + 1`` bytes, so an oversized upload is
+    rejected by its SIZE — the previous unconditional ``await file.read()``
+    pulled the whole body into memory (unbounded for a hostile client)
+    before any size check ran. Raises :class:`FileTooLargeError` when the
+    upload does not fit; callers map that onto their own 413 response."""
+    buf = await file.read(max_bytes + 1)
+    if len(buf) > max_bytes:
+        raise FileTooLargeError(len(buf), max_bytes)
+    return buf
+
+
 def _classify_ocr_error(exc: Exception) -> OCRProcessingError:
     """Map a raw Mistral/OCR exception to a typed, user-facing error.
 
