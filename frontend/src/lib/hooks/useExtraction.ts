@@ -124,13 +124,23 @@ export function useExtraction({ onSuccess, onFailure }: UseExtractionOptions) {
           },
           controller.signal,
         )
+        // Every post-await write is abort-guarded (ISSUES.md #65): once a
+        // new scan supersedes this run, its success tail must not touch
+        // state (a stale record would clobber the new run's form data and
+        // the 1.5s delay would flip the fresh 'scanning' UI back to
+        // 'editor').
+        if (controller.signal.aborted) return
         onSuccess(result)
         setProgressStage('completed')
         await new Promise((r) => setTimeout(r, 1500))
+        if (controller.signal.aborted) return
         setUploadState('editor')
       } catch (err: unknown) {
         // Ignore aborts from a superseding extraction — the new run is in charge.
         if (err instanceof Error && err.name === 'AbortError') return
+        // Also ignore non-abort errors arriving after a superseding run
+        // started: writing failure state would clobber the new run's UI.
+        if (controller.signal.aborted) return
         if (err instanceof UsageLimitError) {
           toast.error(t('limitTitle'), {
             description: err.message,
