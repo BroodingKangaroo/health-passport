@@ -35,6 +35,12 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 # regains a stronger model.
 MISTRAL_CHAT_MODEL = os.environ.get("MISTRAL_CHAT_MODEL", "mistral-medium-latest")
 
+# Per-call timeout (ms) for every matcher/translation LLM request. Without it
+# a stalled call inherits the client's global 300s (× SDK retries) and one
+# hung verify call stalls the SSE matching stage for minutes (ISSUES.md #58).
+# Same 90s policy as the OCR call timeout in services/extractor.py.
+LLM_CALL_TIMEOUT_MS = int(os.environ.get("LLM_CALL_TIMEOUT_MS", "90_000"))
+
 # Email settings (password reset). SMTP_ENABLED gates delivery; when disabled
 # (default, local dev) the reset link is logged instead.
 SMTP_ENABLED = os.environ.get("SMTP_ENABLED", "").lower() in ("1", "true", "yes")

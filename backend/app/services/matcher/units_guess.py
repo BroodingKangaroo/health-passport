@@ -9,7 +9,7 @@ from mistralai import Mistral
 from app.schemas.ai import RawBiomarker, UnitTranslationBatch
 from app.services.matcher._cache import _local_cache, _unit_translation_cache
 from app.services.matcher._text import _is_ascii
-from config import MISTRAL_CHAT_MODEL
+from config import LLM_CALL_TIMEOUT_MS, MISTRAL_CHAT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -252,6 +252,7 @@ def _translate_units_batch(
     system_prompt = _UNIT_TRANSLATE_PROMPT.format(items=items)
     try:
         chat_response = client.chat.parse(
+            timeout_ms=LLM_CALL_TIMEOUT_MS,
             model=MISTRAL_CHAT_MODEL,
             temperature=0,
             messages=[

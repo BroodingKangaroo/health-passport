@@ -18,7 +18,7 @@ from app.services.matcher._cache import (
 )
 from app.services.matcher.units_guess import _translated_unit
 from app.services.reference import _ABSENT_CANONICAL
-from config import MISTRAL_CHAT_MODEL
+from config import LLM_CALL_TIMEOUT_MS, MISTRAL_CHAT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,7 @@ def _llm_conversion_factor(
         return None
     try:
         chat_response = client.chat.parse(
+            timeout_ms=LLM_CALL_TIMEOUT_MS,
             model=MISTRAL_CHAT_MODEL,
             temperature=0,
             messages=[
@@ -166,6 +167,7 @@ def _llm_scale_function(
         return ""
     try:
         chat_response = client.chat.parse(
+            timeout_ms=LLM_CALL_TIMEOUT_MS,
             model=MISTRAL_CHAT_MODEL,
             temperature=0,
             messages=[

@@ -15,7 +15,7 @@ from app.schemas.ai import (
     TranslatedText,
 )
 from app.services.matcher._text import _is_ascii
-from config import MISTRAL_CHAT_MODEL
+from config import LLM_CALL_TIMEOUT_MS, MISTRAL_CHAT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +103,7 @@ def _translate_names_batch(
     system_prompt = _TRANSLATE_PROMPT.format(items=item_lines)
     try:
         chat_response = client.chat.parse(
+            timeout_ms=LLM_CALL_TIMEOUT_MS,
             model=MISTRAL_CHAT_MODEL,
             temperature=0,
             messages=[
@@ -157,6 +158,7 @@ def _llm_translate_visit_data(
 
     try:
         chat_response = client.chat.parse(
+            timeout_ms=LLM_CALL_TIMEOUT_MS,
             model=MISTRAL_CHAT_MODEL,
             temperature=0,
             messages=[
