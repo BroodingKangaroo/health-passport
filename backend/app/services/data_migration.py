@@ -10,6 +10,7 @@ from app.db.models import (
     Attachment,
     BiomarkerDefinition,
     BiomarkerReading,
+    InstrumentalData,
     MedicalEntry,
     UsageLimit,
     VisitData,
@@ -46,6 +47,7 @@ def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str) -> dict:
         "biomarker_defs_copied": 0,
         "attachments_copied": 0,
         "visit_data_copied": 0,
+        "instrumental_data_copied": 0,
         "readings_copied": 0,
     }
 
@@ -71,6 +73,7 @@ def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str) -> dict:
             status=entry.status,
             clinic=entry.clinic,
             notes=entry.notes,
+            source_language=entry.source_language,
             created_at=entry.created_at,
         )
         db.add(new_entry)
@@ -144,6 +147,22 @@ def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str) -> dict:
         )
         db.add(new_vd)
         summary["visit_data_copied"] += 1
+
+    # Copy instrumental data (with new entry IDs)
+    instrumental_list = db.query(InstrumentalData).filter(
+        InstrumentalData.entry_id.in_([e.id for e in entries])
+    ).all()
+
+    for instr in instrumental_list:
+        new_entry_id = entry_id_map.get(instr.entry_id, instr.entry_id)
+        new_instr = InstrumentalData(
+            entry_id=new_entry_id,
+            modality=instr.modality,
+            findings=instr.findings,
+            conclusion=instr.conclusion,
+        )
+        db.add(new_instr)
+        summary["instrumental_data_copied"] += 1
 
     # Copy biomarker readings (with new entry IDs and new def IDs)
     readings = db.query(BiomarkerReading).filter(

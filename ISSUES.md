@@ -76,13 +76,6 @@ readings/attachments pointing at a nonexistent entry (silent orphan rows), or
 session-wide rollback; matcher side may also discard earlier uncommitted defs
 of the same batch.
 
-**#41 [medium] Anon→registered migration drops `InstrumentalData` and
-`source_language`.** `copy_anonymous_data` (`data_migration.py:38-146`) never
-copies instrumental rows (model not even imported) and omits
-`source_language` on the `MedicalEntry` copy — migrated instrumental tests
-lose findings/conclusion; flowsheet `original_lang` and the print "original"
-column are lost. Fix: copy both.
-
 **#42 [medium] Attachment uploads are a stored-XSS vector.**
 `entries.py:410-424` keeps the client-supplied extension verbatim;
 `serve_upload` (`app/main.py:70-111`) serves inline with a guessed content
@@ -132,12 +125,6 @@ before anchoring *any* unit; force `{"unit":"ratio","kind":"linear"}`.
 printed range qualitative strings never get flagged `needs_review` on unit
 mismatch; the no-doc path (`:189-191`) flags the identical input. Fix: call
 it for strings too (it already short-circuits absent-canonical strings).
-
-**#48 [medium] Non-finite floats accepted; fixed-decimal rounding zeroes
-trace values.** `reference.py:245-247` — `parse_value` accepts
-`"nan"`/`"inf"` (NaN poisons `compute_status` → "normal", non-standard JSON);
-`converters.py:241,246` — `round(v*factor, 4)` maps 0.00005 → 0.0 → false
-"low". Fix: reject non-finite; round to ~6 significant digits.
 
 **#49 [medium] Batch unit translations keyed by LLM response list order.**
 `units_guess.py:278-290` — `zip(parsed.translations, needed.items())`

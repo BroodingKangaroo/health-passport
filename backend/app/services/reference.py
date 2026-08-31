@@ -9,6 +9,7 @@ Qualitative text values are normalised to canonical English enum values so that
 comparisons are deterministic and the UI never leaks raw Russian/foreign text.
 """
 
+import math
 import re
 from typing import Any, Optional, Union
 
@@ -166,9 +167,10 @@ def _parse_numeric_token(text: str) -> Optional[float]:
             return None
     # Plain number (allows "," decimal as a courtesy fallback)
     try:
-        return float(s.replace(',', '.'))
+        val = float(s.replace(',', '.'))
     except ValueError:
         return None
+    return val if math.isfinite(val) else None
 
 
 def parse_reference(text: Optional[str]) -> Optional[dict]:
@@ -234,7 +236,9 @@ def parse_value(text: Any) -> Union[float, str, None]:
     """Parse a raw result string into a numeric value or a qualitative string.
 
     The caller is responsible for normalising qualitative strings via
-    ``normalize_qual`` before storage.
+    ``normalize_qual`` before storage.  Non-finite numeric forms ("nan",
+    "inf", overflow-sized numbers) are rejected and yield ``None`` — a NaN
+    value would poison status computation and serialise as invalid JSON.
     """
     if text is None:
         return None
@@ -243,9 +247,11 @@ def parse_value(text: Any) -> Union[float, str, None]:
         return None
     # 1. Plain float (handles "5.5", "11.10", "1.0", "1", "0.7" etc.)
     try:
-        return float(s)
+        val = float(s)
     except ValueError:
         pass
+    else:
+        return val if math.isfinite(val) else None
     # 2. Scientific notation: "9*10^7", "9×10^7", "9·10^7", "9x10^3" → N*10^K
     m = _SCI_MULT_RE.match(s)
     if m:
@@ -279,9 +285,12 @@ def parse_value(text: Any) -> Union[float, str, None]:
     m = _NUM_RE.search(s)
     if m:
         try:
-            return float(m.group(0).replace(',', '.'))
+            val = float(m.group(0).replace(',', '.'))
         except ValueError:
             pass
+        else:
+            if math.isfinite(val):
+                return val
     return s
 
 

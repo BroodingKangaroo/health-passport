@@ -19,7 +19,12 @@ from app.api.entries import router as entries_router
 from app.api.flowsheet import router as flowsheet_router
 from app.api.timeline import router as timeline_router
 from app.api.usage_limits import router as usage_limits_router
-from app.db.models import BiomarkerDefinition, BiomarkerReading, MedicalEntry
+from app.db.models import (
+    BiomarkerDefinition,
+    BiomarkerReading,
+    InstrumentalData,
+    MedicalEntry,
+)
 from app.db.session import Base, get_db
 from app.services.data_migration import copy_anonymous_data, has_anonymous_data
 from app.services.usage_limits import (
@@ -365,6 +370,49 @@ class TestDataMigration:
             "title": "Later Test",
             "clinic": "Other Clinic",
         }
+
+    def test_copy_anonymous_data_copies_instrumental_and_source_language(
+        self, anon_db_session
+    ):
+        """InstrumentalData rows and MedicalEntry.source_language must survive
+        the anon→registered migration (findings/conclusion + original-lang
+        label are lost otherwise)."""
+        entry = MedicalEntry(
+            id="anon-entry-instr",
+            patient_id=TEST_ANON_ID,
+            type="instrumental",
+            date=datetime.fromisoformat("2026-01-01T00:00:00").replace(tzinfo=timezone.utc),
+            title="Anon Instrumental Entry",
+            clinic="Test Clinic",
+            source_language="ru",
+        )
+        instrumental = InstrumentalData(
+            entry_id=entry.id,
+            modality="Ultrasound",
+            findings="Желчный пузырь без особенностей",
+            conclusion="Патологий не выявлено",
+        )
+        anon_db_session.add_all([entry, instrumental])
+        anon_db_session.commit()
+
+        summary = copy_anonymous_data(anon_db_session, TEST_ANON_ID, TEST_USER_ID)
+        assert summary["instrumental_data_copied"] == 1
+
+        copied_entries = anon_db_session.query(MedicalEntry).filter(
+            MedicalEntry.patient_id == TEST_USER_ID,
+            MedicalEntry.title == "Anon Instrumental Entry",
+        ).all()
+        assert len(copied_entries) == 1
+        copied_entry = copied_entries[0]
+        assert copied_entry.source_language == "ru"
+
+        copied_instrumental = anon_db_session.query(InstrumentalData).filter(
+            InstrumentalData.entry_id == copied_entry.id
+        ).all()
+        assert len(copied_instrumental) == 1
+        assert copied_instrumental[0].modality == "Ultrasound"
+        assert copied_instrumental[0].findings == "Желчный пузырь без особенностей"
+        assert copied_instrumental[0].conclusion == "Патологий не выявлено"
 
     async def test_register_declines_migration_keeps_data(self, anon_client, anon_db_session):
         """Test that registering with migrate_data=False does NOT copy anon data."""

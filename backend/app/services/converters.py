@@ -10,6 +10,7 @@ conversion factor and apply it deterministically (see `apply_factor`).
 """
 
 import logging
+import math
 import re
 from typing import Optional
 
@@ -223,6 +224,18 @@ def _norm_analyte(name: str) -> str:
     return re.sub(r"\s+", " ", (name or "").strip().lower())
 
 
+def _round_sig(value: float, sig: int = 6) -> float:
+    """Round to `sig` significant digits.
+
+    Fixed-decimal rounding (round(x, 4)) silently zeroes trace-level results
+    (e.g. 0.00005 → 0.0 → a false "low" status); significant-digit rounding
+    preserves the magnitude instead.
+    """
+    if value == 0 or not math.isfinite(value):
+        return value
+    return round(value, -math.floor(math.log10(abs(value))) + (sig - 1))
+
+
 def convert_value(
     value: float,
     from_unit: str,
@@ -238,9 +251,9 @@ def convert_value(
     factor, method = conversion_factor(from_unit, to_unit, analyte_name, mw)
     if factor is None:
         return None, method
-    return round(value * factor, 4), method
+    return _round_sig(value * factor), method
 
 
 def apply_factor(value: float, factor: float) -> float:
     """Apply an externally-supplied conversion factor (e.g. from the LLM)."""
-    return round(value * factor, 4)
+    return _round_sig(value * factor)
