@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useId, useState } from 'react'
 import { CheckCircle2, AlertTriangle, Languages, ArrowRight } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { ModalDialog } from '@/components/ui/modal-dialog'
 import type { TranslationSource } from '@/services/api'
 
 export interface TranslationPreviewItem {
@@ -91,17 +92,7 @@ export function TranslationPreviewDialog({
   // Accept-by-default: proceeding without touching anything saves every term,
   // matching the previous all-or-nothing behavior.
   const [rejected, setRejected] = useState<Record<string, boolean>>({})
-
-  // Standard dismissal affordances: Escape discards the run, same as the
-  // explicit "Back — discard translations" button. (Backdrop click is handled
-  // directly on the overlay below.) Above the early return: rules of hooks.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onCancel])
+  const titleId = useId()
 
   if (items.length === 0) return null
 
@@ -113,27 +104,24 @@ export function TranslationPreviewDialog({
   const hasFallback = items.some((i) => i.source === 'fallback')
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={(e) => {
-        // A click on the dimmed backdrop discards the run (same as Back).
-        // Panel clicks bubble up here too, so only react when the backdrop
-        // itself was the target.
-        if (e.target === e.currentTarget) onCancel()
-      }}
+    <ModalDialog
+      open
+      onClose={onCancel}
+      closeOnBackdrop
+      labelledBy={titleId}
+      panelClassName="max-w-3xl rounded-xl bg-background p-6 shadow-xl"
     >
-      <div className="mx-4 w-full max-w-3xl rounded-xl bg-background p-6 shadow-xl">
-        <div className="mb-4 flex items-start gap-3">
-          <Languages className="mt-0.5 size-5 shrink-0 text-primary" />
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              {t('title')}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {t('intro', { languageLabel })}
-            </p>
-          </div>
+      <div className="mb-4 flex items-start gap-3">
+        <Languages className="mt-0.5 size-5 shrink-0 text-primary" />
+        <div>
+          <h2 id={titleId} className="text-lg font-semibold text-foreground">
+            {t('title')}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t('intro', { languageLabel })}
+          </p>
         </div>
+      </div>
 
         {/* One shared grid template for header AND rows (fixed px for the
             arrow/toggle tracks) so every column aligns across rows — with
@@ -306,9 +294,8 @@ export function TranslationPreviewDialog({
               ? t('saveAndGenerate', { count: accepted.length })
               : t('generateNothingSaved')}
           </Button>
-        </div>
       </div>
-    </div>
+    </ModalDialog>
   )
 }
 

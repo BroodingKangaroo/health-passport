@@ -664,7 +664,13 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         </div>
       </div>
 
-      <UnitConflictDialog conflicts={unitConflicts} onResolve={applyResolutions} />
+      {/* Prevent dialog stacking (ISSUES.md #69): while a replacement-file
+          extraction confirmation is pending, it takes precedence and the
+          unit-conflict dialog stays unmounted; it re-opens afterwards if
+          conflicts remain. */}
+      {pendingExtractFile === null && (
+        <UnitConflictDialog conflicts={unitConflicts} onResolve={applyResolutions} />
+      )}
 
       <ExtractionConfirmDialog
         fileName={pendingExtractFile?.name ?? null}
