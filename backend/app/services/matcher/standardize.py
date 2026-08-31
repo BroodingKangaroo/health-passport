@@ -18,6 +18,7 @@ from app.schemas.ai import (
 )
 from app.services import converters
 from app.services.matcher._text import _is_ascii
+from app.services.matcher.definitions import _LOG_PREFIX_RE
 from app.services.matcher.name_matching import canonicalize_gene_mutation_en
 from app.services.matcher.translation import (
     _fallback_translate,
@@ -170,19 +171,37 @@ def _build_standardized_from_def(
     scale_function = None
     needs_review = False
     if isinstance(parsed_value, (int, float)) and not isinstance(parsed_value, bool):
-        std_value, std_unit, scale_function, needs_review = _convert_to_canonical(
-            convert_units(
-                parsed_value,
-                raw_bm.unit,
-                defn.unit,
-                analyte_name=defn.names.get("en", raw_bm.name),
-                loinc=defn.loinc_code,
-                client=client,
-            ),
-            raw_bm,
-            defn,
-            client,
-        )
+        if defn.canonical_unit is not None or _LOG_PREFIX_RE.match((defn.unit or "").strip()):
+            # Land the value in the def's canonical unit in ONE step via
+            # _convert_to_canonical. Running convert_units toward defn.unit
+            # first would DOUBLE-convert: for local defs defn.unit is the
+            # anchor document's *raw* unit — possibly log-scale, e.g.
+            # "lg копий/мл" — and a hallucinated LLM factor would silently
+            # multiply the value before the canonical pass, with
+            # needs_review=False. The same refusal applies to legacy
+            # NULL-canonical defs whose stored unit is log-scale: a
+            # multiplicative factor toward a log target is meaningless
+            # (ISSUES.md #45).
+            std_value, std_unit, scale_function, needs_review = _convert_to_canonical(
+                parsed_value, raw_bm, defn, client,
+            )
+        else:
+            # Legacy NULL-canonical def with a linear stored unit: the
+            # pre-canonical pass toward defn.unit is kept so old defs that
+            # rely on it keep converting.
+            std_value, std_unit, scale_function, needs_review = _convert_to_canonical(
+                convert_units(
+                    parsed_value,
+                    raw_bm.unit,
+                    defn.unit,
+                    analyte_name=defn.names.get("en", raw_bm.name),
+                    loinc=defn.loinc_code,
+                    client=client,
+                ),
+                raw_bm,
+                defn,
+                client,
+            )
     else:
         # Qualitative / non-numeric — still align the unit with the canonical
         # when there is one, so the display stays consistent.
