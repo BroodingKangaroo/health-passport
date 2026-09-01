@@ -2,6 +2,7 @@ import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { NextIntlClientProvider } from 'next-intl'
+import { getTranslations } from 'next-intl/server'
 import { getLocale } from 'next-intl/server'
 import { ThemeProvider } from '@/providers/theme-provider'
 import { QueryProvider } from '@/providers/query-provider'
@@ -17,28 +18,31 @@ const geistMono = Geist_Mono({
   subsets: ['latin', 'cyrillic'],
 })
 
-export const metadata: Metadata = {
-  title: 'HealthPassport — Medical Flowsheet',
-  description:
-    'Clinical-grade medical flowsheet and history dashboard for lab results, visits, and instrumental tests.',
-  generator: 'v0.app',
-  icons: {
-    icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
-    apple: '/apple-icon.png',
-  },
+export async function generateMetadata(): Promise<Metadata> {
+  // Localized via the UI-locale catalogs (ISSUES.md #75); the icons block is
+  // static.
+  const t = await getTranslations({ locale: await getLocale(), namespace: 'meta' })
+  return {
+    title: t('title'),
+    description: t('description'),
+    icons: {
+      icon: [
+        {
+          url: '/icon-light-32x32.png',
+          media: '(prefers-color-scheme: light)',
+        },
+        {
+          url: '/icon-dark-32x32.png',
+          media: '(prefers-color-scheme: dark)',
+        },
+        {
+          url: '/icon.svg',
+          type: 'image/svg+xml',
+        },
+      ],
+      apple: '/apple-icon.png',
+    },
+  }
 }
 
 export const viewport: Viewport = {

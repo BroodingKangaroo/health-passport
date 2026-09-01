@@ -154,7 +154,7 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
                       'grid',
                       GRID_COLS,
                       'border-b border-border px-4 py-3 text-sm transition-colors',
-                      hasBio && 'cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none',
+                      hasBio && 'group cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none',
                     )}
                     style={{ gridTemplateColumns: gridTemplateCols }}
                   >

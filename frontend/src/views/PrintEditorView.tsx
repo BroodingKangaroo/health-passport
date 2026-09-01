@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { fetchFlowsheetData } from '@/services/api'
@@ -19,6 +19,15 @@ export function PrintEditorView() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // The initial fetch + filter initialization must run ONCE per mount and
+  // must NOT re-run on locale switches: `initFilters` overwrites the user's
+  // column/row selections, so re-running on `t` identity changes (locale)
+  // would silently reset them (ISSUES.md #75). The failure message reads the
+  // current translator through a ref so the effect has no locale dependency.
+  const tRef = useRef(t)
+  useEffect(() => {
+    tRef.current = t
+  }, [t])
   useEffect(() => {
     fetchFlowsheetData()
       .then((res: FlowsheetResponse) => {
@@ -28,10 +37,10 @@ export function PrintEditorView() {
         initFilters(allDateLabels, allRowIds)
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : t('failedToLoad'))
+        setError(err instanceof Error ? err.message : tRef.current('failedToLoad'))
       })
       .finally(() => setLoading(false))
-  }, [initFilters, t])
+  }, [initFilters])
 
   let lang: PrintLang = targetLanguage
   let bilingual = false

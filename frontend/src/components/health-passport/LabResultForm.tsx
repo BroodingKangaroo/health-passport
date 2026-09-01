@@ -138,7 +138,7 @@ export function LabResultForm({
                       className={cn(
                         'relative flex items-center gap-1 rounded-md transition-shadow',
                         row.canonical_unit_inferred
-                          ? 'ring-2 ring-blue-400/80 bg-blue-50/60 shadow-[0_0_6px_rgba(96,165,250,0.4)] group'
+                          ? 'ring-2 ring-blue-400/80 bg-blue-50/60 shadow-[0_0_6px_rgba(96,165,250,0.4)] dark:bg-blue-500/10 dark:shadow-[0_0_6px_rgba(96,165,250,0.25)] group'
                           : '',
                       )}
                     >

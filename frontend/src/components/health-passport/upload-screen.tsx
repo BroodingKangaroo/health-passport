@@ -95,10 +95,13 @@ export function UploadScreen({
     progressWidth = 2
   } else if (progressStage === 'extracting' && markdownChars !== null) {
     remainingSeconds = Math.max(0, stageEstimate - (elapsedSeconds - stageStart))
-    progressWidth = Math.min(90, (elapsedSeconds / (elapsedSeconds + remainingSeconds)) * 100)
+    // Guard 0/0 → NaN when the estimate is still 0 at second 0.
+    const denom = elapsedSeconds + remainingSeconds
+    progressWidth = denom > 0 ? Math.min(90, (elapsedSeconds / denom) * 100) : 2
   } else if (progressStage === 'matching' && biomarkerCount !== null) {
     remainingSeconds = Math.max(0, stageEstimate - (elapsedSeconds - stageStart))
-    progressWidth = Math.min(95, (elapsedSeconds / (elapsedSeconds + remainingSeconds)) * 100)
+    const denom = elapsedSeconds + remainingSeconds
+    progressWidth = denom > 0 ? Math.min(95, (elapsedSeconds / denom) * 100) : 2
   } else {
     progressWidth = ((stageStep[progressStage] - 1) / totalSteps) * 100
   }
@@ -210,7 +213,7 @@ export function UploadScreen({
       </button>
 
       {multiFileNotice && (
-        <p className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <p className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-400">
           <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
           {multiFileNotice}
         </p>

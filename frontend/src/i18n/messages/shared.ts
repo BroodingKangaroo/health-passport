@@ -2,6 +2,11 @@
 // Each domain file exports { en, ru } message trees; `index.ts` merges them.
 export const sharedMessages = {
   en: {
+    meta: {
+      title: 'HealthPassport — Medical Flowsheet',
+      description:
+        'Clinical-grade medical flowsheet and history dashboard for lab results, visits, and instrumental tests.',
+    },
     common: {
       loading: 'Loading...',
       cancel: 'Cancel',
@@ -73,6 +78,11 @@ export const sharedMessages = {
     },
   },
   ru: {
+    meta: {
+      title: 'HealthPassport — медицинская карта',
+      description:
+        'Медицинская карта и история анализов: таблица показателей, визиты к врачу и инструментальные исследования.',
+    },
     common: {
       loading: 'Загрузка...',
       cancel: 'Отмена',

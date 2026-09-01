@@ -133,7 +133,7 @@ function CustomTooltip({
     })
     if (visible.length === 0) return null
     return (
-      <div className="rounded-md border border-border bg-white p-3 shadow-lg">
+      <div className="rounded-md border border-border bg-popover p-3 shadow-lg">
         <p className="text-sm font-semibold">{mainLabel}</p>
         {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
         {visible.map((entry) => {
@@ -405,6 +405,19 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
     }
     setSelectedIds(next)
   }, [allBiomarkers, allChartable, suggestedPairs])
+
+  // Prune selections that no longer exist after a refetch (ISSUES.md #75):
+  // a removed/changed definition id in selectedIds would render a legend
+  // entry and color mapping for a series that can no longer appear.
+  // Adjusted during render (React 19 pattern) to avoid setState-in-effect.
+  const [prevChartable, setPrevChartable] = useState(allChartable)
+  if (prevChartable !== allChartable) {
+    setPrevChartable(allChartable)
+    const valid = selectedIds.filter((id) => allChartable.some((b) => b.id === id))
+    if (valid.length !== selectedIds.length) {
+      setSelectedIds(valid)
+    }
+  }
 
   const colorMap = useMemo(() => {
     const map: Record<string, string> = {}

@@ -17,9 +17,11 @@ export interface TranslationPreviewItem {
 
 const CACHED_BADGE_CLASS = 'border-border bg-muted text-muted-foreground'
 
-const FALLBACK_BADGE_CLASS = 'border-amber-300 bg-amber-50 text-amber-700'
+const FALLBACK_BADGE_CLASS =
+  'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-400'
 
-const KEPT_AS_IS_BADGE_CLASS = 'border-sky-200 bg-sky-50 text-sky-700'
+const KEPT_AS_IS_BADGE_CLASS =
+  'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-400'
 
 /**
  * Resolve the badge shown next to the translated name. Fallback rows have no
@@ -265,14 +267,14 @@ export function TranslationPreviewDialog({
           <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">
             {hasKeptAsIs && (
               <p>
-                <span className="font-medium text-sky-700">{t('badges.keptAsIs')}</span>
+                <span className="font-medium text-sky-700 dark:text-sky-400">{t('badges.keptAsIs')}</span>
                 {' '}
                 {t('legendKeptAsIs')}
               </p>
             )}
             {hasFallback && (
               <p>
-                <span className="font-medium text-amber-700">{t('badges.fallback')}</span>
+                <span className="font-medium text-amber-700 dark:text-amber-400">{t('badges.fallback')}</span>
                 {' '}
                 {t('legendFallback')}
               </p>

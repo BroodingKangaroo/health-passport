@@ -154,6 +154,7 @@ export function DoctorVisitForm({
 
   const diagnosisRef = useRef<HTMLTextAreaElement>(null)
   const resizeDiagnosis = useAutoResize(diagnosisRef)
+  const [showDiagnosisOriginal, setShowDiagnosisOriginal] = useState(false)
 
   const [prescriptions, setPrescriptions] = useState<PrescriptionFormItem[]>(
     initialData?.prescriptions?.map((p, i) => ({
@@ -254,18 +255,15 @@ export function DoctorVisitForm({
           {diagnosis.original && diagnosis.original !== diagnosis.translated_en && (
             <button
               type="button"
-              onClick={() => {
-                const el = document.getElementById('diagnosis-original')
-                if (el) el.classList.toggle('hidden')
-              }}
+              onClick={() => setShowDiagnosisOriginal((v) => !v)}
               className="mt-1 flex items-center gap-1 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
             >
               <Languages className="size-3" />
               {t('showOriginal')}
             </button>
           )}
-          {diagnosis.original && (
-            <div id="diagnosis-original" className="hidden mt-1 rounded border border-dashed border-muted-foreground/20 bg-muted/30 p-2 text-xs italic text-muted-foreground/70">
+          {diagnosis.original && showDiagnosisOriginal && (
+            <div className="mt-1 rounded border border-dashed border-muted-foreground/20 bg-muted/30 p-2 text-xs italic text-muted-foreground/70">
               {diagnosis.original}
             </div>
           )}

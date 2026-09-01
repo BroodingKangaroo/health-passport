@@ -43,6 +43,14 @@ export function UnitCombobox({
   const { definitions, loading } = useBiomarkerDefinitions()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState(value)
+  // Keep the search text in sync when the value changes externally (e.g. a
+  // re-extraction resets the row) — previously the stale search persisted
+  // and filtered out the newly selected unit (ISSUES.md #75).
+  const [prevValue, setPrevValue] = useState(value)
+  if (prevValue !== value) {
+    setPrevValue(value)
+    setSearch(value)
+  }
 
   // Display-only localization: the 'Qualitative' sentinel (compared verbatim
   // by callers) renders localized, and in RU known units render Russian

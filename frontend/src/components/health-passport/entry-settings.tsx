@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -150,11 +150,21 @@ export function EntrySettings({
     return key ? t(key) : event.type
   }, [event.type, t])
 
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Clean up a pending copy-timer so a late setCopied can't fire after
+  // unmount (ISSUES.md #75).
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current)
+    }
+  }, [])
+
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(event.id)
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = setTimeout(() => setCopied(false), 1500)
     } catch {
       /* clipboard may be blocked in some contexts; ignore */
     }
