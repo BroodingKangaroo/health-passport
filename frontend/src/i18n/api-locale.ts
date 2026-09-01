@@ -41,6 +41,7 @@ const API_FALLBACKS = {
     changePasswordFailed: 'POST /auth/change-password failed',
     deleteAccountFailed: 'DELETE /auth/account failed',
     registerFailed: 'POST /auth/register failed',
+    requestTimedOut: 'The request timed out. Please try again.',
     extractionFailed: 'Extraction failed',
     extractionTimedOut:
       'AI extraction timed out — the connection stalled. Please try again.',
@@ -59,6 +60,7 @@ const API_FALLBACKS = {
     changePasswordFailed: 'Не удалось изменить пароль',
     deleteAccountFailed: 'Не удалось удалить аккаунт',
     registerFailed: 'Не удалось зарегистрироваться',
+    requestTimedOut: 'Время ожидания запроса истекло. Попробуйте ещё раз.',
     extractionFailed: 'Не удалось распознать документ',
     extractionTimedOut:
       'Время ожидания распознавания истекло — соединение прервалось. Попробуйте ещё раз.',

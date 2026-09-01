@@ -33,6 +33,7 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
   const [pageNum, setPageNum] = useState(1)
   const [scale, setScale] = useState(1)
   const [loading, setLoading] = useState(() => !url)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [imgSrc, setImgSrc] = useState<string | null>(null)
   const [fitHeight, setFitHeight] = useState(0)
   const imgUrlRef = useRef<string | undefined>(undefined)
@@ -51,6 +52,7 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
     setScale(1)
     setFitHeight(0)
     setLoading(true)
+    setLoadFailed(false)
   }
 
   useEffect(() => {
@@ -109,7 +111,12 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
         setLoading(false)
       })
       .catch(() => {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) {
+          // Surface the failure instead of a blank canvas (ISSUES.md #75) —
+          // the image path already degrades to 'Preview unavailable'.
+          setLoadFailed(true)
+          setLoading(false)
+        }
       })
     return () => { cancelled = true }
   }, [url, isImage])
@@ -334,6 +341,10 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
         {loading ? (
           <div className="m-auto flex items-center justify-center text-sm text-muted-foreground">
             {t('loadingPdf')}
+          </div>
+        ) : loadFailed || !pdf ? (
+          <div className="m-auto flex items-center justify-center text-sm text-muted-foreground">
+            {t('previewUnavailable')}
           </div>
         ) : (
           <div className="m-auto w-max h-max">

@@ -212,7 +212,11 @@ export async function translateBiomarkerNames(
   opts?: { persist?: boolean; signal?: AbortSignal; categories?: string[] },
 ): Promise<{ names: Map<string, TranslatedName>; categories: CategoryTranslations }> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TRANSLATE_TIMEOUT_MS)
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, TRANSLATE_TIMEOUT_MS)
   const onExternalAbort = () => controller.abort()
   opts?.signal?.addEventListener('abort', onExternalAbort)
   try {
@@ -256,9 +260,11 @@ export async function translateBiomarkerNames(
     return { names: nameMap, categories: categoryMap }
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new Error(
-        apiFallback('translationTimedOut'),
-      )
+      // Only the TIMEOUT abort becomes a timeout error; an external abort
+      // (leave-guard) re-throws so the UI doesn't show a bogus timeout
+      // toast when the user simply navigated away (ISSUES.md #75).
+      if (!timedOut) throw err
+      throw new Error(apiFallback('translationTimedOut'))
     }
     throw err
   } finally {
@@ -482,8 +488,39 @@ export function buildSaveEntryFormData(f: SaveEntryFormData): FormData {
   return fd
 }
 
+/**
+ * Hard-timeout wrapper for the save/merge/delete paths (ISSUES.md #75): the
+ * extract/translate paths already cap their calls; these previously had none,
+ * so a hung connection left Save/Delete buttons stuck forever. An external
+ * abort (leave-guard) is forwarded; a TIMEOUT abort becomes a readable
+ * ApiError instead of a raw AbortError.
+ */
+const SAVE_TIMEOUT_MS = 30_000
+
+async function fetchWithTimeout(path: string, init: RequestInit, timeoutMs = SAVE_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController()
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, timeoutMs)
+  const onExternalAbort = () => controller.abort()
+  init.signal?.addEventListener('abort', onExternalAbort)
+  try {
+    return await fetch(path, { ...init, signal: controller.signal })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError' && timedOut) {
+      throw new ApiError(0, apiFallback('requestTimedOut'))
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+    init.signal?.removeEventListener('abort', onExternalAbort)
+  }
+}
+
 export async function saveMedicalEntry(formData: FormData): Promise<SaveEntryResponse> {
-  const res = await fetch(`${API_BASE}/entry`, {
+  const res = await fetchWithTimeout(`${API_BASE}/entry`, {
     method: 'POST',
     body: formData,
     headers: { ...baseHeaders() },
@@ -505,7 +542,7 @@ export async function mergeMedicalEntry(
   entryId: string,
   formData: FormData,
 ): Promise<SaveEntryResponse> {
-  const res = await fetch(`${API_BASE}/entry/${encodeURIComponent(entryId)}/merge`, {
+  const res = await fetchWithTimeout(`${API_BASE}/entry/${encodeURIComponent(entryId)}/merge`, {
     method: 'POST',
     body: formData,
     headers: { ...baseHeaders() },
@@ -524,7 +561,7 @@ export async function mergeMedicalEntry(
 
 /* ----- Delete Entry ----- */
 export async function deleteEntry(id: string): Promise<DeleteEntryResponse> {
-  const res = await fetch(`${API_BASE}/entry/${encodeURIComponent(id)}`, {
+  const res = await fetchWithTimeout(`${API_BASE}/entry/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: { ...baseHeaders() },
     credentials: 'include',
@@ -609,6 +646,16 @@ export async function registerUser(payload: RegisterPayload): Promise<RegisterRe
 
 function contentDispositionFilename(header: string | null, fallback: string): string {
   if (!header) return fallback
+  // RFC 5987: filename*=UTF-8''<percent-encoded> wins when present — it is
+  // the only form that survives non-ASCII filenames (ISSUES.md #75).
+  const ext = /filename\*=(?:UTF-8|utf-8)''([^;\s]+)/.exec(header)
+  if (ext?.[1]) {
+    try {
+      return decodeURIComponent(ext[1].replace(/^"|"$/g, ''))
+    } catch {
+      /* malformed encoding — fall through to plain filename */
+    }
+  }
   const m = /filename="?([^";]+)"?/.exec(header)
   return m?.[1] || fallback
 }
