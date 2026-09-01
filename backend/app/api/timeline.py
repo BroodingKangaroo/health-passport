@@ -3,7 +3,7 @@ import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app import i18n
 from app.api._serializers import (
@@ -65,8 +65,11 @@ router = APIRouter()
 def _events_from_db(db: Session, patient_id: str):
     # Same-day tests are ordered by insertion time then id, so the event
     # order (and therefore the timeline's default selection) is deterministic.
+    # selectinload: attachments in one extra query instead of one per entry
+    # (ISSUES.md #59).
     entries = (
         db.query(MedicalEntryModel)
+        .options(selectinload(MedicalEntryModel.attachments))
         .filter(MedicalEntryModel.patient_id == patient_id)
         .order_by(
             MedicalEntryModel.date,
@@ -152,14 +155,30 @@ def _biomarkers_from_db(db: Session, patient_id: str):
     if not blood_tests:
         return []
 
-    all_biomarker_ids: set[str] = set()
-    for bt in blood_tests:
-        readings = (
-            db.query(BiomarkerReading)
-            .filter(BiomarkerReading.entry_id == bt.id)
-            .all()
+    # Two batched queries instead of one per entry plus one per biomarker
+    # (ISSUES.md #59): all readings of the patient's blood tests, joined with
+    # their entry date. The SQL order is exactly _readings_query's
+    # (date, created_at, entry id), so grouping in SQL order preserves each
+    # biomarker's oldest-first sequence.
+    rows = (
+        db.query(BiomarkerReading, MedicalEntryModel.date)
+        .join(MedicalEntryModel, BiomarkerReading.entry_id == MedicalEntryModel.id)
+        .filter(
+            BiomarkerReading.entry_id.in_([bt.id for bt in blood_tests]),
+            MedicalEntryModel.type == "blood_test",
+            MedicalEntryModel.patient_id == patient_id,
         )
-        all_biomarker_ids.update(r.biomarker_id for r in readings)
+        .order_by(
+            MedicalEntryModel.date,
+            MedicalEntryModel.created_at,
+            MedicalEntryModel.id,
+        )
+        .all()
+    )
+    readings_by_bid: dict[str, list] = {}
+    for r, date in rows:
+        readings_by_bid.setdefault(r.biomarker_id, []).append((r, date))
+    all_biomarker_ids = set(readings_by_bid)
 
     defn_by_id, defn_by_loinc = resolve_definitions(db, all_biomarker_ids, user_id=patient_id)
 
@@ -170,7 +189,7 @@ def _biomarkers_from_db(db: Session, patient_id: str):
             logger.warning("Skipping timeline biomarker with unresolvable id=%r", bid)
             continue
 
-        readings_query = _readings_query(db, patient_id, bid)
+        readings_query = readings_by_bid.get(bid) or []
         if not readings_query:
             continue
 
@@ -229,6 +248,7 @@ def _visits_from_db(db: Session, patient_id: str):
     visits: dict[str, VisitData] = {}
     visit_data_rows = (
         db.query(VisitDataModel, MedicalEntryModel)
+        .options(selectinload(MedicalEntryModel.attachments))
         .join(MedicalEntryModel, VisitDataModel.entry_id == MedicalEntryModel.id)
         .filter(MedicalEntryModel.patient_id == patient_id)
         .all()
@@ -256,6 +276,7 @@ def _instrumental_from_db(db: Session, patient_id: str):
     instrumental: dict[str, InstrumentalData] = {}
     instrumental_data_rows = (
         db.query(InstrumentalDataModel, MedicalEntryModel)
+        .options(selectinload(MedicalEntryModel.attachments))
         .join(MedicalEntryModel, InstrumentalDataModel.entry_id == MedicalEntryModel.id)
         .filter(MedicalEntryModel.patient_id == patient_id)
         .all()

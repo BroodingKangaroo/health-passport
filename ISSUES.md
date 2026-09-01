@@ -62,19 +62,14 @@ docs updated where a documented statement changed):
 - **#51–#58, #60** backend lows (login throttle, typed token-expiry marker,
   capped file reads, no orphaned uploads, date handling, LIKE escaping,
   per-call LLM timeouts, dead-code sweep)
+- **#59** N+1 query patterns (batched/eager fetches in timeline, flowsheet,
+  and by-date endpoints, pinned by query-count bounds)
 - **#62–#70** frontend correctness + a11y (register via api layer, auth
   recovery, NaN reference bounds, extraction abort guards, localized api
   errors, abortable preflight, schema/type drift, dialog semantics, keyboard
   nav)
 - **#71–#75** refactors + polish (chart-series/status/dateId dedup,
   print-document module, misc UI + api robustness)
-
-### Deferred
-
-**#59 [low] N+1 query patterns (deferred).** `timeline.py:154-175`
-(per-entry + per-biomarker readings), `:87-90/:235-238/:261-264` (lazy
-`entry.attachments`), `flowsheet.py:62-68`, `entries.py:455-469`. Correct but
-O(N); 2-3 queries with eager loading would do.
 
 ### Verified working (this audit — do not re-check)
 

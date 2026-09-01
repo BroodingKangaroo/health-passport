@@ -511,26 +511,42 @@ async def get_entries_by_date(
         q = q.filter(MedicalEntryModel.type == type)
     entries = q.order_by(MedicalEntryModel.date).all()
 
+    # Batched fetches (ISSUES.md #59): all readings of the day's entries in
+    # one query and one definitions query for the union of referenced ids —
+    # instead of one readings + one definitions query per entry.
+    entry_ids = [e.id for e in entries]
+    all_readings = (
+        db.query(BiomarkerReading)
+        .filter(BiomarkerReading.entry_id.in_(entry_ids))
+        .order_by(BiomarkerReading.id)
+        .all()
+    ) if entry_ids else []
+    readings_by_entry: dict[str, list[BiomarkerReading]] = {}
+    union_ids: set[str] = set()
+    for r in all_readings:
+        readings_by_entry.setdefault(r.entry_id, []).append(r)
+        union_ids.add(r.biomarker_id)
+    all_defns = (
+        db.query(BiomarkerDefinitionModel)
+        .filter(
+            (BiomarkerDefinitionModel.id.in_(union_ids))
+            | (BiomarkerDefinitionModel.loinc_code.in_(union_ids))
+        )
+        .all()
+    ) if union_ids else []
+
     # Per entry: the definitions its readings reference, so callers can detect
     # biomarker overlap (e.g. when deciding whether two blood tests can merge).
     result_entries = []
     for e in entries:
-        readings = (
-            db.query(BiomarkerReading)
-            .filter(BiomarkerReading.entry_id == e.id)
-            .all()
-        )
+        readings = readings_by_entry.get(e.id, [])
         reading_ids = {r.biomarker_id for r in readings}
-        defns = (
-            db.query(BiomarkerDefinitionModel)
-            .filter(
-                (BiomarkerDefinitionModel.id.in_(reading_ids))
-                | (BiomarkerDefinitionModel.loinc_code.in_(reading_ids))
-            )
-            .all()
-        )
-        defn_by_id = {d.id: d for d in defns}
-        defn_by_loinc = {d.loinc_code: d for d in defns if d.loinc_code}
+        defn_by_id = {d.id: d for d in all_defns if d.id in reading_ids}
+        defn_by_loinc = {
+            d.loinc_code: d
+            for d in all_defns
+            if d.loinc_code and d.loinc_code in reading_ids
+        }
         biomarkers = []
         for r in readings:
             defn = defn_by_id.get(r.biomarker_id) or defn_by_loinc.get(r.biomarker_id)

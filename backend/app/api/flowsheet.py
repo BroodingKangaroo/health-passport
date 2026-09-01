@@ -58,14 +58,21 @@ def _build_flowsheet(db: Session, patient_id: str):
 
     date_headers = _build_date_headers(blood_tests)
 
-    biomarker_readings_map: dict[str, dict[str, BiomarkerReading]] = {}
-    for bt in blood_tests:
-        readings = (
-            db.query(BiomarkerReading)
-            .filter(BiomarkerReading.entry_id == bt.id)
-            .all()
-        )
-        biomarker_readings_map[bt.id] = {r.biomarker_id: r for r in readings}
+    # One batched query instead of one per entry (ISSUES.md #59); per-entry
+    # dict shape and last-wins semantics preserved.
+    all_readings = (
+        db.query(BiomarkerReading)
+        .filter(BiomarkerReading.entry_id.in_([bt.id for bt in blood_tests]))
+        .order_by(BiomarkerReading.id)
+        .all()
+    )
+    readings_by_entry: dict[str, list[BiomarkerReading]] = {}
+    for r in all_readings:
+        readings_by_entry.setdefault(r.entry_id, []).append(r)
+    biomarker_readings_map: dict[str, dict[str, BiomarkerReading]] = {
+        bt.id: {r.biomarker_id: r for r in readings_by_entry.get(bt.id, [])}
+        for bt in blood_tests
+    }
 
     defn_by_id, defn_by_loinc = _resolve_flowsheet_definitions(db, patient_id, biomarker_readings_map)
     matrix = _build_matrix(blood_tests, biomarker_readings_map, defn_by_id, defn_by_loinc)
