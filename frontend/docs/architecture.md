@@ -281,9 +281,10 @@ stored strings, so translation happens only at render sites:
   `merged`/`merged_source` from the reading AT the selected event
   (`isLatest`-gated, per-reading flags) — never a `??`-fallback to the latest
   reading's flags. The same `isLatest`-gated copy applies to
-  `original_name/value/unit/range` and `reference`, so an older event shows
-  the metadata of the reading at that event (matching its save-time status),
-  not the newest doc's. The history-list "abnormal only" filter matches the
+  `original_name/value/unit/range`, `reference`, and (ISSUES.md #68)
+  `scale_function`/`needs_review` — the top-level `BiomarkerResult` carries
+  the latest reading's scale/review flags so the selected event's chip
+  renders its `ScaleNote` like every history reading. The history-list "abnormal only" filter matches the
   same way (`entry_id === event.id`).
 
 ## Instrumental-test entries

@@ -184,8 +184,10 @@ Reference for agents so these aren't re-derived via grep each session:
   `copies/mL`, the anchoring document's own value/reference bounds are scaled
   10^x at creation, and readings printed in the log unit convert via the
   deterministic `10^x` scale function. Ratio-like analytes (ratio / index /
-  соотношение names) are dimensionless — a log prefix on their unit column is
-  a table-header artifact, so they anchor `ratio` and never scale.
+  соотношение names) are dimensionless and anchor `ratio` BEFORE any unit
+  translation — a log prefix OR a leaked concentration unit (e.g. a table-wide
+  `мг/дл` column header) never becomes their canonical, and they never scale
+  (ISSUES.md #46).
   Canonical absent strings (`Not detected`, …) against a foreign canonical
   unit don't set `needs_review` (no quantity to convert), and a unitless
   (qualitative) def never leaks a raw unit column onto its readings.
@@ -525,6 +527,9 @@ extractions "forget" units.
     local dev (`SMTP_ENABLED` unset, the default) the reset link is logged
     instead of emailed. Endpoint is rate-limited in-memory (5/hour per email,
     20/hour per IP).
+  - `login` throttles FAILED attempts in-memory (10/15 min per email,
+    30/15 min per IP; ISSUES.md #51) — successful logins never consume the
+    window, and a full window refuses even correct credentials with 429.
   - `reset-password` validates the token (exists, unused, unexpired), enforces
     a min 8-char password, replaces `patients.hashed_password`, and marks the
     token used (replay → 400). Existing JWT sessions stay valid until their
