@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { UploadCloud, Loader2, Pencil, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { UploadCloud, Loader2, Pencil, AlertCircle, CheckCircle2, ShieldCheck } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
@@ -233,6 +233,11 @@ export function UploadScreen({
 
       {uploadState === 'idle' && (
         <>
+          <p className="mx-auto mt-3 flex max-w-md items-start gap-1.5 text-xs text-muted-foreground">
+            <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden />
+            {t('aiDisclosure')}
+          </p>
+
           <div className="relative my-6">
             <div className="border-t border-border" />
             <span className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 bg-background px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">

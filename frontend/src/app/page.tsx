@@ -1,5 +1,5 @@
-import { TimelineView } from '@/views/TimelineView'
+import { LandingGate } from '@/components/landing/landing-gate'
 
 export default function Page() {
-  return <TimelineView />
+  return <LandingGate />
 }

@@ -33,6 +33,8 @@ export const addEntryMessages = {
       or: 'OR',
       skipManual: 'Skip Upload & Enter Manually',
       multiFileNotice: 'Only the first document is processed — upload files one at a time.',
+      aiDisclosure:
+        'Documents are processed by an AI service and are not stored there. You can delete or export your data at any time.',
     },
     editor: {
       aiErrorTitle: 'AI extraction failed',
@@ -224,6 +226,8 @@ export const addEntryMessages = {
       or: 'ИЛИ',
       skipManual: 'Пропустить загрузку и ввести вручную',
       multiFileNotice: 'Обрабатывается только первый документ — загружайте файлы по одному.',
+      aiDisclosure:
+        'Документы обрабатываются ИИ-сервисом и не хранятся в нём. Вы можете удалить или экспортировать свои данные в любой момент.',
     },
     editor: {
       aiErrorTitle: 'Ошибка ИИ-распознавания',

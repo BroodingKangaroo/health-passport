@@ -31,6 +31,30 @@ incrementally (verified on Next 16 dev + standalone), so `streamApiBase()` in
 explicitly set (direct-origin escape hatch; requires `CORS_ORIGINS` on the
 backend to include the site).
 
+## Landing gate (`/`, zero-entries hero)
+
+- `/` (`src/app/page.tsx`) renders `LandingGate`
+  (`src/components/landing/landing-gate.tsx`): a **client-side gate** — no
+  middleware — that shows the marketing hero (`landing-hero.tsx`) only when
+  the timeline query resolved without error AND returned zero events;
+  otherwise (loading, error, any entries) `TimelineView` renders as before,
+  with its own loading/error states. A user with data therefore never sees
+  the hero.
+- The gate depends on the timeline cache being fresh at mount. Saving the
+  first entry on `/add-entry` REFETCHES `['timeline']`
+  (`refetchQueries`, not just `invalidateQueries` — there is no active
+  observer there, so an invalidate would leave a stale zero-entry snapshot
+  that the gate would misread as "first visit"). Don't downgrade that back
+  to `invalidateQueries`.
+- Hero copy lives in the `landing` i18n catalog (`src/i18n/messages/landing.ts`,
+  EN/RU parity test). The trial-extraction count is interpolated from
+  `/api/usage/limits` (`ai_extraction_limit`, fetched pre-auth — the backend
+  creates the anon session on demand); it falls back to 5 on fetch failure,
+  matching `ANONYMOUS_LIMITS` in `backend/config.py`. If that backend limit
+  changes, only the fallback needs updating.
+- The hero is session-aware via `AuthStatusProvider`: authenticated
+  zero-data users get "Add your first entry" instead of the trial CTAs.
+
 ## Print/export translation flow
 
 - `print-setup.tsx` "Generate Document" actually performs its promised AI

@@ -5,6 +5,7 @@ import { timelineMessages } from './timeline'
 import { correlationMessages } from './correlation'
 import { printMessages } from './print'
 import { settingsMessages } from './settings'
+import { landingMessages } from './landing'
 
 export const DEFAULT_LOCALE = 'en'
 export const SUPPORTED_LOCALES = ['en', 'ru'] as const
@@ -23,6 +24,7 @@ export const messages: Record<AppLocale, Record<string, unknown>> = {
     correlationMessages.en,
     printMessages.en,
     settingsMessages.en,
+    landingMessages.en,
   ),
   ru: merge(
     sharedMessages.ru,
@@ -32,7 +34,8 @@ export const messages: Record<AppLocale, Record<string, unknown>> = {
     correlationMessages.ru,
     printMessages.ru,
     settingsMessages.ru,
+    landingMessages.ru,
   ),
 }
 
-export { sharedMessages, authMessages, addEntryMessages, timelineMessages, correlationMessages, printMessages, settingsMessages }
+export { sharedMessages, authMessages, addEntryMessages, timelineMessages, correlationMessages, printMessages, settingsMessages, landingMessages }

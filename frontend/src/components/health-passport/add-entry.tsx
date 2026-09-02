@@ -386,9 +386,13 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
         setSaveError(resp.message || t('saveFailed'))
         return
       }
-      // Invalidate cached server state so the new entry appears immediately.
+      // Refresh cached server state so the new entry appears immediately.
+      // The timeline is REFETCHED (not just invalidated): there is no active
+      // observer on /add-entry, so an invalidate would only mark the cache
+      // stale and navigating back to / could briefly show a stale zero-entry
+      // snapshot (which the landing gate would misread as "first visit").
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['timeline'] }),
+        queryClient.refetchQueries({ queryKey: ['timeline'] }),
         queryClient.invalidateQueries({ queryKey: ['flowsheet'] }),
         queryClient.invalidateQueries({ queryKey: ['biomarker-definitions'] }),
       ])
