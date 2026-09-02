@@ -137,11 +137,9 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     uploadState,
     setUploadState,
     progressStage,
-    markdownChars,
     biomarkerCount,
     elapsedSeconds,
-    stageStart,
-    stageEstimate,
+    plannedEndSeconds,
     aiError,
     clearError,
     runExtraction,
@@ -417,11 +415,9 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
       <UploadScreen
         uploadState={uploadState}
         progressStage={progressStage}
-        markdownChars={markdownChars}
         biomarkerCount={biomarkerCount}
         elapsedSeconds={elapsedSeconds}
-        stageStart={stageStart}
-        stageEstimate={stageEstimate}
+        plannedEndSeconds={plannedEndSeconds}
         multiFileNotice={multiFileNotice}
         onFiles={handleFiles}
         onStartManual={startManual}

@@ -3,8 +3,6 @@ progress values. Each test runs against its own in-memory engine — the
 service is monkeypatched away from the shared file-backed SessionLocal so
 test samples never pollute (or read) the dev DB."""
 
-import statistics
-
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -56,6 +54,20 @@ class TestRecord:
         assert _rows(stats_db, "extract") == []
         assert _rows(stats_db, "bogus-stage") == []
 
+    def test_record_rejects_implausibly_fast_samples(self, stats_db):
+        # Mocked /api/extract test runs complete a "stage" in ~1e-4s; such
+        # rows would poison the rolling window and collapse the estimate.
+        timing_stats.record("extract", 0.0001, chars=17)
+        timing_stats.record("ocr", 0.0002)
+        timing_stats.record("match", 0.0001)
+        assert _rows(stats_db, "extract") == []
+        assert _rows(stats_db, "ocr") == []
+        assert _rows(stats_db, "match") == []
+
+    def test_record_rejects_zero_char_extract_samples(self, stats_db):
+        timing_stats.record("extract", 10.0, chars=0)
+        assert _rows(stats_db, "extract") == []
+
     def test_record_prunes_to_max_samples(self, stats_db, monkeypatch):
         monkeypatch.setattr(timing_stats, "MAX_SAMPLES", 5)
         for i in range(8):
@@ -69,7 +81,7 @@ class TestRecord:
 class TestEstimate:
     def test_cold_start_uses_fitted_constants(self, stats_db):
         assert timing_stats.estimate("extract", 4000) == pytest.approx(
-            2.0 + 0.003 * 4000
+            2.0 + 0.0023 * 4000
         )
         assert timing_stats.estimate("match") == pytest.approx(3.5)
         assert timing_stats.estimate("ocr") == pytest.approx(1.5)
@@ -80,23 +92,62 @@ class TestEstimate:
         # Median (3.0), not mean — one outlier must not inflate the estimate.
         assert timing_stats.estimate("match") == pytest.approx(3.0)
 
-    def test_extract_scales_with_chars_via_ratio_median(self, stats_db):
-        for sec, chars in ((10.0, 4000), (5.0, 2000), (2.5, 1000), (12.0, 4000), (7.5, 3000)):
+    def test_extract_theil_sen_fit_with_intercept(self, stats_db):
+        # Samples on the exact line seconds = 2 + 0.002 * chars.
+        for chars, sec in ((3000, 8), (3500, 9), (4000, 10), (4500, 11), (5000, 12)):
             timing_stats.record("extract", sec, chars=chars)
-        ratios = [10 / 4000, 5 / 2000, 2.5 / 1000, 12 / 4000, 7.5 / 3000]
-        expected = max(2.0, statistics.median(ratios) * 6000)
-        assert timing_stats.estimate("extract", 6000) == pytest.approx(expected)
+        assert timing_stats.estimate("extract", 4000) == pytest.approx(10.0)
+        assert timing_stats.estimate("extract", 6000) == pytest.approx(14.0)
+
+    def test_extract_fit_is_robust_to_a_few_outliers(self, stats_db):
+        # One night-run outlier (40s) among five on-line samples must not
+        # drag the fit: Theil–Sen tolerates <29% outliers.
+        for chars, sec in ((3000, 8), (3500, 9), (4000, 10), (4500, 11), (5000, 12)):
+            timing_stats.record("extract", sec, chars=chars)
+        timing_stats.record("extract", 40.0, chars=1000)
+        assert timing_stats.estimate("extract", 6000) == pytest.approx(14.0)
 
     def test_extract_estimate_has_floor(self, stats_db):
-        for s in (0.5, 0.6, 0.7, 0.8, 0.9):
-            timing_stats.record("extract", s, chars=4000)
-        assert timing_stats.estimate("extract", 1000) == pytest.approx(2.0)
+        # A near-flat pool (tiny intercept) still never estimates below 2s.
+        for chars, sec in ((1000, 0.4), (2000, 0.5), (3000, 0.6), (4000, 0.7), (5000, 0.8)):
+            timing_stats.record("extract", sec, chars=chars)
+        assert timing_stats.estimate("extract", 5000) == pytest.approx(2.0)
 
-    def test_extract_ignores_zero_char_rows(self, stats_db):
-        timing_stats.record("extract", 10.0, chars=0)
-        for s in (8.0, 9.0, 10.0, 11.0, 12.0):
-            timing_stats.record("extract", s, chars=4000)
+    def test_extract_degenerate_pool_falls_back_to_constants(self, stats_db):
+        # All samples share one char count → no pairwise slopes → the fit is
+        # undefined, so the fitted cold-start constants are used instead.
+        for sec in (8.0, 9.0, 10.0, 11.0, 12.0):
+            timing_stats.record("extract", sec, chars=4000)
+        assert timing_stats.estimate("extract", 4000) == pytest.approx(
+            2.0 + 0.0023 * 4000
+        )
+
+    def test_extract_ignores_legacy_implausible_rows_on_read(self, stats_db):
+        # Rows stored by older builds before the write-side guard existed
+        # (mocked test runs: ~1e-4s, a handful of chars) must not skew the
+        # fit — the read-side filter makes them inert without a migration.
+        db = stats_db()
+        try:
+            for i in range(15):
+                db.add(ExtractionTimingSample(stage="extract", seconds=0.0001, chars=8 + i))
+            db.commit()
+        finally:
+            db.close()
+        for chars, sec in ((3000, 8), (3500, 9), (4000, 10), (4500, 11), (5000, 12)):
+            timing_stats.record("extract", sec, chars=chars)
         assert timing_stats.estimate("extract", 4000) == pytest.approx(10.0)
+
+    def test_match_ignores_legacy_implausible_rows_on_read(self, stats_db):
+        db = stats_db()
+        try:
+            for _ in range(10):
+                db.add(ExtractionTimingSample(stage="match", seconds=0.0001, chars=0))
+            db.commit()
+        finally:
+            db.close()
+        for s in (2.0, 3.0, 4.0, 5.0, 6.0):
+            timing_stats.record("match", s)
+        assert timing_stats.estimate("match") == pytest.approx(4.0)
 
     def test_unknown_stage_returns_match_fallback(self, stats_db):
         assert timing_stats.estimate("nope") == pytest.approx(3.5)

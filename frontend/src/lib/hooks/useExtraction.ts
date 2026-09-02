@@ -20,20 +20,19 @@ export function useExtraction({ onSuccess, onFailure }: UseExtractionOptions) {
   const t = useTranslations('extraction')
   const [uploadState, setUploadState] = useState<UploadState>('idle')
   const [progressStage, setProgressStage] = useState<ProgressStage>('ocr_scanning')
-  const [markdownChars, setMarkdownChars] = useState<number | null>(null)
   const [biomarkerCount, setBiomarkerCount] = useState<number | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [aiError, setAiError] = useState<string | null>(null)
-  // Stage progress bookkeeping kept as state (not refs) so the render can
-  // read it to draw the progress bar — React 19 forbids ref reads during render.
-  const [stageStart, setStageStart] = useState(0)
-  const [stageEstimate, setStageEstimate] = useState(0)
+  // Projected finish of the whole scan, in elapsed-seconds terms, ratcheted:
+  // each stage transition may only pull it EARLIER (min), never later. One
+  // cumulative projection means the countdown and bar span all remaining work
+  // (extraction + matching) and never jump back up or reset when a stage
+  // hands off to the next.
+  const [plannedEndSeconds, setPlannedEndSeconds] = useState<number | null>(null)
 
-  const elapsedRef = useRef(0)
   const extractionStartRef = useRef(0)
   const stageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hasLeftOcrRef = useRef(false)
-  const markdownCharsRef = useRef<number | null>(null)
   const extractionAbortRef = useRef<AbortController | null>(null)
 
   // Guard against accidental back-navigation while the AI extraction is
@@ -51,11 +50,7 @@ export function useExtraction({ onSuccess, onFailure }: UseExtractionOptions) {
   useEffect(() => {
     if (uploadState !== 'scanning') return
     const interval = setInterval(() => {
-      setElapsedSeconds((s) => {
-        const n = s + 1
-        elapsedRef.current = n
-        return n
-      })
+      setElapsedSeconds((s) => s + 1)
     }, 1000)
     return () => clearInterval(interval)
   }, [uploadState])
@@ -71,17 +66,13 @@ export function useExtraction({ onSuccess, onFailure }: UseExtractionOptions) {
       setAiError(null)
       setUploadState('scanning')
       setProgressStage('ocr_scanning')
-      setMarkdownChars(null)
       setBiomarkerCount(null)
       setElapsedSeconds(0)
-      setStageStart(0)
-      setStageEstimate(0)
-      elapsedRef.current = 0
+      setPlannedEndSeconds(null)
       extractionStartRef.current = performance.now()
       if (stageTimeoutRef.current !== null) clearTimeout(stageTimeoutRef.current)
       stageTimeoutRef.current = null
       hasLeftOcrRef.current = false
-      markdownCharsRef.current = null
       const setStage = (stage: string) => {
         setProgressStage(stage as ProgressStage)
       }
@@ -90,25 +81,27 @@ export function useExtraction({ onSuccess, onFailure }: UseExtractionOptions) {
         const result = await extractMedicalData(
           file,
           (payload) => {
-            const now = elapsedRef.current
+            // Fractional elapsed seconds (integer ticks lag up to 1s behind,
+            // which would make every projection systematically optimistic).
+            const nowFrac = (performance.now() - extractionStartRef.current) / 1000
+            const planEnd = (projection: number) => {
+              const end = Math.round(nowFrac + projection)
+              setPlannedEndSeconds((prev) =>
+                prev === null ? end : Math.min(prev, end),
+              )
+            }
             if (payload.markdown_chars != null) {
-              markdownCharsRef.current = payload.markdown_chars
-              setMarkdownChars(payload.markdown_chars)
-              setStageStart(now)
-              // Preferred: the backend's measured estimate (median of recent
-              // runs). The local heuristic only covers an older backend that
-              // doesn't send estimate_s yet.
+              // Preferred: the backend's measured estimate (Theil–Sen fit
+              // over recent runs). The local heuristic only covers an older
+              // backend that doesn't send estimate_s yet.
               const estExt = payload.estimate_s ?? estimateExtractionTime(payload.markdown_chars)
               const estBm = Math.round(payload.markdown_chars * 0.007)
               const estMatch = estimateMatchingTime(estBm)
-              setStageEstimate(Math.round(payload.estimate_s != null ? estExt : estExt + estMatch))
+              planEnd(estExt + estMatch)
             }
             if (payload.biomarker_count != null) {
               setBiomarkerCount(payload.biomarker_count)
-              setStageStart(now)
-              setStageEstimate(
-                Math.round(payload.estimate_s ?? estimateMatchingTime(payload.biomarker_count))
-              )
+              planEnd(payload.estimate_s ?? estimateMatchingTime(payload.biomarker_count))
             }
             if (stageTimeoutRef.current !== null) clearTimeout(stageTimeoutRef.current)
             stageTimeoutRef.current = null
@@ -164,11 +157,9 @@ export function useExtraction({ onSuccess, onFailure }: UseExtractionOptions) {
     uploadState,
     setUploadState,
     progressStage,
-    markdownChars,
     biomarkerCount,
     elapsedSeconds,
-    stageStart,
-    stageEstimate,
+    plannedEndSeconds,
     aiError,
     clearError,
     runExtraction,

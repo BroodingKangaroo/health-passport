@@ -20,12 +20,16 @@ export const addEntryMessages = {
       stageMatchLabel: 'Standardizing results...',
       stageMatchDetail:
         'Matching biomarkers against known definitions, normalizing units, and computing reference statuses.',
+      stageMatchDetailCounted:
+        'Matching {count} extracted biomarkers against known definitions, normalizing units, and computing reference statuses.',
       stageDoneLabel: 'Done! Reviewing results...',
       stageDoneDetail: 'AI extraction complete. Opening the editor for your review.',
       complete: 'Complete!',
       stepOf: 'Step {step} of {total}',
       secondsRemaining: '· ~{seconds}s remaining',
       estimating: '· estimating...',
+      almostDone: '· almost done...',
+      slowerThanUsual: '· taking longer than usual — {seconds}s elapsed',
       or: 'OR',
       skipManual: 'Skip Upload & Enter Manually',
       multiFileNotice: 'Only the first document is processed — upload files one at a time.',
@@ -207,12 +211,16 @@ export const addEntryMessages = {
       stageMatchLabel: 'Стандартизация результатов...',
       stageMatchDetail:
         'Сопоставляем биомаркеры со справочником, приводим единицы к стандарту и вычисляем референсные статусы.',
+      stageMatchDetailCounted:
+        'Сопоставляем {count} найденных биомаркеров со справочником, приводим единицы к стандарту и вычисляем референсные статусы.',
       stageDoneLabel: 'Готово! Проверяем результаты...',
       stageDoneDetail: 'ИИ завершил извлечение данных. Открываем редактор для проверки.',
       complete: 'Готово!',
       stepOf: 'Шаг {step} из {total}',
       secondsRemaining: '· ~{seconds} с осталось',
       estimating: '· оцениваем...',
+      almostDone: '· почти готово...',
+      slowerThanUsual: '· дольше обычного — прошло {seconds} с',
       or: 'ИЛИ',
       skipManual: 'Пропустить загрузку и ввести вручную',
       multiFileNotice: 'Обрабатывается только первый документ — загружайте файлы по одному.',

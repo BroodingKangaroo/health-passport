@@ -1,11 +1,11 @@
 // Wall-clock fallback estimates (seconds) powering the add-entry scan-screen
 // progress bar. Only used when the backend doesn't send `estimate_s` in its
-// SSE progress events (the backend's own median-of-recent-runs estimate is
+// SSE progress events (the backend's own Theil–Sen fit over recent runs is
 // preferred — it tracks current provider latency; these constants can't).
 // Fitted against recent app.log stage timings, not meant to be exact.
 
 export function estimateExtractionTime(chars: number): number {
-  return Math.max(4, 2 + chars * 0.003)
+  return Math.max(2, 2 + chars * 0.0023)
 }
 
 export function estimateMatchingTime(biomarkers: number): number {
