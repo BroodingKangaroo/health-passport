@@ -1,7 +1,9 @@
 # Product Roadmap — Growth & Trust
 
-**Status:** approved direction, not yet scheduled.
-**Created:** 2026-08-31.
+**Status:** approved direction; Phase 0 partially shipped (statuses marked
+below).
+**Created:** 2026-08-31. **Updated:** 2026-09-03 (0.1/0.2/0.3/0.5 shipped;
+0.3 redesigned as a landing-embedded demo surface).
 **Scope:** user-experience and marketing-driven improvements. Technical designs are
 summarized at roadmap level with code pointers for implementers; detailed designs
 happen per-feature at implementation time.
@@ -67,43 +69,51 @@ all personas; each phase lists the personas it primarily serves.
 Serves all personas. This is the conversion gate: nothing else matters if
 first-time visitors don't hand over their first document.
 
-### 0.1 Landing page + true empty state
+### 0.1 Landing page + true empty state — ✅ SHIPPED
 
-- Today `/` renders the app directly (`frontend/src/app/page.tsx` is a 4-line
-  file returning `<TimelineView/>`); there is no middleware and no
-  marketing surface at all.
-- Gate on "zero entries": first-time visitors get a hero — mission-led value
-  pitch, "try without account" (anonymous sessions already work:
-  `backend/app/api/anon_session.py`), and ownership badges ("delete everything
-  anytime", "export anytime", "anonymous trial — 5 free extractions").
-- Existing users with data go straight to the timeline, as today.
-- All copy via EN/RU i18n catalogs (`src/i18n/messages/`), subject to the
-  existing EN/RU parity test.
+- Shipped in commit `5182b61`: `/` renders `LandingGate`
+  (`frontend/src/components/landing/landing-gate.tsx`), a client-side gate on
+  "zero entries" — first-time visitors get the hero (mission-led value pitch,
+  "try without account" via anonymous sessions, ownership badges); users with
+  data go straight to the timeline.
+- All copy via the `landing` EN/RU i18n catalog, covered by the parity test.
+- The hero's secondary CTA links to the demo surface (0.3).
 
-### 0.2 Privacy policy + AI disclosure
+### 0.2 Privacy policy + AI disclosure — ✅ SHIPPED
 
-- Today there is zero privacy copy anywhere in the product, while every
-  uploaded document is processed by the Mistral cloud LLM (and OpenRouter for
-  translation). Silence here is the #1 deal-breaker for medical data.
-- Add a privacy policy page (linked from landing, footer, and settings) and a
-  short consent/disclosure note in the upload flow (`upload-screen.tsx`):
-  documents are processed by an AI service and are not stored there; data can
-  be deleted or exported at any time.
+- Shipped in `5182b61` (upload-flow disclosure + landing footer note) and the
+  demo-mode change: a localized privacy policy page (`/privacy`,
+  `frontend/src/app/privacy/page.tsx`, `privacy` catalog) linked from the
+  landing footer and the settings page. It discloses Mistral/OpenRouter
+  processing, that documents are not stored by the AI service, export/delete
+  rights, and the not-medical-advice boundary.
+- Sequencing rule: any public announcement driving traffic to the product is
+  gated on this page being live — now satisfied.
 
-### 0.3 Demo mode
+### 0.3 Demo mode — ✅ SHIPPED (as a landing-embedded demo surface)
 
-- A user's first extraction today is with their *real* medical document. If it
-  misreads, we've lost them. "Load demo data" seeds a sample clinical record
-  into the fresh anonymous session so users experience the product before
-  uploading their own documents.
-- Implementation shape: analogous to the existing anon→registered migration
-  (`backend/app/services/data_migration.py`, `copy_anonymous_data`), seeded
-  from bundled sample documents (`backend/e2e/inputs/` has 8 real lab
-  documents). Demo rows are clearly labeled and one-click removable before
-  real use. No Mistral spend for the demo path (pre-extracted data, not live
-  extraction).
-- Note: `copy_anonymous_data` does not copy `InstrumentalData` — gap to fix
-  when touching that service (tracked in Phase 5).
+- Original sketch (seeding sample rows into the anonymous session) was
+  **redesigned and simplified during implementation**: instead of seeding DB
+  state (with its column, endpoints, purge, and migration-skip machinery),
+  the demo is a static marketing surface at `/demo` that renders the real
+  timeline components from a fully fictional fixture — "this way it
+  definitely works": no backend, no API calls, no session/quota interaction,
+  nothing to clean up, and the user's data is never touched.
+- As built (`frontend/src/demo/demo-data.ts`,
+  `frontend/src/components/landing/demo-view.tsx`): fictional patient,
+  clinic, doctor, and narrative (no real person's data anywhere — the e2e
+  golden cases are the maintainer's real results and are used only as format
+  reference); authored values exercising the full status model; bilingual
+  names; day-offset dates that never age; entry fields mirroring the
+  extraction save path. Stateful affordances with nothing to act on (entry
+  deletion, full-details navigation, real-data views) are hidden on the
+  surface; a banner explains the fictional data and carries the conversion
+  CTA to `/add-entry`.
+- Reached from the landing hero ("See live example"); copy in the `demo`
+  EN/RU catalog.
+- Historical notes (resolved): `copy_anonymous_data` DOES copy
+  `InstrumentalData` (the migration gap once listed here and in Phase 5 is
+  fixed); `backend/e2e/inputs/` holds 9 documents (the roadmap once said 8).
 
 ### 0.4 Working password reset (+ email change)
 
@@ -116,11 +126,11 @@ first-time visitors don't hand over their first document.
 - Add email change (missing entirely; email is read-only in
   `settings/profile-card.tsx`).
 
-### 0.5 AGENTS.md doc-drift fix
+### 0.5 AGENTS.md doc-drift fix — ✅ SHIPPED
 
-- AGENTS.md claims `backend/.env` and `backend/.jwt_secret` are "committed
-  dev-only secrets"; they are in fact gitignored and untracked. Correct the
-  statement in the same change that touches auth-adjacent code (0.4).
+- AGENTS.md claimed `backend/.env` and `backend/.jwt_secret` are "committed
+  dev-only secrets"; they are in fact gitignored and untracked. Corrected in
+  AGENTS.md alongside the demo-mode change.
 
 ### 0.6 Timeline scannability
 
@@ -347,7 +357,6 @@ Serves ② primarily.
   (`backend/benchmark/run_benchmark.py`).
 - **JWT revocation** after password change/reset (today old tokens stay valid
   for up to 7 days — documented gap in `backend/app/api/auth.py`).
-- **Migration gap**: `copy_anonymous_data` does not copy `InstrumentalData`.
 - **Monthly quota reset** (ISSUES.md candidate; current quotas are lifetime
   counters).
 

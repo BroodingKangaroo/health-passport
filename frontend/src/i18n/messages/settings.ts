@@ -5,6 +5,8 @@ export const settingsMessages = {
     settings: {
       title: 'Account & Data',
       subtitle: 'Your profile, usage, and a portable copy of your health data.',
+      privacyNote: 'Documents are processed by an AI service and are not stored there. Your data can be exported or deleted at any time.',
+      privacyPolicyLink: 'Privacy policy',
       anonymous: {
         title: 'Anonymous session',
         description:
@@ -65,6 +67,8 @@ export const settingsMessages = {
     settings: {
       title: 'Аккаунт и данные',
       subtitle: 'Профиль, использование сервиса и переносимая копия ваших данных.',
+      privacyNote: 'Документы обрабатываются ИИ-сервисом и не хранятся в нём. Ваши данные можно экспортировать или удалить в любой момент.',
+      privacyPolicyLink: 'Политика конфиденциальности',
       anonymous: {
         title: 'Анонимная сессия',
         description:

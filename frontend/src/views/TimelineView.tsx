@@ -11,13 +11,51 @@ import { DoctorVisitDetails } from '@/components/health-passport/doctor-visit-de
 import { BloodTestDetails } from '@/components/health-passport/blood-test-details'
 import { InstrumentalTestDetails } from '@/components/health-passport/instrumental-test-details'
 import { useTimelineData } from '@/hooks/useTimelineData'
-import type { MedicalEvent, BiomarkerResult, Reading } from '@/lib/types'
+import type { MedicalEvent, BiomarkerResult, Reading, TimelineResponse } from '@/lib/types'
 
 export function TimelineView() {
   const router = useRouter()
+  const { data, isLoading, error, refetch } = useTimelineData()
+  return (
+    <div className="min-h-screen bg-background">
+      <HeaderBar />
+      <NavBar activeTab="timeline" />
+      <TimelineContent
+        data={data}
+        isLoading={isLoading}
+        error={error}
+        refetch={refetch}
+        onViewDetails={(id) => router.push('/details?id=' + id + '&from=timeline')}
+      />
+    </div>
+  )
+}
+
+interface TimelineContentProps {
+  data: TimelineResponse | undefined
+  isLoading: boolean
+  error: Error | null
+  refetch: () => void
+  // Expand-row → full details navigation. Omitted on the /demo surface:
+  // the fixture has no backing /api/biomarker payload, so the button is
+  // hidden instead of navigating to an empty real-data view.
+  onViewDetails?: (id: string) => void
+}
+
+/**
+ * The timeline's presentational body (history list + detail views), split
+ * from the data hook so the /demo marketing surface can render the exact
+ * same components from fixture data.
+ */
+export function TimelineContent({
+  data,
+  isLoading,
+  error,
+  refetch,
+  onViewDetails,
+}: TimelineContentProps) {
   const t = useTranslations('timeline.views.timeline')
   const tc = useTranslations('common')
-  const { data, isLoading, error, refetch } = useTimelineData()
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
 
   const events: MedicalEvent[] = data?.events ?? []
@@ -37,87 +75,74 @@ export function TimelineView() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
-        <HeaderBar />
-        <NavBar activeTab="timeline" />
-        <main className="mx-auto max-w-[1400px] p-5 text-center text-sm text-muted-foreground">
-          {tc('loading')}
-        </main>
-      </div>
+      <main className="mx-auto max-w-[1400px] p-5 text-center text-sm text-muted-foreground">
+        {tc('loading')}
+      </main>
     )
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-background">
-        <HeaderBar />
-        <NavBar activeTab="timeline" />
-        <main className="mx-auto max-w-[1400px] p-5 text-center text-sm text-status-high">
-          {t('loadError')}
-        </main>
-      </div>
+      <main className="mx-auto max-w-[1400px] p-5 text-center text-sm text-status-high">
+        {t('loadError')}
+      </main>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <HeaderBar />
-      <NavBar activeTab="timeline" />
-
-      <main className="mx-auto grid max-w-[1400px] gap-5 p-5 lg:grid-cols-[minmax(240px,28%)_1fr]">
-        <aside>
-          <HistoryList
-            events={events}
-            selectedId={effectiveSelected}
-            onSelect={setSelectedEvent}
-            biomarkers={biomarkers}
+    <main className="mx-auto grid max-w-[1400px] gap-5 p-5 lg:grid-cols-[minmax(240px,28%)_1fr]">
+      <aside>
+        <HistoryList
+          events={events}
+          selectedId={effectiveSelected}
+          onSelect={setSelectedEvent}
+          biomarkers={biomarkers}
+        />
+      </aside>
+      <section className="min-w-0 overflow-x-hidden">
+        {selectedEventData?.type === 'doctor_visit' && visits[selectedEventData.id] ? (
+          <DoctorVisitDetails
+            visit={visits[selectedEventData.id]}
+            entryId={selectedEventData.id}
+            onDeleted={() => {
+              setSelectedEvent(null)
+              refetch()
+            }}
           />
-        </aside>
-        <section className="min-w-0 overflow-x-hidden">
-          {selectedEventData?.type === 'doctor_visit' && visits[selectedEventData.id] ? (
-            <DoctorVisitDetails
-              visit={visits[selectedEventData.id]}
-              entryId={selectedEventData.id}
-              onDeleted={() => {
-                setSelectedEvent(null)
-                refetch()
-              }}
-            />
-          ) : selectedEventData?.type === 'doctor_visit' ? (
-            <div className="flex h-full min-h-[300px] items-center justify-center text-sm text-muted-foreground">
-              <p>{t('visitDetailsUnavailable')}</p>
-            </div>
-          ) : selectedEventData?.type === 'blood_test' ? (
-            <BloodTestDetails
-              event={selectedEventData}
-              biomarkers={eventBiomarkers}
-              onViewDetails={(id) => router.push('/details?id=' + id + '&from=timeline')}
-              onDeleted={() => {
-                setSelectedEvent(null)
-                refetch()
-              }}
-            />
-          ) : selectedEventData?.type === 'instrumental_test' && instrumental[selectedEventData.id] ? (
-            <InstrumentalTestDetails
-              event={selectedEventData}
-              data={instrumental[selectedEventData.id]}
-              onDeleted={() => {
-                setSelectedEvent(null)
-                refetch()
-              }}
-            />
-          ) : selectedEventData?.type === 'instrumental_test' ? (
-            <div className="flex h-full min-h-[300px] items-center justify-center text-sm text-muted-foreground">
-              <p>{t('instrumentalDetailsUnavailable')}</p>
-            </div>
-          ) : selectedEventData ? (
-            <div className="flex h-full min-h-[300px] items-center justify-center text-sm text-muted-foreground">
-              <p>{t('noDetailView')}</p>
-            </div>
-          ) : null}
-        </section>
-      </main>
-    </div>
+        ) : selectedEventData?.type === 'doctor_visit' ? (
+          <div className="flex h-full min-h-[300px] items-center justify-center text-sm text-muted-foreground">
+            <p>{t('visitDetailsUnavailable')}</p>
+          </div>
+        ) : selectedEventData?.type === 'blood_test' ? (
+          <BloodTestDetails
+            event={selectedEventData}
+            biomarkers={eventBiomarkers}
+            onViewDetails={onViewDetails}
+            onDeleted={() => {
+              setSelectedEvent(null)
+              refetch()
+            }}
+          />
+        ) : selectedEventData?.type === 'instrumental_test' && instrumental[selectedEventData.id] ? (
+          <InstrumentalTestDetails
+            event={selectedEventData}
+            data={instrumental[selectedEventData.id]}
+            onDeleted={() => {
+              setSelectedEvent(null)
+              refetch()
+            }}
+          />
+        ) : selectedEventData?.type === 'instrumental_test' ? (
+          <div className="flex h-full min-h-[300px] items-center justify-center text-sm text-muted-foreground">
+            <p>{t('instrumentalDetailsUnavailable')}</p>
+          </div>
+        ) : selectedEventData ? (
+          <div className="flex h-full min-h-[300px] items-center justify-center text-sm text-muted-foreground">
+            <p>{t('noDetailView')}</p>
+          </div>
+        ) : null}
+      </section>
+    </main>
   )
 }
 

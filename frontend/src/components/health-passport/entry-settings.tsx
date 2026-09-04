@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { formatDate } from '@/lib/utils'
+import { useDemoMode } from '@/providers/demo-provider'
 import { deleteEntry } from '@/services/api'
 import type {
   BiomarkerResult,
@@ -110,6 +111,9 @@ export function EntrySettings({
   const tc = useTranslations('common')
   const locale = useLocale()
   const queryClient = useQueryClient()
+  // Demo fixture has nothing to delete — the danger zone is meaningless
+  // there and its button would fire a real API call for a nonexistent id.
+  const { isDemo } = useDemoMode()
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -294,67 +298,69 @@ export function EntrySettings({
         </div>
       </Card>
 
-      <div className="rounded-xl border border-status-high/30 bg-status-high/5 p-6">
-        <div className="mb-2 flex items-center gap-2">
-          <AlertTriangle className="size-4 text-status-high" />
-          <h3 className="text-sm font-semibold text-status-high">{t('dangerZone')}</h3>
+      {!isDemo && (
+        <div className="rounded-xl border border-status-high/30 bg-status-high/5 p-6">
+          <div className="mb-2 flex items-center gap-2">
+            <AlertTriangle className="size-4 text-status-high" />
+            <h3 className="text-sm font-semibold text-status-high">{t('dangerZone')}</h3>
+          </div>
+          <p className="mb-4 text-sm text-muted-foreground">
+            {t('dangerWarning')}
+          </p>
+          <Popover open={confirmOpen} onOpenChange={setConfirmOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="destructive" disabled={deleting}>
+                <Trash2 className="size-4" />
+                {t('deleteEntry')}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              side="top"
+              className="w-80"
+              data-testid="delete-confirm"
+            >
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {t('deleteConfirmTitle', { type: typeLabel.toLowerCase() })}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {event.title}
+                  </p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t('deleteConfirmBody')}
+                </p>
+                {error && (
+                  <p className="rounded-md border border-status-high/30 bg-status-high/10 px-2 py-1 text-xs text-status-high">
+                    {error}
+                  </p>
+                )}
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirmOpen(false)}
+                    disabled={deleting}
+                  >
+                    {tc('cancel')}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    data-testid="delete-confirm-button"
+                  >
+                    {deleting ? t('deleting') : tc('delete')}
+                  </Button>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
-        <p className="mb-4 text-sm text-muted-foreground">
-          {t('dangerWarning')}
-        </p>
-        <Popover open={confirmOpen} onOpenChange={setConfirmOpen}>
-          <PopoverTrigger asChild>
-            <Button variant="destructive" disabled={deleting}>
-              <Trash2 className="size-4" />
-              {t('deleteEntry')}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent
-            align="start"
-            side="top"
-            className="w-80"
-            data-testid="delete-confirm"
-          >
-            <div className="space-y-3">
-              <div>
-                <p className="text-sm font-semibold text-foreground">
-                  {t('deleteConfirmTitle', { type: typeLabel.toLowerCase() })}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {event.title}
-                </p>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t('deleteConfirmBody')}
-              </p>
-              {error && (
-                <p className="rounded-md border border-status-high/30 bg-status-high/10 px-2 py-1 text-xs text-status-high">
-                  {error}
-                </p>
-              )}
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setConfirmOpen(false)}
-                  disabled={deleting}
-                >
-                  {tc('cancel')}
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleDelete}
-                  disabled={deleting}
-                  data-testid="delete-confirm-button"
-                >
-                  {deleting ? t('deleting') : tc('delete')}
-                </Button>
-              </div>
-            </div>
-          </PopoverContent>
-        </Popover>
-      </div>
+      )}
     </div>
   )
 }

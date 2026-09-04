@@ -54,6 +54,43 @@ backend to include the site).
   changes, only the fallback needs updating.
 - The hero is session-aware via `AuthStatusProvider`: authenticated
   zero-data users get "Add your first entry" instead of the trial CTAs.
+- The hero CTAs: primary "Try without account" → `/add-entry`; secondary
+  "See live example" → `/demo`.
+
+## Demo surface (`/demo`) and privacy page (`/privacy`)
+
+- `/demo` (`src/app/demo/page.tsx` → `DemoTimelineView`,
+  `src/components/landing/demo-view.tsx`) is the roadmap's "show, don't ask
+  for trust" surface: the REAL timeline components
+  (`TimelineContent`, split out of `TimelineView` in
+  `src/views/TimelineView.tsx`) rendered from a fully **fictional** fixture
+  (`src/demo/demo-data.ts`, `buildDemoTimeline(locale, now?)`). No API
+  calls, no session state, no persisted data, no backend involvement.
+- The fixture is a fictional patient: authored values (status mix: interval
+  low/normal/high + qualitative normal/abnormal), fictional
+  clinic/doctor/narrative, bilingual definition names, day-offset dates
+  relativized at render (never ages). Qualitative `value`s use the backend's
+  canonical English enum ("Detected"/"Not detected"); raw RU document text
+  lives in `original_*`. Entry fields mirror the extraction save path
+  (`status: 'Completed'`, `category: 'Labs'`, `source_language: 'ru'`).
+  `src/demo/__tests__/demo-data.test.ts` asserts status↔reference
+  consistency and that all statuses are exercised.
+- `DemoModeProvider` (`src/providers/demo-provider.tsx`) marks the surface.
+  Real components check `useDemoMode().isDemo` to hide stateful affordances
+  that have nothing to act on: `entry-settings.tsx` hides the delete danger
+  zone. `TimelineContent.onViewDetails` is omitted on `/demo`, which hides
+  the expanded-row "View full details" button
+  (`expanded-biomarker-details.tsx` renders it only when the handler is
+  set) — the fixture has no backing `/api/biomarker` payload. NavBar /
+  flowsheet / correlation are not rendered on the demo header for the same
+  reason.
+- The banner explains the fictional data and carries the conversion CTA
+  ("Upload your first document" → `/add-entry`, anonymous trial). Demo copy
+  lives in the `demo` i18n catalog.
+- `/privacy` (`src/app/privacy/page.tsx`, roadmap 0.2) is a server-rendered
+  localized privacy policy (content in the `privacy` i18n catalog), linked
+  from the landing footer and the settings page. Shipping demo traffic is
+  gated on this page being live (roadmap sequencing rule).
 
 ## Print/export translation flow
 

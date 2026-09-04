@@ -11,6 +11,7 @@ export const landingMessages = {
         'HealthPassport turns scattered medical documents into one clear picture of your health — so you can arrive at your doctor informed and prepared.',
       ctaTry: 'Try without an account',
       ctaTryRegistered: 'Add your first entry',
+      ctaDemo: 'See live example',
       ctaNote:
         '{count, plural, one {# free document extraction · no email required} other {# free document extractions · no email required}}',
       howTitle: 'How it works',
@@ -31,6 +32,7 @@ export const landingMessages = {
         '{count, plural, one {# free document extraction — no email, no card} other {# free document extractions — no email, no card}}',
       privacyNote:
         'Documents are processed by an AI service and are not stored there. You can delete or export your data at any time.',
+      privacyPolicyLink: 'Privacy policy',
     },
   },
   ru: {
@@ -40,6 +42,7 @@ export const landingMessages = {
         'HealthPassport превращает разрозненные медицинские документы в одну понятную картину здоровья — чтобы вы приходили к врачу информированными и подготовленными.',
       ctaTry: 'Попробовать без аккаунта',
       ctaTryRegistered: 'Добавьте первую запись',
+      ctaDemo: 'Посмотреть на примере',
       ctaNote:
         '{count, plural, one {# бесплатная расшифровка документов · без email} few {# бесплатные расшифровки документов · без email} many {# бесплатных расшифровок документов · без email} other {# бесплатной расшифровки документов · без email}}',
       howTitle: 'Как это работает',
@@ -60,6 +63,7 @@ export const landingMessages = {
         '{count, plural, one {# бесплатная расшифровка документов — без email и банковской карты} few {# бесплатные расшифровки документов — без email и банковской карты} many {# бесплатных расшифровок документов — без email и банковской карты} other {# бесплатных расшифровок документов — без email и банковской карты}}',
       privacyNote:
         'Документы обрабатываются ИИ-сервисом и не хранятся в нём. Вы можете удалить или экспортировать свои данные в любой момент.',
+      privacyPolicyLink: 'Политика конфиденциальности',
     },
   },
 } as const

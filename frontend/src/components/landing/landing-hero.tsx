@@ -94,12 +94,21 @@ export function LandingHero() {
             >
               {isRegistered ? t('ctaTryRegistered') : t('ctaTry')}
             </Link>
+            <Link
+              href="/demo"
+              className={cn(
+                buttonVariants({ variant: 'outline', size: 'lg' }),
+                'w-full px-6 sm:w-auto',
+              )}
+            >
+              {t('ctaDemo')}
+            </Link>
             {!isRegistered && (
               <Link
                 href="/login"
                 className={cn(
                   buttonVariants({ variant: 'outline', size: 'lg' }),
-                  'w-full px-6 sm:w-auto sm:hidden',
+                  'w-full px-6 sm:hidden',
                 )}
               >
                 {th('signIn')}
@@ -149,7 +158,10 @@ export function LandingHero() {
 
       <footer className="border-t border-border bg-card px-4 py-4">
         <p className="mx-auto max-w-2xl text-center text-xs text-muted-foreground">
-          {t('privacyNote')}
+          {t('privacyNote')}{' '}
+          <Link href="/privacy" className="text-primary hover:underline">
+            {t('privacyPolicyLink')}
+          </Link>
         </p>
       </footer>
     </div>

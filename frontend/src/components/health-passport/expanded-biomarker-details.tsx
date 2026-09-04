@@ -155,14 +155,16 @@ export function ExpandedBiomarkerDetails({
             })()}
           </ul>
         </div>
-        <Button
-          variant="outline"
-          onClick={onViewDetails}
-          className="shrink-0 border-primary/30 bg-accent text-accent-foreground hover:bg-accent/70"
-        >
-          {t('viewFullDetails')}
-          <ArrowRight className="size-4" />
-        </Button>
+        {onViewDetails && (
+          <Button
+            variant="outline"
+            onClick={onViewDetails}
+            className="shrink-0 border-primary/30 bg-accent text-accent-foreground hover:bg-accent/70"
+          >
+            {t('viewFullDetails')}
+            <ArrowRight className="size-4" />
+          </Button>
+        )}
       </div>
     </div>
   )

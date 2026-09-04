@@ -31,7 +31,9 @@ const DocumentViewer = dynamic(
 interface BloodTestDetailsProps {
   event: MedicalEvent
   biomarkers: BiomarkerResult[]
-  onViewDetails: (id: string) => void
+  // Expand-row → /details navigation; omitted on the demo surface (no
+  // backing API payload), which hides the button instead.
+  onViewDetails?: (id: string) => void
   onDeleted?: () => void
 }
 

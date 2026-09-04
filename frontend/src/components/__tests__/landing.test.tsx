@@ -134,6 +134,20 @@ describe('LandingHero', () => {
     expect(screen.getByText('See your story')).toBeInTheDocument()
   })
 
+  it('links to the demo surface next to the primary CTA', () => {
+    renderHero(<LandingHero />)
+
+    const demoLink = screen.getByRole('link', { name: 'See live example' })
+    expect(demoLink).toHaveAttribute('href', '/demo')
+  })
+
+  it('links to the privacy policy from the landing footer', async () => {
+    renderHero(<LandingHero />)
+
+    const privacyLink = await screen.findByRole('link', { name: 'Privacy policy' })
+    expect(privacyLink).toHaveAttribute('href', '/privacy')
+  })
+
   it('renders Russian copy in the ru locale', async () => {
     renderHero(<LandingHero />, 'ru')
 

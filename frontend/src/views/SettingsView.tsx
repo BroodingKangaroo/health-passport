@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { ArrowLeft } from 'lucide-react'
 
@@ -52,6 +53,12 @@ export function SettingsView() {
           <DataExportCard />
           <DangerZoneCard user={user} />
         </div>
+        <p className="mt-6 text-xs text-muted-foreground">
+          {t('privacyNote')}{' '}
+          <Link href="/privacy" className="text-primary hover:underline">
+            {t('privacyPolicyLink')}
+          </Link>
+        </p>
       </main>
     </div>
   )
