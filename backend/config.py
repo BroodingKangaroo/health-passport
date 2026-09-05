@@ -59,3 +59,4 @@ IMPORT_JOB_TTL_H = int(os.environ.get("IMPORT_JOB_TTL_H", "72"))
 # Number of background extraction worker threads (import jobs). Default 1:
 # serial Mistral calls avoid the documented 429-contamination bug. Values >1
 # stay unsupported until a rate-limit strategy exists (see docs).
+IMPORT_WORKERS = max(1, int(os.environ.get("IMPORT_WORKERS", "1")))

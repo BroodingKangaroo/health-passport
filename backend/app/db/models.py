@@ -232,6 +232,11 @@ class ExtractionJob(Base):
     # backend i18n at read time because the worker thread has no locale.
     error_key = Column(String, nullable=True)
     error_params = Column(JSON, nullable=True)
+    # Worker-side cancel flag: set by the API cancel endpoint when the job is
+    # already processing (a queued cancel transitions straight to cancelled).
+    # Checked between pipeline stages; the worker performs the refund + file
+    # cleanup it owns for anything it dequeued.
+    cancel_requested = Column(Boolean, nullable=False, default=False)
     original_filename = Column(String, nullable=False)
     # Stored web path (/static/uploads/<uuid-name>), same convention as
     # Attachment.file_path.

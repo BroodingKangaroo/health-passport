@@ -14,18 +14,20 @@ from app.db.models import ExtractionJob, Notification, UsageLimit
 from app.db.session import Base, configure_sqlite_engine
 from app.services import upload_cleanup
 
-TEST_DATABASE_URL = "sqlite:///:memory:"
 TEST_USER_ID = "testuser-jobs"
 JOB_FILE_NAME = "job-staged-abc123.pdf"
 
 
 @pytest.fixture()
 def jobs_db(monkeypatch, tmp_path):
-    """Fresh in-memory engine wired into the extract_jobs sessionmaker seam,
-    with the staged-file directory pointed at a temp dir."""
-    engine = create_engine(
-        TEST_DATABASE_URL, connect_args={"check_same_thread": False}
-    )
+    """Fresh file-backed engine wired into the extract_jobs sessionmaker seam
+    (file-backed so worker threads see the same DB; in-memory sqlite is
+    per-connection), with WAL+busy_timeout and the staged-file directory
+    pointed at a temp dir."""
+    db_dir = tmp_path / "db"
+    db_dir.mkdir()
+    engine = create_engine(f"sqlite:///{db_dir}/jobs.db")
+    configure_sqlite_engine(engine)
     Base.metadata.create_all(bind=engine)
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     ej.set_sessionmaker(TestingSessionLocal)
@@ -112,7 +114,10 @@ class TestStartupRecovery:
         assert notifications[0].job_id == job.id
         assert notifications[0].user_id == TEST_USER_ID
 
-    def test_orphan_queued_reenqueued(self, jobs_db):
+    def test_orphan_queued_reenqueued(self, jobs_db, monkeypatch):
+        # No worker threads in this unit test — the queue is asserted
+        # directly; the full re-enqueue->resume path is covered in A2 tests.
+        monkeypatch.setattr(ej, "_ensure_workers", lambda: None)
         db, _sm, _dir = jobs_db
         job = make_job(db, status="queued")
         summary = ej.recover_orphan_jobs()

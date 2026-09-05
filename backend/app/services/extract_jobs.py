@@ -24,17 +24,31 @@ from __future__ import annotations
 import logging
 import os
 import queue
+import threading
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, update
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.models import ExtractionJob, Notification
+from app.api.ai import _get_client
+from app.db.models import BiomarkerDefinition, ExtractionJob, Notification
 from app.db.session import DATABASE_URL
-from app.services.upload_cleanup import unlink_unreferenced_files
+from app.schemas.ai import (
+    RawInstrumentalData,
+    StandardizedMedicalRecord,
+    StandardizedVisitData,
+)
+from app.services import extractor, matcher, timing_stats
+from app.services.language_detect import detect_source_language
+from app.services.upload_cleanup import (
+    _PATH_PREFIX,
+    unlink_unreferenced_files,
+    unlink_upload_file,
+)
 from app.services.usage_limits import refund_ai_extraction
-from config import IMPORT_JOB_TTL_H
+from config import IMPORT_JOB_TTL_H, IMPORT_WORKERS
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +73,47 @@ def get_sessionmaker() -> sessionmaker:
 
 
 # In-memory job queue (per-process by design — guarded at startup). Holds job
-# ids; the daemon workers (A2) consume it. Threads start lazily on first
+# ids; the daemon workers consume them. Threads start lazily on first
 # enqueue.
 job_queue: queue.Queue[str] = queue.Queue()
+
+_workers_started = False
+_workers_lock = threading.Lock()
 
 
 def enqueue_job(job_id: str) -> None:
     job_queue.put(job_id)
+    _ensure_workers()
+
+
+def _ensure_workers() -> None:
+    """Start the daemon worker threads on first enqueue (IMPORT_WORKERS of
+    them; default 1 — serial Mistral calls, see config)."""
+    global _workers_started
+    with _workers_lock:
+        if _workers_started:
+            return
+        for i in range(IMPORT_WORKERS):
+            thread = threading.Thread(
+                target=_worker_loop, args=(i,), name=f"import-worker-{i}", daemon=True
+            )
+            thread.start()
+        _workers_started = True
+
+
+def _worker_loop(worker_idx: int) -> None:
+    while True:
+        job_id = job_queue.get()
+        try:
+            process_job(job_id)
+        except Exception:
+            # process_job handles its own failures; a raise here would be a
+            # bug — log it and keep the worker alive.
+            logger.exception(
+                "Import worker %d: unexpected error for job %s", worker_idx, job_id
+            )
+        finally:
+            job_queue.task_done()
 
 
 def _utcnow() -> datetime:
@@ -284,3 +332,277 @@ def assert_single_process() -> None:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w") as f:
         f.write(str(os.getpid()))
+
+
+# +++++ Worker pipeline (A2) +++++
+
+
+class _JobCancelled(Exception):
+    """Internal: raised at a stage boundary when the user requested cancel
+    while the job was already processing (worker-owned cancel path)."""
+
+
+def _staged_full_path(file_path: str) -> str:
+    """On-disk path of a staged job file from its stored web path
+    (``/static/uploads/<name>``), mirroring upload_cleanup's traversal
+    guards. Returns "" for anything outside the uploads directory."""
+    if not file_path or not file_path.startswith(_PATH_PREFIX):
+        return ""
+    filename = file_path[len(_PATH_PREFIX):]
+    if not filename or ".." in filename or filename.startswith("/"):
+        return ""
+    return os.path.join(upload_cleanup_upload_dir(), filename)
+
+
+def upload_cleanup_upload_dir() -> str:
+    """UPLOAD_DIR read at call time (tests monkeypatch the module attr)."""
+    from app.services import upload_cleanup
+
+    return upload_cleanup.UPLOAD_DIR
+
+
+def _claim_job(db: Session, job_id: str) -> bool:
+    """CAS ``queued -> processing``: the worker owns everything it dequeues.
+    Loses the race when the API cancel transitioned the job meanwhile."""
+    result = db.execute(
+        update(ExtractionJob)
+        .where(ExtractionJob.id == job_id, ExtractionJob.status == "queued")
+        .values(status="processing", stage="", updated_at=_utcnow())
+    )
+    db.commit()
+    return result.rowcount == 1
+
+
+def _set_stage(db: Session, job_id: str, stage: str, progress: dict) -> None:
+    """Persist one stage transition so the tracker/batch UI mirrors the SSE
+    progress payloads. Committed immediately — the job list is polled live."""
+    db.execute(
+        update(ExtractionJob)
+        .where(ExtractionJob.id == job_id)
+        .values(stage=stage, progress=progress)
+    )
+    db.commit()
+
+
+def _raise_if_cancel_requested(db: Session, job_id: str) -> None:
+    flagged = (
+        db.query(ExtractionJob.cancel_requested)
+        .filter(ExtractionJob.id == job_id)
+        .scalar()
+    )
+    if flagged:
+        raise _JobCancelled()
+
+
+def _refund(db: Session, user_id: str, is_anonymous: bool) -> None:
+    try:
+        refund_ai_extraction(db, user_id, is_anonymous)
+    except Exception:
+        logger.warning("Import-job quota refund failed (user %s)", user_id, exc_info=True)
+
+
+def _finalize_done(db: Session, job: ExtractionJob, result_dump: dict) -> None:
+    # The terminal write commits the match stage's definition writes too —
+    # the documented commit-before-close invariant for the worker session.
+    db.execute(
+        update(ExtractionJob)
+        .where(ExtractionJob.id == job.id, ExtractionJob.status == "processing")
+        .values(
+            status="done",
+            stage="",
+            result=result_dump,
+            progress=None,
+            updated_at=_utcnow(),
+        )
+    )
+    emit_job_notification(db, job, "import_job_done")
+    db.commit()
+
+
+def _finalize_failed(db: Session, job: ExtractionJob, error_key: str, error_params: dict | None) -> None:
+    db.execute(
+        update(ExtractionJob)
+        .where(ExtractionJob.id == job.id, ExtractionJob.status == "processing")
+        .values(
+            status="failed",
+            stage="",
+            error_key=error_key,
+            error_params=error_params,
+            progress=None,
+            updated_at=_utcnow(),
+        )
+    )
+    emit_job_notification(db, job, "import_job_failed")
+    db.commit()
+    _refund(db, job.user_id, bool(job.is_anonymous))
+
+
+def _finalize_cancelled(db: Session, job: ExtractionJob) -> None:
+    db.execute(
+        update(ExtractionJob)
+        .where(ExtractionJob.id == job.id, ExtractionJob.status == "processing")
+        .values(
+            status="cancelled",
+            stage="",
+            progress=None,
+            cancel_requested=False,
+            updated_at=_utcnow(),
+        )
+    )
+    db.commit()  # cancelled emits no notification
+    _refund(db, job.user_id, bool(job.is_anonymous))
+    # The worker owns the staged file on cancel — nothing will claim it.
+    unlink_upload_file(job.file_path, upload_cleanup_upload_dir())
+
+
+def process_job(job_id: str) -> None:
+    """Run one import job end-to-end. Synchronous; the daemon workers call
+    this from the queue. Never raises (unexpected errors land on the job's
+    ``failed`` status so the worker loop can never die)."""
+    db = get_sessionmaker()()
+    try:
+        if not _claim_job(db, job_id):
+            # GC'd, already cancelled by the API, or vanished — nothing to do.
+            return
+        job = db.query(ExtractionJob).filter(ExtractionJob.id == job_id).first()
+        try:
+            _run_pipeline(db, job)
+        except _JobCancelled:
+            db.rollback()
+            _finalize_cancelled(db, job)
+        except Exception as e:
+            db.rollback()
+            logger.error("Import job %s failed: %s", job_id, e, exc_info=True)
+            _finalize_failed(
+                db,
+                job,
+                "import.job_failed_generic",
+                {"error": str(e)[:300]},
+            )
+    finally:
+        db.close()
+
+
+def _run_pipeline(db: Session, job: ExtractionJob) -> None:
+    """The /api/extract stages (ai.py), re-run against the job row: OCR ->
+    LLM extraction -> source-language detection -> matcher (worker's own
+    session, commit-before-close) -> staged ``result``. Progress mirrors the
+    SSE payloads; quota is refunded on failure/cancel, never on success."""
+    job_id = job.id
+    user_id = job.user_id
+    client = _get_client()
+    if client is None:
+        _finalize_failed(db, job, "ai.sse_no_mistral_key", {})
+        return
+
+    full_path = _staged_full_path(job.file_path)
+    ext = os.path.splitext(job.original_filename or job.file_path)[1].lower()
+    try:
+        with open(full_path, "rb") as f:
+            bytes_data = f.read()
+    except OSError:
+        logger.error("Import job %s: staged file missing at %s", job_id, full_path)
+        _finalize_failed(db, job, "import.job_failed_file_missing", {})
+        return
+
+    # Stage 1: OCR
+    _set_stage(db, job_id, "ocr_scanning", {"stage": "ocr_scanning"})
+    _raise_if_cancel_requested(db, job_id)
+    t0 = time.perf_counter()
+    markdown = None
+    error_key: str | None = None
+    error_params: dict | None = None
+    try:
+        markdown = extractor.ocr_document(bytes_data, ext, client)
+    except extractor.OCRProcessingError as ocr_err:
+        # Classification ran in this thread without a request locale — store
+        # the catalog key, resolved via i18n at read time (same pattern as
+        # ai.py localizing from `kind`).
+        if ocr_err.kind == "auth":
+            error_key, error_params = "ai.ocr_auth", {
+                "status": getattr(ocr_err, "http_status", "401/403")
+            }
+        else:
+            error_key, error_params = f"ai.ocr_{ocr_err.kind}", {}
+    else:
+        elapsed = time.perf_counter() - t0
+        logger.info(
+            "Job %s: OCR took %.2fs — %d chars", job_id, elapsed, len(markdown) if markdown else 0
+        )
+        timing_stats.record(timing_stats.STAGE_OCR, elapsed)
+
+    if error_key is None and not markdown:
+        error_key, error_params = "ai.sse_no_text", {}
+    if error_key:
+        _finalize_failed(db, job, error_key, error_params)
+        return
+
+    _raise_if_cancel_requested(db, job_id)
+
+    # Stage 2: LLM extraction
+    _set_stage(
+        db, job_id, "extracting",
+        {
+            "stage": "extracting",
+            "markdown_chars": len(markdown),
+            "estimate_s": round(timing_stats.estimate(timing_stats.STAGE_EXTRACT, len(markdown)), 1),
+        },
+    )
+    t0 = time.perf_counter()
+    raw = extractor.llm_extract(markdown, client)
+    elapsed = time.perf_counter() - t0
+    bm_count = len(raw.biomarkers) if raw.biomarkers else 0
+    logger.info(
+        "Job %s: extraction took %.2fs — type: %s, biomarkers: %d",
+        job_id, elapsed, raw.entry_type, bm_count,
+    )
+    timing_stats.record(timing_stats.STAGE_EXTRACT, elapsed, len(markdown))
+    source_language = detect_source_language(markdown)
+
+    _raise_if_cancel_requested(db, job_id)
+
+    # entry_type "unknown" is a SUCCESS (mirrors the SSE path): the LLM
+    # genuinely ran and the user gets the unknown-editor. No refund.
+    if raw.entry_type == "unknown":
+        result = StandardizedMedicalRecord(
+            entry_type="unknown",
+            date=raw.date,
+            time=raw.time,
+            clinic=raw.clinic,
+            provider=raw.provider,
+            title=raw.title,
+            notes=raw.notes,
+            source_language=source_language,
+            biomarkers=[],
+            visit_data=StandardizedVisitData(),
+            instrumental_data=RawInstrumentalData(),
+        )
+        _finalize_done(db, job, result.model_dump())
+        return
+
+    # Stage 3: matching (worker's own session; commit-before-close is the
+    # terminal write below — definitions anchored here must survive close).
+    _set_stage(
+        db, job_id, "matching",
+        {
+            "stage": "matching",
+            "biomarker_count": bm_count,
+            "estimate_s": round(timing_stats.estimate(timing_stats.STAGE_MATCH), 1),
+        },
+    )
+    t0 = time.perf_counter()
+    definitions = db.query(BiomarkerDefinition).filter(
+        (BiomarkerDefinition.scope == "global")
+        | (BiomarkerDefinition.user_id == user_id)
+        | (BiomarkerDefinition.user_id.is_(None))
+    ).all()
+    definitions.sort(key=lambda d: (d.category or "", d.names.get("en", "") or ""))
+    result = matcher.match_and_convert(raw, definitions, db, user_id, client)
+    elapsed = time.perf_counter() - t0
+    logger.info(
+        "Job %s: matching took %.2fs — biomarkers: %d",
+        job_id, elapsed, len(result.biomarkers) if result.biomarkers else 0,
+    )
+    timing_stats.record(timing_stats.STAGE_MATCH, elapsed)
+    result.source_language = source_language
+    _finalize_done(db, job, result.model_dump())

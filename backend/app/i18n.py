@@ -331,6 +331,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Extraction was interrupted by a server restart. Use Retry to run it again.",
         "ru": "Распознавание было прервано перезапуском сервера. Нажмите «Повторить», чтобы запустить снова.",
     },
+    "import.job_failed_generic": {
+        "en": "Extraction failed: {error}. Use Retry to run it again.",
+        "ru": "Ошибка распознавания: {error}. Нажмите «Повторить», чтобы запустить снова.",
+    },
+    "import.job_failed_file_missing": {
+        "en": "The staged file is no longer available on the server. Delete the job and upload the document again.",
+        "ru": "Файл больше недоступен на сервере. Удалите задание и загрузите документ заново.",
+    },
     # ----- app/api/timeline.py -----
     "timeline.biomarker_not_found": {
         "en": "Biomarker '{id}' not found",
