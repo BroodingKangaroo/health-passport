@@ -33,6 +33,7 @@ architecture docs are the truth.
 - Seed LOINC: `python -m app.db.seed_loinc` — **drops and recreates the DB**. LOINC dictionary is the single source of truth for biomarker definitions. Run once; keep stable while a golden is in use.
 - E2E: `python backend/e2e/run_e2e_server.py` (isolated uvicorn, own DB; never port 8000, never `pkill`).
 - Extraction benchmark (ISSUES.md #24): `venv/bin/python benchmark/run_benchmark.py --runs 3` from `backend/` — LIVE pipeline over `benchmark/corpus/`, real Mistral spend; loop usage in `.opencode/skills/autoresearch/SKILL.md` and `benchmark/README.md`.
+- Public demo via tunnel: `scripts/demo-tunnel.sh` (from repo root) — starts backend (:8000) + production frontend (:3000, `NEXTAUTH_URL` set to the fresh URL) + a free pinggy tunnel, then prints the public URL; `--rebuild` forces a frontend build, `--stop` tears everything down. Free URL expires in 60 min; re-run for a fresh one (users must re-login — cookies are per-domain). Uses the real dev DB; run `seed_loinc` once on a fresh machine.
 
 ## Backend invariants (always true)
 
