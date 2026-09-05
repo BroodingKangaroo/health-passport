@@ -471,3 +471,64 @@ stored strings, so translation happens only at render sites:
   technical identifiers (modality values, `EN` badges). Unit strings and
   qualitative values are NOT in this list anymore — they are translated at
   display time for `ru` (see the display-time RU translation section).
+
+## Batch import UI (background extraction jobs)
+
+Companion to `docs/batch-import-tickets.md` (repo root) and the backend's
+"Batch import" section. One user intent — "import these N documents" — has
+four surfaces, all fed by ONE shared react-query cache key:
+
+- `services/import-jobs.ts` — `createImportJob` / `fetchImportJobs` /
+  `fetchImportJob` / `cancel` / `retry` / `dismiss`. Same proxy + Accept-
+  Language conventions as `services/api.ts` (which now exports
+  `extractDetail` for its sibling service modules). `ImportJobDetail.result`
+  is the SSE result-event shape verbatim.
+- **Batch mode on `/add-entry`** (`batch-import.tsx`): dropping >1 file
+  routes to `BatchImportPanel` instead of the single-file SSE flow
+  (`UploadScreen`'s picker/dropzone accept `multiple`). Submission is
+  CAPPED, not shotgun: `min(N, remaining)` sequential POSTs from
+  `fetchUsageLimits()`; a failed submit stops the loop (never
+  fire-all-and-eat-429s); files beyond the quota stay picked as the disabled
+  "register to import" group (anon notice shows the 5-doc trial limit).
+  Per-row progress reuses the upload-screen stage labels driven by the
+  polled job `progress` (incl. `estimate_s`); cancel/retry/remove per row.
+- **Leave-guard is NOT armed in batch mode** — nothing is lost by leaving
+  (extraction continues server-side), so the guard's Back interception and
+  modal would be pure friction. Only a plain `beforeunload` prompt fires
+  while submissions are still in flight (uploads not yet accepted). The
+  armed guard+abort behavior stays exclusive to the single-file SSE path
+  (`useExtraction`).
+- **Shared poll** (`lib/hooks/useImportJobs.ts`): `['import-jobs']` polled
+  ~3s while mounted + refetch on window focus (iOS Safari suspends JS in
+  background tabs; all catch-ups must surface on resume). The batch panel
+  and the tracker share this one cache, so they never disagree.
+- **Bell** (`notification-bell.tsx` in the header, right of the language
+  switch, visible for anonymous sessions too): `['notifications']` polled
+  ~10s + focus refetch; badge = unread count, cleared on open (read-all).
+  Toasts are COALESCED via the pure `freshImportNotifications()` helper —
+  >1 newly-arrived unread notifications produce ONE summary toast linking to
+  `/imports`; a single one toasts individually with a review deep-link.
+  Arrival detection keys off `created_at` (never the read state), and the
+  first load never toasts the backlog.
+- **Tracker `/imports`** (`imports-tracker.tsx`, `src/app/imports/page.tsx`):
+  every caller job newest-first with live status + localized errors. Click
+  behavior: done → `/review-import?job=<id>`; queued/processing → the
+  extraction-process view (upload-screen stage visuals driven by job
+  progress) that AUTO-TRANSITIONS into the review editor when the job
+  completes in view; failed → inline error + Retry/Dismiss. Saved jobs are
+  consumed server-side on save, so the page shows only actionable work +
+  in-flight/failed items (no stale history). Empty state links to
+  `/add-entry`. Entry points: the bell's footer link and the batch
+  completion panel's "Track remaining extractions".
+- **Review `/review-import?job=<id>`** (`review-import.tsx`): fetches the
+  staged record and prefills the EXISTING `AddEntry` editor machinery —
+  `AddEntry` takes a `stagedJob` prop and applies the record through the
+  same fill path as the SSE result (render-time derived-state adjustment,
+  once per job id — unit-conflict dialog, merge checkbox and document-type
+  editors all work unchanged). Save/merge append `import_job_id` to the
+  FormData and send NO file (the backend adopts the staged file, charges
+  storage and consumes the job atomically). Save auto-advances to the next
+  done job; "Leave for later" keeps the job staged in the bell. The
+  same-date strategy is the existing merge checkbox (merge with
+  `import_job_id` mirrors today's upload-then-merge flow without a
+  re-upload).
