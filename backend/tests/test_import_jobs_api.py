@@ -460,6 +460,41 @@ class TestDismiss:
         assert not os.path.exists(os.path.join(upload_dir, "gone.pdf"))
 
     @pytest.mark.asyncio
+    async def test_dismiss_saved_keeps_the_attachments_file(self, api):
+        """A saved job's file is the saved entry's Attachment — dismissing
+        the history row must never delete that file."""
+        env, client, upload_dir = api["db"], api["client"], api["upload_dir"]
+        with open(os.path.join(upload_dir, "adopted.pdf"), "wb") as f:
+            f.write(PDF_BYTES)
+        from app.db.models import Attachment, MedicalEntry
+
+        entry = MedicalEntry(
+            id="entry-adopted", patient_id=TEST_USER_ID, type="blood_test",
+            date=datetime(2026, 1, 15, 10, 0), title="Panel",
+        )
+        env.add(entry)
+        env.flush()
+        env.add(Attachment(
+            id="att-adopted", entry_id="entry-adopted", name="d.pdf",
+            type="Uploaded Document", size="1 KB",
+            file_path="/static/uploads/adopted.pdf",
+        ))
+        env.add(ExtractionJob(
+            id="job-saved", user_id=TEST_USER_ID, status="saved",
+            saved_entry_id="entry-adopted",
+            original_filename="d.pdf", file_path="/static/uploads/adopted.pdf",
+            file_size=5,
+        ))
+        env.commit()
+        resp = await client.delete("/api/import/jobs/job-saved")
+        assert resp.status_code == 200
+        env.rollback()
+        assert env.query(ExtractionJob).filter(ExtractionJob.id == "job-saved").count() == 0
+        assert env.query(Notification).filter(Notification.job_id == "job-saved").count() == 0
+        # The file survives — the attachment still owns it.
+        assert os.path.exists(os.path.join(upload_dir, "adopted.pdf"))
+
+    @pytest.mark.asyncio
     async def test_dismiss_processing_conflict(self, api):
         env, client = api["db"], api["client"]
         env.add(ExtractionJob(

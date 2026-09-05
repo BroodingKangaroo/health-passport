@@ -485,18 +485,32 @@ def _attach_staged_file(
     return att
 
 
-def _consume_staged_job(db: Session, job: ExtractionJobModel) -> None:
-    """Delete a claimed job row (in the same commit as the save) together
-    with its notification rows — the bell must never offer "Review" for a
-    job that no longer exists. Also records the funnel "saved" event (the
-    review-completion counter)."""
+def _consume_staged_job(db: Session, job: ExtractionJobModel, entry_id: str) -> None:
+    """Consume a claimed job in the same commit as the save: the row becomes
+    a HISTORY record (status='saved') rather than being deleted — the imports
+    tracker shows past imports. The result/progress payloads are cleared
+    (the record lives in the entry now) and the notification rows are
+    deleted, so the bell never offers "Review" for an already-saved job.
+    Also records the funnel "saved" event (the review-completion counter)."""
     from app.services.extract_jobs import record_funnel_event
 
     db.query(NotificationModel).filter(NotificationModel.job_id == job.id).delete(
         synchronize_session=False
     )
     record_funnel_event(db, "saved", job.user_id, bool(job.is_anonymous))
-    db.delete(job)
+    db.execute(
+        update(ExtractionJobModel)
+        .where(ExtractionJobModel.id == job.id)
+        .values(
+            status="saved",
+            saved_entry_id=entry_id,
+            result=None,
+            progress=None,
+            stage="",
+            updated_at=datetime.now(timezone.utc),
+        )
+        .execution_options(synchronize_session=False)
+    )
 
 
 async def _save_attachment(
@@ -764,7 +778,7 @@ async def save_entry(
         if staged_job is not None:
             # Same commit as the save: the job is consumed (row + its bell
             # rows gone; the file stays, now referenced by the Attachment).
-            _consume_staged_job(db, staged_job)
+            _consume_staged_job(db, staged_job, entry_id)
 
         db.commit()
     except BaseException:
@@ -869,7 +883,7 @@ async def merge_entry(
         # `done`, file still staged).
         staged_job = _claim_staged_job(db, import_job_id, user_id)
         _attach_staged_file(db, entry_id, user_id, is_anonymous, staged_job)
-        _consume_staged_job(db, staged_job)
+        _consume_staged_job(db, staged_job, entry_id)
     elif file and file.filename:
         await _save_attachment(db, entry_id, user_id, is_anonymous, file)
 

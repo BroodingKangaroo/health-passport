@@ -254,6 +254,10 @@ def sweep_expired_jobs(db: Session | None = None) -> int:
 
     Returns the number of jobs removed. Callers (import API) invoke this
     lazily on enqueue + list-read — no scheduler.
+
+    ``saved`` history rows never expire (they are tiny — the result payload
+    is cleared on save — and the staged file is by then the entry's
+    Attachment, so nothing can leak).
     """
     cutoff = _utcnow() - timedelta(hours=IMPORT_JOB_TTL_H)
     own_db = db is None
@@ -266,9 +270,13 @@ def sweep_expired_jobs(db: Session | None = None) -> int:
     try:
         # ``saving`` rows are CAS claims of an in-flight save-with-job-id —
         # never swept, or the staged file could be unlinked mid-save.
+        # ``saved`` rows are history records — never swept.
         expired = (
             db.query(ExtractionJob)
-            .filter(ExtractionJob.updated_at < cutoff, ExtractionJob.status != "saving")
+            .filter(
+                ExtractionJob.updated_at < cutoff,
+                ExtractionJob.status.not_in(["saving", "saved"]),
+            )
             .all()
         )
         if expired:

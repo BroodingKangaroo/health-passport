@@ -35,7 +35,7 @@ from app.db.session import get_db
 from app.i18n import tr_opt
 from app.services import extract_jobs, extractor, upload_cleanup
 from app.services.extract_jobs import record_funnel_event
-from app.services.upload_cleanup import unlink_upload_file
+from app.services.upload_cleanup import unlink_unreferenced_files, unlink_upload_file
 from app.services.usage_limits import check_and_record_ai_usage, refund_ai_extraction
 from config import IMPORT_PENDING_MAX_JOBS, IMPORT_PENDING_MAX_STAGED_MB
 
@@ -373,13 +373,14 @@ async def dismiss_import_job(
     db: Session = Depends(get_db),
     user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
 ):
-    """Dismiss a terminal job (done/failed/cancelled): delete the staged
-    file, the row, and ALL its notification rows (retries can have produced
-    several). Done jobs the user never saves disappear from the tracker this
-    way; queued/processing jobs must be cancelled first."""
+    """Dismiss a terminal job (done/failed/cancelled/saved): delete the row
+    and ALL its notification rows (retries can have produced several). The
+    staged file is unlinked only when no Attachment row still references it —
+    a SAVED job's file is the saved entry's attachment and must survive.
+    Queued/processing jobs must be cancelled first."""
     _user, user_id, _is_anonymous = user_data
     job = _own_job(db, job_id, user_id)
-    if job.status not in ("done", "failed", "cancelled"):
+    if job.status not in ("done", "failed", "cancelled", "saved"):
         raise HTTPException(status_code=409, detail=i18n.tr("import.dismiss_not_terminal"))
     was_status = job.status
     file_path = job.file_path
@@ -388,6 +389,9 @@ async def dismiss_import_job(
     )
     db.delete(job)
     db.commit()
-    unlink_upload_file(file_path)
-    logger.info("Import job %s dismissed (user %s, status was %s)", job.id, user_id, was_status)
+    # Reference-checked: a saved job's file is the entry's Attachment — kept.
+    unlink_unreferenced_files(db, [file_path])
+    logger.info(
+        "Import job %s dismissed (user %s, status was %s)", job.id, user_id, was_status
+    )
     return {"dismissed": True}

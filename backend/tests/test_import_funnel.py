@@ -103,6 +103,9 @@ class TestApiFunnel:
         from app.services import upload_cleanup
 
         monkeypatch.setattr(import_api, "_get_client", lambda: object())
+        # Don't let real worker threads consume test-enqueued jobs (the
+        # thread path is covered by the A2 suite).
+        monkeypatch.setattr(ej, "_ensure_workers", lambda: None)
         upload_dir = tmp_path / "up7"
         upload_dir.mkdir()
         monkeypatch.setattr(upload_cleanup, "UPLOAD_DIR", str(upload_dir))

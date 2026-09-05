@@ -220,8 +220,14 @@ class ExtractionJob(Base):
     is_anonymous = Column(Boolean, nullable=False, default=True)
     # queued | processing | done | failed | cancelled. "saving" is a transient
     # claim state used by the save endpoint's CAS so the GC sweep can never
-    # unlink the staged file mid-save.
+    # unlink the staged file mid-save. "saved" is a HISTORY state: the review
+    # consumed the staged job (entry created), the row is kept as an
+    # import-history record (result cleared, staged file now owned by the
+    # entry's Attachment) and never expires.
     status = Column(String, nullable=False, default="queued")
+    # Entry id the staged record became when the user saved it (saved rows
+    # only) — kept for traceability / future deep-links.
+    saved_entry_id = Column(String, nullable=True)
     # Last pipeline stage name (same labels as the SSE progress events).
     stage = Column(String, nullable=False, default="")
     # Same payloads as the SSE progress events (incl. estimate_s).

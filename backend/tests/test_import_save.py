@@ -98,9 +98,15 @@ class TestSaveWithJobId:
         # Storage quota charged here (staging was free).
         usage = db_session.query(UsageLimit).filter(UsageLimit.user_id == "testuser").one()
         assert usage.total_upload_size_bytes == job.file_size
-        # Job row + its bell rows consumed in the same commit.
-        assert db_session.query(ExtractionJob).filter(ExtractionJob.id == job.id).count() == 0
+        # The job row is kept as a SAVED history record: result cleared, the
+        # entry linked, bell rows consumed in the same commit.
+        saved_row = db_session.query(ExtractionJob).filter(ExtractionJob.id == job.id).one()
+        assert saved_row.status == "saved"
+        assert saved_row.saved_entry_id == entry_id
+        assert saved_row.result is None
         assert db_session.query(Notification).filter(Notification.job_id == job.id).count() == 0
+        # The staged file is NOT unlinked — the attachment references it.
+        assert os.path.isfile(os.path.join(str(upload_dir), os.path.basename(att.file_path)))
 
     @pytest.mark.asyncio
     async def test_save_rejects_foreign_queued_expired_jobs(
@@ -170,10 +176,13 @@ class TestSaveWithJobId:
         )
         assert resp.status_code == 400
 
-    def test_gc_never_sweeps_saving_rows_and_recovery_restores_them(self, monkeypatch, tmp_path):
+    def test_gc_never_sweeps_saving_or_saved_rows_and_recovery_restores_claims(
+        self, monkeypatch, tmp_path
+    ):
         """CAS claim vs GC: a 'saving' row is invisible to the sweep (the
         staged file cannot be unlinked mid-save) and boot recovery restores
-        it to done (the save rolled back with the process)."""
+        it to done (the save rolled back with the process). A 'saved'
+        history row never expires either."""
         from sqlalchemy import create_engine
         from sqlalchemy.orm import sessionmaker
 
@@ -191,16 +200,22 @@ class TestSaveWithJobId:
                 original_filename="c.pdf", file_path="/static/uploads/c.pdf",
                 file_size=5, updated_at=datetime.now(timezone.utc) - timedelta(hours=200),
             )
+            history = ExtractionJob(
+                id="job-history", user_id="u", status="saved",
+                original_filename="h.pdf", file_path="/static/uploads/h.pdf",
+                file_size=5, updated_at=datetime.now(timezone.utc) - timedelta(hours=200),
+            )
             expired = ExtractionJob(
                 id="job-expired", user_id="u", status="done",
                 original_filename="e.pdf", file_path="/static/uploads/e.pdf",
                 file_size=5, updated_at=datetime.now(timezone.utc) - timedelta(hours=200),
             )
-            db.add_all([claimed, expired])
+            db.add_all([claimed, history, expired])
             db.commit()
-            assert ej.sweep_expired_jobs() == 1  # only the non-claiming row
+            assert ej.sweep_expired_jobs() == 1  # only the plain expired row
             db.rollback()
             assert db.query(ExtractionJob).filter(ExtractionJob.id == "job-claiming").count() == 1
+            assert db.query(ExtractionJob).filter(ExtractionJob.id == "job-history").count() == 1
             summary = ej.recover_orphan_jobs()
             assert summary["restored"] == 1
             db.rollback()
@@ -249,7 +264,9 @@ class TestMergeWithJobId:
         assert att.file_path == job.file_path
         usage = db_session.query(UsageLimit).filter(UsageLimit.user_id == "testuser").one()
         assert usage.total_upload_size_bytes == job.file_size
-        assert db_session.query(ExtractionJob).filter(ExtractionJob.id == job.id).count() == 0
+        saved_row = db_session.query(ExtractionJob).filter(ExtractionJob.id == job.id).one()
+        assert saved_row.status == "saved"
+        assert saved_row.saved_entry_id == "entry-merge-target"
 
     @pytest.mark.asyncio
     async def test_merge_conflict_keeps_job_done(self, client, db_session, monkeypatch, tmp_path):
