@@ -218,12 +218,14 @@ class ExtractionJob(Base):
     # Quota tier at submit time — the worker refunds via the same counter
     # (anonymous vs registered) the charge went to.
     is_anonymous = Column(Boolean, nullable=False, default=True)
-    # queued | processing | done | failed | cancelled. "saving" is a transient
-    # claim state used by the save endpoint's CAS so the GC sweep can never
-    # unlink the staged file mid-save. "saved" is a HISTORY state: the review
-    # consumed the staged job (entry created), the row is kept as an
-    # import-history record (result cleared, staged file now owned by the
-    # entry's Attachment) and never expires.
+    # queued | processing | done | failed | cancelled | dismissed. "saving"
+    # is a transient claim state used by the save endpoint's CAS so the GC
+    # sweep can never unlink the staged file mid-save. "saved" and
+    # "dismissed" are HISTORY states (never GC-expired, display-only in the
+    # tracker): saved = the review consumed the staged job (entry created,
+    # result cleared, staged file now owned by the entry's Attachment);
+    # dismissed = the user abandoned the import (staged file freed, the row
+    # stays as a history record).
     status = Column(String, nullable=False, default="queued")
     # Entry id the staged record became when the user saved it (saved rows
     # only) — kept for traceability / future deep-links.

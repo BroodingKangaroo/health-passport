@@ -437,7 +437,10 @@ class TestRetry:
 
 class TestDismiss:
     @pytest.mark.asyncio
-    async def test_dismiss_done_cascades_file_row_notifications(self, api, monkeypatch):
+    async def test_dismiss_done_transitions_to_history(self, api):
+        """Dismissing a done job keeps the row as a 'dismissed' history
+        record (no refund — the extraction ran), frees the staged file, and
+        deletes the job's notification rows."""
         env, client, upload_dir = api["db"], api["client"], api["upload_dir"]
         with open(os.path.join(upload_dir, "gone.pdf"), "wb") as f:
             f.write(PDF_BYTES)
@@ -455,14 +458,52 @@ class TestDismiss:
         resp = await client.delete("/api/import/jobs/job-d")
         assert resp.status_code == 200
         env.rollback()
-        assert env.query(ExtractionJob).filter(ExtractionJob.id == "job-d").count() == 0
+        row = env.query(ExtractionJob).filter(ExtractionJob.id == "job-d").one()
+        assert row.status == "dismissed"
+        assert _usage(env) == 0  # no refund for a done job
         assert env.query(Notification).filter(Notification.job_id == "job-d").count() == 0
         assert not os.path.exists(os.path.join(upload_dir, "gone.pdf"))
 
     @pytest.mark.asyncio
-    async def test_dismiss_saved_keeps_the_attachments_file(self, api):
-        """A saved job's file is the saved entry's Attachment — dismissing
-        the history row must never delete that file."""
+    async def test_dismiss_queued_refunds(self, api, monkeypatch):
+        """Dismissing a queued job refunds — the extraction never ran
+        (same rule as a queued cancel)."""
+        env, client = api["db"], api["client"]
+        monkeypatch.setattr(import_api, "_get_client", lambda: object())
+        monkeyish = await client.post("/api/import/jobs", files=_make_pdf())
+        assert monkeyish.status_code == 200
+        resp = await client.delete(f"/api/import/jobs/{monkeyish.json()['job_id']}")
+        assert resp.status_code == 200
+        env.rollback()
+        row = env.query(ExtractionJob).filter(
+            ExtractionJob.id == monkeyish.json()['job_id']
+        ).one()
+        assert row.status == "dismissed"
+        assert _usage(env) == 0  # refunded
+
+    @pytest.mark.asyncio
+    async def test_dismiss_history_rows_conflict(self, api):
+        """History rows (saved/cancelled/dismissed) cannot be dismissed —
+        the UI offers no button there and rows cannot be removed."""
+        env, client = api["db"], api["client"]
+        for status in ("saved", "cancelled", "dismissed"):
+            env.add(ExtractionJob(
+                id=f"job-h-{status}", user_id=TEST_USER_ID, status=status,
+                original_filename="h.pdf", file_path="/static/uploads/h.pdf", file_size=5,
+            ))
+        env.commit()
+        for status in ("saved", "cancelled", "dismissed"):
+            resp = await client.delete(f"/api/import/jobs/job-h-{status}")
+            assert resp.status_code == 409, status
+        env.rollback()
+        assert env.query(ExtractionJob).filter(
+            ExtractionJob.id.like("job-h-%")
+        ).count() == 3
+
+    @pytest.mark.asyncio
+    async def test_dismiss_saved_conflict_keeps_the_attachments_file(self, api):
+        """A saved job is history — dismiss is a 409 and its file (the saved
+        entry's Attachment) obviously survives."""
         env, client, upload_dir = api["db"], api["client"], api["upload_dir"]
         with open(os.path.join(upload_dir, "adopted.pdf"), "wb") as f:
             f.write(PDF_BYTES)
@@ -487,23 +528,35 @@ class TestDismiss:
         ))
         env.commit()
         resp = await client.delete("/api/import/jobs/job-saved")
-        assert resp.status_code == 200
+        assert resp.status_code == 409
         env.rollback()
-        assert env.query(ExtractionJob).filter(ExtractionJob.id == "job-saved").count() == 0
-        assert env.query(Notification).filter(Notification.job_id == "job-saved").count() == 0
+        assert env.query(ExtractionJob).filter(ExtractionJob.id == "job-saved").one().status == "saved"
         # The file survives — the attachment still owns it.
         assert os.path.exists(os.path.join(upload_dir, "adopted.pdf"))
 
     @pytest.mark.asyncio
-    async def test_dismiss_processing_conflict(self, api):
+    async def test_dismiss_processing_flags_the_worker(self, api):
+        """Dismissing a processing job flags cancel_requested (the worker
+        owns a dequeued job) — it lands in history as cancelled."""
         env, client = api["db"], api["client"]
         env.add(ExtractionJob(
-            id="job-busy", user_id=TEST_USER_ID, status="processing",
+            id="job-busy-d", user_id=TEST_USER_ID, status="processing",
             original_filename="b.pdf", file_path="/static/uploads/b.pdf", file_size=5,
         ))
         env.commit()
-        resp = await client.delete("/api/import/jobs/job-busy")
-        assert resp.status_code == 409
+        resp = await client.delete("/api/import/jobs/job-busy-d")
+        assert resp.status_code == 200
+        assert resp.json()["cancel_requested"] is True
+        env.rollback()
+        row = env.query(ExtractionJob).filter(ExtractionJob.id == "job-busy-d").one()
+        assert row.status == "processing"
+        assert row.cancel_requested is True
+
+    @pytest.mark.asyncio
+    async def test_dismiss_processing_conflict_removed(self, api):
+        """(superseded — dismiss on processing now flags the worker; covered
+        by test_dismiss_processing_flags_the_worker.)"""
+        assert True
 
 
 class TestAnonFlow:

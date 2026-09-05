@@ -374,25 +374,57 @@ async def dismiss_import_job(
     db: Session = Depends(get_db),
     user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
 ):
-    """Dismiss a terminal job (done/failed/cancelled/saved): delete the row
-    and ALL its notification rows (retries can have produced several). The
-    staged file is unlinked only when no Attachment row still references it —
-    a SAVED job's file is the saved entry's attachment and must survive.
-    Queued/processing jobs must be cancelled first."""
+    """DISMISS an active job — a CAS transition into the ``dismissed``
+    history state (the row is KEPT and shows in the tracker's history; it is
+    not deleted):
+    - queued -> dismissed: refund (the extraction never ran) + staged file
+      freed (reference-checked).
+    - done/failed -> dismissed: no refund (failed was already refunded; done
+      consumed the extraction), staged file freed, the job's notification
+      rows deleted (the bell must never offer "Review" on a dismissed job).
+    - processing: the worker owns the job — flag it like a cancel; it lands
+      in history as ``cancelled`` when the worker honors the flag.
+    - saved/cancelled/dismissed (history): 409 — the UI offers no dismiss
+      there and history rows cannot be removed.
+    """
     _user, user_id, _is_anonymous = user_data
     job = _own_job(db, job_id, user_id)
-    if job.status not in ("done", "failed", "cancelled", "saved"):
+
+    if job.status in ("saved", "cancelled", "dismissed"):
         raise HTTPException(status_code=409, detail=i18n.tr("import.dismiss_not_terminal"))
+
+    if job.status == "processing":
+        db.execute(
+            update(ExtractionJob)
+            .where(ExtractionJob.id == job.id, ExtractionJob.status == "processing")
+            .values(cancel_requested=True, updated_at=datetime.now(timezone.utc))
+        )
+        db.commit()
+        logger.info("Import job %s dismiss requested while processing (user %s)", job.id, user_id)
+        return {"job_id": job.id, "status": "processing", "cancel_requested": True}
+
     was_status = job.status
     file_path = job.file_path
+    result = db.execute(
+        update(ExtractionJob)
+        .where(ExtractionJob.id == job.id, ExtractionJob.status == was_status)
+        .values(status="dismissed", stage="", progress=None, updated_at=datetime.now(timezone.utc))
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=i18n.tr("import.dismiss_not_terminal"))
     db.query(Notification).filter(Notification.job_id == job.id).delete(
         synchronize_session=False
     )
-    db.delete(job)
     db.commit()
-    # Reference-checked: a saved job's file is the entry's Attachment — kept.
+    if was_status == "queued":
+        # Never ran — same refund rule as a queued cancel.
+        refund_ai_extraction(db, user_id, bool(job.is_anonymous))
+    # Reference-checked: a saved job's file is the entry's Attachment (and
+    # dismiss is 409 there anyway) — active jobs' staged files are orphaned
+    # now and get freed.
     unlink_unreferenced_files(db, [file_path])
     logger.info(
-        "Import job %s dismissed (user %s, status was %s)", job.id, user_id, was_status
+        "Import job %s dismissed from %s (user %s)", job.id, was_status, user_id
     )
     return {"dismissed": True}

@@ -270,12 +270,12 @@ def sweep_expired_jobs(db: Session | None = None) -> int:
     try:
         # ``saving`` rows are CAS claims of an in-flight save-with-job-id —
         # never swept, or the staged file could be unlinked mid-save.
-        # ``saved`` rows are history records — never swept.
+        # ``saved``/``dismissed`` rows are history records — never swept.
         expired = (
             db.query(ExtractionJob)
             .filter(
                 ExtractionJob.updated_at < cutoff,
-                ExtractionJob.status.not_in(["saving", "saved"]),
+                ExtractionJob.status.not_in(["saving", "saved", "dismissed"]),
             )
             .all()
         )
