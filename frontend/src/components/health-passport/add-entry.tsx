@@ -45,7 +45,15 @@ import type {
   StandardizedMedicalRecord,
 } from '@/lib/types'
 
-export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
+export function AddEntry({
+  onSave,
+  stagedJob,
+}: {
+  onSave: () => Promise<void> | void
+  /** Batch-import review: prefill from a staged job's record and save with
+   * import_job_id instead of re-uploading the file. */
+  stagedJob?: { jobId: string; record: StandardizedMedicalRecord } | null
+}) {
   const queryClient = useQueryClient()
   const t = useTranslations('editor')
   const [entryMode, setEntryMode] = useState<EntryMode>('ai')
@@ -338,11 +346,12 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
       // Saving with no valid rows and no document would create an empty
       // entry — including when every row was deleted (both counts zero).
       // A file-only save (e.g. an AI-extracted report with no biomarkers)
-      // stays allowed.
+      // stays allowed; a staged import job carries its own record.
       if (
         documentType === 'blood_test' &&
         validRowCount === 0 &&
-        !selectedFile
+        !selectedFile &&
+        !stagedJob
       ) {
         setSaveError(t('noBiomarkers'))
         return
@@ -382,8 +391,13 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
           documentType === 'instrumental_test' && instrumentalTestFormData
             ? instrumentalTestFormData
             : null,
-        file: selectedFile ?? fileRef.current?.files?.[0] ?? null,
+        file: stagedJob ? null : (selectedFile ?? fileRef.current?.files?.[0] ?? null),
       })
+      if (stagedJob) {
+        // Batch import: adopt the staged file server-side (no re-upload) —
+        // the backend claims/consumes the job in the same commit.
+        fd.append('import_job_id', stagedJob.jobId)
+      }
       const resp =
         merging && selectedMergeTarget
           ? await mergeMedicalEntry(selectedMergeTarget.id, fd)
@@ -418,6 +432,19 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     } finally {
       setSaving(false)
     }
+  }
+
+  // Staged import job (review editor): fan the staged record out through the
+  // same fill path as the SSE result — no extraction, no file re-upload.
+  // Render-time derived-state adjustment (the officially supported
+  // alternative to a prop-change effect): applied once per staged job id.
+  const [appliedStagedJobId, setAppliedStagedJobId] = useState<string | null>(null)
+  if (stagedJob && appliedStagedJobId !== stagedJob.jobId) {
+    setAppliedStagedJobId(stagedJob.jobId)
+    applyExtractedRecord(stagedJob.record)
+    setSelectedFile(null)
+    setObjectUrl(null)
+    setUploadState('editor')
   }
 
   if (batchFiles !== null) {

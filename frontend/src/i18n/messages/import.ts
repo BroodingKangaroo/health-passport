@@ -66,6 +66,7 @@ export const importMessages = {
         'This import is no longer available — it may have been saved, dismissed or expired.',
       reviewBack: 'Back to timeline',
       reviewLoadFailed: 'Couldn’t load the extracted document.',
+      reviewLoading: 'Loading…',
     },
   },
   ru: {
@@ -133,6 +134,7 @@ export const importMessages = {
         'Этот импорт больше недоступен — возможно, он сохранён, удалён или истёк.',
       reviewBack: 'К хронологии',
       reviewLoadFailed: 'Не удалось загрузить распознанный документ.',
+      reviewLoading: 'Загрузка…',
     },
   },
 }

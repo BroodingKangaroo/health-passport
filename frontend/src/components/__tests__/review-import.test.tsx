@@ -1,0 +1,154 @@
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { StandardizedMedicalRecord } from '@/lib/types'
+
+const pushMock = vi.fn()
+const replaceMock = vi.fn()
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: pushMock, replace: replaceMock, refresh: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(window.location.search),
+}))
+vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }))
+
+const capturedAddEntryProps: Array<Record<string, unknown>> = []
+
+vi.mock('@/components/health-passport/add-entry', () => ({
+  AddEntry: (props: Record<string, unknown>) => {
+    capturedAddEntryProps.push(props)
+    return <div data-testid="add-entry-stub" />
+  },
+}))
+
+vi.mock('@/services/import-jobs', () => ({
+  fetchImportJob: vi.fn(),
+  fetchImportJobs: vi.fn(),
+  dismissImportJob: vi.fn(),
+}))
+
+import { ReviewImport } from '../health-passport/review-import'
+import { TestI18nProvider } from '@/test/i18n-test-provider'
+import {
+  fetchImportJob,
+  fetchImportJobs,
+  dismissImportJob,
+  type ImportJobDetail,
+} from '@/services/import-jobs'
+
+const jobDetailMock = vi.mocked(fetchImportJob)
+const fetchJobsMock = vi.mocked(fetchImportJobs)
+const dismissMock = vi.mocked(dismissImportJob)
+
+function detail(overrides: Partial<ImportJobDetail>): ImportJobDetail {
+  return {
+    id: 'job-1',
+    status: 'done',
+    stage: '',
+    progress: null,
+    original_filename: 'lab.pdf',
+    file_size: 10,
+    created_at: null,
+    error: null,
+    result: {
+      entry_type: 'blood_test',
+      date: '2026-01-15',
+      title: 'Annual panel',
+      biomarkers: [],
+    } as unknown as StandardizedMedicalRecord,
+    error_key: null,
+    error_params: null,
+    updated_at: null,
+    ...overrides,
+  }
+}
+
+function renderReview(jobId?: string) {
+  if (jobId !== undefined) window.history.replaceState(null, '', `/review-import?job=${jobId}`)
+  else window.history.replaceState(null, '', '/review-import')
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={client}>
+      <TestI18nProvider>
+        <ReviewImport />
+      </TestI18nProvider>
+    </QueryClientProvider>,
+  )
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  capturedAddEntryProps.length = 0
+  dismissMock.mockResolvedValue(undefined)
+})
+
+describe('ReviewImport', () => {
+  it('prefills the editor from the staged record of a done job', async () => {
+    jobDetailMock.mockResolvedValue(detail({}))
+    renderReview('job-1')
+    await waitFor(() =>
+      expect(capturedAddEntryProps.some((p) => p.stagedJob)).toBe(true),
+    )
+    const props = capturedAddEntryProps.find((p) => p.stagedJob)!
+    expect((props.stagedJob as { jobId: string }).jobId).toBe('job-1')
+    expect((props.stagedJob as { record: StandardizedMedicalRecord }).record.date).toBe(
+      '2026-01-15',
+    )
+  })
+
+  it('auto-advances to the next done job after save', async () => {
+    jobDetailMock.mockResolvedValue(detail({ id: 'job-1' }))
+    fetchJobsMock.mockResolvedValue({
+      items: [{ id: 'job-2', status: 'done', stage: '', progress: null, original_filename: 'next.pdf', file_size: 1, created_at: null, error: null }],
+    })
+    renderReview('job-1')
+    await waitFor(() => expect(capturedAddEntryProps.some((p) => p.stagedJob)).toBe(true))
+    const onSave = capturedAddEntryProps.find((p) => p.stagedJob)!.onSave as () => Promise<void>
+    await onSave()
+    await waitFor(() =>
+      expect(replaceMock).toHaveBeenCalledWith('/review-import?job=job-2'),
+    )
+  })
+
+  it('goes back to the timeline when no other done job remains', async () => {
+    jobDetailMock.mockResolvedValue(detail({ id: 'job-1' }))
+    fetchJobsMock.mockResolvedValue({ items: [] })
+    renderReview('job-1')
+    await waitFor(() => expect(capturedAddEntryProps.some((p) => p.stagedJob)).toBe(true))
+    const onSave = capturedAddEntryProps.find((p) => p.stagedJob)!.onSave as () => Promise<void>
+    await onSave()
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/'))
+  })
+
+  it('shows an honest gone-state with dismiss for a failed job', async () => {
+    jobDetailMock.mockResolvedValue(
+      detail({ status: 'failed', result: null, error: 'OCR failed' }),
+    )
+    renderReview('job-1')
+    await screen.findByTestId('review-gone')
+    fireEvent.click(screen.getByText('Dismiss'))
+    await waitFor(() => expect(dismissMock).toHaveBeenCalledWith('job-1'))
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/'))
+  })
+
+  it('shows the gone-state for a missing/unknown job id', async () => {
+    jobDetailMock.mockRejectedValue(new Error('404'))
+    renderReview('no-such-job')
+    await screen.findByTestId('review-gone')
+    expect(screen.getByText(/no longer available/)).toBeInTheDocument()
+  })
+
+  it('routes still-processing jobs to the tracker', async () => {
+    jobDetailMock.mockResolvedValue(detail({ status: 'processing', result: null }))
+    renderReview('job-1')
+    await screen.findByTestId('review-still-processing')
+    fireEvent.click(screen.getByText('View all imports'))
+    expect(pushMock).toHaveBeenCalledWith('/imports')
+  })
+
+  it('shows the gone-state without a job id at all', async () => {
+    renderReview()
+    await screen.findByTestId('review-gone')
+    expect(jobDetailMock).not.toHaveBeenCalled()
+  })
+})

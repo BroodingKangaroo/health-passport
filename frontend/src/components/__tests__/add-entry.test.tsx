@@ -881,3 +881,101 @@ describe('AddEntry', () => {
     })
   })
 })
+
+describe('staged import job review (B4)', () => {
+  const stagedRecord: StandardizedMedicalRecord = {
+    entry_type: 'blood_test',
+    date: '2026-07-15',
+    time: null,
+    clinic: 'Test Lab',
+    provider: 'Dr. House',
+    title: 'Annual Panel',
+    notes: 'Fasted 12h',
+    source_language: 'en',
+    biomarkers: [
+      {
+        raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170',
+        standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L',
+        reference: { kind: 'interval', low: 130, high: 170 },
+        status: 'normal', category: 'Complete Blood Count',
+        definition_id: 'hb', scope: 'global',
+      },
+    ],
+    visit_data: null,
+    instrumental_data: null,
+  }
+
+  async function renderStagedEditor() {
+    mockFetchByDate.mockResolvedValue({ date: '2026-07-15', count: 0, entries: [] })
+    const view = renderWithProviders(
+      <AddEntry
+        onSave={vi.fn()}
+        stagedJob={{ jobId: 'job-stage', record: stagedRecord }}
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
+    }, { timeout: 3000 })
+    return view
+  }
+
+  it('prefills the editor from the staged record without any extraction', async () => {
+    const { container } = await renderStagedEditor()
+    // No SSE extraction, no file — the record comes from the staged job.
+    expect(mockExtract).not.toHaveBeenCalled()
+    const dateInput = container.querySelector('input[type="date"]') as HTMLInputElement
+    expect(dateInput.value).toBe('2026-07-15')
+    expect((container.querySelector('input[type="time"]') as HTMLInputElement)).toBeTruthy()
+    // Clinic/provider/title prefills landed (identified banner shows the type).
+    expect(screen.getByText('AI successfully identified')).toBeInTheDocument()
+  })
+
+  it('saves with import_job_id and no file re-upload', async () => {
+    mockSave.mockResolvedValue({ success: true, message: 'Entry saved', id: 'e1' })
+    await renderStagedEditor()
+    fireEvent.click(screen.getByText('Save to HealthPassport'))
+    await waitFor(() => expect(mockSave).toHaveBeenCalled())
+    const fd = mockSave.mock.calls[0][0] as FormData
+    expect(fd.get('import_job_id')).toBe('job-stage')
+    expect(fd.get('file')).toBeNull()
+    expect(fd.get('type')).toBe('blood_test')
+  })
+
+  it('merges with import_job_id when the same-date merge is selected', async () => {
+    mockMerge.mockResolvedValue({ success: true, message: 'Entry merged', id: 'existing-1' })
+    mockFetchByDate.mockResolvedValue({
+      date: '2026-07-15',
+      count: 1,
+      entries: [
+        {
+          id: 'existing-1',
+          title: 'Morning Panel',
+          date: '2026-07-15T09:00:00',
+          time: '09:00',
+          biomarkers: [{ definition_id: 'wbc', loinc_code: '6690-2' }],
+        },
+      ],
+    })
+    renderWithProviders(
+      <AddEntry
+        onSave={vi.fn()}
+        stagedJob={{ jobId: 'job-stage', record: stagedRecord }}
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
+    }, { timeout: 3000 })
+    // Same-date hint: the merge checkbox is the same-date strategy.
+    await waitFor(() => {
+      expect(
+        screen.getByText("Merge with this date's existing blood test"),
+      ).toBeInTheDocument()
+    }, { timeout: 3000 })
+    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.click(screen.getByText('Merge & Save'))
+    await waitFor(() => expect(mockMerge).toHaveBeenCalled())
+    const fd = mockMerge.mock.calls[0][1] as FormData
+    expect(fd.get('import_job_id')).toBe('job-stage')
+    expect(fd.get('file')).toBeNull()
+  })
+})
