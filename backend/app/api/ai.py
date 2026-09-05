@@ -107,7 +107,7 @@ def _get_client() -> Optional[Mistral]:
             initial_interval=1000,
             max_interval=15000,
             exponent=2.0,
-            max_elapsed_time=120000,
+            max_elapsed_time=8000,
         ),
         retry_connection_errors=True,
     )
