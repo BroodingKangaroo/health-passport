@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button'
 import { useTheme } from '@/providers/theme-provider'
 import { useLeaveGuard } from '@/providers/leave-guard-provider'
 import { LanguageSwitch } from '@/components/shared/language-switch'
+import { NotificationBell } from './notification-bell'
 
 function formatDob(dob: string | undefined, locale: string): string {
   if (!dob) return ''
@@ -120,6 +121,9 @@ export function HeaderBar() {
         </Button>
 
         <LanguageSwitch />
+
+        {/* Import notifications bell — visible for anonymous sessions too. */}
+        <NotificationBell />
 
         <Button variant="outline" size="sm" onClick={() => navigate('/print-setup')}>
           <Printer className="size-3.5" />
