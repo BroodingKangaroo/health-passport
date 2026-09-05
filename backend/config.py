@@ -60,3 +60,10 @@ IMPORT_JOB_TTL_H = int(os.environ.get("IMPORT_JOB_TTL_H", "72"))
 # serial Mistral calls avoid the documented 429-contamination bug. Values >1
 # stay unsupported until a rate-limit strategy exists (see docs).
 IMPORT_WORKERS = max(1, int(os.environ.get("IMPORT_WORKERS", "1")))
+
+# Per-user cap on pending import work (non-terminal jobs + their staged
+# bytes) — bounds the worst case of uncharged storage: staged files cost no
+# storage quota until the reviewed entry saves, so without this cap a user
+# could stage hundreds of MB with zero storage charged.
+IMPORT_PENDING_MAX_JOBS = int(os.environ.get("IMPORT_PENDING_MAX_JOBS", "50"))
+IMPORT_PENDING_MAX_STAGED_MB = int(os.environ.get("IMPORT_PENDING_MAX_STAGED_MB", "500"))

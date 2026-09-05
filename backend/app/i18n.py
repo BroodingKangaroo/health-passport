@@ -344,6 +344,31 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Notification not found",
         "ru": "Уведомление не найдено",
     },
+    # ----- app/api/import_jobs.py -----
+    "import.not_found": {
+        "en": "Import job not found",
+        "ru": "Задание импорта не найдено",
+    },
+    "import.pending_cap": {
+        "en": "Too many pending imports (maximum {limit}). Wait for current extractions to finish, or review/delete existing ones.",
+        "ru": "Слишком много ожидающих заданий (максимум {limit}). Дождитесь завершения текущих распознаваний или удалите существующие.",
+    },
+    "import.pending_cap_storage": {
+        "en": "Pending imports exceed the staged storage limit ({limit_mb} MB). Review or delete existing imports first.",
+        "ru": "Ожидающие задания превышают лимит промежуточного хранилища ({limit_mb} МБ). Сначала просмотрите или удалите существующие задания.",
+    },
+    "import.cancel_not_active": {
+        "en": "Only queued or in-progress jobs can be cancelled.",
+        "ru": "Отменить можно только задание в очереди или в процессе выполнения.",
+    },
+    "import.retry_not_failed": {
+        "en": "Only failed imports can be retried.",
+        "ru": "Повторить можно только неудавшееся распознавание.",
+    },
+    "import.dismiss_not_terminal": {
+        "en": "Only finished, failed or cancelled imports can be dismissed. Cancel in-progress jobs first.",
+        "ru": "Удалить можно только завершённое, неудавшееся или отменённое задание. Сначала отмените текущие задания.",
+    },
     # ----- app/api/timeline.py -----
     "timeline.biomarker_not_found": {
         "en": "Biomarker '{id}' not found",

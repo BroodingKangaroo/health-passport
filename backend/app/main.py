@@ -27,6 +27,7 @@ from app.api.auth import router as auth_router
 from app.api.biomarkers import router as biomarkers_router
 from app.api.entries import router as entries_router
 from app.api.flowsheet import router as flowsheet_router
+from app.api.import_jobs import router as import_jobs_router
 from app.api.notifications import router as notifications_router
 from app.api.timeline import router as timeline_router
 from app.api.usage_limits import router as usage_limits_router
@@ -78,6 +79,7 @@ app.include_router(account_router)
 app.include_router(auth_router)
 app.include_router(usage_limits_router)
 app.include_router(notifications_router)
+app.include_router(import_jobs_router)
 
 os.makedirs("static", exist_ok=True)
 
