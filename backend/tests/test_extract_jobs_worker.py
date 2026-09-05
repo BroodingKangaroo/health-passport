@@ -303,3 +303,38 @@ class TestCancel:
     def test_gc_job_vanished_is_noop(self, jobs_db, pipeline_mocks):
         _db, _sm, _dir = jobs_db
         ej.process_job("no-such-job")  # must not raise
+
+
+class TestResilience:
+    """C1 resilience sweep: CAS refund-ownership and recovery integration."""
+
+    def test_orphaned_queued_reenqueued_by_recovery_completes(self, jobs_db, pipeline_mocks):
+        """Kill-mid-run simulation: a 'queued' row orphaned by a restart is
+        re-enqueued by startup recovery into the fresh queue and COMPLETES —
+        without recovery it would sit 'waiting' until GC with quota burned."""
+        db, _sm, upload_dir = jobs_db
+        job = make_job(db, file_path=staged_file(upload_dir))
+        # Recovery enqueues and (lazily) starts the real worker threads.
+        summary = ej.recover_orphan_jobs()
+        assert summary["requeued"] == 1
+        done = wait_for_terminal(db, job.id)
+        assert done.status == "done"
+        assert done.result["entry_type"] == "blood_test"
+        # Success consumed the charge — nothing refunded.
+        assert _usage(db) == 3
+        assert db.query(Notification).filter(Notification.type == "import_job_done").count() == 1
+
+    def test_processing_the_same_job_twice_is_idempotent(self, jobs_db, pipeline_mocks):
+        """A stale queue entry racing a completed job (or a double-submit)
+        must not re-run, re-notify, or re-refund: the CAS claim is
+        queued->processing, and a done job can never be re-claimed."""
+        db, _sm, upload_dir = jobs_db
+        job = make_job(db, file_path=staged_file(upload_dir))
+        ej.process_job(job.id)
+        assert _job_row(db, job.id).status == "done"
+        assert _usage(db) == 3
+        ej.process_job(job.id)  # stale dequeue — claim loses, nothing happens
+        row = _job_row(db, job.id)
+        assert row.status == "done"
+        assert _usage(db) == 3  # no double refund
+        assert db.query(Notification).count() == 1  # no second notification
