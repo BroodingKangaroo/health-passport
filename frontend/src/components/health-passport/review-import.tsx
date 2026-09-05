@@ -8,12 +8,12 @@ import { toast } from 'sonner'
 import { AlertCircle, ArrowLeft } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { HeaderBar } from './header-bar'
 import { AddEntry } from './add-entry'
 import {
   dismissImportJob,
   fetchImportJob,
   fetchImportJobFile,
-  fetchImportJobs,
 } from '@/services/import-jobs'
 
 /**
@@ -22,10 +22,11 @@ import {
  * Fetches the staged StandardizedMedicalRecord and prefills the EXISTING
  * add-entry editor machinery (same fill path, unit-conflict dialog, merge
  * checkbox, document-type editors — all derive from the staged record
- * exactly as they do from the SSE result). Save → POST /api/entry (or
- * /merge) with import_job_id — no file re-upload — then auto-advance to the
- * next done job (if any). "Leave for later" → back; the job stays in the
- * bell. A failed/expired/saved job → honest error + dismiss.
+ * exactly as they do from the SSE result). Save and Cancel both return to
+ * /imports: Save consumes the staged job server-side (entry + attachment
+ * created, job kept as a history row), Cancel leaves it staged (stays in
+ * the bell + tracker). A failed/expired/already-saved job → honest error +
+ * dismiss.
  */
 export function ReviewImport() {
   const t = useTranslations('import')
@@ -75,90 +76,97 @@ export function ReviewImport() {
     }
   }, [detail])
 
+  // Save consumed the staged job server-side — return to the tracker where
+  // the saved import now appears in the history section.
   const handleSave = useCallback(async () => {
     toast.success(t('reviewSavedToast'))
-    // The job was consumed server-side; refresh the shared tracker cache.
     await queryClient.invalidateQueries({ queryKey: ['import-jobs'] })
     await queryClient.invalidateQueries({ queryKey: ['notifications'] })
-    // Auto-advance to the next done job, if any; otherwise back home.
-    let next: { id: string } | undefined
-    try {
-      const jobs = await fetchImportJobs()
-      next = jobs.items.find((j) => j.status === 'done')
-    } catch {
-      /* advancing is best-effort — fall back to the timeline */
-    }
-    if (next) router.replace(`/review-import?job=${next.id}`)
-    else router.push('/')
+    router.push('/imports')
   }, [t, queryClient, router])
 
   function handleLeaveForLater() {
     // Job stays staged — it remains in the bell and the tracker.
-    router.push('/')
-  }
-
-  if (state === 'loading') {
-    return (
-      <div className="mx-auto max-w-md py-16 text-center text-sm text-muted-foreground">
-        {t('reviewLoading')}
-      </div>
-    )
-  }
-
-  if (state === 'processing') {
-    return (
-      <div className="mx-auto max-w-md py-16 text-center" data-testid="review-still-processing">
-        <p className="text-sm text-muted-foreground">{t('trackerQueued')}</p>
-        <Button variant="outline" className="mt-4" onClick={() => router.push('/imports')}>
-          {t('bellViewAll')}
-        </Button>
-      </div>
-    )
-  }
-
-  if (state === 'gone' || !detail || detail.status !== 'done') {
-    return (
-      <div className="mx-auto max-w-md py-16 text-center" data-testid="review-gone">
-        <AlertCircle className="mx-auto size-8 text-status-high" />
-        <p className="mt-3 text-sm text-muted-foreground">{t('reviewGone')}</p>
-        {detail && (detail.status === 'failed' || detail.status === 'cancelled') && (
-          <Button
-            variant="outline"
-            className="mt-4"
-            onClick={async () => {
-              try {
-                await dismissImportJob(detail.id)
-                await queryClient.invalidateQueries({ queryKey: ['import-jobs'] })
-              } catch {
-                /* already gone */
-              }
-              router.push('/')
-            }}
-          >
-            {t('trackerDismiss')}
-          </Button>
-        )}
-        <div className="mt-4">
-          <Button variant="ghost" onClick={handleLeaveForLater}>
-            <ArrowLeft className="size-4" />
-            {t('reviewBack')}
-          </Button>
-        </div>
-      </div>
-    )
+    router.push('/imports')
   }
 
   return (
     <div className="min-h-screen bg-background" data-testid="review-import-view">
-      <AddEntry
-        onSave={handleSave}
-        stagedJob={{ jobId: detail.id, record: detail.result!, file: stagedFile }}
-      />
-      <div className="mx-auto flex max-w-[1600px] justify-end px-6 pb-6">
-        <Button variant="ghost" onClick={handleLeaveForLater}>
-          {t('reviewLeaveForLater')}
-        </Button>
-      </div>
+      <HeaderBar />
+      <nav className="border-b border-border bg-card px-5 print:hidden">
+        <div className="flex items-center py-2">
+          <Button
+            variant="ghost"
+            onClick={handleLeaveForLater}
+            className="gap-1.5 text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="size-4" />
+            {t('trackerTitle')}
+          </Button>
+        </div>
+      </nav>
+      {state === 'loading' ? (
+        <div className="mx-auto max-w-md py-16 text-center text-sm text-muted-foreground">
+          {t('reviewLoading')}
+        </div>
+      ) : state === 'processing' ? (
+        <div
+          className="mx-auto max-w-md py-16 text-center"
+          data-testid="review-still-processing"
+        >
+          <p className="text-sm text-muted-foreground">{t('trackerQueued')}</p>
+          <Button
+            variant="outline"
+            className="mt-4"
+            onClick={() => router.push('/imports')}
+          >
+            {t('bellViewAll')}
+          </Button>
+        </div>
+      ) : state === 'gone' || !detail || detail.status !== 'done' ? (
+        <div className="mx-auto max-w-md py-16 text-center" data-testid="review-gone">
+          <AlertCircle className="mx-auto size-8 text-status-high" />
+          <p className="mt-3 text-sm text-muted-foreground">{t('reviewGone')}</p>
+          {detail && (detail.status === 'failed' || detail.status === 'cancelled') && (
+            <Button
+              variant="outline"
+              className="mt-4"
+              onClick={async () => {
+                try {
+                  await dismissImportJob(detail.id)
+                  await queryClient.invalidateQueries({ queryKey: ['import-jobs'] })
+                } catch {
+                  /* already gone */
+                }
+                router.push('/imports')
+              }}
+            >
+              {t('trackerDismiss')}
+            </Button>
+          )}
+          <div className="mt-4">
+            <Button variant="ghost" onClick={handleLeaveForLater}>
+              <ArrowLeft className="size-4" />
+              {t('reviewBack')}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <main className="p-5">
+            <AddEntry
+              onSave={handleSave}
+              onCancel={handleLeaveForLater}
+              stagedJob={{ jobId: detail.id, record: detail.result!, file: stagedFile }}
+            />
+          </main>
+          <div className="mx-auto flex max-w-[1600px] justify-end px-6 pb-6">
+            <Button variant="ghost" onClick={handleLeaveForLater}>
+              {t('reviewLeaveForLater')}
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

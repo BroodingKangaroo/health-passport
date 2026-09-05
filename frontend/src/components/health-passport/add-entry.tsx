@@ -47,9 +47,14 @@ import type {
 
 export function AddEntry({
   onSave,
+  onCancel,
   stagedJob,
 }: {
   onSave: () => Promise<void> | void
+  /** The "Cancel" button's action. Defaults to onSave (the /add-entry page's
+   * callback navigates home, so Cancel leaving = the same thing). Pages that
+   * distinguish "save succeeded" from "leave without saving" pass both. */
+  onCancel?: () => Promise<void> | void
   /** Batch-import review: prefill from a staged job's record and save with
    * import_job_id instead of re-uploading the file. `file` (fetched from the
    * staged-file endpoint) powers the preview pane only — it is NEVER sent to
@@ -702,7 +707,7 @@ export function AddEntry({
               accept=".pdf,.jpg,.jpeg,.png"
               onChange={handleFileRefChange}
             />
-            <Button variant="ghost" onClick={onSave} disabled={saving}>
+            <Button variant="ghost" onClick={onCancel ?? onSave} disabled={saving}>
               {t('cancel')}
             </Button>
             <Button

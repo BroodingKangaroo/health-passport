@@ -21,6 +21,9 @@ vi.mock('@/components/health-passport/add-entry', () => ({
   },
 }))
 
+vi.mock('@/components/health-passport/header-bar', () => ({
+  HeaderBar: () => <div data-testid="header-bar-stub" />,
+}))
 vi.mock('@/services/import-jobs', () => ({
   fetchImportJob: vi.fn(),
   fetchImportJobs: vi.fn(),
@@ -111,28 +114,32 @@ describe('ReviewImport', () => {
     expect(jobFileMock).toHaveBeenCalledWith('job-1')
   })
 
-  it('auto-advances to the next done job after save', async () => {
+  it('returns to /imports after save (no auto-advance)', async () => {
     jobDetailMock.mockResolvedValue(detail({ id: 'job-1' }))
-    fetchJobsMock.mockResolvedValue({
-      items: [{ id: 'job-2', status: 'done', stage: '', progress: null, original_filename: 'next.pdf', file_size: 1, created_at: null, error: null }],
-    })
     renderReview('job-1')
     await waitFor(() => expect(capturedAddEntryProps.some((p) => p.stagedJob)).toBe(true))
     const onSave = capturedAddEntryProps.find((p) => p.stagedJob)!.onSave as () => Promise<void>
     await onSave()
-    await waitFor(() =>
-      expect(replaceMock).toHaveBeenCalledWith('/review-import?job=job-2'),
-    )
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/imports'))
+    expect(replaceMock).not.toHaveBeenCalled()
   })
 
-  it('goes back to the timeline when no other done job remains', async () => {
+  it('cancel leaves the job staged and returns to /imports without the saved toast', async () => {
     jobDetailMock.mockResolvedValue(detail({ id: 'job-1' }))
-    fetchJobsMock.mockResolvedValue({ items: [] })
     renderReview('job-1')
     await waitFor(() => expect(capturedAddEntryProps.some((p) => p.stagedJob)).toBe(true))
-    const onSave = capturedAddEntryProps.find((p) => p.stagedJob)!.onSave as () => Promise<void>
-    await onSave()
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/'))
+    const props = capturedAddEntryProps.find((p) => p.stagedJob)!
+    const onCancel = props.onCancel as () => Promise<void>
+    expect(typeof onCancel).toBe('function')
+    await onCancel()
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/imports'))
+  })
+
+  it('renders the standard page chrome (header + back to imports)', async () => {
+    jobDetailMock.mockResolvedValue(detail({ id: 'job-1' }))
+    renderReview('job-1')
+    expect(await screen.findByTestId('header-bar-stub')).toBeInTheDocument()
+    await screen.findByText('Imports') // back nav label (trackerTitle)
   })
 
   it('shows an honest gone-state with dismiss for a failed job', async () => {
@@ -143,7 +150,7 @@ describe('ReviewImport', () => {
     await screen.findByTestId('review-gone')
     fireEvent.click(screen.getByText('Dismiss'))
     await waitFor(() => expect(dismissMock).toHaveBeenCalledWith('job-1'))
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/'))
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/imports'))
   })
 
   it('shows the gone-state for a missing/unknown job id', async () => {
