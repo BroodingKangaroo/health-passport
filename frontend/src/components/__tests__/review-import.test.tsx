@@ -25,6 +25,7 @@ vi.mock('@/services/import-jobs', () => ({
   fetchImportJob: vi.fn(),
   fetchImportJobs: vi.fn(),
   dismissImportJob: vi.fn(),
+  fetchImportJobFile: vi.fn(),
 }))
 
 import { ReviewImport } from '../health-passport/review-import'
@@ -33,10 +34,12 @@ import {
   fetchImportJob,
   fetchImportJobs,
   dismissImportJob,
+  fetchImportJobFile,
   type ImportJobDetail,
 } from '@/services/import-jobs'
 
 const jobDetailMock = vi.mocked(fetchImportJob)
+const jobFileMock = vi.mocked(fetchImportJobFile)
 const fetchJobsMock = vi.mocked(fetchImportJobs)
 const dismissMock = vi.mocked(dismissImportJob)
 
@@ -80,6 +83,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   capturedAddEntryProps.length = 0
   dismissMock.mockResolvedValue(undefined)
+  jobFileMock.mockResolvedValue(new Blob(['%PDF fake'], { type: 'application/pdf' }))
 })
 
 describe('ReviewImport', () => {
@@ -94,6 +98,17 @@ describe('ReviewImport', () => {
     expect((props.stagedJob as { record: StandardizedMedicalRecord }).record.date).toBe(
       '2026-01-15',
     )
+  })
+
+  it('fetches the staged document for the preview pane', async () => {
+    jobDetailMock.mockResolvedValue(detail({}))
+    renderReview('job-1')
+    await waitFor(() => {
+      // The file lands on a LATER render (after the blob fetch resolves).
+      const props = [...capturedAddEntryProps].reverse().find((p) => p.stagedJob)
+      expect(props && (props.stagedJob as { file?: File | null }).file).toBeTruthy()
+    })
+    expect(jobFileMock).toHaveBeenCalledWith('job-1')
   })
 
   it('auto-advances to the next done job after save', async () => {

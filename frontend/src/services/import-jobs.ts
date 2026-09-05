@@ -91,6 +91,22 @@ export async function fetchImportJob(id: string): Promise<ImportJobDetail> {
   return res.json()
 }
 
+/**
+ * Download a staged job's document (owner-scoped endpoint) for the review
+ * editor's preview pane — staged files have no Attachment row yet, so the
+ * /static/uploads route cannot serve them.
+ */
+export async function fetchImportJobFile(id: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/import/jobs/${encodeURIComponent(id)}/file`, {
+    headers: baseHeaders(),
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    throw await parseError(res, `GET /import/jobs/${id}/file failed: ${res.statusText}`)
+  }
+  return res.blob()
+}
+
 export async function cancelImportJob(id: string): Promise<void> {
   const res = await fetch(`${API_BASE}/import/jobs/${encodeURIComponent(id)}/cancel`, {
     method: 'POST',

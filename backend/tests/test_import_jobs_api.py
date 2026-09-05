@@ -491,3 +491,42 @@ class TestAnonFlow:
         resp = await client.post("/api/import/jobs", files=_make_pdf())
         assert resp.status_code == 429
         assert "register" in resp.json()["detail"].lower()
+
+
+class TestStagedFileDownload:
+    @pytest.mark.asyncio
+    async def test_owner_downloads_staged_file(self, api):
+        env, client, upload_dir = api["db"], api["client"], api["upload_dir"]
+        with open(os.path.join(upload_dir, "staged-dl.pdf"), "wb") as f:
+            f.write(PDF_BYTES)
+        env.add(ExtractionJob(
+            id="job-file", user_id=TEST_USER_ID, status="done",
+            original_filename="Отчёт.pdf", file_path="/static/uploads/staged-dl.pdf",
+            file_size=len(PDF_BYTES),
+        ))
+        env.commit()
+        resp = await client.get("/api/import/jobs/job-file/file")
+        assert resp.status_code == 200
+        assert resp.content == PDF_BYTES
+        # PDF preview in the review editor needs the right blob type.
+        assert resp.headers["content-type"] == "application/pdf"
+        assert resp.headers["x-content-type-options"] == "nosniff"
+        assert "attachment" in resp.headers["content-disposition"]
+
+    @pytest.mark.asyncio
+    async def test_staged_file_tenant_scoped_and_missing(self, api):
+        env, client = api["db"], api["client"]
+        env.add(ExtractionJob(
+            id="job-foreign-file", user_id=OTHER_USER_ID, status="done",
+            original_filename="x.pdf", file_path="/static/uploads/x.pdf", file_size=5,
+        ))
+        env.add(ExtractionJob(
+            id="job-gone-file", user_id=TEST_USER_ID, status="done",
+            original_filename="g.pdf", file_path="/static/uploads/never-there.pdf",
+            file_size=5,
+        ))
+        env.commit()
+        foreign = await client.get("/api/import/jobs/job-foreign-file/file")
+        assert foreign.status_code == 404
+        missing = await client.get("/api/import/jobs/job-gone-file/file")
+        assert missing.status_code == 404

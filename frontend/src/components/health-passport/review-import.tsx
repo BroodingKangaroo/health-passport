@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
@@ -12,6 +12,7 @@ import { AddEntry } from './add-entry'
 import {
   dismissImportJob,
   fetchImportJob,
+  fetchImportJobFile,
   fetchImportJobs,
 } from '@/services/import-jobs'
 
@@ -33,6 +34,9 @@ export function ReviewImport() {
   const searchParams = useSearchParams()
   const jobId = searchParams.get('job')
 
+  // The staged document for the preview pane (best-effort — a failed fetch
+  // leaves the preview empty but never blocks the review).
+  const [stagedFile, setStagedFile] = useState<File | null>(null)
   const { data: detail, isPending, isError } = useQuery({
     queryKey: ['import-job', jobId],
     queryFn: () => fetchImportJob(jobId!),
@@ -52,6 +56,24 @@ export function ReviewImport() {
             ? 'processing'
             : 'gone'
         : 'gone'
+
+  useEffect(() => {
+    if (!detail || detail.status !== 'done' || !detail.result) return
+    let cancelled = false
+    fetchImportJobFile(detail.id)
+      .then((blob) => {
+        if (cancelled) return
+        setStagedFile(
+          new File([blob], detail.original_filename || 'document', {
+            type: blob.type || 'application/octet-stream',
+          }),
+        )
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [detail])
 
   const handleSave = useCallback(async () => {
     toast.success(t('reviewSavedToast'))
@@ -130,7 +152,7 @@ export function ReviewImport() {
     <div className="min-h-screen bg-background" data-testid="review-import-view">
       <AddEntry
         onSave={handleSave}
-        stagedJob={{ jobId: detail.id, record: detail.result! }}
+        stagedJob={{ jobId: detail.id, record: detail.result!, file: stagedFile }}
       />
       <div className="mx-auto flex max-w-[1600px] justify-end px-6 pb-6">
         <Button variant="ghost" onClick={handleLeaveForLater}>

@@ -17,9 +17,11 @@ Design (docs/batch-import-tickets.md):
 
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import update
@@ -223,6 +225,51 @@ async def get_import_job(
     payload["error_params"] = job.error_params
     payload["updated_at"] = job.updated_at.isoformat() if job.updated_at else None
     return payload
+
+
+_CONTENT_TYPES = {
+    ".pdf": "application/pdf",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+}
+
+
+@router.get("/jobs/{job_id}/file")
+async def download_import_job_file(
+    job_id: str,
+    db: Session = Depends(get_db),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+):
+    """Serve the STAGED file to its owner (preview in the review editor).
+
+    The /static/uploads route only authorizes files backed by an Attachment
+    row — a staged job's file has none yet, so it needs its own tenant-scoped
+    endpoint. Same stored-XSS headers as serve_upload (nosniff + attachment
+    disposition): never rendered inline on the API origin; the frontend
+    previews via fetch + blob object URLs, which are unaffected.
+    """
+    _user, user_id, _is_anonymous = user_data
+    job = _own_job(db, job_id, user_id)
+    full_path = extract_jobs._staged_full_path(job.file_path)
+    if not full_path or not os.path.isfile(full_path):
+        raise HTTPException(status_code=404, detail=i18n.tr("main.file_not_found"))
+    ext = os.path.splitext(full_path)[1].lower()
+    from fastapi.responses import FileResponse
+
+    att_name = job.original_filename or os.path.basename(full_path)
+    ascii_name = re.sub(r"[^A-Za-z0-9 ._-]", "_", att_name).strip("_ ") or "document"
+    quoted = quote(att_name)
+    return FileResponse(
+        full_path,
+        media_type=_CONTENT_TYPES.get(ext, "application/octet-stream"),
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": (
+                f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quoted}'
+            ),
+        },
+    )
 
 
 @router.post("/jobs/{job_id}/cancel")

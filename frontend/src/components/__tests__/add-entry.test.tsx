@@ -930,6 +930,25 @@ describe('staged import job review (B4)', () => {
     expect(screen.getByText('AI successfully identified')).toBeInTheDocument()
   })
 
+  it('shows the staged document in the preview pane', async () => {
+    const stagedFile = new File(['%PDF fake'], 'Отчёт.pdf', {
+      type: 'application/octet-stream',
+    })
+    mockFetchByDate.mockResolvedValue({ date: '2026-07-15', count: 0, entries: [] })
+    renderWithProviders(
+      <AddEntry
+        onSave={vi.fn()}
+        stagedJob={{ jobId: 'job-stage', record: stagedRecord, file: stagedFile }}
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
+    }, { timeout: 3000 })
+    // The preview pane renders the staged document (generic card w/ filename
+    // for non-pdf types; the pdf/image viewers key off the blob type).
+    expect(screen.getByText('Отчёт.pdf')).toBeInTheDocument()
+  })
+
   it('saves with import_job_id and no file re-upload', async () => {
     mockSave.mockResolvedValue({ success: true, message: 'Entry saved', id: 'e1' })
     await renderStagedEditor()

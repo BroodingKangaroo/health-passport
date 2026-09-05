@@ -51,8 +51,14 @@ export function AddEntry({
 }: {
   onSave: () => Promise<void> | void
   /** Batch-import review: prefill from a staged job's record and save with
-   * import_job_id instead of re-uploading the file. */
-  stagedJob?: { jobId: string; record: StandardizedMedicalRecord } | null
+   * import_job_id instead of re-uploading the file. `file` (fetched from the
+   * staged-file endpoint) powers the preview pane only — it is NEVER sent to
+   * the backend (the staged file is adopted server-side). */
+  stagedJob?: {
+    jobId: string
+    record: StandardizedMedicalRecord
+    file?: File | null
+  } | null
 }) {
   const queryClient = useQueryClient()
   const t = useTranslations('editor')
@@ -442,8 +448,16 @@ export function AddEntry({
   if (stagedJob && appliedStagedJobId !== stagedJob.jobId) {
     setAppliedStagedJobId(stagedJob.jobId)
     applyExtractedRecord(stagedJob.record)
-    setSelectedFile(null)
-    setObjectUrl(null)
+    // Preview: the staged document (fetched from the owner-scoped staged-file
+    // endpoint) renders in the pane exactly like a picked file. It is never
+    // part of the save payload — the backend adopts the staged file itself.
+    if (stagedJob.file) {
+      setSelectedFile(stagedJob.file)
+      setObjectUrl(URL.createObjectURL(stagedJob.file))
+    } else {
+      setSelectedFile(null)
+      setObjectUrl(null)
+    }
     setUploadState('editor')
   }
 
