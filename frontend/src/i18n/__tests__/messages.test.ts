@@ -50,4 +50,23 @@ describe('i18n message catalogs', () => {
       expect(ruParams, `param mismatch at ${key}`).toEqual(enParams)
     }
   })
+
+  it('every ICU {plural, …} message carries an `other` clause in EVERY locale', () => {
+    // ICU plural/select REQUIRE the `other` branch — next-intl throws
+    // INVALID_MESSAGE: MISSING_OTHER_CLAUSE at render time otherwise (this
+    // only surfaces in the locale that hits the message, so it must be
+    // asserted statically here).
+    for (const locale of SUPPORTED_LOCALES) {
+      for (const key of flatten(messages[locale])) {
+        const value = key
+          .split('.')
+          .reduce<unknown>(
+            (acc, part) => (acc as Record<string, unknown> | undefined)?.[part],
+            messages[locale],
+          ) as string
+        if (typeof value !== 'string' || !/\{\w+, plural,/.test(value)) continue
+        expect(/\bother\s*\{/.test(value), `${locale}:${key} missing 'other' clause`).toBe(true)
+      }
+    }
+  })
 })

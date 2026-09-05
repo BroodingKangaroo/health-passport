@@ -72,7 +72,7 @@ export const importMessages = {
   ru: {
     import: {
       // ----- Batch mode on /add-entry -----
-      batchTitle: 'Импортируется {count, plural, one {# документ} few {# документа} many {# документов}}',
+      batchTitle: 'Импортируется {count, plural, one {# документ} few {# документа} many {# документов} other {# документа}}',
       batchSubtitle:
         'Распознавание идёт в фоне — со страницы можно уйти. Готовые документы появятся в колокольчике.',
       batchQuotaAnon:
@@ -80,7 +80,7 @@ export const importMessages = {
       batchRemaining: 'Осталось распознаваний: {count} из {limit}',
       batchRegisterToImport: 'Зарегистрироваться для импорта',
       batchOverLimit:
-        '{count, plural, one {# документ превышает} few {# документа превышают} many {# документов превышают}} оставшуюся квоту — {count, plural, one {он останется} few {они останутся} many {они останутся}} выбранными после регистрации.',
+        '{count, plural, one {# документ превышает} few {# документа превышают} many {# документов превышают} other {# документа превышают}} оставшуюся квоту — {count, plural, one {он останется} few {они останутся} many {они останутся} other {они останутся}} выбранными после регистрации.',
       batchWaiting: 'Ожидает',
       batchDone: 'Распознано',
       batchFailed: 'Ошибка',
@@ -91,7 +91,7 @@ export const importMessages = {
       batchReviewNow: 'Проверить сейчас',
       batchTrackImports: 'Отслеживать остальные',
       batchAllDone:
-        '{count, plural, one {# документ распознан — проверьте его} few {# документа распознаны — проверьте их} many {# документов распознано — проверьте их}}',
+        '{count, plural, one {# документ распознан — проверьте его} few {# документа распознаны — проверьте их} many {# документов распознано — проверьте их} other {# документа распознано — проверьте их}}',
       batchLeaveHint: 'Уходить не страшно — распознавание продолжается на сервере.',
       batchBack: 'Вернуться к загрузке',
       batchCancel: 'Отменить',
@@ -108,7 +108,7 @@ export const importMessages = {
       bellFailedAction: 'Повторить',
       bellDismiss: 'Убрать',
       bellToastSingle: '{filename} распознан — готов к проверке',
-      bellToastMany: '{count, plural, one {# документ распознан} few {# документа распознаны} many {# документов распознано}} — проверьте',
+      bellToastMany: '{count, plural, one {# документ распознан} few {# документа распознаны} many {# документов распознано} other {# документа распознано}} — проверьте',
       // ----- Tracker page /imports (B3) -----
       trackerTitle: 'Импорты',
       trackerSubtitle: 'Статус каждого документа в процессе импорта.',
