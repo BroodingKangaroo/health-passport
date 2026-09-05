@@ -126,6 +126,7 @@ Reference for agents so these aren't re-derived via grep each session:
 | `app/db/models.py` | SQLAlchemy ORM models: `Patient`, `BiomarkerDefinition`, `BiomarkerReading`, `MedicalEntry`, `VisitData`, `InstrumentalData`, `Attachment`, `UsageLimit`, `CategoryTranslationCache`, `PasswordResetToken`, etc. |
 | `app/db/import_ranges.py` | Curated common reference ranges (`COMMON_RANGES`) merged into existing global definitions; run via `python -m app.db.import_ranges`. |
 | `app/services/extractor.py` | Pass-1 OCR→LLM raw extraction: turns document text into a `RawMedicalRecord` (raw biomarkers / visit / instrumental data) before the matcher runs. OCR markdown is deterministically de-boilerplated before any LLM call (`_clean_ocr_markdown`: separator rows, page furniture, keep-first dedupe of repeated non-tabular lines; `OCR_MARKDOWN_CLEAN=0` disables — the benchmark's A/B switch). |
+| `app/services/extract_jobs.py` | Batch-import background jobs: `ExtractionJob` queue + daemon workers re-running the `/api/extract` stages, terminal notifications, global TTL sweep (GC), startup recovery, single-process pid guard, funnel counters. See the "Batch import" section below. |
 | `app/services/chat_client.py` | Env-gated chat-provider split (`CHAT_PROVIDER=openrouter` + `OPENROUTER_API_KEY`): wraps the Mistral client so `.chat.parse` goes to an OpenAI-compatible provider (pydantic → json_schema with prompt-side schema hint; validates replies and retries; multi-model fallback via `OPENROUTER_CHAT_FALLBACKS`) while `files`/`ocr` stay Mistral. `OPENROUTER_SCOPE=extraction` routes only the extraction call there; `CHAT_FAILOVER=openrouter` retries a Mistral chat call that failed post-SDK-retry on the OpenRouter route (counted as `chat_failover_events()`; the benchmark prints `METRIC chat_failovers` so mixed-provider weather stays visible). Default (`mistral`) is unchanged behavior. |
 | `app/services/converters.py` | Hybrid value unit conversion (identity → dimensional via `pint` → molar/mass via per-analyte molecular weight → LLM-supplied factor fallback). |
 | `app/services/data_migration.py` | Anonymous→registered account data migration (read-only through `verify_anon_cookie`, so a forged/legacy cookie can't copy another tenant's data). |
@@ -248,6 +249,110 @@ Reference for agents so these aren't re-derived via grep each session:
   Samples record only successful stages; `timing_stats` failures never break
   the stream. The frontend displays this value and keeps its own constants
   only as a fallback for older backends.
+
+## Batch import: background extraction jobs (`app/services/extract_jobs.py`, `app/api/import_jobs.py`)
+
+Companion to `docs/batch-import-tickets.md` (repo root). A user submits N
+documents; a background worker extracts each one while the user browses or
+leaves; finished jobs hold a STAGED result (`StandardizedMedicalRecord` dump
++ the uploaded file) that only becomes a real entry when the user reviews and
+saves it. Nothing is persisted without user review.
+
+### Job model & lifecycle
+
+- `ExtractionJob` (`extraction_jobs`): `status` is
+  `queued → processing → done|failed|cancelled`, plus the transient
+  `saving` claim state used by save/merge (below). `progress` holds the same
+  payloads as the SSE progress events (incl. `estimate_s`); `result` holds
+  the staged record dump when `done`; `error_key`/`error_params` store the
+  failure reason as an i18n catalog key, resolved via `i18n.tr_opt` at READ
+  time (the worker thread has no request locale — same pattern as OCR error
+  classification in `/api/extract`).
+- `entry_type: "unknown"` is a SUCCESS (`done`, no refund) — mirrors the SSE
+  path: the LLM genuinely ran and the user gets the unknown-editor.
+- Worker: module-level `queue.Queue` + `IMPORT_WORKERS` daemon threads
+  (default 1 — serial Mistral calls avoid the documented 429-contamination
+  bug; values >1 are unsupported until a rate-limit strategy exists). The
+  pipeline re-runs the exact `/api/extract` stages (OCR → LLM extract →
+  source-language detect → matcher on the worker's OWN session with
+  **commit-before-close / rollback-on-error** — the terminal write commits
+  the match stage's anchored definitions). Sessionmaker is injected
+  (`extract_jobs.set_sessionmaker`) so tests point the worker at the test
+  engine instead of the file-backed global.
+
+### Refund / charge authority (invariant)
+
+- Quota is CHARGED at submit (`POST /api/import/jobs`, deferred commit after
+  file validation) and refunded on failure/cancel — NEVER on client
+  disconnect (a batch submit has none).
+- Only the worker refunds a job it has dequeued (claim = CAS
+  `queued → processing`). API-side cancel of a `processing` job only sets
+  `cancel_requested` — the worker performs refund + staged-file cleanup
+  between stages. A queued-job cancel is the one CAS refund the API may
+  perform (`UPDATE … WHERE status='queued'` must win; losing the race means
+  the worker just claimed it and the cancel falls through to the flag).
+- Retry (`POST /api/import/jobs/{id}/retry`, failed→queued) re-charges quota
+  atomically with the winning CAS transition (deferred commit in the same
+  transaction); losing either the status race or the quota check changes
+  nothing.
+- GC expiry refunds non-terminal jobs (queued/processing) only; `done` jobs
+  consumed their extraction, failed/cancelled were already refunded.
+
+### Notifications & funnel
+
+- `Notification` (`notifications`): exactly one row per `done`/`failed`
+  terminal transition, written in the SAME commit as the job status change;
+  cancelled jobs emit nothing. Plain `job_id` column + minimal `payload`
+  ({job_id, filename}); unread = `read_at IS NULL`; retries produce several
+  rows per job (GC/dismiss cascade deletes all of them). API:
+  `GET /api/notifications`, `POST …/{id}/read` (idempotent), `POST
+  /read-all`, `DELETE …/{id}` (dismiss deletes ONLY the bell row — the
+  staged job expires via GC on its own).
+- `ImportFunnelEvent` (`import_funnel_events`): one aggregate counter row
+  per transition — `submitted` (submit), `extracted` (done incl.
+  unknown-type), `saved` (reviewed entry consumed the job), `failed`.
+  Cancelled jobs write nothing. Answers "docs imported per new user" and
+  "review completion rate" (saved/extracted) before a review fast-track is
+  ever considered. Rows are never deleted.
+
+### Save / merge with `import_job_id`
+
+- `POST /api/entry` and `POST /api/entry/{id}/merge` accept an optional
+  `import_job_id`: the staged file is adopted with NO re-upload (Attachment
+  points at the staged path; name/size from the stored file) and STORAGE
+  quota is charged here — staging is free. The save CAS-claims the job
+  (`done → saving`) inside the save transaction so the GC sweep (which
+  skips `saving` rows) can never unlink the file mid-save; the job row + its
+  notification rows are consumed in the same commit. Any failure rolls the
+  claim back — the job stays `done`, the file stays staged, storage stays
+  uncharged.
+- Anon→register migration (`copy_anonymous_data`) RE-KEYS
+  `ExtractionJob.user_id` and `Notification.user_id` (one-statement
+  pattern, same as `UsageLimit`): staged jobs stay reviewable after
+  registration and their refunds hit the registered counter.
+
+### Expiry, startup recovery, single-process constraint
+
+- GC (`IMPORT_JOB_TTL_H=72`): a GLOBAL sweep (never caller-scoped — dead
+  users' files must not linger) run lazily from the import API (submit +
+  list-read). Deletes expired rows + staged files
+  (`unlink_unreferenced_files`) + the jobs' notification rows (the bell must
+  never offer "Review" on a 404'd job).
+- Startup recovery (app lifespan, after `assert_single_process`): orphaned
+  `processing` rows → `failed` via CAS + refund + failed notification (the
+  worker that owned them died with the old process); orphaned `queued` rows
+  → re-enqueued into the fresh queue; orphaned `saving` rows → restored to
+  `done` (crash mid-save; the extraction already succeeded).
+- **Single-process constraint**: the queue is per-process. A pid file next
+  to the SQLite DB makes a second app process against the same DB fail
+  loudly at startup. `uvicorn --workers N` or a scaled backend container is
+  UNSUPPORTED — raising it later requires a real broker + lease-based
+  recovery.
+- SQLite concurrency substrate: WAL + `busy_timeout` are enabled on
+  file-backed engines in `app/db/session.py` (the compose DB mount is a
+  directory so the sidecar files persist). A batch worker and an interactive
+  single-doc SSE extraction CAN run concurrently — two Mistral consumers;
+  acceptable (SDK retries + refunds bound it), documented, not a bug.
 
 ## Biomarker name translation (`POST /api/translate-biomarkers`)
 
