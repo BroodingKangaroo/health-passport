@@ -369,6 +369,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Only finished, failed or cancelled imports can be dismissed. Cancel in-progress jobs first.",
         "ru": "Удалить можно только завершённое, неудавшееся или отменённое задание. Сначала отмените текущие задания.",
     },
+    "import.job_and_file": {
+        "en": "Provide either an uploaded file or an import job id — not both.",
+        "ru": "Укажите либо загружаемый файл, либо идентификатор задания импорта — но не оба.",
+    },
     # ----- app/api/timeline.py -----
     "timeline.biomarker_not_found": {
         "en": "Biomarker '{id}' not found",

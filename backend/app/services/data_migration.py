@@ -10,8 +10,10 @@ from app.db.models import (
     Attachment,
     BiomarkerDefinition,
     BiomarkerReading,
+    ExtractionJob,
     InstrumentalData,
     MedicalEntry,
+    Notification,
     UsageLimit,
     VisitData,
 )
@@ -34,6 +36,8 @@ def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str, commit: boo
         "visit_data_copied": 0,
         "instrumental_data_copied": 0,
         "readings_copied": 0,
+        "import_jobs_migrated": 0,
+        "notifications_migrated": 0,
     }
 
     # Copy medical entries (generate new IDs to avoid conflicts)
@@ -177,6 +181,20 @@ def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str, commit: boo
         )
         db.add(new_reading)
         summary["readings_copied"] += 1
+
+    # Re-key staged import jobs and their notifications to the new account
+    # (one-statement pattern, same as UsageLimit): a staged job must stay
+    # reviewable after registration and its failure refund must hit the
+    # registered counter. Re-keyed (not copied) — the anon identity ceases
+    # to exist as a data owner.
+    jobs_migrated = db.query(ExtractionJob).filter(
+        ExtractionJob.user_id == anon_id
+    ).update({"user_id": new_user_id}, synchronize_session=False)
+    summary["import_jobs_migrated"] = jobs_migrated
+    notifications_migrated = db.query(Notification).filter(
+        Notification.user_id == anon_id
+    ).update({"user_id": new_user_id}, synchronize_session=False)
+    summary["notifications_migrated"] = notifications_migrated
 
     # Copy the anonymous usage record so the new registered user inherits the
     # consumption they already earned as an anonymous visitor (otherwise the

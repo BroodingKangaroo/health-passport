@@ -168,14 +168,25 @@ def recover_orphan_jobs() -> dict:
     - ``queued`` rows: the in-memory queue died with the old process —
       re-enqueue into the fresh queue, otherwise they would sit "waiting"
       until GC with quota burned.
+    - ``saving`` rows: a save-with-job-id crashed mid-commit — restore to
+      ``done`` (no refund — the extraction succeeded; the file is still
+      staged and reviewable).
 
     Called from the app lifespan, after ``assert_single_process``. Returns a
     small summary for the startup log.
     """
     db = get_sessionmaker()()
-    summary = {"failed": 0, "requeued": 0}
+    summary = {"failed": 0, "requeued": 0, "restored": 0}
     refunds: list[tuple[str, bool]] = []
     try:
+        # A crash mid-save leaves the CAS claim ("saving") — the save rolled
+        # back, so the staged job is still valid: restore it to done.
+        restored = db.execute(
+            update(ExtractionJob)
+            .where(ExtractionJob.status == "saving")
+            .values(status="done")
+        )
+        summary["restored"] = restored.rowcount
         orphans = (
             db.query(ExtractionJob)
             .filter(ExtractionJob.status.in_(["processing", "queued"]))
@@ -206,7 +217,7 @@ def recover_orphan_jobs() -> dict:
                 "Startup recovery: quota refund failed for user %s", user_id,
                 exc_info=True,
             )
-    if summary["failed"] or summary["requeued"]:
+    if summary["failed"] or summary["requeued"] or summary["restored"]:
         logger.info("Import-job startup recovery: %s", summary)
     return summary
 
@@ -235,9 +246,11 @@ def sweep_expired_jobs(db: Session | None = None) -> int:
     file_paths: list[str] = []
     freed = 0
     try:
+        # ``saving`` rows are CAS claims of an in-flight save-with-job-id —
+        # never swept, or the staged file could be unlinked mid-save.
         expired = (
             db.query(ExtractionJob)
-            .filter(ExtractionJob.updated_at < cutoff)
+            .filter(ExtractionJob.updated_at < cutoff, ExtractionJob.status != "saving")
             .all()
         )
         if expired:

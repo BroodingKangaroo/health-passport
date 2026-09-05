@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
 
 from fastapi import (
@@ -37,10 +37,16 @@ from app.db.models import (
     Patient,
 )
 from app.db.models import (
+    ExtractionJob as ExtractionJobModel,
+)
+from app.db.models import (
     InstrumentalData as InstrumentalDataModel,
 )
 from app.db.models import (
     MedicalEntry as MedicalEntryModel,
+)
+from app.db.models import (
+    Notification as NotificationModel,
 )
 from app.db.models import (
     VisitData as VisitDataModel,
@@ -53,6 +59,7 @@ from app.services.language_detect import SUPPORTED_LANGUAGES
 from app.services.reference import compute_status, merge_reference, normalize_qual, parse_value
 from app.services.upload_cleanup import unlink_unreferenced_files, unlink_upload_file
 from app.services.usage_limits import check_and_record_storage_usage
+from config import IMPORT_JOB_TTL_H
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
@@ -419,6 +426,75 @@ def _merged_source_from(
     return {k: v for k, v in merged_source.items() if v} or None
 
 
+def _claim_staged_job(db: Session, job_id: str, user_id: str) -> ExtractionJobModel:
+    """Validate + CAS-claim a staged import job for save/merge.
+
+    The claim is a ``done -> saving`` transition inside the caller's (still
+    uncommitted) transaction: it makes the GC sweep skip the row (sweeps
+    never touch ``saving`` rows), so the staged file cannot be unlinked
+    mid-save. Ownership, ``done`` status and the TTL are enforced by the
+    same conditional UPDATE — anything else is a tenant-scoped 404. If the
+    save later fails, the surrounding rollback restores ``done`` and the
+    file stays staged (retryable).
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=IMPORT_JOB_TTL_H)
+    result = db.execute(
+        update(ExtractionJobModel)
+        .where(
+            ExtractionJobModel.id == job_id,
+            ExtractionJobModel.user_id == user_id,
+            ExtractionJobModel.status == "done",
+            ExtractionJobModel.updated_at >= cutoff,
+        )
+        .values(status="saving", updated_at=datetime.now(timezone.utc))
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        raise HTTPException(status_code=404, detail=i18n.tr("import.not_found"))
+    return db.query(ExtractionJobModel).filter(ExtractionJobModel.id == job_id).first()
+
+
+def _attach_staged_file(
+    db: Session, entry_id: str, user_id: str, is_anonymous: bool, job: ExtractionJobModel
+) -> AttachmentModel:
+    """Create the Attachment for a staged import job's file WITHOUT moving it
+    on disk (no re-upload — the file was saved at submit time). Storage
+    quota is charged HERE (staging was free)."""
+    allowed, _current, limit_bytes, _remaining = check_and_record_storage_usage(
+        db, user_id, job.file_size, is_anonymous, commit=False
+    )
+    if not allowed:
+        tier = i18n.tr("entries.tier_anonymous" if is_anonymous else "entries.tier_registered")
+        raise HTTPException(
+            status_code=429,
+            detail=i18n.tr(
+                "entries.storage_limit_reached", tier=tier, limit_mb=limit_bytes // (1024 * 1024)
+            ),
+        )
+    att = AttachmentModel(
+        id=f"att-{uuid.uuid4().hex}",
+        entry_id=entry_id,
+        name=job.original_filename,
+        type="Uploaded Document",
+        size=f"{max(job.file_size // 1024, 1)} KB",
+        file_path=job.file_path,
+    )
+    db.add(att)
+    db.flush()
+    return att
+
+
+def _consume_staged_job(db: Session, job: ExtractionJobModel) -> None:
+    """Delete a claimed job row (in the same commit as the save) together
+    with its notification rows — the bell must never offer "Review" for a
+    job that no longer exists."""
+    db.query(NotificationModel).filter(NotificationModel.job_id == job.id).delete(
+        synchronize_session=False
+    )
+    db.delete(job)
+
+
 async def _save_attachment(
     db: Session,
     entry_id: str,
@@ -588,12 +664,22 @@ async def save_entry(
     biomarkers: str = Form("[]"),
     visit_data: str = Form(""),
     instrumental_data: str = Form(""),
+    # Batch import: adopt a staged extraction job's result file instead of a
+    # fresh upload (the review editor sends the job id after /review-import).
+    import_job_id: str = Form(""),
     file: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
 ):
     _user, user_id, is_anonymous = user_data
     entry_id = uuid.uuid4().hex
+    staged_job = None
+    if import_job_id:
+        if file and file.filename:
+            raise HTTPException(
+                status_code=400, detail=i18n.tr("import.job_and_file")
+            )
+        staged_job = _claim_staged_job(db, import_job_id, user_id)
     try:
         entry_date = _normalize_date(date, time)
     except ValueError as e:
@@ -647,7 +733,9 @@ async def save_entry(
     db.flush()
 
     att = None
-    if file and file.filename:
+    if staged_job is not None:
+        att = _attach_staged_file(db, entry_id, user_id, is_anonymous, staged_job)
+    elif file and file.filename:
         att = await _save_attachment(db, entry_id, user_id, is_anonymous, file)
 
     try:
@@ -669,11 +757,18 @@ async def save_entry(
             db.add(_build_instrumental_data_model(entry_id, idv))
             db.flush()
 
+        if staged_job is not None:
+            # Same commit as the save: the job is consumed (row + its bell
+            # rows gone; the file stays, now referenced by the Attachment).
+            _consume_staged_job(db, staged_job)
+
         db.commit()
     except BaseException:
         # Safety net (ISSUES.md #54): nothing past this point may leave the
-        # saved file on disk without its committed DB row.
-        if att is not None and att.file_path:
+        # saved file on disk without its committed DB row. A staged import
+        # job's file is NOT unlinked — the surrounding rollback restores the
+        # claim to `done`, so the job (and its file) stays reviewable.
+        if att is not None and att.file_path and staged_job is None:
             unlink_upload_file(att.file_path, UPLOAD_DIR)
         raise
     return SaveEntryResponse(success=True, message=i18n.tr("entries.message_entry_saved"), id=entry_id)
@@ -689,6 +784,10 @@ async def merge_entry(
     time: str = Form(""),
     biomarkers: str = Form("[]"),
     notes: str = Form(""),
+    # Batch import: merge a staged job's document into this entry without a
+    # re-upload (same staged-file/attachment/conflict semantics as the
+    # file-upload merge path).
+    import_job_id: str = Form(""),
     file: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
@@ -707,6 +806,8 @@ async def merge_entry(
     readings of the same analyte. The target must be a blood_test owned by the
     current user and (when a date is supplied) dated on that date."""
     _user, user_id, is_anonymous = user_data
+    if import_job_id and file and file.filename:
+        raise HTTPException(status_code=400, detail=i18n.tr("import.job_and_file"))
     entry = (
         db.query(MedicalEntryModel)
         .filter(
@@ -757,7 +858,15 @@ async def merge_entry(
     if notes:
         entry.notes = (entry.notes + "\n" + notes) if entry.notes else notes
 
-    if file and file.filename:
+    staged_job = None
+    if import_job_id:
+        # Claim AFTER the conflict checks: a 409 above leaves nothing
+        # claimed; from here a failure rolls the claim back (job stays
+        # `done`, file still staged).
+        staged_job = _claim_staged_job(db, import_job_id, user_id)
+        _attach_staged_file(db, entry_id, user_id, is_anonymous, staged_job)
+        _consume_staged_job(db, staged_job)
+    elif file and file.filename:
         await _save_attachment(db, entry_id, user_id, is_anonymous, file)
 
     db.commit()
