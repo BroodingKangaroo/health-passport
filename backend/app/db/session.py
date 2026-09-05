@@ -1,7 +1,7 @@
 import os
 import re
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 DATABASE_URL = os.environ.get(
@@ -14,6 +14,35 @@ if DATABASE_URL.startswith("sqlite"):
     connect_args["check_same_thread"] = False
 
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
+
+
+def configure_sqlite_engine(engine) -> None:
+    """Enable WAL + a busy timeout on a file-backed SQLite engine.
+
+    The import-jobs worker writes from a background thread next to request
+    traffic; WAL (readers never block the writer, one writer at a time) plus
+    busy_timeout (a blocked writer retries instead of an instant
+    'database is locked' error) make SQLite adequate at this scale. No-op for
+    non-SQLite engines; journal_mode is left alone for in-memory DBs (they
+    cannot switch modes and are per-connection anyway).
+    """
+    if not engine.url.get_backend_name().startswith("sqlite"):
+        return
+    file_backed = bool(engine.url.database) and engine.url.database != ":memory:"
+
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA busy_timeout=10000")
+            if file_backed:
+                cursor.execute("PRAGMA journal_mode=WAL")
+        finally:
+            cursor.close()
+
+
+configure_sqlite_engine(engine)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

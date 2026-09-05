@@ -22,6 +22,8 @@ __pycache__/
 *.pyc
 *.pyo
 backend/health_passport.db
+backend/health_passport.db-shm
+backend/health_passport.db-wal
 backend/health_passport.db.bak-*
 backend/e2e_test.db
 backend/e2e/e2e_run.db

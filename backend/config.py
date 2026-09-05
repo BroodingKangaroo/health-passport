@@ -50,3 +50,12 @@ SMTP_USER = os.environ.get("SMTP_USER", "")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 SMTP_FROM = os.environ.get("SMTP_FROM", "no-reply@healthpassport.local")
 SMTP_TLS = os.environ.get("SMTP_TLS", "").lower() in ("1", "true", "yes")
+
+# Batch import: staged extraction jobs (result + file) expire this many hours
+# after their last update. Swept lazily (enqueue + list-read) by the import
+# API — no scheduler.
+IMPORT_JOB_TTL_H = int(os.environ.get("IMPORT_JOB_TTL_H", "72"))
+
+# Number of background extraction worker threads (import jobs). Default 1:
+# serial Mistral calls avoid the documented 429-contamination bug. Values >1
+# stay unsupported until a rate-limit strategy exists (see docs).

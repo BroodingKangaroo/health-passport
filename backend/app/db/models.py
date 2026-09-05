@@ -205,6 +205,66 @@ class ExtractionTimingSample(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class ExtractionJob(Base):
+    __tablename__ = "extraction_jobs"
+
+    # A staged background extraction (batch import). The extracted record is
+    # held in `result` and only becomes a real MedicalEntry when the user
+    # reviews and saves it (POST /api/entry with import_job_id) — nothing is
+    # persisted without user review. Staged jobs/files expire (GC sweep) and
+    # the row is deleted on save.
+    id = Column(String, primary_key=True)
+    user_id = Column(String, nullable=False, index=True)
+    # Quota tier at submit time — the worker refunds via the same counter
+    # (anonymous vs registered) the charge went to.
+    is_anonymous = Column(Boolean, nullable=False, default=True)
+    # queued | processing | done | failed | cancelled. "saving" is a transient
+    # claim state used by the save endpoint's CAS so the GC sweep can never
+    # unlink the staged file mid-save.
+    status = Column(String, nullable=False, default="queued")
+    # Last pipeline stage name (same labels as the SSE progress events).
+    stage = Column(String, nullable=False, default="")
+    # Same payloads as the SSE progress events (incl. estimate_s).
+    progress = Column(JSON, nullable=True)
+    # StandardizedMedicalRecord dump when done; null otherwise.
+    result = Column(JSON, nullable=True)
+    # i18n catalog key (+ params) of the failure reason — resolved via the
+    # backend i18n at read time because the worker thread has no locale.
+    error_key = Column(String, nullable=True)
+    error_params = Column(JSON, nullable=True)
+    original_filename = Column(String, nullable=False)
+    # Stored web path (/static/uploads/<uuid-name>), same convention as
+    # Attachment.file_path.
+    file_path = Column(String, nullable=False)
+    file_size = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    # Per-user in-app notification (bell icon). Exactly one row per job
+    # terminal transition (done/failed), written atomically with the job
+    # status change; cancelled jobs emit nothing. Unread = read_at IS NULL.
+    id = Column(String, primary_key=True)
+    user_id = Column(String, nullable=False, index=True)
+    # Plain-column index of the owning job (retries produce several
+    # notifications per job; GC/dismiss cascades delete by this column).
+    job_id = Column(String, nullable=True, index=True)
+    # "import_job_done" | "import_job_failed"
+    type = Column(String, nullable=False)
+    # Minimal display payload: {job_id, filename}. Error detail is resolved
+    # on demand from the job endpoint (server-localized), never stored here.
+    payload = Column(JSON, nullable=False)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
 class UsageLimit(Base):
     __tablename__ = "usage_limits"
 

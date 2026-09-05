@@ -35,10 +35,21 @@ from app.db.models import Patient
 from app.db.session import get_db, init_db
 from app.i18n import LocaleMiddleware
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # Job-worker singleton guard + boot recovery for import jobs orphaned by
+    # a restart (processing rows fail+refund+notify, queued rows re-enqueue).
+    from app.services import extract_jobs
+
+    extract_jobs.assert_single_process()
+    try:
+        extract_jobs.recover_orphan_jobs()
+    except Exception:
+        logger.warning("Import-job startup recovery failed", exc_info=True)
     yield
 
 

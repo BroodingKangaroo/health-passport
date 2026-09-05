@@ -4,9 +4,14 @@ services:
     ports:
       - "8000:8000"
     env_file: ./backend/.env
+    environment:
+      # DB lives inside a directory mount so the WAL/journal sidecar files
+      # written by the import-jobs worker persist with it (a bare-file mount
+      # pins one file — its -wal/-shm siblings would be lost on restart).
+      - DATABASE_URL=sqlite:////app/data/health_passport.db
     volumes:
       - backend_uploads:/app/static/uploads
-      - backend_db:/app/health_passport.db
+      - backend_db:/app/data
 
   frontend:
     build: ./frontend

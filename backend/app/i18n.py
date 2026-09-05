@@ -324,6 +324,13 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "The uploaded document could not be processed by OCR. This file type may not be supported.",
         "ru": "Не удалось распознать документ (OCR). Возможно, этот тип файла не поддерживается.",
     },
+    # ----- app/services/extract_jobs.py (batch import) -----
+    # Stored as error_key on jobs the startup recovery fails; resolved via
+    # i18n at read time (the recovery/worker has no request locale).
+    "import.job_failed_interrupted": {
+        "en": "Extraction was interrupted by a server restart. Use Retry to run it again.",
+        "ru": "Распознавание было прервано перезапуском сервера. Нажмите «Повторить», чтобы запустить снова.",
+    },
     # ----- app/api/timeline.py -----
     "timeline.biomarker_not_found": {
         "en": "Biomarker '{id}' not found",
