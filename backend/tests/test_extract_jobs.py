@@ -101,7 +101,7 @@ class TestStartupRecovery:
         db, _sm, _dir = jobs_db
         job = make_job(db, status="processing", stage="matching")
         summary = ej.recover_orphan_jobs()
-        assert summary == {"failed": 1, "requeued": 0}
+        assert summary == {"failed": 1, "requeued": 0, "restored": 0}
         db.expire_all()
         recovered = db.query(ExtractionJob).filter(ExtractionJob.id == job.id).one()
         assert recovered.status == "failed"
@@ -121,7 +121,7 @@ class TestStartupRecovery:
         db, _sm, _dir = jobs_db
         job = make_job(db, status="queued")
         summary = ej.recover_orphan_jobs()
-        assert summary == {"failed": 0, "requeued": 1}
+        assert summary == {"failed": 0, "requeued": 1, "restored": 0}
         db.expire_all()
         recovered = db.query(ExtractionJob).filter(ExtractionJob.id == job.id).one()
         assert recovered.status == "queued"
@@ -137,7 +137,7 @@ class TestStartupRecovery:
         # Second run (e.g. a retry of boot): nothing left to recover, no
         # double refund, no duplicate notification.
         summary = ej.recover_orphan_jobs()
-        assert summary == {"failed": 0, "requeued": 0}
+        assert summary == {"failed": 0, "requeued": 0, "restored": 0}
         assert get_usage(db).ai_extraction_count == 2
         assert db.query(Notification).count() == 1
 
