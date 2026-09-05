@@ -92,6 +92,7 @@ async def client(db_session, auth_token):
     from app.api.biomarkers import router as biomarkers_router
     from app.api.entries import router as entries_router
     from app.api.flowsheet import router as flowsheet_router
+    from app.api.notifications import router as notifications_router
     from app.api.timeline import router as timeline_router
     from app.api.usage_limits import router as usage_limits_router
     from app.db.models import Patient
@@ -105,6 +106,7 @@ async def client(db_session, auth_token):
     app.include_router(biomarkers_router)
     app.include_router(account_router)
     app.include_router(usage_limits_router)
+    app.include_router(notifications_router)
 
     async def override_get_db():
         yield db_session

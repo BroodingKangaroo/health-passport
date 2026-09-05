@@ -339,6 +339,11 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "The staged file is no longer available on the server. Delete the job and upload the document again.",
         "ru": "Файл больше недоступен на сервере. Удалите задание и загрузите документ заново.",
     },
+    # ----- app/api/notifications.py -----
+    "notifications.not_found": {
+        "en": "Notification not found",
+        "ru": "Уведомление не найдено",
+    },
     # ----- app/api/timeline.py -----
     "timeline.biomarker_not_found": {
         "en": "Biomarker '{id}' not found",
