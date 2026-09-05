@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { TranslationPreviewDialog } from '@/components/health-passport/translation-preview-dialog'
 import { TestI18nProvider } from '@/test/i18n-test-provider'

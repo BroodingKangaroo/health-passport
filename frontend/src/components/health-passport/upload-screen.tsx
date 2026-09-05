@@ -125,6 +125,9 @@ export function UploadScreen({
         type="file"
         className="hidden"
         accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp"
+        // Batch import: the picker (like the dropzone) accepts several files;
+        // >1 routes to the background-jobs batch panel in add-entry.
+        multiple
         onChange={handleFilePicked}
       />
 

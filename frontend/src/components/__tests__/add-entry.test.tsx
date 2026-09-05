@@ -41,10 +41,25 @@ vi.mock('@/services/api', async () => {
     fetchEntriesByDate: (...args: Parameters<typeof actual.fetchEntriesByDate>) => mockFetchByDate(...args),
     fetchBiomarkerDefinitions: (...args: Parameters<typeof actual.fetchBiomarkerDefinitions>) => mockFetchDefinitions(...args),
     buildSaveEntryFormData: actual.buildSaveEntryFormData,
+    fetchUsageLimits: vi.fn().mockResolvedValue({
+      is_anonymous: false,
+      ai_extraction_count: 0,
+      ai_extraction_limit: 50,
+      total_upload_size_bytes: 0,
+      total_upload_limit_bytes: 1,
+    }),
     ApiError,
     UsageLimitError,
   }
 })
+
+vi.mock('@/services/import-jobs', () => ({
+  createImportJob: vi.fn().mockResolvedValue('job-mock'),
+  cancelImportJob: vi.fn(),
+  retryImportJob: vi.fn(),
+  dismissImportJob: vi.fn(),
+  fetchImportJobs: vi.fn().mockResolvedValue({ items: [] }),
+}))
 
 function renderWithProviders(ui: React.ReactElement) {
   const queryClient = new QueryClient({
@@ -124,7 +139,7 @@ describe('AddEntry', () => {
     expect(screen.getByText('Scanning document pages...')).toBeInTheDocument()
   })
 
-  it('uses only the first file when multiple are dropped and shows a notice', () => {
+  it('opens the batch import panel when multiple files are dropped', () => {
     mockExtract.mockImplementation(
       () => new Promise(() => {}),
     )
@@ -133,11 +148,11 @@ describe('AddEntry', () => {
     const zone = container.querySelector('button[type="button"]') as HTMLButtonElement
     dropFiles(zone, [createFile('first.pdf'), createFile('second.pdf')])
 
-    expect(mockExtract).toHaveBeenCalledTimes(1)
-    expect(mockExtract.mock.calls[0][0].name).toBe('first.pdf')
-    expect(
-      screen.getByText(/Only the first document is processed/),
-    ).toBeInTheDocument()
+    // >1 file routes to the background-jobs batch panel (capped submission,
+    // per-row progress); the single-file SSE extraction never runs.
+    expect(mockExtract).not.toHaveBeenCalled()
+    expect(screen.getByTestId('batch-import-panel')).toBeInTheDocument()
+    expect(screen.getByText('Importing 2 documents')).toBeInTheDocument()
   })
 
   it('pre-fills blood test form from AI data', async () => {

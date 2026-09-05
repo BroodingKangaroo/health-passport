@@ -15,6 +15,7 @@ import { DoctorVisitForm } from './DoctorVisitForm'
 import { LabResultForm } from './LabResultForm'
 import { InstrumentalTestForm } from './InstrumentalTestForm'
 import { UploadScreen } from './upload-screen'
+import { BatchImportPanel } from './batch-import'
 import { DocumentPreviewPane } from './document-preview-pane'
 import { UnitConflictDialog } from './unit-conflict-dialog'
 import { ExtractionConfirmDialog } from './extraction-confirm-dialog'
@@ -47,7 +48,6 @@ import type {
 export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const queryClient = useQueryClient()
   const t = useTranslations('editor')
-  const tUpload = useTranslations('upload')
   const [entryMode, setEntryMode] = useState<EntryMode>('ai')
   const [categories, setCategories] = useState<FormCategory[]>(manualCategories())
   const [documentType, setDocumentType] = useState('blood_test')
@@ -61,6 +61,9 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   const [dateError, setDateError] = useState<string | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [multiFileNotice, setMultiFileNotice] = useState<string | null>(null)
+  // Batch mode: >1 dropped file → per-document background extraction jobs
+  // (BatchImportPanel). Null = single-file flow (unchanged SSE path).
+  const [batchFiles, setBatchFiles] = useState<File[] | null>(null)
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   // A replacement document waiting for the user to confirm its extraction
   // over the form data already present (null = no confirmation pending).
@@ -216,12 +219,15 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
   function handleFiles(files: FileList | null) {
     const list = files ? Array.from(files) : []
     if (list.length === 0) return
-    // The extraction and save pipeline is single-document; when several files
-    // are dropped, deterministically process the first and say so.
+    // More than one file → batch mode: one background extraction job per
+    // document; the user is free to leave while the server works through
+    // the queue. The single-file flow below stays exactly as before.
+    if (list.length > 1) {
+      setBatchFiles(list)
+      return
+    }
     const file = list[0]
-    setMultiFileNotice(
-      list.length > 1 ? tUpload('multiFileNotice') : null,
-    )
+    setMultiFileNotice(null)
     setSelectedFile(file)
     setObjectUrl(URL.createObjectURL(file))
     runExtraction(file)
@@ -412,6 +418,10 @@ export function AddEntry({ onSave }: { onSave: () => Promise<void> | void }) {
     } finally {
       setSaving(false)
     }
+  }
+
+  if (batchFiles !== null) {
+    return <BatchImportPanel files={batchFiles} onBack={() => setBatchFiles(null)} />
   }
 
   if (uploadState === 'idle' || uploadState === 'scanning') {

@@ -78,8 +78,11 @@ function authHeaders(): Record<string, string> {
  * returns `detail` as a string on HTTPException but as an ARRAY of
  * validation-error objects on 422 — those must become readable text, never
  * "[object Object]".
+ *
+ * Exported for sibling service modules (import-jobs, notifications) so the
+ * localized-`detail` extraction stays in one place.
  */
-function extractDetail(body: unknown, fallback: string): string {
+export function extractDetail(body: unknown, fallback: string): string {
   const detail = (body as { detail?: unknown } | null)?.detail
   if (typeof detail === 'string' && detail) return detail
   if (Array.isArray(detail)) {
