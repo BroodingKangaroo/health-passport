@@ -511,24 +511,36 @@ four surfaces, all fed by ONE shared react-query cache key:
   Arrival detection keys off `created_at` (never the read state), and the
   first load never toasts the backlog.
 - **Tracker `/imports`** (`imports-tracker.tsx`, `src/app/imports/page.tsx`):
-  every caller job newest-first with live status + localized errors. Click
-  behavior: done → `/review-import?job=<id>`; queued/processing → the
-  extraction-process view (upload-screen stage visuals driven by job
-  progress) that AUTO-TRANSITIONS into the review editor when the job
-  completes in view; failed → inline error + Retry/Dismiss. Saved jobs are
-  consumed server-side on save, so the page shows only actionable work +
-  in-flight/failed items (no stale history). Empty state links to
-  `/add-entry`. Entry points: the bell's footer link and the batch
-  completion panel's "Track remaining extractions".
+  every caller job newest-first in TWO sections — active work
+  (queued/processing/failed/done, clickable as before) and "Earlier
+  imports" (saved + cancelled history rows, muted, display-only apart from
+  dismiss; saved rows are kept server-side as `status='saved'` history, not
+  deleted on save). Every row carries a metadata line — the status's last
+  transition time (`Submitted/Extracted/Failed/Saved/Cancelled {time}`,
+  localized via shared `formatDate`; for saved rows that's the save time)
+  plus the file size. Click behavior: done → `/review-import?job=<id>`;
+  queued/processing → the extraction-process view; failed → inline error +
+  Retry/Dismiss. The in-flight view renders the EXACT upload-screen
+  visuals: `ExtractionProgressCard` (extracted from `UploadScreen`, which
+  renders it unchanged) in snapshot mode — fixed eta from the job's
+  `progress.estimate_s`, indeterminate bar, in-view cancel. A job completing
+  in view auto-transitions into the review editor. Empty state links to
+  `/add-entry`. Entry points: the bell's footer link, the review page's
+  back nav, and the batch completion panel's "Track remaining
+  extractions".
 - **Review `/review-import?job=<id>`** (`review-import.tsx`): fetches the
   staged record and prefills the EXISTING `AddEntry` editor machinery —
   `AddEntry` takes a `stagedJob` prop and applies the record through the
   same fill path as the SSE result (render-time derived-state adjustment,
   once per job id — unit-conflict dialog, merge checkbox and document-type
-  editors all work unchanged). Save/merge append `import_job_id` to the
+  editors all work unchanged). The staged document is fetched from
+  `GET /api/import/jobs/{id}/file` and passed as a preview-only `File`
+  (NEVER in the save payload). Save/merge append `import_job_id` to the
   FormData and send NO file (the backend adopts the staged file, charges
-  storage and consumes the job atomically). Save auto-advances to the next
-  done job; "Leave for later" keeps the job staged in the bell. The
-  same-date strategy is the existing merge checkbox (merge with
-  `import_job_id` mirrors today's upload-then-merge flow without a
-  re-upload).
+  storage and keeps the job as a saved history row). The page has the
+  standard chrome (HeaderBar + back nav to /imports); Save AND Cancel both
+  return to /imports — `AddEntry` gained an optional `onCancel` prop
+  (defaults to `onSave`, so /add-entry is unchanged) because its Cancel
+  button previously fired the save callback. The same-date strategy is the
+  existing merge checkbox (merge with `import_job_id` mirrors today's
+  upload-then-merge flow without a re-upload).

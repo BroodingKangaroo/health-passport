@@ -300,6 +300,14 @@ saves it. Nothing is persisted without user review.
 
 ### Notifications & funnel
 
+- `GET /api/import/jobs` returns ALL non-expired rows (active work + the
+  `saved` history); the frontend sections them. `GET
+  /api/import/jobs/{id}/file` serves the STAGED file to its owner (tenant-
+  scoped; the /static/uploads route only authorizes Attachment-backed
+  files) for the review editor's preview. Dismiss (`DELETE
+  /api/import/jobs/{id}`, allowed for done/failed/cancelled/saved) uses
+  reference-checked unlinking: a saved row's file is the entry's Attachment
+  and survives; a done job's orphan staged file is freed.
 - `Notification` (`notifications`): exactly one row per `done`/`failed`
   terminal transition, written in the SAME commit as the job status change;
   cancelled jobs emit nothing. Plain `job_id` column + minimal `payload`
@@ -322,10 +330,12 @@ saves it. Nothing is persisted without user review.
   points at the staged path; name/size from the stored file) and STORAGE
   quota is charged here — staging is free. The save CAS-claims the job
   (`done → saving`) inside the save transaction so the GC sweep (which
-  skips `saving` rows) can never unlink the file mid-save; the job row + its
-  notification rows are consumed in the same commit. Any failure rolls the
-  claim back — the job stays `done`, the file stays staged, storage stays
-  uncharged.
+  skips `saving` rows) can never unlink the file mid-save. On success the
+  job row is NOT deleted: it becomes a HISTORY record
+  (`status='saved'`, `saved_entry_id` set, `result`/`progress` cleared, bell
+  notification rows deleted) so the imports tracker can show past imports.
+  Any failure rolls the claim back — the job stays `done`, the file stays
+  staged, storage stays uncharged.
 - Anon→register migration (`copy_anonymous_data`) RE-KEYS
   `ExtractionJob.user_id` and `Notification.user_id` (one-statement
   pattern, same as `UsageLimit`): staged jobs stay reviewable after
@@ -337,7 +347,8 @@ saves it. Nothing is persisted without user review.
   users' files must not linger) run lazily from the import API (submit +
   list-read). Deletes expired rows + staged files
   (`unlink_unreferenced_files`) + the jobs' notification rows (the bell must
-  never offer "Review" on a 404'd job).
+  never offer "Review" on a 404'd job). `saving` claims and `saved` history
+  rows are never swept.
 - Startup recovery (app lifespan, after `assert_single_process`): orphaned
   `processing` rows → `failed` via CAS + refund + failed notification (the
   worker that owned them died with the old process); orphaned `queued` rows
