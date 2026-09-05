@@ -111,9 +111,9 @@ export function TranslationPreviewDialog({
       onClose={onCancel}
       closeOnBackdrop
       labelledBy={titleId}
-      panelClassName="max-w-3xl rounded-xl bg-background p-6 shadow-xl"
+      panelClassName="max-h-[85vh] w-full max-w-3xl flex flex-col rounded-xl bg-background p-6 shadow-xl"
     >
-      <div className="mb-4 flex items-start gap-3">
+      <div className="mb-4 flex shrink-0 items-start gap-3">
         <Languages className="mt-0.5 size-5 shrink-0 text-primary" />
         <div>
           <h2 id={titleId} className="text-lg font-semibold text-foreground">
@@ -125,17 +125,19 @@ export function TranslationPreviewDialog({
         </div>
       </div>
 
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {/* One shared grid template for header AND rows (fixed px for the
             arrow/toggle tracks) so every column aligns across rows — with
             per-row `1fr` grids, rows without a toggle computed different
-            widths and the columns drifted. */}
-        <div className="grid grid-cols-[minmax(0,1fr)_28px_minmax(0,1.4fr)_148px] items-center gap-x-3 px-4 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            widths and the columns drifted. The header row sticks inside this
+            scroll region so columns stay labelled on long lists. */}
+        <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_28px_minmax(0,1.4fr)_148px] items-center gap-x-3 bg-background px-4 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
           <span>{t('biomarker')}</span>
           <span />
           <span>{t('nameInDocument')}</span>
           <span />
         </div>
-        <div className="max-h-[60vh] overflow-y-auto rounded-lg border border-border">
+        <div className="rounded-lg border border-border">
           {items.map((item) => {
             const badge = badgeFor(item, t)
             const fixedChoice = fixedChoiceFor(item)
@@ -285,8 +287,9 @@ export function TranslationPreviewDialog({
         <p className="mt-2 text-xs text-muted-foreground">
           {t('choiceNote')}
         </p>
+      </div>
 
-        <div className="mt-4 flex justify-end gap-2">
+      <div className="mt-4 flex shrink-0 justify-end gap-2 border-t border-border pt-4">
           <Button variant="ghost" onClick={onCancel}>
             {t('back')}
           </Button>
