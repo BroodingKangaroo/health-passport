@@ -488,10 +488,14 @@ def _attach_staged_file(
 def _consume_staged_job(db: Session, job: ExtractionJobModel) -> None:
     """Delete a claimed job row (in the same commit as the save) together
     with its notification rows — the bell must never offer "Review" for a
-    job that no longer exists."""
+    job that no longer exists. Also records the funnel "saved" event (the
+    review-completion counter)."""
+    from app.services.extract_jobs import record_funnel_event
+
     db.query(NotificationModel).filter(NotificationModel.job_id == job.id).delete(
         synchronize_session=False
     )
+    record_funnel_event(db, "saved", job.user_id, bool(job.is_anonymous))
     db.delete(job)
 
 

@@ -15,6 +15,7 @@ Design (docs/batch-import-tickets.md):
   caller-scoped.
 """
 
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -31,9 +32,12 @@ from app.db.models import ExtractionJob, Notification, Patient
 from app.db.session import get_db
 from app.i18n import tr_opt
 from app.services import extract_jobs, extractor, upload_cleanup
+from app.services.extract_jobs import record_funnel_event
 from app.services.upload_cleanup import unlink_upload_file
 from app.services.usage_limits import check_and_record_ai_usage, refund_ai_extraction
 from config import IMPORT_PENDING_MAX_JOBS, IMPORT_PENDING_MAX_STAGED_MB
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/import")
 
@@ -174,6 +178,12 @@ async def create_import_job(
     db.add(job)
     db.commit()
 
+    logger.info(
+        "Import job %s submitted (user %s, %d bytes, %s)",
+        job.id, user_id, len(bytes_data), ext,
+    )
+    record_funnel_event(db, "submitted", user_id, is_anonymous)
+    db.commit()
     extract_jobs.enqueue_job(job.id)
     # Lazy global GC: expired staged jobs/files (any user) leave here.
     extract_jobs.sweep_expired_jobs()
@@ -238,6 +248,7 @@ async def cancel_import_job(
         if result.rowcount == 1:
             refund_ai_extraction(db, user_id, bool(job.is_anonymous))
             unlink_upload_file(job.file_path)
+            logger.info("Import job %s cancelled while queued (user %s)", job.id, user_id)
             return {"job_id": job.id, "status": "cancelled"}
         # Lost the race — the worker just claimed it; fall through to flag.
         job = _own_job(db, job_id, user_id)
@@ -249,6 +260,7 @@ async def cancel_import_job(
             .values(cancel_requested=True, updated_at=datetime.now(timezone.utc))
         )
         db.commit()
+        logger.info("Import job %s cancel requested while processing (user %s)", job.id, user_id)
         return {"job_id": job.id, "status": "processing", "cancel_requested": True}
 
     raise HTTPException(status_code=409, detail=i18n.tr("import.cancel_not_active"))
@@ -304,6 +316,7 @@ async def retry_import_job(
     db.commit()
 
     extract_jobs.enqueue_job(job.id)
+    logger.info("Import job %s retried after failure (user %s)", job.id, user_id)
     return {"job_id": job.id, "status": "queued"}
 
 
@@ -321,6 +334,7 @@ async def dismiss_import_job(
     job = _own_job(db, job_id, user_id)
     if job.status not in ("done", "failed", "cancelled"):
         raise HTTPException(status_code=409, detail=i18n.tr("import.dismiss_not_terminal"))
+    was_status = job.status
     file_path = job.file_path
     db.query(Notification).filter(Notification.job_id == job.id).delete(
         synchronize_session=False
@@ -328,4 +342,5 @@ async def dismiss_import_job(
     db.delete(job)
     db.commit()
     unlink_upload_file(file_path)
+    logger.info("Import job %s dismissed (user %s, status was %s)", job.id, user_id, was_status)
     return {"dismissed": True}

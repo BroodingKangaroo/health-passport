@@ -33,7 +33,12 @@ from sqlalchemy import delete, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.ai import _get_client
-from app.db.models import BiomarkerDefinition, ExtractionJob, Notification
+from app.db.models import (
+    BiomarkerDefinition,
+    ExtractionJob,
+    ImportFunnelEvent,
+    Notification,
+)
 from app.db.session import DATABASE_URL
 from app.schemas.ai import (
     RawInstrumentalData,
@@ -118,6 +123,19 @@ def _worker_loop(worker_idx: int) -> None:
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def record_funnel_event(db: Session, event: str, user_id: str, is_anonymous: bool) -> None:
+    """Write one import-funnel counter row (submitted/extracted/saved/failed).
+
+    Rides the caller's commit (the worker's terminal transition or the
+    import API's submit commit). Cancelled jobs never write rows. Best-effort
+    logging: a funnel failure must never break the extraction path.
+    """
+    try:
+        db.add(ImportFunnelEvent(event=event, user_id=user_id, is_anonymous=is_anonymous))
+    except Exception:
+        logger.warning("Funnel event %s not recorded (user %s)", event, user_id, exc_info=True)
 
 
 def new_job_id() -> str:
@@ -429,6 +447,7 @@ def _finalize_done(db: Session, job: ExtractionJob, result_dump: dict) -> None:
         )
     )
     emit_job_notification(db, job, "import_job_done")
+    record_funnel_event(db, "extracted", job.user_id, bool(job.is_anonymous))
     db.commit()
 
 
@@ -446,6 +465,7 @@ def _finalize_failed(db: Session, job: ExtractionJob, error_key: str, error_para
         )
     )
     emit_job_notification(db, job, "import_job_failed")
+    record_funnel_event(db, "failed", job.user_id, bool(job.is_anonymous))
     db.commit()
     _refund(db, job.user_id, bool(job.is_anonymous))
 

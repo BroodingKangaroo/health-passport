@@ -270,6 +270,22 @@ class Notification(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
 
+class ImportFunnelEvent(Base):
+    __tablename__ = "import_funnel_events"
+
+    # Aggregate conversion-funnel metrics for the batch-import feature (one
+    # row per transition; no PII beyond the owning user id). Answerable
+    # questions: "docs imported per new user" (submitted/saved counts) and
+    # "review completion rate" (saved / extracted). Cancelled jobs write no
+    # rows. Rows are never deleted — they are counters, not job state.
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # "submitted" | "extracted" | "saved" | "failed"
+    event = Column(String, nullable=False)
+    user_id = Column(String, nullable=False)
+    is_anonymous = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
 class UsageLimit(Base):
     __tablename__ = "usage_limits"
 
