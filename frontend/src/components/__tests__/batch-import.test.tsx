@@ -52,6 +52,7 @@ function job(overrides: Partial<ImportJobSummary>): ImportJobSummary {
     original_filename: 'a.pdf',
     file_size: 10,
     created_at: null,
+    updated_at: null,
     error: null,
     ...overrides,
   }

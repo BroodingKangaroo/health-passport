@@ -40,6 +40,7 @@ function job(overrides: Partial<ImportJobSummary>): ImportJobSummary {
     original_filename: 'a.pdf',
     file_size: 10,
     created_at: null,
+    updated_at: null,
     error: null,
     ...overrides,
   }
@@ -75,13 +76,14 @@ describe('ImportsTracker', () => {
     )
   })
 
-  it('lists jobs newest-first with status labels', async () => {
+  it('lists active jobs with status labels + metadata, history separately', async () => {
     fetchJobsMock.mockResolvedValue({
       items: [
         job({ id: 'job-a', status: 'processing', stage: 'extracting', original_filename: 'new.pdf' }),
         job({ id: 'job-b', status: 'done', original_filename: 'old.pdf' }),
         job({ id: 'job-c', status: 'failed', error: 'OCR quota exceeded (HTTP 429).' }),
         job({ id: 'job-d', status: 'cancelled', original_filename: 'gone.pdf' }),
+        job({ id: 'job-e', status: 'saved', original_filename: 'done-saved.pdf' }),
       ],
     })
     renderTracker(<ImportsTracker />)
@@ -89,7 +91,37 @@ describe('ImportsTracker', () => {
     expect(screen.getByText('old.pdf')).toBeInTheDocument()
     expect(screen.getByText('Identifying medical data...')).toBeInTheDocument()
     expect(screen.getByText('OCR quota exceeded (HTTP 429).')).toBeInTheDocument()
-    expect(screen.getByText('Cancelled')).toBeInTheDocument()
+    // Saved/cancelled live in the muted history section, not the active list.
+    expect(screen.getByTestId('imports-history-title')).toHaveTextContent('Earlier imports')
+    const historyRows = screen.getAllByTestId('imports-history-row')
+    expect(historyRows).toHaveLength(2)
+    expect(historyRows[0].textContent).toContain('gone.pdf')
+    expect(historyRows[0].textContent).toContain('Cancelled')
+    expect(historyRows[1].textContent).toContain('done-saved.pdf')
+    expect(historyRows[1].textContent).toContain('Saved')
+    // Metadata line: status time + file size.
+    const metas = screen.getAllByTestId('row-meta')
+    expect(metas.length).toBeGreaterThanOrEqual(3)
+    expect(metas[0].textContent).toMatch(/KB|MB/)
+  })
+
+  it('renders the in-flight progress view with the shared upload-screen visuals', async () => {
+    fetchJobsMock.mockResolvedValue({
+      items: [
+        job({
+          status: 'processing',
+          stage: 'matching',
+          progress: { stage: 'matching', biomarker_count: 3, estimate_s: 3 },
+        }),
+      ],
+    })
+    renderTracker(<ImportsTracker />)
+    fireEvent.click(await screen.findByTestId('imports-row'))
+    await screen.findByTestId('import-progress-view')
+    // Same stage label + step text + eta as the upload screen.
+    expect(screen.getByText('Standardizing results...')).toBeInTheDocument()
+    expect(screen.getByText(/Step 3 of 3/)).toBeInTheDocument()
+    expect(screen.getByText(/~3s remaining/)).toBeInTheDocument()
   })
 
   it('clicking a done job routes to the review editor', async () => {

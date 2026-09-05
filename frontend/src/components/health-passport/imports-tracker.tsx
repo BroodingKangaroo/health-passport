@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, Plus, X } from 'lucide-react'
 
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useImportJobs } from '@/lib/hooks/useImportJobs'
+import { ExtractionProgressCard } from './extraction-progress-card'
 import {
   cancelImportJob,
   dismissImportJob,
@@ -22,26 +23,24 @@ const STAGE_LABEL_KEYS: Record<string, 'stageOcrLabel' | 'stageExtractLabel' | '
   matching: 'stageMatchLabel',
 }
 
-const STAGE_STEP: Record<string, number> = {
-  ocr_scanning: 1,
-  extracting: 2,
-  matching: 3,
-}
-
 /**
- * Imports tracker (/imports): every caller job with live status, sorted
- * newest-first. Shares the ONE ['import-jobs'] poll with the batch panel
- * (lib/hooks/useImportJobs), so both surfaces stay in sync. Click behavior:
- * done → review editor, queued/processing → the extraction-process view
- * (the upload screen's stage visuals driven by job progress; transitions
- * into the review editor on completion), failed → inline error +
- * retry/dismiss. Saved jobs are deleted server-side on save, so the page
- * shows only actionable work + in-flight/failed items — no stale history.
+ * Imports tracker (/imports): every caller job, newest-first, in two
+ * sections — active work (queued/processing/failed/done, clickable as
+ * before) and "Earlier imports" (saved + cancelled history rows, muted,
+ * display-only apart from dismiss). Shares the ONE ['import-jobs'] poll
+ * with the batch panel. Each row carries a metadata line (submitted/
+ * extracted/failed/saved/cancelled time + file size); saved rows are kept
+ * server-side as history (status='saved') instead of being deleted on save.
+ * Click behavior: done → review editor, queued/processing → the
+ * extraction-process view (the upload screen's stage visuals driven by job
+ * progress; transitions into the review editor on completion), failed →
+ * inline error + retry/dismiss.
  */
 export function ImportsTracker() {
   const t = useTranslations('import')
   const tBack = useTranslations('misc.backLinks')
   const tUpload = useTranslations('upload')
+  const locale = useLocale()
   const router = useRouter()
   const jobsQuery = useImportJobs(3000, true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -79,6 +78,8 @@ export function ImportsTracker() {
     switch (job.status) {
       case 'done':
         return { label: t('trackerDone') }
+      case 'saved':
+        return { label: t('trackerSaved') }
       case 'failed':
         return { label: job.error ?? t('trackerFailed') }
       case 'cancelled':
@@ -92,47 +93,75 @@ export function ImportsTracker() {
     }
   }
 
+  function rowMeta(job: ImportJobSummary): string {
+    // updated_at = the last transition: extraction completion for
+    // done/failed, the save time for saved rows, submit for queued ones.
+    const raw = job.status === 'queued' ? job.created_at : (job.updated_at ?? job.created_at)
+    const time = raw ? formatDate(raw, locale) : ''
+    const key =
+      job.status === 'done'
+        ? 'trackerMetaExtracted'
+        : job.status === 'saved'
+          ? 'trackerMetaSaved'
+          : job.status === 'failed'
+            ? 'trackerMetaFailed'
+            : job.status === 'cancelled'
+              ? 'trackerMetaCancelled'
+              : 'trackerMetaSubmitted'
+    const size =
+      job.file_size >= 1024 * 1024
+        ? `${(job.file_size / (1024 * 1024)).toFixed(1)} MB`
+        : `${Math.max(1, Math.round(job.file_size / 1024))} KB`
+    return `${t(key, { time })} · ${size}`
+  }
+
   // ---- Extraction-process view for a clicked in-flight job ----
   if (selected && (selected.status === 'queued' || selected.status === 'processing')) {
-    const stageKey = STAGE_LABEL_KEYS[selected.stage]
-    const step = STAGE_STEP[selected.stage] ?? 1
-    const eta = selected.progress?.estimate_s
     return (
       <div
-        className="mx-auto flex max-w-md flex-col items-center gap-3 py-16 text-center"
+        className="mx-auto flex max-w-md flex-col items-center gap-4 py-16 text-center"
         data-testid="import-progress-view"
       >
-        <Loader2 className="size-10 animate-spin text-primary" />
-        <p className="text-sm font-semibold text-foreground">
-          {selected.status === 'processing' && stageKey
-            ? tUpload(stageKey)
-            : t('trackerQueued')}
-        </p>
+        {/* The upload screen's own extraction visuals, driven by the job's
+            live progress (snapshot mode: fixed eta, no elapsed projection). */}
+        <ExtractionProgressCard
+          stage={
+            (selected.status === 'processing' && STAGE_LABEL_KEYS[selected.stage]
+              ? selected.stage
+              : 'ocr_scanning') as 'ocr_scanning' | 'extracting' | 'matching'
+          }
+          biomarkerCount={selected.progress?.biomarker_count ?? null}
+          elapsedSeconds={0}
+          plannedEndSeconds={null}
+          etaSeconds={selected.progress?.estimate_s ?? null}
+          indeterminate
+        />
         <p className="text-xs text-muted-foreground">{selected.original_filename}</p>
-        <div className="w-full max-w-xs">
-          <div
-            className="h-1.5 w-full overflow-hidden rounded-full bg-primary/10"
-            role="progressbar"
-            aria-label={t('trackerQueued')}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={busyId === selected.id}
+            onClick={() => void act(selected.id, 'cancel')}
           >
-            <div
-              className="h-full rounded-full bg-primary transition-[width] duration-1000 ease-linear"
-              style={{
-                width: selected.status === 'processing' ? `${Math.min(95, step * 30)}%` : '2%',
-              }}
-            />
-          </div>
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            {tUpload('stepOf', { step, total: 3 })}
-            {eta != null && <> · {t('batchEta', { seconds: Math.max(1, Math.round(eta)) })}</>}
-          </p>
+            {t('trackerCancel')}
+          </Button>
+          <Button variant="ghost" onClick={() => setSelectedId(null)}>
+            {t('batchBack')}
+          </Button>
         </div>
-        <Button variant="ghost" onClick={() => setSelectedId(null)}>
-          {t('batchBack')}
-        </Button>
       </div>
     )
   }
+
+  const active = items.filter(
+    (j) =>
+      j.status === 'queued' ||
+      j.status === 'processing' ||
+      j.status === 'failed' ||
+      j.status === 'done',
+  )
+  const history = items.filter((j) => j.status === 'saved' || j.status === 'cancelled')
 
   return (
     <div className="mx-auto max-w-3xl py-4" data-testid="imports-tracker">
@@ -155,11 +184,9 @@ export function ImportsTracker() {
           </Link>
         </div>
       ) : (
-        <ul className="space-y-2">
-          {items.map((job) => {
-            const state = rowState(job)
-            const busy = busyId === job.id
-            return (
+        <>
+          <ul className="space-y-2">
+            {active.map((job) => (
               <li
                 key={job.id}
                 className={cn(
@@ -180,8 +207,6 @@ export function ImportsTracker() {
                   <CheckCircle2 className="size-5 shrink-0 text-primary" />
                 ) : job.status === 'failed' ? (
                   <AlertCircle className="size-5 shrink-0 text-status-high" />
-                ) : job.status === 'cancelled' ? (
-                  <X className="size-5 shrink-0 text-muted-foreground" />
                 ) : (
                   <Loader2 className="size-5 shrink-0 animate-spin text-primary" />
                 )}
@@ -195,13 +220,16 @@ export function ImportsTracker() {
                       job.status === 'failed' ? 'text-status-high' : 'text-muted-foreground',
                     )}
                   >
-                    {state.label}
+                    {rowState(job).label}
                     {job.status === 'processing' && job.progress?.estimate_s != null && (
                       <>
                         {' '}
                         · {t('batchEta', { seconds: Math.max(1, Math.round(job.progress.estimate_s)) })}
                       </>
                     )}
+                  </p>
+                  <p className="truncate text-[11px] text-muted-foreground/80" data-testid="row-meta">
+                    {rowMeta(job)}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
@@ -218,7 +246,7 @@ export function ImportsTracker() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      disabled={busy}
+                      disabled={busyId === job.id}
                       onClick={(e) => {
                         e.stopPropagation()
                         void act(job.id, 'cancel')
@@ -232,7 +260,7 @@ export function ImportsTracker() {
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={busy}
+                        disabled={busyId === job.id}
                         onClick={(e) => {
                           e.stopPropagation()
                           void act(job.id, 'retry')
@@ -243,7 +271,7 @@ export function ImportsTracker() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        disabled={busy}
+                        disabled={busyId === job.id}
                         onClick={(e) => {
                           e.stopPropagation()
                           void act(job.id, 'dismiss')
@@ -253,11 +281,44 @@ export function ImportsTracker() {
                       </Button>
                     </>
                   )}
-                  {job.status === 'cancelled' && (
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          {history.length > 0 && (
+            <>
+              <h2
+                className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                data-testid="imports-history-title"
+              >
+                {t('trackerHistoryTitle')}
+              </h2>
+              <ul className="space-y-1.5">
+                {history.map((job) => (
+                  <li
+                    key={job.id}
+                    className="flex items-center gap-3 rounded-lg border border-border/60 bg-card/60 px-3 py-2 opacity-80"
+                    data-testid="imports-history-row"
+                  >
+                    {job.status === 'saved' ? (
+                      <CheckCircle2 className="size-4 shrink-0 text-primary/70" />
+                    ) : (
+                      <X className="size-4 shrink-0 text-muted-foreground" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium text-foreground/80">
+                        {job.original_filename}
+                      </p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {job.status === 'saved' ? t('trackerSaved') : t('trackerCancelled')} ·{' '}
+                        {rowMeta(job)}
+                      </p>
+                    </div>
                     <Button
                       variant="ghost"
                       size="sm"
-                      disabled={busy}
+                      disabled={busyId === job.id}
                       onClick={(e) => {
                         e.stopPropagation()
                         void act(job.id, 'dismiss')
@@ -265,12 +326,12 @@ export function ImportsTracker() {
                     >
                       {t('trackerDismiss')}
                     </Button>
-                  )}
-                </div>
-              </li>
-            )
-          })}
-        </ul>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </>
       )}
 
       <div className="mt-6 text-center">

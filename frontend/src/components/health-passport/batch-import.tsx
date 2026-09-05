@@ -184,13 +184,14 @@ export function BatchImportPanel({
   function rowView(row: RowState, idx: number) {
     const job = row.jobId ? jobById.get(row.jobId) : undefined
     const status = job?.status ?? (row.jobId ? 'queued' : null)
-    const isTerminal = status === 'done' || status === 'failed' || status === 'cancelled'
+    const isTerminal =
+      status === 'done' || status === 'failed' || status === 'cancelled' || status === 'saved'
     const etaSeconds = job?.progress?.estimate_s
 
     let stateLabel: string
     if (row.submitError !== null) {
       stateLabel = t('batchSubmitFailed', { error: row.submitError })
-    } else if (status === 'done') {
+    } else if (status === 'done' || status === 'saved') {
       stateLabel = t('batchDone')
     } else if (status === 'failed') {
       stateLabel = job?.error ?? t('batchFailed')
@@ -259,11 +260,11 @@ export function BatchImportPanel({
   const submittedRows = rows.filter((r) => r.jobId !== null)
   const terminalCount = submittedRows.filter((r) => {
     const s = jobById.get(r.jobId!)?.status
-    return s === 'done' || s === 'failed' || s === 'cancelled'
+    return s === 'done' || s === 'failed' || s === 'cancelled' || s === 'saved'
   }).length
   const activeCount = submittedRows.length - terminalCount
   const doneIds = submittedRows
-    .filter((r) => jobById.get(r.jobId!)?.status === 'done')
+    .filter((r) => ['done', 'saved'].includes(jobById.get(r.jobId!)?.status ?? ''))
     .map((r) => r.jobId!)
   // Completion state: every submitted row reached a terminal state and there
   // is at least one extracted document to review.
@@ -272,6 +273,7 @@ export function BatchImportPanel({
     activeCount === 0 &&
     rows.every((r) => r.jobId !== null) &&
     doneIds.length > 0
+  void 0
   const remainingNow = quota ? Math.max(0, quota.remaining - submittedCount) : null
 
   return (

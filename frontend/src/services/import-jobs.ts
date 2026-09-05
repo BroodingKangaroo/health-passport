@@ -14,7 +14,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL
   ? `${process.env.NEXT_PUBLIC_API_URL}/api`
   : '/api'
 
-export type ImportJobStatus = 'queued' | 'processing' | 'done' | 'failed' | 'cancelled' | 'saving'
+export type ImportJobStatus = 'queued' | 'processing' | 'done' | 'failed' | 'cancelled' | 'saving' | 'saved'
 
 /** Compact shape returned by the jobs list (tracker/batch polling). */
 export interface ImportJobSummary {
@@ -25,6 +25,9 @@ export interface ImportJobSummary {
   original_filename: string
   file_size: number
   created_at: string | null
+  /** Last transition: extraction completion (done/failed), save time
+   * (saved), submit (queued). */
+  updated_at: string | null
   /** Backend-localized failure message (failed jobs only). */
   error: string | null
 }

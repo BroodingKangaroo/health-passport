@@ -65,6 +65,7 @@ def _job_summary(job: ExtractionJob) -> dict:
         "original_filename": job.original_filename,
         "file_size": job.file_size,
         "created_at": job.created_at.isoformat() if job.created_at else None,
+        "updated_at": job.updated_at.isoformat() if job.updated_at else None,
         "error": _localized_error(job) if job.status == "failed" else None,
     }
 
