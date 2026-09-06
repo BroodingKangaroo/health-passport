@@ -140,8 +140,6 @@ describe('AddEntry', () => {
     // Single-file submissions no longer run the interactive SSE extraction:
     // they become background jobs tracked on /imports.
     const onTrackImports = vi.fn()
-    const onSubmitted = await import('@/services/import-jobs')
-    vi.mocked(onSubmitted.createImportJob).mockResolvedValue('job-mock')
 
     const { container } = renderWithProviders(
       <AddEntry onSave={vi.fn()} onTrackImports={onTrackImports} />,
@@ -815,11 +813,15 @@ const { container } = renderStagedEditor(
         capturedSignal = signal ?? null
         return Promise.resolve(result)
       })
-      renderStagedEditor(result)
-
-      await waitFor(() => {
-        expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
-      }, { timeout: 3000 })
+      // Trigger extraction by attaching a file and confirming (like startExtraction)
+      const { container } = renderStagedEditor(result)
+      await screen.findByText('Blood Test Panel')
+      const editorInput = container.querySelectorAll('input[type="file"]')[0] as HTMLInputElement
+      fireEvent.change(editorInput, { target: { files: [createFile('replacement.pdf')] } })
+      fireEvent.click(await screen.findByText('Extract new document'))
+      await screen.findByText('Scanning document pages...')
+      // Wait for extraction to complete
+      await waitFor(() => expect(screen.queryByText('Scanning document pages...')).not.toBeInTheDocument(), { timeout: 3000 })
 
       expect(screen.queryByRole('alertdialog')).toBeNull()
       expect(capturedSignal?.aborted).toBe(false)
@@ -851,7 +853,13 @@ const { container } = renderStagedEditor(
     }
 
     async function renderEditorWithExtractedDoc() {
-      const { container } = renderStagedEditor(extractedResult())
+      const { container } = renderStagedEditor(extractedResult(), {
+        stagedJob: {
+          jobId: 'job-prefill',
+          record: extractedResult(),
+          file: new File(['%PDF fake'], 'test.pdf', { type: 'application/pdf' }),
+        },
+      })
       await waitFor(() => {
         expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
       }, { timeout: 3000 })
@@ -876,12 +884,12 @@ const { container } = renderStagedEditor(
 
       // The form holds extracted data, so a confirmation gates the extraction.
       expect(screen.getByText('Re-run AI extraction?')).toBeInTheDocument()
-      expect(mockExtract).toHaveBeenCalledTimes(1)
+      expect(mockExtract).not.toHaveBeenCalled()
 
       fireEvent.click(screen.getByText('Extract new document'))
 
-      await waitFor(() => expect(mockExtract).toHaveBeenCalledTimes(2))
-      expect(mockExtract.mock.calls[1][0].name).toBe('replacement.pdf')
+      await waitFor(() => expect(mockExtract).toHaveBeenCalledTimes(1))
+      expect(mockExtract.mock.calls[0][0].name).toBe('replacement.pdf')
       expect(screen.getByText('Scanning document pages...')).toBeInTheDocument()
     })
 
@@ -893,19 +901,22 @@ const { container } = renderStagedEditor(
       fireEvent.click(screen.getByText('Keep current data'))
 
       expect(screen.queryByText('Re-run AI extraction?')).not.toBeInTheDocument()
-      expect(mockExtract).toHaveBeenCalledTimes(1)
+      expect(mockExtract).not.toHaveBeenCalled()
       // The extracted data survives untouched.
       expect(screen.getByDisplayValue('145')).toBeInTheDocument()
     })
 
     it('extracts immediately when the form has no data to lose', async () => {
-      renderWithProviders(
+      const { container } = renderWithProviders(
         <AddEntry
           onSave={vi.fn()}
-          stagedJob={{ jobId: 'job-prefill', record: { ...extractedResult(), biomarkers: [] } }}
+          stagedJob={{
+            jobId: 'job-prefill',
+            record: { ...extractedResult(), biomarkers: [] },
+            file: new File(['%PDF fake'], 'test.pdf', { type: 'application/pdf' }),
+          }}
         />,
       )
-      const { container } = {} as { container: HTMLElement }
       await waitFor(() => {
         expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
       }, { timeout: 3000 })
@@ -915,8 +926,8 @@ const { container } = renderStagedEditor(
       selectFile(container, createFile('replacement.pdf'))
 
       expect(screen.queryByText('Re-run AI extraction?')).not.toBeInTheDocument()
-      await waitFor(() => expect(mockExtract).toHaveBeenCalledTimes(2))
-      expect(mockExtract.mock.calls[1][0].name).toBe('replacement.pdf')
+      await waitFor(() => expect(mockExtract).toHaveBeenCalledTimes(1))
+      expect(mockExtract.mock.calls[0][0].name).toBe('replacement.pdf')
     })
 
     it('does not re-extract when attaching in manual mode', async () => {

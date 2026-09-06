@@ -77,6 +77,7 @@ export function BatchImportPanel({
     submittingRef.current = true
     ;(async () => {
       let cap = 0
+      const submittedJobIds: string[] = []
       try {
         const limits = await fetchUsageLimits()
         const remaining = Math.max(
@@ -96,6 +97,7 @@ export function BatchImportPanel({
         try {
           const jobId = await createImportJob(rows[i].file)
           if (cancelled) return
+          submittedJobIds.push(jobId)
           setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, jobId } : r)))
           setSubmittedCount((n) => n + 1)
         } catch (err) {
@@ -119,13 +121,12 @@ export function BatchImportPanel({
       submittingRef.current = false
       // Surface this batch's rows in the shared poll immediately.
       queryClient.invalidateQueries({ queryKey: ['import-jobs'] })
-      const submitted = rows.slice(0, cap).map((_, i) => rows[i])
       if (
         onSubmittedAll &&
-        submitted.length > 0 &&
-        submitted.every((r) => r.jobId && r.submitError === null)
+        submittedJobIds.length > 0 &&
+        submittedJobIds.length === cap
       ) {
-        onSubmittedAll(submitted.map((r) => r.jobId!))
+        onSubmittedAll(submittedJobIds)
       }
     })()
     return () => {
