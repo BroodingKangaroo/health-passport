@@ -42,9 +42,13 @@ const STAGE_LABEL_KEYS: Record<string, 'stageOcrLabel' | 'stageExtractLabel' | '
 export function BatchImportPanel({
   files,
   onBack,
+  onSubmittedAll,
 }: {
   files: File[]
   onBack: () => void
+  /** Called when EVERY file was accepted as a job (no submit errors, no
+   * over-quota leftovers) — the single-file path navigates to /imports. */
+  onSubmittedAll?: (jobIds: string[]) => void
 }) {
   const t = useTranslations('import')
   const tUpload = useTranslations('upload')
@@ -115,6 +119,14 @@ export function BatchImportPanel({
       submittingRef.current = false
       // Surface this batch's rows in the shared poll immediately.
       queryClient.invalidateQueries({ queryKey: ['import-jobs'] })
+      const submitted = rows.slice(0, cap).map((_, i) => rows[i])
+      if (
+        onSubmittedAll &&
+        submitted.length > 0 &&
+        submitted.every((r) => r.jobId && r.submitError === null)
+      ) {
+        onSubmittedAll(submitted.map((r) => r.jobId!))
+      }
     })()
     return () => {
       cancelled = true
@@ -185,7 +197,11 @@ export function BatchImportPanel({
     const job = row.jobId ? jobById.get(row.jobId) : undefined
     const status = job?.status ?? (row.jobId ? 'queued' : null)
     const isTerminal =
-      status === 'done' || status === 'failed' || status === 'cancelled' || status === 'saved'
+      status === 'done' ||
+      status === 'failed' ||
+      status === 'cancelled' ||
+      status === 'saved' ||
+      status === 'dismissed'
     const etaSeconds = job?.progress?.estimate_s
 
     let stateLabel: string
@@ -195,11 +211,15 @@ export function BatchImportPanel({
       stateLabel = t('batchDone')
     } else if (status === 'failed') {
       stateLabel = job?.error ?? t('batchFailed')
-    } else if (status === 'cancelled') {
-      stateLabel = t('batchCancelled')
+    } else if (status === 'cancelled' || status === 'dismissed') {
+      stateLabel = status === 'cancelled' ? t('batchCancelled') : t('batchDismissed')
     } else if (status === null) {
-      // Never submitted (over quota): the disabled "register to import" group.
-      stateLabel = t('batchOverLimit', { count: 1 })
+      // Never submitted (over quota): the disabled over-limit group — the
+      // "register to import" wording only makes sense for anonymous users.
+      stateLabel =
+        quota?.isAnon === false
+          ? t('batchOverLimitRegistered', { count: 1, limit: quota?.limit ?? 0 })
+          : t('batchOverLimit', { count: 1 })
     } else {
       // queued / processing: the upload screen's stage visuals.
       const stageKey = STAGE_LABEL_KEYS[job?.stage ?? '']
@@ -260,7 +280,7 @@ export function BatchImportPanel({
   const submittedRows = rows.filter((r) => r.jobId !== null)
   const terminalCount = submittedRows.filter((r) => {
     const s = jobById.get(r.jobId!)?.status
-    return s === 'done' || s === 'failed' || s === 'cancelled' || s === 'saved'
+    return s === 'done' || s === 'failed' || s === 'cancelled' || s === 'saved' || s === 'dismissed'
   }).length
   const activeCount = submittedRows.length - terminalCount
   const doneIds = submittedRows

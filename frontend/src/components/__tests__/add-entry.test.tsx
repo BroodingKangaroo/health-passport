@@ -7,8 +7,17 @@ import { LeaveGuardProvider } from '@/providers/leave-guard-provider'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type { StandardizedMedicalRecord, EntriesByDateResponse } from '@/lib/types'
 
-const mockExtract = vi.fn()
-const mockSave = vi.fn()
+const { mockExtract, mockSave, mockFetchUsageLimits } = vi.hoisted(() => ({
+  mockExtract: vi.fn(),
+  mockSave: vi.fn(),
+  mockFetchUsageLimits: vi.fn().mockResolvedValue({
+    is_anonymous: false,
+    ai_extraction_count: 0,
+    ai_extraction_limit: 50,
+    total_upload_size_bytes: 0,
+    total_upload_limit_bytes: 200 * 1024 * 1024,
+  }),
+}))
 const mockMerge = vi.fn()
 const mockFetchByDate = vi.fn().mockResolvedValue({ date: '2026-10-12', count: 0 })
 const mockFetchDefinitions = vi.fn().mockResolvedValue([])
@@ -80,6 +89,19 @@ function createFile(name = 'lab.pdf', type = 'application/pdf', content = 'fake'
   return new File([content], name, { type })
 }
 
+function renderStagedEditor(
+  record: StandardizedMedicalRecord,
+  extraProps: Partial<React.ComponentProps<typeof AddEntry>> = {},
+) {
+  return renderWithProviders(
+    <AddEntry
+      onSave={vi.fn()}
+      stagedJob={{ jobId: 'job-prefill', record }}
+      {...extraProps}
+    />,
+  )
+}
+
 function selectFile(container: HTMLElement, file: File) {
   const input = container.querySelector('input[type="file"]') as HTMLInputElement
   fireEvent.change(input, { target: { files: [file] } })
@@ -114,30 +136,24 @@ describe('AddEntry', () => {
     expect(screen.getByText('Save to HealthPassport')).toBeInTheDocument()
   })
 
-  it('shows scanning state while extracting', () => {
-    mockExtract.mockImplementation(
-      () => new Promise(() => {}),
+  it('submits a single dropped file as a background import job', async () => {
+    // Single-file submissions no longer run the interactive SSE extraction:
+    // they become background jobs tracked on /imports.
+    const onTrackImports = vi.fn()
+    const onSubmitted = await import('@/services/import-jobs')
+    vi.mocked(onSubmitted.createImportJob).mockResolvedValue('job-mock')
+
+    const { container } = renderWithProviders(
+      <AddEntry onSave={vi.fn()} onTrackImports={onTrackImports} />,
     )
-
-    const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
-    selectFile(container, createFile())
-
-    expect(screen.getByText('Scanning document pages...')).toBeInTheDocument()
-  })
-
-  it('starts extraction when a file is dropped on the upload surface', () => {
-    mockExtract.mockImplementation(
-      () => new Promise(() => {}),
-    )
-
-    const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
     const zone = container.querySelector('button[type="button"]') as HTMLButtonElement
     dropFiles(zone, [createFile('dropped.pdf')])
 
-    expect(mockExtract).toHaveBeenCalledTimes(1)
-    expect(mockExtract.mock.calls[0][0].name).toBe('dropped.pdf')
-    expect(screen.getByText('Scanning document pages...')).toBeInTheDocument()
+    expect(mockExtract).not.toHaveBeenCalled()
+    expect(screen.getByTestId('batch-import-panel')).toBeInTheDocument()
+    await waitFor(() => expect(onTrackImports).toHaveBeenCalledWith(['job-mock']))
   })
+
 
   it('opens the batch import panel when multiple files are dropped', () => {
     mockExtract.mockImplementation(
@@ -190,11 +206,14 @@ describe('AddEntry', () => {
       visit_data: null,
       instrumental_data: null,
     }
-    mockExtract.mockResolvedValue(aiResult)
-
-    const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
-    selectFile(container, createFile())
-
+    // The staged-job fill path (the review editor) — same applyExtractedRecord
+    // fan-out the SSE result used to drive.
+    renderWithProviders(
+      <AddEntry
+        onSave={vi.fn()}
+        stagedJob={{ jobId: 'job-prefill', record: aiResult }}
+      />,
+    )
     await waitFor(() => {
       expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
     }, { timeout: 3000 })
@@ -229,11 +248,12 @@ describe('AddEntry', () => {
       },
       instrumental_data: null,
     }
-    mockExtract.mockResolvedValue(aiResult)
-
-    const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
-    selectFile(container, createFile())
-
+    renderWithProviders(
+      <AddEntry
+        onSave={vi.fn()}
+        stagedJob={{ jobId: 'job-prefill', record: aiResult }}
+      />,
+    )
     await waitFor(() => {
       expect(screen.getByText('Doctor Visit / Clinical Notes')).toBeInTheDocument()
     }, { timeout: 3000 })
@@ -264,11 +284,12 @@ describe('AddEntry', () => {
         conclusion: 'No acute pathology',
       },
     }
-    mockExtract.mockResolvedValue(aiResult)
-
-    const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
-    selectFile(container, createFile())
-
+    renderWithProviders(
+      <AddEntry
+        onSave={vi.fn()}
+        stagedJob={{ jobId: 'job-prefill', record: aiResult }}
+      />,
+    )
     await waitFor(() => {
       expect(screen.getByText('Instrumental Test (MRI, Elastography, ECG...)')).toBeInTheDocument()
     }, { timeout: 3000 })
@@ -279,11 +300,44 @@ describe('AddEntry', () => {
     expect(screen.getByDisplayValue('No acute pathology')).toBeInTheDocument()
   })
 
-  it('falls back to manual entry on API error', async () => {
+  it('falls back to manual entry when a replacement extraction fails', async () => {
     mockExtract.mockRejectedValue(new Error('API unavailable'))
+    mockFetchByDate.mockResolvedValue({ date: '2026-07-15', count: 0, entries: [] })
 
-    const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
-    selectFile(container, createFile())
+    const stagedRecord: StandardizedMedicalRecord = {
+      entry_type: 'blood_test',
+      date: '2026-07-15',
+      time: null,
+      clinic: 'Test Lab',
+      provider: 'Dr. House',
+      title: 'Annual Panel',
+      notes: null,
+      biomarkers: [
+        {
+          raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170',
+          standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L',
+          reference: { kind: 'interval', low: 130, high: 170 },
+          status: 'normal', category: 'Complete Blood Count',
+          definition_id: 'hb', scope: 'global',
+        },
+      ],
+      visit_data: null,
+      instrumental_data: null,
+    }
+    const { container } = renderWithProviders(
+      <AddEntry
+        onSave={vi.fn()}
+        stagedJob={{ jobId: 'job-prefill', record: stagedRecord }}
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
+    }, { timeout: 3000 })
+
+    // Attaching a replacement document over staged data asks first...
+    const editorInput = container.querySelectorAll('input[type="file"]')[0] as HTMLInputElement
+    fireEvent.change(editorInput, { target: { files: [createFile('replacement.pdf')] } })
+    fireEvent.click(await screen.findByText('Extract new document'))
 
     await waitFor(() => {
       expect(screen.getByText('AI extraction failed')).toBeInTheDocument()
@@ -375,7 +429,7 @@ describe('AddEntry', () => {
       // the empty row must be flagged, not silently dropped, yet the save
       // proceeds with the valid row.
       mockSave.mockResolvedValue({ success: true, message: 'Entry saved', id: 'new-1' })
-      mockExtract.mockResolvedValue({
+      const partiallyEmptyRecord: StandardizedMedicalRecord = {
         entry_type: 'blood_test',
         date: '2025-06-10',
         time: null,
@@ -400,9 +454,8 @@ describe('AddEntry', () => {
         ],
         visit_data: null,
         instrumental_data: null,
-      } satisfies StandardizedMedicalRecord)
-      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
-      selectFile(container, createFile())
+      }
+      renderStagedEditor(partiallyEmptyRecord)
 
       await waitFor(() => {
         expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
@@ -470,9 +523,7 @@ describe('AddEntry', () => {
 
     async function renderEditorWithExistingEntry(entry: EntriesByDateResponse['entries'][0]) {
       mockFetchByDate.mockResolvedValue({ date: '2026-07-15', count: 1, entries: [entry] })
-      mockExtract.mockResolvedValue(bloodTestResult())
-      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
-      selectFile(container, createFile())
+      const { container } = renderStagedEditor(bloodTestResult())
       await waitFor(() => {
         expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
       }, { timeout: 3000 })
@@ -492,9 +543,7 @@ describe('AddEntry', () => {
 
     it('hides the merge checkbox when no blood test exists on the date', async () => {
       mockFetchByDate.mockResolvedValue({ date: '2026-07-15', count: 0, entries: [] })
-      mockExtract.mockResolvedValue(bloodTestResult())
-      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
-      selectFile(container, createFile())
+      const { container } = renderStagedEditor(bloodTestResult())
 
       await waitFor(() => {
         expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
@@ -535,19 +584,17 @@ describe('AddEntry', () => {
         ],
       })
       mockFetchByDate.mockResolvedValue({ date: '2026-07-15', count: 1, entries: [entry] })
-      mockExtract.mockResolvedValue(
-        bloodTestResult([
-          {
-            raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170',
-            standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L',
-            reference: { kind: 'interval', low: 130, high: 170 },
-            status: 'normal', category: 'Complete Blood Count',
-            definition_id: '', scope: 'global',
-          },
-        ]),
+const { container } = renderStagedEditor(
+  bloodTestResult([
+    {
+      raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170',
+      standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L',
+      reference: { kind: 'interval', low: 130, high: 170 },
+      status: 'normal', category: 'Complete Blood Count',
+      definition_id: '', scope: 'global',
+    },
+  ]),
       )
-      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
-      selectFile(container, createFile())
 
       await waitFor(() => {
         expect(screen.getByRole('checkbox')).toBeDisabled()
@@ -573,19 +620,17 @@ describe('AddEntry', () => {
         ],
       })
       mockFetchByDate.mockResolvedValue({ date: '2026-07-15', count: 1, entries: [entry] })
-      mockExtract.mockResolvedValue(
-        bloodTestResult([
-          {
-            raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170',
-            standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L',
-            reference: { kind: 'interval', low: 130, high: 170 },
-            status: 'normal', category: 'Complete Blood Count',
-            definition_id: '', scope: 'global',
-          },
-        ]),
+const { container } = renderStagedEditor(
+  bloodTestResult([
+    {
+      raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170',
+      standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L',
+      reference: { kind: 'interval', low: 130, high: 170 },
+      status: 'normal', category: 'Complete Blood Count',
+      definition_id: '', scope: 'global',
+    },
+  ]),
       )
-      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
-      selectFile(container, createFile())
 
       await waitFor(() => {
         expect(screen.getByRole('checkbox')).toBeDisabled()
@@ -671,9 +716,7 @@ describe('AddEntry', () => {
           existingEntry({ id: 'existing-2', title: 'Evening Panel', time: '18:30', biomarkers: [] }),
         ],
       })
-      mockExtract.mockResolvedValue(bloodTestResult())
-      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
-      selectFile(container, createFile())
+      const { container } = renderStagedEditor(bloodTestResult())
 
       await waitFor(() => {
         expect(screen.getByRole('checkbox')).toBeInTheDocument()
@@ -703,9 +746,36 @@ describe('AddEntry', () => {
       })
     })
 
+    const guardRecord: StandardizedMedicalRecord = {
+      entry_type: 'blood_test',
+      date: '2026-07-15',
+      time: null,
+      clinic: null,
+      provider: null,
+      title: null,
+      notes: null,
+      biomarkers: [
+        {
+          raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170',
+          standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L',
+          reference: { kind: 'interval', low: 130, high: 170 },
+          status: 'normal', category: 'Complete Blood Count',
+          definition_id: 'hb', scope: 'global',
+        },
+      ],
+      visit_data: null,
+      instrumental_data: null,
+    }
+
     async function startExtraction() {
-      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
-      selectFile(container, createFile())
+      const { container } = renderStagedEditor(guardRecord)
+      await screen.findByText('Blood Test Panel')
+      // Attach a replacement document (form holds data -> confirmation) and
+      // confirm: the replacement extraction runs via SSE and shows the scan
+      // screen — the path the leave-guard protects.
+      const editorInput = container.querySelectorAll('input[type="file"]')[0] as HTMLInputElement
+      fireEvent.change(editorInput, { target: { files: [createFile('replacement.pdf')] } })
+      fireEvent.click(await screen.findByText('Extract new document'))
       await screen.findByText('Scanning document pages...')
     }
 
@@ -738,34 +808,14 @@ describe('AddEntry', () => {
     })
 
     it('does not abort on natural completion', async () => {
-      const result = {
-        entry_type: 'blood_test',
-        date: '2026-07-15',
-        time: null,
-        clinic: 'Test Lab',
-        provider: null,
-        title: null,
-        notes: null,
-        biomarkers: [
-          {
-            raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170',
-            standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L',
-            reference: { kind: 'interval', low: 130, high: 170 },
-            status: 'normal', category: 'Complete Blood Count',
-            definition_id: 'hb', scope: 'global',
-          },
-        ],
-        visit_data: null,
-        instrumental_data: null,
-      } satisfies StandardizedMedicalRecord
+      const result = guardRecord
       // Resolving variant of the capturing implementation (mockResolvedValue
       // would replace it and lose the signal capture).
       mockExtract.mockImplementation((_file, _onProgress, signal) => {
         capturedSignal = signal ?? null
         return Promise.resolve(result)
       })
-      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
-      selectFile(container, createFile())
+      renderStagedEditor(result)
 
       await waitFor(() => {
         expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
@@ -801,9 +851,7 @@ describe('AddEntry', () => {
     }
 
     async function renderEditorWithExtractedDoc() {
-      mockExtract.mockResolvedValue(extractedResult())
-      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
-      selectFile(container, createFile())
+      const { container } = renderStagedEditor(extractedResult())
       await waitFor(() => {
         expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
       }, { timeout: 3000 })
@@ -851,9 +899,13 @@ describe('AddEntry', () => {
     })
 
     it('extracts immediately when the form has no data to lose', async () => {
-      mockExtract.mockResolvedValue({ ...extractedResult(), biomarkers: [] })
-      const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
-      selectFile(container, createFile())
+      renderWithProviders(
+        <AddEntry
+          onSave={vi.fn()}
+          stagedJob={{ jobId: 'job-prefill', record: { ...extractedResult(), biomarkers: [] } }}
+        />,
+      )
+      const { container } = {} as { container: HTMLElement }
       await waitFor(() => {
         expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
       }, { timeout: 3000 })

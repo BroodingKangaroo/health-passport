@@ -43,7 +43,13 @@ export function ImportsTracker() {
   const locale = useLocale()
   const router = useRouter()
   const jobsQuery = useImportJobs(3000, true)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // /imports?focus=<jobId>: auto-open a just-submitted job's progress view
+  // (the single-file submit path lands here).
+  const [selectedId, setSelectedId] = useState<string | null>(() =>
+    typeof window === 'undefined'
+      ? null
+      : new URLSearchParams(window.location.search).get('focus'),
+  )
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const items = useMemo(() => jobsQuery.data?.items ?? [], [jobsQuery.data])
@@ -80,6 +86,8 @@ export function ImportsTracker() {
         return { label: t('trackerDone') }
       case 'saved':
         return { label: t('trackerSaved') }
+      case 'dismissed':
+        return { label: t('trackerDismissed') }
       case 'failed':
         return { label: job.error ?? t('trackerFailed') }
       case 'cancelled':
@@ -95,60 +103,53 @@ export function ImportsTracker() {
 
   function rowMeta(job: ImportJobSummary): string {
     // updated_at = the last transition: extraction completion for
-    // done/failed, the save time for saved rows, submit for queued ones.
+    // done/failed, the save/dismiss time for history rows, submit for
+    // queued ones. No status word — the label sits next to it (#4).
     const raw = job.status === 'queued' ? job.created_at : (job.updated_at ?? job.created_at)
     const time = raw ? formatDate(raw, locale) : ''
-    const key =
-      job.status === 'done'
-        ? 'trackerMetaExtracted'
-        : job.status === 'saved'
-          ? 'trackerMetaSaved'
-          : job.status === 'failed'
-            ? 'trackerMetaFailed'
-            : job.status === 'cancelled'
-              ? 'trackerMetaCancelled'
-              : 'trackerMetaSubmitted'
     const size =
       job.file_size >= 1024 * 1024
         ? `${(job.file_size / (1024 * 1024)).toFixed(1)} MB`
         : `${Math.max(1, Math.round(job.file_size / 1024))} KB`
-    return `${t(key, { time })} · ${size}`
+    return `${time} · ${size}`
   }
 
   // ---- Extraction-process view for a clicked in-flight job ----
   if (selected && (selected.status === 'queued' || selected.status === 'processing')) {
     return (
-      <div
-        className="mx-auto flex max-w-md flex-col items-center gap-4 py-16 text-center"
-        data-testid="import-progress-view"
-      >
-        {/* The upload screen's own extraction visuals, driven by the job's
-            live progress (snapshot mode: fixed eta, no elapsed projection). */}
-        <ExtractionProgressCard
-          stage={
-            (selected.status === 'processing' && STAGE_LABEL_KEYS[selected.stage]
-              ? selected.stage
-              : 'ocr_scanning') as 'ocr_scanning' | 'extracting' | 'matching'
-          }
-          biomarkerCount={selected.progress?.biomarker_count ?? null}
-          elapsedSeconds={0}
-          plannedEndSeconds={null}
-          etaSeconds={selected.progress?.estimate_s ?? null}
-          indeterminate
-        />
-        <p className="text-xs text-muted-foreground">{selected.original_filename}</p>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={busyId === selected.id}
-            onClick={() => void act(selected.id, 'cancel')}
-          >
-            {t('trackerCancel')}
-          </Button>
-          <Button variant="ghost" onClick={() => setSelectedId(null)}>
-            {t('batchBack')}
-          </Button>
+      <div className="mx-auto max-w-3xl py-4" data-testid="import-progress-view">
+        {/* Same container styling as the upload screen's scanning state —
+            the in-progress view IS the single-extraction screen, driven by
+            the job's live progress (snapshot mode: fixed eta). */}
+        <div className="rounded-xl border-2 border-dashed border-primary/30 bg-accent/40 p-12 text-center transition">
+          <ExtractionProgressCard
+            stage={
+              (selected.status === 'processing' && STAGE_LABEL_KEYS[selected.stage]
+                ? selected.stage
+                : 'ocr_scanning') as 'ocr_scanning' | 'extracting' | 'matching'
+            }
+            biomarkerCount={selected.progress?.biomarker_count ?? null}
+            elapsedSeconds={0}
+            plannedEndSeconds={null}
+            etaSeconds={selected.progress?.estimate_s ?? null}
+            indeterminate
+          />
+        </div>
+        <div className="mt-4 flex flex-col items-center gap-3">
+          <p className="text-xs text-muted-foreground">{selected.original_filename}</p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busyId === selected.id}
+              onClick={() => void act(selected.id, 'cancel')}
+            >
+              {t('trackerCancel')}
+            </Button>
+            <Button variant="ghost" onClick={() => setSelectedId(null)}>
+              {t('batchBack')}
+            </Button>
+          </div>
         </div>
       </div>
     )
@@ -161,7 +162,9 @@ export function ImportsTracker() {
       j.status === 'failed' ||
       j.status === 'done',
   )
-  const history = items.filter((j) => j.status === 'saved' || j.status === 'cancelled')
+  const history = items.filter(
+    (j) => j.status === 'saved' || j.status === 'cancelled' || j.status === 'dismissed',
+  )
 
   return (
     <div className="mx-auto max-w-3xl py-4" data-testid="imports-tracker">
@@ -234,13 +237,26 @@ export function ImportsTracker() {
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                   {job.status === 'done' && (
-                    <Link
-                      href={`/review-import?job=${job.id}`}
-                      className="text-xs font-semibold text-primary underline underline-offset-2"
-                      data-testid="row-review"
-                    >
-                      {t('trackerReview')}
-                    </Link>
+                    <>
+                      <Link
+                        href={`/review-import?job=${job.id}`}
+                        className="text-xs font-semibold text-primary underline underline-offset-2"
+                        data-testid="row-review"
+                      >
+                        {t('trackerReview')}
+                      </Link>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={busyId === job.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void act(job.id, 'dismiss')
+                        }}
+                      >
+                        {t('trackerDismiss')}
+                      </Button>
+                    </>
                   )}
                   {(job.status === 'queued' || job.status === 'processing') && (
                     <Button
@@ -310,22 +326,17 @@ export function ImportsTracker() {
                       <p className="truncate text-xs font-medium text-foreground/80">
                         {job.original_filename}
                       </p>
+                      {/* Status word + plain time/size — the label and the
+                          timestamp are not duplicated (#4). */}
                       <p className="truncate text-[11px] text-muted-foreground">
-                        {job.status === 'saved' ? t('trackerSaved') : t('trackerCancelled')} ·{' '}
-                        {rowMeta(job)}
+                        {job.status === 'saved'
+                          ? t('trackerSaved')
+                          : job.status === 'dismissed'
+                            ? t('trackerDismissed')
+                            : t('trackerCancelled')}{' '}
+                        · {rowMeta(job)}
                       </p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={busyId === job.id}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        void act(job.id, 'dismiss')
-                      }}
-                    >
-                      {t('trackerDismiss')}
-                    </Button>
                   </li>
                 ))}
               </ul>

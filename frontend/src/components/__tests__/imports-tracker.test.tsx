@@ -76,7 +76,8 @@ describe('ImportsTracker', () => {
     )
   })
 
-  it('lists active jobs with status labels + metadata, history separately', async () => {
+  it('lists active jobs with metadata, history rows muted and display-only', async () => {
+    dismissMock.mockResolvedValue(undefined)
     fetchJobsMock.mockResolvedValue({
       items: [
         job({ id: 'job-a', status: 'processing', stage: 'extracting', original_filename: 'new.pdf' }),
@@ -84,6 +85,7 @@ describe('ImportsTracker', () => {
         job({ id: 'job-c', status: 'failed', error: 'OCR quota exceeded (HTTP 429).' }),
         job({ id: 'job-d', status: 'cancelled', original_filename: 'gone.pdf' }),
         job({ id: 'job-e', status: 'saved', original_filename: 'done-saved.pdf' }),
+        job({ id: 'job-f', status: 'dismissed', original_filename: 'dropped.pdf' }),
       ],
     })
     renderTracker(<ImportsTracker />)
@@ -91,17 +93,32 @@ describe('ImportsTracker', () => {
     expect(screen.getByText('old.pdf')).toBeInTheDocument()
     expect(screen.getByText('Identifying medical data...')).toBeInTheDocument()
     expect(screen.getByText('OCR quota exceeded (HTTP 429).')).toBeInTheDocument()
-    // Saved/cancelled live in the muted history section, not the active list.
+    // History: saved/dismissed/cancelled — muted, display-only, each with a
+    // distinct status label (saved vs dismissed are distinguishable).
     expect(screen.getByTestId('imports-history-title')).toHaveTextContent('Earlier imports')
     const historyRows = screen.getAllByTestId('imports-history-row')
-    expect(historyRows).toHaveLength(2)
+    expect(historyRows).toHaveLength(3)
     expect(historyRows[0].textContent).toContain('gone.pdf')
     expect(historyRows[0].textContent).toContain('Cancelled')
     expect(historyRows[1].textContent).toContain('done-saved.pdf')
     expect(historyRows[1].textContent).toContain('Saved')
-    // Metadata line: status time + file size.
+    expect(historyRows[2].textContent).toContain('dropped.pdf')
+    expect(historyRows[2].textContent).toContain('Dismissed')
+    // No buttons in history rows at all.
+    expect(historyRows[0].querySelector('button')).toBeNull()
+    expect(historyRows[1].querySelector('button')).toBeNull()
+    expect(historyRows[2].querySelector('button')).toBeNull()
+    // Active done row: Review link + a Dismiss button (moves it to history).
+    const doneRow = screen.getAllByTestId('imports-row').find((r) => r.textContent?.includes('old.pdf'))
+    expect(doneRow!.querySelector('[data-testid="row-review"]')).not.toBeNull()
+    const doneDismiss = Array.from(doneRow!.querySelectorAll('button')).find((b) => b.textContent === 'Dismiss')
+    expect(doneDismiss).toBeTruthy()
+    fireEvent.click(doneDismiss!)
+    await waitFor(() => expect(dismissMock).toHaveBeenCalledWith('job-b'))
+    // Metadata line: plain time + size — no duplicated status word (#4).
     const metas = screen.getAllByTestId('row-meta')
     expect(metas.length).toBeGreaterThanOrEqual(3)
+    expect(metas[0].textContent).not.toMatch(/Submitted|Extracted|Failed|Saved/)
     expect(metas[0].textContent).toMatch(/KB|MB/)
   })
 

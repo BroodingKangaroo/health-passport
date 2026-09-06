@@ -35,7 +35,6 @@ import { ReviewImport } from '../health-passport/review-import'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
 import {
   fetchImportJob,
-  fetchImportJobs,
   dismissImportJob,
   fetchImportJobFile,
   type ImportJobDetail,
@@ -43,7 +42,6 @@ import {
 
 const jobDetailMock = vi.mocked(fetchImportJob)
 const jobFileMock = vi.mocked(fetchImportJobFile)
-const fetchJobsMock = vi.mocked(fetchImportJobs)
 const dismissMock = vi.mocked(dismissImportJob)
 
 function detail(overrides: Partial<ImportJobDetail>): ImportJobDetail {

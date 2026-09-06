@@ -48,6 +48,7 @@ import type {
 export function AddEntry({
   onSave,
   onCancel,
+  onTrackImports,
   stagedJob,
 }: {
   onSave: () => Promise<void> | void
@@ -55,6 +56,9 @@ export function AddEntry({
    * callback navigates home, so Cancel leaving = the same thing). Pages that
    * distinguish "save succeeded" from "leave without saving" pass both. */
   onCancel?: () => Promise<void> | void
+  /** Navigate to the imports tracker (after a single-file submission is
+   * accepted — the tracker is the cockpit for in-progress extraction). */
+  onTrackImports?: (jobIds: string[]) => void
   /** Batch-import review: prefill from a staged job's record and save with
    * import_job_id instead of re-uploading the file. `file` (fetched from the
    * staged-file endpoint) powers the preview pane only — it is NEVER sent to
@@ -238,18 +242,12 @@ export function AddEntry({
   function handleFiles(files: FileList | null) {
     const list = files ? Array.from(files) : []
     if (list.length === 0) return
-    // More than one file → batch mode: one background extraction job per
-    // document; the user is free to leave while the server works through
-    // the queue. The single-file flow below stays exactly as before.
-    if (list.length > 1) {
-      setBatchFiles(list)
-      return
-    }
-    const file = list[0]
-    setMultiFileNotice(null)
-    setSelectedFile(file)
-    setObjectUrl(URL.createObjectURL(file))
-    runExtraction(file)
+    // Every dropped document becomes a background import job (one per
+    // file); the user is free to leave while the server works through the
+    // queue. A single file lands on /imports right after its submission is
+    // accepted (onSubmittedAll → onTrackImports); multi-file stays on the
+    // batch panel with its per-row progress and completion links.
+    setBatchFiles(list)
   }
 
   function startManual() {
@@ -467,7 +465,15 @@ export function AddEntry({
   }
 
   if (batchFiles !== null) {
-    return <BatchImportPanel files={batchFiles} onBack={() => setBatchFiles(null)} />
+    return (
+      <BatchImportPanel
+        files={batchFiles}
+        onBack={() => setBatchFiles(null)}
+        // Single-file import: the accepted job is tracked on /imports —
+        // same background pipeline, same in-progress visuals.
+        onSubmittedAll={batchFiles.length === 1 ? onTrackImports : undefined}
+      />
+    )
   }
 
   if (uploadState === 'idle' || uploadState === 'scanning') {

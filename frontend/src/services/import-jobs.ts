@@ -14,7 +14,15 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL
   ? `${process.env.NEXT_PUBLIC_API_URL}/api`
   : '/api'
 
-export type ImportJobStatus = 'queued' | 'processing' | 'done' | 'failed' | 'cancelled' | 'saving' | 'saved'
+export type ImportJobStatus =
+  | 'queued'
+  | 'processing'
+  | 'done'
+  | 'failed'
+  | 'cancelled'
+  | 'saving'
+  | 'saved'
+  | 'dismissed'
 
 /** Compact shape returned by the jobs list (tracker/batch polling). */
 export interface ImportJobSummary {
