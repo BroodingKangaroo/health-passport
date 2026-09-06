@@ -172,11 +172,11 @@ class TestSubmit:
     async def test_submit_quota_429(self, api, monkeypatch):
         env, client = api["db"], api["client"]
         monkeypatch.setattr(import_api, "_get_client", lambda: object())
-        _set_usage(env, 50)  # registered limit
+        _set_usage(env, 200)  # registered limit
         resp = await client.post("/api/import/jobs", files=_make_pdf())
         assert resp.status_code == 429
-        assert "50" in resp.json()["detail"]
-        assert _usage(env) == 50  # unchanged
+        assert "200" in resp.json()["detail"]
+        assert _usage(env) == 200  # unchanged
 
     @pytest.mark.asyncio
     async def test_pending_cap_jobs(self, api, monkeypatch):
@@ -426,13 +426,13 @@ class TestRetry:
             id="job-q", user_id=TEST_USER_ID, status="failed",
             original_filename="q.pdf", file_path="/static/uploads/q.pdf", file_size=5,
         ))
-        _set_usage(env, 50)
+        _set_usage(env, 200)
         resp = await client.post("/api/import/jobs/job-q/retry")
         assert resp.status_code == 429
         env.rollback()
         row = env.query(ExtractionJob).filter(ExtractionJob.id == "job-q").one()
         assert row.status == "failed"  # transition rolled back with the charge
-        assert _usage(env) == 50
+        assert _usage(env) == 200
 
 
 class TestDismiss:
