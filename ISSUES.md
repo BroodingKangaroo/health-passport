@@ -109,3 +109,63 @@ docs updated where a documented statement changed):
   merged/biomarkers-at-date flag handling (`TimelineView.biomarkersAtDate`)
 - LOINC reference model (interval/qualitative), compact number formatting,
   reference editor, registration + DOB validation
+---
+
+## New issues reported (2026-09-06) — pending
+
+### 76. `/add-entry` in-progress extraction: no direct navigation to review
+
+**Context**: On the `/add-entry` page, when extraction is in progress (the scanning/processing UI), there's no button or link to jump directly to the review page (`/review-import?job=<id>`) for that specific document. Users currently have to navigate to `/imports` and click the in-progress job to reach the extraction view, then wait for completion and click "Review" to get to the review page.
+
+**Expected**: A "View extraction" / "Open review" button on the in-progress screen (`/add-entry` while uploading) that takes the user directly to `/review-import?job=<jobId>` for that document.
+
+**Location**: `frontend/src/components/health-passport/add-entry.tsx` (UploadScreen scanning state) and `frontend/src/views/AddEntryView.tsx`.
+
+**Related**: The upload screen (`frontend/src/components/health-passport/upload-screen.tsx`) shows the progress; a navigation button there would be the natural UX.
+
+---
+
+### 77. Documents not visible in `/review-import` attachments preview
+
+**Context**: On the review page (`/review-import?job=<id>`), the document attachment preview pane (left column) does not show the uploaded/processed document. The pane appears empty even though the extraction job completed successfully and the staged file exists on disk.
+
+**Expected**: The review page should display the uploaded document (PDF/image) in the preview pane, same as the single-doc SSE flow shows on `/add-entry`.
+
+**Root cause hypothesis**: The review page fetches the staged record and passes it to `<AddEntry stagedJob={{ jobId, record }} />`, but the `DocumentPreviewPane` component only renders when `objectUrl` or `selectedFile` is set. The staged job's file is not being converted to a blob URL for preview. The backend endpoint `GET /api/import/jobs/{id}/file` exists (serves staged files), but the frontend review page doesn't fetch it to create an object URL.
+
+**Location**: `frontend/src/components/health-passport/review-import.tsx` (needs to fetch `/api/import/jobs/{jobId}/file` and create `objectUrl` for `DocumentPreviewPane`), `frontend/src/services/import-jobs.ts` (already has `fetchImportJobFile`).
+
+---
+
+### 78. Dismiss button on `/imports` page has poor hover visibility
+
+**Context**: On the `/imports` page, the "Dismiss" button (ghost variant) for active jobs (queued/processing/done) has very subtle hover styling — barely visible change on hover, making it hard to discover and use.
+
+**Expected**: The dismiss button should have a clear hover state (e.g., `hover:bg-destructive/10 hover:text-destructive` or similar) to be clearly interactive.
+
+**Location**: `frontend/src/components/health-passport/imports-tracker.tsx` — the dismiss button in the active rows list (around line 280-290 in current code).
+
+**Suggested fix**: Update the dismiss button classes to include clear hover/active states, e.g., `hover:bg-destructive/10 hover:text-destructive` or match the retry button's visibility.
+
+---
+
+### 79. No way to dismiss a document from inside `/review-import`
+
+**Context**: On the `/review-import?job=<id>` page, there is no "Dismiss" / "Discard" button to abandon the document directly from the review page. Users who decide not to save the reviewed extraction must navigate back to `/imports` and dismiss from there.
+
+**Expected**: A "Dismiss" / "Discard" button in the review page header or footer that calls `DELETE /api/import/jobs/{jobId}` and navigates back to `/imports` (or `/`), keeping the document in history as "dismissed".
+
+**Location**: `frontend/src/components/health-passport/review-import.tsx` — add a dismiss button in the footer next to "Leave for later" / "Save" buttons.
+
+**Related**: The backend `DELETE /api/import/jobs/{id}` endpoint already supports dismissing a `done` job (transitions to `dismissed` status, deletes notifications, unlinks file).
+
+---
+
+## Acceptance criteria for all four
+
+1. `/add-entry` in-progress: visible "View extraction" link/button → `/review-import?job=<id>`
+2. `/review-import`: document preview renders via `GET /api/import/jobs/{id}/file` → `objectUrl` → `DocumentPreviewPane`
+3. `/imports` dismiss buttons: clear hover state (e.g., `hover:bg-destructive/10 hover:text-destructive`)
+4. `/review-import` header/footer: "Dismiss" button → `DELETE /api/import/jobs/{id}` → `router.push('/imports')` with toast
+
+All four are UI/UX improvements; no backend schema changes needed (endpoints already exist).
