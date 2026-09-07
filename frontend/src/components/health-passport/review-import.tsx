@@ -22,11 +22,12 @@ import {
  * Fetches the staged StandardizedMedicalRecord and prefills the EXISTING
  * add-entry editor machinery (same fill path, unit-conflict dialog, merge
  * checkbox, document-type editors — all derive from the staged record
- * exactly as they do from the SSE result). Save and Cancel both return to
- * /imports: Save consumes the staged job server-side (entry + attachment
- * created, job kept as a history row), Cancel leaves it staged (stays in
- * the bell + tracker). A failed/expired/already-saved job → honest error +
- * dismiss.
+ * exactly as they do from the SSE result). Save, Cancel and Dismiss all
+ * return to /imports: Save consumes the staged job server-side (entry +
+ * attachment created, job kept as a history row), Cancel leaves it staged
+ * (stays in the bell + tracker), Dismiss abandons it via DELETE (job kept
+ * as `dismissed` history, staged file freed, bell notification deleted).
+ * A failed/expired/already-saved job → honest error + dismiss.
  */
 export function ReviewImport() {
   const t = useTranslations('import')
@@ -38,6 +39,7 @@ export function ReviewImport() {
   // The staged document for the preview pane (best-effort — a failed fetch
   // leaves the preview empty but never blocks the review).
   const [stagedFile, setStagedFile] = useState<File | null>(null)
+  const [dismissing, setDismissing] = useState(false)
   const { data: detail, isPending, isError } = useQuery({
     queryKey: ['import-job', jobId],
     queryFn: () => fetchImportJob(jobId!),
@@ -90,6 +92,27 @@ export function ReviewImport() {
     router.push('/imports')
   }
 
+  // Abandon the staged document from the review page: the job lands in the
+  // tracker's history as `dismissed` (same immediate semantics as the
+  // tracker's dismiss — staged file freed, bell notification deleted
+  // server-side). A failed dismiss still navigates away — the job is gone
+  // (swept/expired) or already saved/consumed either way.
+  async function handleDismiss() {
+    if (!detail || dismissing) return
+    setDismissing(true)
+    try {
+      await dismissImportJob(detail.id)
+      toast.success(t('reviewDismissToast'))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('reviewLoadFailed'))
+    } finally {
+      await queryClient.invalidateQueries({ queryKey: ['import-jobs'] })
+      await queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      setDismissing(false)
+      router.push('/imports')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background" data-testid="review-import-view">
       <HeaderBar />
@@ -135,6 +158,7 @@ export function ReviewImport() {
                 try {
                   await dismissImportJob(detail.id)
                   await queryClient.invalidateQueries({ queryKey: ['import-jobs'] })
+                  await queryClient.invalidateQueries({ queryKey: ['notifications'] })
                 } catch {
                   /* already gone */
                 }
@@ -160,7 +184,16 @@ export function ReviewImport() {
               stagedJob={{ jobId: detail.id, record: detail.result!, file: stagedFile }}
             />
           </main>
-          <div className="mx-auto flex max-w-[1600px] justify-end px-6 pb-6">
+          <div className="mx-auto flex max-w-[1600px] justify-end gap-2 px-6 pb-6">
+            <Button
+              variant="ghost"
+              onClick={() => void handleDismiss()}
+              disabled={dismissing}
+              data-testid="review-dismiss"
+              className="hover:bg-destructive/10 hover:text-destructive"
+            >
+              {t('trackerDismiss')}
+            </Button>
             <Button variant="ghost" onClick={handleLeaveForLater}>
               {t('reviewLeaveForLater')}
             </Button>

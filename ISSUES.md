@@ -149,23 +149,10 @@ docs updated where a documented statement changed):
 
 ---
 
-### 79. No way to dismiss a document from inside `/review-import`
-
-**Context**: On the `/review-import?job=<id>` page, there is no "Dismiss" / "Discard" button to abandon the document directly from the review page. Users who decide not to save the reviewed extraction must navigate back to `/imports` and dismiss from there.
-
-**Expected**: A "Dismiss" / "Discard" button in the review page header or footer that calls `DELETE /api/import/jobs/{jobId}` and navigates back to `/imports` (or `/`), keeping the document in history as "dismissed".
-
-**Location**: `frontend/src/components/health-passport/review-import.tsx` — add a dismiss button in the footer next to "Leave for later" / "Save" buttons.
-
-**Related**: The backend `DELETE /api/import/jobs/{id}` endpoint already supports dismissing a `done` job (transitions to `dismissed` status, deletes notifications, unlinks file).
-
----
-
-## Acceptance criteria for all four
+## Acceptance criteria for the remaining three
 
 1. `/add-entry` in-progress: visible "View extraction" link/button → `/review-import?job=<id>`
 2. `/review-import`: document preview renders via `GET /api/import/jobs/{id}/file` → `objectUrl` → `DocumentPreviewPane`
 3. `/imports` dismiss buttons: clear hover state (e.g., `hover:bg-destructive/10 hover:text-destructive`)
-4. `/review-import` header/footer: "Dismiss" button → `DELETE /api/import/jobs/{id}` → `router.push('/imports')` with toast
 
-All four are UI/UX improvements; no backend schema changes needed (endpoints already exist).
+All three are UI/UX improvements; no backend schema changes needed (endpoints already exist).

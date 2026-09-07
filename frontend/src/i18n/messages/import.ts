@@ -66,6 +66,7 @@ export const importMessages = {
       reviewLeaveForLater: 'Leave for later',
       reviewNextDocument: 'Next document',
       reviewSavedToast: 'Document saved',
+      reviewDismissToast: 'Document dismissed',
       reviewMergedToast: 'Entries merged',
       reviewSameDateHint:
         'An entry already exists on this date — you can merge this document into it.',
@@ -141,6 +142,7 @@ export const importMessages = {
       reviewLeaveForLater: 'Оставить на потом',
       reviewNextDocument: 'Следующий документ',
       reviewSavedToast: 'Документ сохранён',
+      reviewDismissToast: 'Документ отклонён',
       reviewMergedToast: 'Записи объединены',
       reviewSameDateHint:
         'На эту дату уже есть запись — можно объединить этот документ с ней.',

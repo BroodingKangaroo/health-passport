@@ -133,6 +133,37 @@ describe('ReviewImport', () => {
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/imports'))
   })
 
+  it('dismisses a done job from the review footer and returns to /imports', async () => {
+    jobDetailMock.mockResolvedValue(detail({ id: 'job-1' }))
+    renderReview('job-1')
+    const dismissBtn = await screen.findByTestId('review-dismiss')
+    expect(dismissBtn).toHaveTextContent('Dismiss')
+    fireEvent.click(dismissBtn)
+    await waitFor(() => expect(dismissMock).toHaveBeenCalledWith('job-1'))
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/imports'))
+  })
+
+  it('navigates to /imports even when the footer dismiss fails', async () => {
+    jobDetailMock.mockResolvedValue(detail({ id: 'job-1' }))
+    dismissMock.mockRejectedValue(new Error('gone'))
+    renderReview('job-1')
+    fireEvent.click(await screen.findByTestId('review-dismiss'))
+    await waitFor(() => expect(dismissMock).toHaveBeenCalledWith('job-1'))
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/imports'))
+  })
+
+  it('shows no footer dismiss while processing or gone', async () => {
+    jobDetailMock.mockResolvedValue(detail({ status: 'processing', result: null }))
+    const { unmount } = renderReview('job-1')
+    await screen.findByTestId('review-still-processing')
+    expect(screen.queryByTestId('review-dismiss')).toBeNull()
+    unmount()
+    jobDetailMock.mockRejectedValue(new Error('404'))
+    renderReview('no-such-job')
+    await screen.findByTestId('review-gone')
+    expect(screen.queryByTestId('review-dismiss')).toBeNull()
+  })
+
   it('renders the standard page chrome (header + back to imports)', async () => {
     jobDetailMock.mockResolvedValue(detail({ id: 'job-1' }))
     renderReview('job-1')

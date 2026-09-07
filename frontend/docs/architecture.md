@@ -538,9 +538,13 @@ four surfaces, all fed by ONE shared react-query cache key:
   (NEVER in the save payload). Save/merge append `import_job_id` to the
   FormData and send NO file (the backend adopts the staged file, charges
   storage and keeps the job as a saved history row). The page has the
-  standard chrome (HeaderBar + back nav to /imports); Save AND Cancel both
-  return to /imports — `AddEntry` gained an optional `onCancel` prop
+  standard chrome (HeaderBar + back nav to /imports); Save, Cancel AND
+  Dismiss all return to /imports — `AddEntry` gained an optional `onCancel` prop
   (defaults to `onSave`, so /add-entry is unchanged) because its Cancel
-  button previously fired the save callback. The same-date strategy is the
-  existing merge checkbox (merge with `import_job_id` mirrors today's
+  button previously fired the save callback. The ready-state footer carries
+  a Dismiss button (immediate, no confirm — same semantics as the tracker's
+  dismiss: `DELETE /api/import/jobs/{id}` → job kept as `dismissed` history,
+  staged file freed, bell notification deleted; still navigates away on
+   failure since the job is gone or consumed either way). The same-date strategy is the
+   existing merge checkbox (merge with `import_job_id` mirrors today's
   upload-then-merge flow without a re-upload).
