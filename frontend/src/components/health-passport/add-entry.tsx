@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useCallback, useEffect, useState, useRef, useMemo } from 'react'
 import { Sparkles, AlertCircle, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
@@ -229,11 +229,33 @@ export function AddEntry({
     )
   }, [categories, documentType])
 
+  // Blobs live outside React — their URLs must be created exactly once per
+  // document and revoked when replaced. A single updater keyed on the blob
+  // itself keeps that invariant: every other writer goes through it instead
+  // of setting objectUrl directly.
+  const stagedFileRef = useRef<File | null>(null)
+  const prevPreviewUrlRef = useRef<string | null>(null)
+  const setPreviewFile = useCallback((file: File | null) => {
+    if (prevPreviewUrlRef.current) {
+      URL.revokeObjectURL(prevPreviewUrlRef.current)
+      prevPreviewUrlRef.current = null
+    }
+    stagedFileRef.current = file
+    setSelectedFile(file)
+    if (file) {
+      const url = URL.createObjectURL(file)
+      prevPreviewUrlRef.current = url
+      setObjectUrl(url)
+    } else {
+      setObjectUrl(null)
+    }
+  }, [])
+
   useEffect(() => {
     return () => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      if (prevPreviewUrlRef.current) URL.revokeObjectURL(prevPreviewUrlRef.current)
     }
-  }, [objectUrl])
+  }, [])
 
   useEffect(() => {
     resizeNotes()
@@ -254,8 +276,7 @@ export function AddEntry({
     setEntryMode('manual')
     setCategories(manualCategories())
     setUploadState('editor')
-    setSelectedFile(null)
-    setObjectUrl(null)
+    setPreviewFile(null)
     setSourceLanguage(null)
     clearError()
     setMultiFileNotice(null)
@@ -276,8 +297,7 @@ export function AddEntry({
   function handleFileRefChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (file) {
-      setSelectedFile(file)
-      setObjectUrl(URL.createObjectURL(file))
+      setPreviewFile(file)
       // Replacing the source document in AI mode is a fresh start, exactly
       // like the dropzone: re-run the extraction so the new document's data
       // lands in the form — but confirm first when the form already holds
@@ -300,9 +320,7 @@ export function AddEntry({
   }
 
   function removeFile() {
-    if (objectUrl) URL.revokeObjectURL(objectUrl)
-    setObjectUrl(null)
-    setSelectedFile(null)
+    setPreviewFile(null)
     // Clear the hidden input too, or Save would silently re-attach the
     // removed file via the fileRef fallback.
     if (fileRef.current) fileRef.current.value = ''
@@ -451,18 +469,27 @@ export function AddEntry({
   if (stagedJob && appliedStagedJobId !== stagedJob.jobId) {
     setAppliedStagedJobId(stagedJob.jobId)
     applyExtractedRecord(stagedJob.record)
-    // Preview: the staged document (fetched from the owner-scoped staged-file
-    // endpoint) renders in the pane exactly like a picked file. It is never
-    // part of the save payload — the backend adopts the staged file itself.
-    if (stagedJob.file) {
-      setSelectedFile(stagedJob.file)
-      setObjectUrl(URL.createObjectURL(stagedJob.file))
-    } else {
-      setSelectedFile(null)
-      setObjectUrl(null)
-    }
     setUploadState('editor')
   }
+
+  // The staged preview follows the staged FILE, which arrives later than the
+  // record (the review page fetches the blob after the detail query resolves
+  // — ISSUES.md #77): keying everything on the job id dropped the late file
+  // and the preview stayed empty. Tracked by File reference instead, so
+  // parent re-renders (a fresh stagedJob wrapper each render) don't recreate
+  // the object URL, and the late arrival never refills the form. Preview-only
+  // — the file never enters the save payload (the backend adopts the staged
+  // file itself).
+  const stagedJobId = stagedJob?.jobId ?? null
+  const stagedFile = stagedJob?.file ?? null
+  useEffect(() => {
+    if (stagedJobId === null) return
+    if (stagedFile && stagedFileRef.current !== stagedFile) {
+      setPreviewFile(stagedFile)
+    } else if (!stagedFile && stagedFileRef.current) {
+      setPreviewFile(null)
+    }
+  }, [stagedJobId, stagedFile, setPreviewFile])
 
   if (batchFiles !== null) {
     return (

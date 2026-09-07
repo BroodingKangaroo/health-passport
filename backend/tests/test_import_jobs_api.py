@@ -602,6 +602,24 @@ class TestStagedFileDownload:
         assert "attachment" in resp.headers["content-disposition"]
 
     @pytest.mark.asyncio
+    async def test_staged_file_uses_upload_mime_map(self, api):
+        """TIFF/BMP staged files preview with their real blob type (same
+        MIME_MAP the submit path validates against), not octet-stream."""
+        env, client, upload_dir = api["db"], api["client"], api["upload_dir"]
+        tiff_bytes = b"II*\x00fake-tiff"
+        with open(os.path.join(upload_dir, "staged-scan.tiff"), "wb") as f:
+            f.write(tiff_bytes)
+        env.add(ExtractionJob(
+            id="job-tiff-file", user_id=TEST_USER_ID, status="done",
+            original_filename="scan.tiff", file_path="/static/uploads/staged-scan.tiff",
+            file_size=len(tiff_bytes),
+        ))
+        env.commit()
+        resp = await client.get("/api/import/jobs/job-tiff-file/file")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/tiff"
+
+    @pytest.mark.asyncio
     async def test_staged_file_tenant_scoped_and_missing(self, api):
         env, client = api["db"], api["client"]
         env.add(ExtractionJob(

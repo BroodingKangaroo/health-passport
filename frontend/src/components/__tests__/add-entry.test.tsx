@@ -70,19 +70,21 @@ vi.mock('@/services/import-jobs', () => ({
   fetchImportJobs: vi.fn().mockResolvedValue({ items: [] }),
 }))
 
-function renderWithProviders(ui: React.ReactElement) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
-  return render(
-    <TestI18nProvider>
-      <SessionProvider session={null}>
-        <QueryClientProvider client={queryClient}>
-          <LeaveGuardProvider>{ui}</LeaveGuardProvider>
-        </QueryClientProvider>
-      </SessionProvider>
-    </TestI18nProvider>,
-  )
+function renderWithProviders(ui: React.ReactElement, queryClient?: QueryClient) {
+  const client =
+    queryClient ?? new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return {
+    ...render(
+      <TestI18nProvider>
+        <SessionProvider session={null}>
+          <QueryClientProvider client={client}>
+            <LeaveGuardProvider>{ui}</LeaveGuardProvider>
+          </QueryClientProvider>
+        </SessionProvider>
+      </TestI18nProvider>,
+    ),
+    queryClient: client,
+  }
 }
 
 function createFile(name = 'lab.pdf', type = 'application/pdf', content = 'fake'): File {
@@ -1010,6 +1012,72 @@ describe('staged import job review (B4)', () => {
     // The preview pane renders the staged document (generic card w/ filename
     // for non-pdf types; the pdf/image viewers key off the blob type).
     expect(screen.getByText('Отчёт.pdf')).toBeInTheDocument()
+  })
+
+  it('shows the staged document when the file arrives AFTER the record', async () => {
+    // Production sequence on /review-import: the detail query resolves first
+    // (stagedJob with file: null), then fetchImportJobFile lands and the
+    // page re-renders with the file. Keying preview sync on the job id
+    // dropped that late file (ISSUES.md #77) — the empty attach slot stayed.
+    mockFetchByDate.mockResolvedValue({ date: '2026-07-15', count: 0, entries: [] })
+    const stagedFile = new File(['%PDF fake'], 'Отчёт.pdf', {
+      type: 'application/pdf',
+    })
+    // rerender keeps the providers mounted when renderWithProviders threads
+    // the SAME queryClient through — state (form values, applied job id)
+    // survives the pass, modelling the review page's blob-arrival update.
+    const sharedClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const renderStaged = (file?: File) =>
+      renderWithProviders(
+        <AddEntry
+          onSave={vi.fn()}
+          stagedJob={{ jobId: 'job-stage', record: stagedRecord, file }}
+        />,
+        sharedClient,
+      )
+    const { rerender } = renderStaged()
+    await waitFor(() => {
+      expect(screen.getByText('Blood Test Panel')).toBeInTheDocument()
+    }, { timeout: 3000 })
+    // Before the file lands: the empty attach slot, form already prefilled.
+    expect(screen.getByText('Add a photo or scan')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('145')).toBeInTheDocument()
+
+    // Deterministic blob URLs: the pane's pdf viewer is mocked here so the
+    // assertion keys on the pane reacting to the late file at all.
+    const createSpy = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockReturnValue('blob:staged-late')
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    try {
+      rerender(
+        <TestI18nProvider>
+          <SessionProvider session={null}>
+            <QueryClientProvider client={sharedClient}>
+              <LeaveGuardProvider>
+                <AddEntry
+                  onSave={vi.fn()}
+                  stagedJob={{ jobId: 'job-stage', record: stagedRecord, file: stagedFile }}
+                />
+              </LeaveGuardProvider>
+            </QueryClientProvider>
+          </SessionProvider>
+        </TestI18nProvider>,
+      )
+      // The late file appears in the preview pane (the remove-document
+      // control only renders once a document is attached)…
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Remove document' })).toBeInTheDocument()
+      }, { timeout: 3000 })
+      expect(createSpy).toHaveBeenCalledWith(stagedFile)
+      // …without clobbering the prefilled form (preview sync must not refill).
+      expect(screen.getByDisplayValue('145')).toBeInTheDocument()
+    } finally {
+      createSpy.mockRestore()
+      revokeSpy.mockRestore()
+    }
   })
 
   it('saves with import_job_id and no file re-upload', async () => {

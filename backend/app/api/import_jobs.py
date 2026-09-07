@@ -228,14 +228,6 @@ async def get_import_job(
     return payload
 
 
-_CONTENT_TYPES = {
-    ".pdf": "application/pdf",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-}
-
-
 @router.get("/jobs/{job_id}/file")
 async def download_import_job_file(
     job_id: str,
@@ -263,7 +255,10 @@ async def download_import_job_file(
     quoted = quote(att_name)
     return FileResponse(
         full_path,
-        media_type=_CONTENT_TYPES.get(ext, "application/octet-stream"),
+        # Single source of truth for uploadable types: submit validates
+        # against ALLOWED_EXTENSIONS, so TIFF/BMP staged files preview with
+        # their real blob type instead of octet-stream (generic card).
+        media_type=extractor.MIME_MAP.get(ext, "application/octet-stream"),
         headers={
             "X-Content-Type-Options": "nosniff",
             "Content-Disposition": (

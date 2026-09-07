@@ -125,18 +125,6 @@ docs updated where a documented statement changed):
 
 ---
 
-### 77. Documents not visible in `/review-import` attachments preview
-
-**Context**: On the review page (`/review-import?job=<id>`), the document attachment preview pane (left column) does not show the uploaded/processed document. The pane appears empty even though the extraction job completed successfully and the staged file exists on disk.
-
-**Expected**: The review page should display the uploaded document (PDF/image) in the preview pane, same as the single-doc SSE flow shows on `/add-entry`.
-
-**Root cause hypothesis**: The review page fetches the staged record and passes it to `<AddEntry stagedJob={{ jobId, record }} />`, but the `DocumentPreviewPane` component only renders when `objectUrl` or `selectedFile` is set. The staged job's file is not being converted to a blob URL for preview. The backend endpoint `GET /api/import/jobs/{id}/file` exists (serves staged files), but the frontend review page doesn't fetch it to create an object URL.
-
-**Location**: `frontend/src/components/health-passport/review-import.tsx` (needs to fetch `/api/import/jobs/{jobId}/file` and create `objectUrl` for `DocumentPreviewPane`), `frontend/src/services/import-jobs.ts` (already has `fetchImportJobFile`).
-
----
-
 ### 78. Dismiss button on `/imports` page has poor hover visibility
 
 **Context**: On the `/imports` page, the "Dismiss" button (ghost variant) for active jobs (queued/processing/done) has very subtle hover styling — barely visible change on hover, making it hard to discover and use.
@@ -149,10 +137,9 @@ docs updated where a documented statement changed):
 
 ---
 
-## Acceptance criteria for the remaining three
+## Acceptance criteria for the remaining two
 
 1. `/add-entry` in-progress: visible "View extraction" link/button → `/review-import?job=<id>`
-2. `/review-import`: document preview renders via `GET /api/import/jobs/{id}/file` → `objectUrl` → `DocumentPreviewPane`
-3. `/imports` dismiss buttons: clear hover state (e.g., `hover:bg-destructive/10 hover:text-destructive`)
+2. `/imports` dismiss buttons: clear hover state (e.g., `hover:bg-destructive/10 hover:text-destructive`)
 
-All three are UI/UX improvements; no backend schema changes needed (endpoints already exist).
+All are UI/UX improvements; no backend schema changes needed (endpoints already exist).
