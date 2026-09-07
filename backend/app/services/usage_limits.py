@@ -69,6 +69,7 @@ def check_and_record_ai_usage(db: Session, user_id: str, is_anonymous: bool, com
         ).first()
         if usage is not None:
             # Row exists but already at/over the limit.
+            db.rollback()
             return (False, usage.ai_extraction_count, max_ai)
         # No row yet: create one atomically. The INSERT runs inside a
         # SAVEPOINT so a concurrent-insert IntegrityError only discards the
