@@ -369,6 +369,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Only finished, failed or cancelled imports can be dismissed. Cancel in-progress jobs first.",
         "ru": "Удалить можно только завершённое, неудавшееся или отменённое задание. Сначала отмените текущие задания.",
     },
+    "import.restore_not_dismissed": {
+        "en": "Only dismissed imports can be restored.",
+        "ru": "Восстановить можно только отклонённый импорт.",
+    },
+    "import.restore_not_reviewable": {
+        "en": "This dismissed import has no extracted data to restore.",
+        "ru": "У этого отклонённого импорта нет распознанных данных для восстановления.",
+    },
     "import.job_and_file": {
         "en": "Provide either an uploaded file or an import job id — not both.",
         "ru": "Укажите либо загружаемый файл, либо идентификатор задания импорта — но не оба.",

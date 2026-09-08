@@ -300,14 +300,34 @@ saves it. Nothing is persisted without user review.
 
 ### Notifications & funnel
 
-- `GET /api/import/jobs` returns ALL non-expired rows (active work + the
-  `saved` history); the frontend sections them. `GET
-  /api/import/jobs/{id}/file` serves the STAGED file to its owner (tenant-
-  scoped; the /static/uploads route only authorizes Attachment-backed
-  files) for the review editor's preview. Dismiss (`DELETE
-  /api/import/jobs/{id}`, allowed for done/failed/cancelled/saved) uses
-  reference-checked unlinking: a saved row's file is the entry's Attachment
-  and survives; a done job's orphan staged file is freed.
+- `GET /api/import/jobs` returns ALL non-expired rows (active work +
+  `saved`/`dismissed`/`cancelled` history); the frontend sections them. Each
+  summary also carries `restorable` (a dismissed job that still holds its
+  staged result — revivable via restore, below) and `merge_conflicts`
+  (display names of the staged blood-test record's biomarkers that already
+  exist in a same-date blood-test entry — computed batched at list time by
+  `_merge_overlap_conflicts`, mirroring the merge endpoint's rule:
+  definition_id/LOINC equivalence; manual rows by exact name or
+  synonym-substring, conservatively — it may over-warn (never under-warn)
+  vs the server's fuzzy name resolution). A non-empty list means `POST
+  /api/entry/{id}/merge` would refuse the merge with 409 — the tracker
+  warns BEFORE the user enters the review editor (saving as a separate
+  entry still works).
+- `GET /api/import/jobs/{id}/file` serves the STAGED file to its owner
+  (tenant-scoped; the /static/uploads route only authorizes
+  Attachment-backed files) for the review editor's preview.
+- Dismiss (`DELETE /api/import/jobs/{id}`; allowed from queued/done/failed —
+  processing flags a worker cancel instead; `saved`/`cancelled`/`dismissed`
+  are 409) deletes the job's notification rows. From `done` it KEEPS the
+  staged file + result: a dismissed done-extraction is revivable via `POST
+  /api/import/jobs/{id}/restore` (CAS `dismissed → done`, only when `result`
+  is present; TTL-checked like the save claim; the staged file is verified
+  AFTER the winning CAS with a rollback-to-dismissed on miss; the bell
+  notification is recreated in the same commit, no funnel event). From
+  `queued`/`failed` the file is freed immediately (no result → never
+  restorable). Dismissed rows are PERMANENT history — they never disappear
+  from the tracker; past the TTL the sweep only frees the file (file_size
+  zeroed), which is what closes the restore window.
 - `Notification` (`notifications`): exactly one row per `done`/`failed`
   terminal transition, written in the SAME commit as the job status change;
   cancelled jobs emit nothing. Plain `job_id` column + minimal `payload`
@@ -347,8 +367,16 @@ saves it. Nothing is persisted without user review.
   users' files must not linger) run lazily from the import API (submit +
   list-read). Deletes expired rows + staged files
   (`unlink_unreferenced_files`) + the jobs' notification rows (the bell must
-  never offer "Review" on a 404'd job). `saving` claims and `saved` history
-  rows are never swept.
+  never offer "Review" on a 404'd job). `saving` claims and `saved`/
+  `dismissed` history rows are never row-deleted — `saved` forever (its file
+  is the entry's Attachment), `dismissed` stays visible forever too, but an
+  expired dismissed row loses its staged FILE (file_size zeroed), which is
+  what ends the 72h restore window.
+- The per-user pending cap at submit bounds the uncharged-storage worst
+  case: the job-count cap counts `queued`/`processing`, the staged-bytes cap
+  counts every job still holding a file (`queued`/`processing`/`done`/
+  `failed`/`dismissed`; the sweep zeroes an expired dismissed row's
+  file_size, taking it out of the cap).
 - Startup recovery (app lifespan, after `assert_single_process`): orphaned
   `processing` rows → `failed` via CAS + refund + failed notification (the
   worker that owned them died with the old process); orphaned `queued` rows

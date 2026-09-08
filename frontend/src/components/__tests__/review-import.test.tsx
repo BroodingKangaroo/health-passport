@@ -17,7 +17,13 @@ const capturedAddEntryProps: Array<Record<string, unknown>> = []
 vi.mock('@/components/health-passport/add-entry', () => ({
   AddEntry: (props: Record<string, unknown>) => {
     capturedAddEntryProps.push(props)
-    return <div data-testid="add-entry-stub" />
+    // Render the footerActions slot (review's Dismiss / Leave for later live
+    // inside AddEntry's footer).
+    return (
+      <div data-testid="add-entry-stub">
+        {(props.footerActions as React.ReactNode) ?? null}
+      </div>
+    )
   },
 }))
 
@@ -132,6 +138,18 @@ describe('ReviewImport', () => {
     expect(typeof onCancel).toBe('function')
     await onCancel()
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/imports'))
+  })
+
+  it('consolidates the review actions into AddEntry footerActions', async () => {
+    jobDetailMock.mockResolvedValue(detail({ id: 'job-1' }))
+    renderReview('job-1')
+    await screen.findByTestId('review-dismiss')
+    const props = capturedAddEntryProps.find((p) => p.stagedJob)!
+    // Dismiss + Leave for later are injected into AddEntry's footer slot;
+    // onCancel stays (the back-nav's leave action), Cancel is suppressed
+    // inside AddEntry when footerActions is present.
+    expect(props.footerActions).toBeTruthy()
+    expect(typeof props.onCancel).toBe('function')
   })
 
   it('dismisses a done job from the review footer and returns to /imports', async () => {

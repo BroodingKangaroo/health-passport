@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState, useRef, useMemo } from 'react'
+import { useCallback, useEffect, useState, useRef, useMemo, type ReactNode } from 'react'
 import { Sparkles, AlertCircle, RefreshCw, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
@@ -51,6 +51,7 @@ export function AddEntry({
   onCancel,
   onTrackImports,
   stagedJob,
+  footerActions,
 }: {
   onSave: () => Promise<void> | void
   /** The "Cancel" button's action. Defaults to onSave (the /add-entry page's
@@ -70,6 +71,12 @@ export function AddEntry({
     record: StandardizedMedicalRecord
     file?: File | null
   } | null
+  /** Extra actions rendered on the footer's LEFT side (the Save/Cancel
+   * cluster stays on the right, with its internals intact). When provided,
+   * the default Cancel button is suppressed — the host page renders its own
+   * leaving/dismiss actions (the review page's "Leave for later" makes a
+   * separate Cancel redundant). */
+  footerActions?: ReactNode
 }) {
   const queryClient = useQueryClient()
   const t = useTranslations('editor')
@@ -756,7 +763,12 @@ export function AddEntry({
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-2 border-t border-border bg-card p-4">
+          <div
+            className={cn(
+              'flex items-center gap-2 border-t border-border bg-card p-4',
+              footerActions ? 'justify-between' : 'justify-end',
+            )}
+          >
             <input
               ref={fileRef}
               type="file"
@@ -764,15 +776,21 @@ export function AddEntry({
               accept=".pdf,.jpg,.jpeg,.png"
               onChange={handleFileRefChange}
             />
-            <Button variant="ghost" onClick={onCancel ?? onSave} disabled={saving}>
-              {t('cancel')}
-            </Button>
-            <Button
-              onClick={handleSave}
-              disabled={saving || (timeRequired && !timeValue && !merging)}
-            >
-              {saving ? t('saving') : merging ? t('mergeSave') : t('save')}
-            </Button>
+            {footerActions ? (
+              <div className="flex items-center gap-2">{footerActions}</div>
+            ) : (
+              <Button variant="ghost" onClick={onCancel ?? onSave} disabled={saving}>
+                {t('cancel')}
+              </Button>
+            )}
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={handleSave}
+                disabled={saving || (timeRequired && !timeValue && !merging)}
+              >
+                {saving ? t('saving') : merging ? t('mergeSave') : t('save')}
+              </Button>
+            </div>
           </div>
         </div>
       </div>

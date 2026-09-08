@@ -10,6 +10,7 @@ import { AlertCircle, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { HeaderBar } from './header-bar'
 import { AddEntry } from './add-entry'
+import { BackNav } from '@/components/shared/BackNav'
 import { markImportJobSeen } from '@/lib/new-import-jobs'
 import {
   dismissImportJob,
@@ -23,12 +24,15 @@ import {
  * Fetches the staged StandardizedMedicalRecord and prefills the EXISTING
  * add-entry editor machinery (same fill path, unit-conflict dialog, merge
  * checkbox, document-type editors — all derive from the staged record
- * exactly as they do from the SSE result). Save, Cancel and Dismiss all
- * return to /imports: Save consumes the staged job server-side (entry +
- * attachment created, job kept as a history row), Cancel leaves it staged
- * (stays in the bell + tracker), Dismiss abandons it via DELETE (job kept
- * as `dismissed` history, staged file freed, bell notification deleted).
- * A failed/expired/already-saved job → honest error + dismiss.
+ * exactly as they do from the SSE result). Save, Dismiss and "Leave for
+ * later" all return to /imports: Save consumes the staged job server-side
+ * (entry + attachment created, job kept as a history row), Leave keeps it
+ * staged (stays in the bell + tracker), Dismiss abandons it via DELETE
+ * (job kept as `dismissed`, revivable via the tracker's Restore within the
+ * GC TTL, bell notification deleted). A failed/expired/already-saved job →
+ * honest error + dismiss. All actions live in ONE footer — the AddEntry
+ * card's footerActions slot (there is no separate Cancel: it duplicated
+ * "Leave for later").
  */
 export function ReviewImport() {
   const t = useTranslations('import')
@@ -98,9 +102,10 @@ export function ReviewImport() {
 
   // Abandon the staged document from the review page: the job lands in the
   // tracker's history as `dismissed` (same immediate semantics as the
-  // tracker's dismiss — staged file freed, bell notification deleted
-  // server-side). A failed dismiss still navigates away — the job is gone
-  // (swept/expired) or already saved/consumed either way.
+  // tracker's dismiss — bell notification deleted server-side; a done job's
+  // staged file + result are kept so the tracker's Restore can revive it
+  // within the GC TTL). A failed dismiss still navigates away — the job is
+  // gone (swept/expired) or already saved/consumed either way.
   async function handleDismiss() {
     if (!detail || dismissing) return
     setDismissing(true)
@@ -120,18 +125,7 @@ export function ReviewImport() {
   return (
     <div className="min-h-screen bg-background" data-testid="review-import-view">
       <HeaderBar />
-      <nav className="border-b border-border bg-card px-5 print:hidden">
-        <div className="flex items-center py-2">
-          <Button
-            variant="ghost"
-            onClick={handleLeaveForLater}
-            className="gap-1.5 text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="size-4" />
-            {t('trackerTitle')}
-          </Button>
-        </div>
-      </nav>
+      <BackNav label={t('trackerTitle')} onBack={handleLeaveForLater} />
       {state === 'loading' ? (
         <div className="mx-auto max-w-md py-16 text-center text-sm text-muted-foreground">
           {t('reviewLoading')}
@@ -186,22 +180,24 @@ export function ReviewImport() {
               onSave={handleSave}
               onCancel={handleLeaveForLater}
               stagedJob={{ jobId: detail.id, record: detail.result!, file: stagedFile }}
+              footerActions={
+                <>
+                  <Button
+                    variant="ghost"
+                    onClick={() => void handleDismiss()}
+                    disabled={dismissing}
+                    data-testid="review-dismiss"
+                    className="hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    {t('trackerDismiss')}
+                  </Button>
+                  <Button variant="ghost" onClick={handleLeaveForLater}>
+                    {t('reviewLeaveForLater')}
+                  </Button>
+                </>
+              }
             />
           </main>
-          <div className="mx-auto flex max-w-[1600px] justify-end gap-2 px-6 pb-6">
-            <Button
-              variant="ghost"
-              onClick={() => void handleDismiss()}
-              disabled={dismissing}
-              data-testid="review-dismiss"
-              className="hover:bg-destructive/10 hover:text-destructive"
-            >
-              {t('trackerDismiss')}
-            </Button>
-            <Button variant="ghost" onClick={handleLeaveForLater}>
-              {t('reviewLeaveForLater')}
-            </Button>
-          </div>
         </>
       )}
     </div>

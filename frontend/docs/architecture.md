@@ -519,19 +519,30 @@ four surfaces, all fed by ONE shared react-query cache key:
 - **Tracker `/imports`** (`imports-tracker.tsx`, `src/app/imports/page.tsx`):
   every caller job newest-first in TWO sections — active work
   (queued/processing/failed/done, clickable as before) and "Earlier
-  imports" (saved + cancelled history rows, muted, display-only apart from
-  dismiss; saved rows are kept server-side as `status='saved'` history, not
-  deleted on save). Every row carries a metadata line — the status's last
+  imports" (saved + cancelled + dismissed rows, muted) COLLAPSED behind a
+  toggle by default ("Show earlier imports (N)"); the section auto-expands
+  while it holds a restorable dismissed row (Restore must stay
+  discoverable), and any explicit toggle wins from then on. Saved rows are
+  kept server-side as `status='saved'` history, not deleted on save.
+  Every row carries a metadata line — the status's last
   transition time (`Submitted/Extracted/Failed/Saved/Cancelled {time}`,
   localized via shared `formatDate`; for saved rows that's the save time)
   plus the file size. Click behavior: done → `/review-import?job=<id>`;
   queued/processing → the extraction-process view; failed → inline error +
-  Retry/Dismiss. The in-flight view renders the EXACT upload-screen
+  Retry/Dismiss. Done rows additionally show a one-line warning when the
+  backend's `merge_conflicts` summary field is non-empty ("Overlaps {count}
+  existing biomarkers — merging will be blocked", full analyte list on
+  hover via the title attribute) — the backend computed it at list time
+  with the same rule the merge endpoint enforces, so the user doesn't enter
+  the review editor in vain. The in-flight view renders the EXACT
+  upload-screen
   visuals: `ExtractionProgressCard` (extracted from `UploadScreen`, which
   renders it unchanged) in snapshot mode — fixed eta from the job's
   `progress.estimate_s`, indeterminate bar, in-view cancel. A job completing
   in view auto-transitions into the review editor. Empty state links to
-  `/add-entry`. Entry points: the bell's footer link, the review page's
+  `/add-entry`. The page has the standard chrome (HeaderBar + shared
+  `BackNav` back-to-dashboard strip). Entry points: the bell's footer link,
+  the review page's
   back nav, and the automatic redirect after /add-entry submissions.
   NEW-job badges (ISSUES.md #76 rework): ids accepted from /add-entry are
   recorded by `lib/new-import-jobs.ts` in sessionStorage (per tab);
@@ -551,13 +562,18 @@ four surfaces, all fed by ONE shared react-query cache key:
   (NEVER in the save payload). Save/merge append `import_job_id` to the
   FormData and send NO file (the backend adopts the staged file, charges
   storage and keeps the job as a saved history row). The page has the
-  standard chrome (HeaderBar + back nav to /imports); Save, Cancel AND
-  Dismiss all return to /imports — `AddEntry` gained an optional `onCancel` prop
-  (defaults to `onSave`, so /add-entry is unchanged) because its Cancel
-  button previously fired the save callback. The ready-state footer carries
-  a Dismiss button (immediate, no confirm — same semantics as the tracker's
-  dismiss: `DELETE /api/import/jobs/{id}` → job kept as `dismissed` history,
-  staged file freed, bell notification deleted; still navigates away on
-   failure since the job is gone or consumed either way). The same-date strategy is the
-   existing merge checkbox (merge with `import_job_id` mirrors today's
+  standard chrome (HeaderBar + shared `BackNav` back-to-imports strip);
+  Save/merge, Dismiss AND "Leave for later" all return to /imports. ALL
+  ready-state actions live in ONE footer: `AddEntry` gained an optional
+  `footerActions` ReactNode slot (rendered on the card footer's LEFT side;
+  when present it also suppresses AddEntry's default Cancel button — the
+  review page's "Leave for later" makes a separate Cancel redundant; the
+  Save/Merge & Save button and its `merging`/`timeRequired` internals stay
+  untouched on the right). The slot carries Dismiss (immediate, no confirm —
+  same semantics as the tracker's dismiss: `DELETE /api/import/jobs/{id}` →
+  job kept as `dismissed`, staged file + result kept for the tracker's
+  Restore within the GC TTL, bell notification deleted; still navigates away
+  on failure since the job is gone or consumed either way) and "Leave for
+  later" (job stays staged). The same-date strategy is the
+  existing merge checkbox (merge with `import_job_id` mirrors today's
   upload-then-merge flow without a re-upload).

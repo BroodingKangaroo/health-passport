@@ -38,6 +38,11 @@ export interface ImportJobSummary {
   updated_at: string | null
   /** Backend-localized failure message (failed jobs only). */
   error: string | null
+  /** A dismissed done-extraction can be revived via restoreImportJob. */
+  restorable?: boolean
+  /** Display names of the record's biomarkers that already exist in a
+   * same-date entry — merging would be refused (409). Empty = mergeable. */
+  merge_conflicts?: string[]
 }
 
 /** Full record (review editor fetch): result has the SSE result-event shape. */
@@ -148,5 +153,18 @@ export async function dismissImportJob(id: string): Promise<void> {
   })
   if (!res.ok) {
     throw await parseError(res, `DELETE /import/jobs/${id} failed: ${res.statusText}`)
+  }
+}
+
+/** Revive a dismissed done-extraction: CAS dismissed -> done (within the
+ * backend's GC TTL window — otherwise 404/409). */
+export async function restoreImportJob(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/import/jobs/${encodeURIComponent(id)}/restore`, {
+    method: 'POST',
+    headers: baseHeaders(),
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    throw await parseError(res, `POST /import/jobs/${id}/restore failed: ${res.statusText}`)
   }
 }

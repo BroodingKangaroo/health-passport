@@ -202,6 +202,29 @@ class TestSubmit:
         assert "storage" in resp.json()["detail"]
 
     @pytest.mark.asyncio
+    async def test_pending_cap_staged_bytes_counts_done_and_dismissed(self, api, monkeypatch):
+        """Staged files cost no storage until the reviewed entry saves — and
+        dismiss deliberately keeps its file for restore — so the staged-bytes
+        cap counts done + dismissed holders too."""
+        env, client = api["db"], api["client"]
+        monkeypatch.setattr(import_api, "_get_client", lambda: object())
+        monkeypatch.setattr(import_api, "IMPORT_PENDING_MAX_STAGED_MB", 1)
+        big = 700 * 1024
+        env.add(ExtractionJob(
+            id="cap-done", user_id=TEST_USER_ID, status="done",
+            original_filename="d.pdf", file_path="/static/uploads/cd.pdf", file_size=big,
+        ))
+        env.add(ExtractionJob(
+            id="cap-disc", user_id=TEST_USER_ID, status="dismissed",
+            original_filename="x.pdf", file_path="/static/uploads/cx.pdf", file_size=big,
+        ))
+        env.commit()
+        resp = await client.post("/api/import/jobs", files=_make_pdf())
+        assert resp.status_code == 429
+        assert "storage" in resp.json()["detail"]
+        assert _usage(env) == 0  # rejected submit did not charge
+
+    @pytest.mark.asyncio
     async def test_submit_runs_gc(self, api, monkeypatch):
         """Lazy global GC on the submit path: an expired staged job from
         ANY user is swept when the next submit arrives."""
@@ -438,9 +461,10 @@ class TestRetry:
 class TestDismiss:
     @pytest.mark.asyncio
     async def test_dismiss_done_transitions_to_history(self, api):
-        """Dismissing a done job keeps the row as a 'dismissed' history
-        record (no refund — the extraction ran), frees the staged file, and
-        deletes the job's notification rows."""
+        """Dismissing a done job keeps the row as 'dismissed' (no refund —
+        the extraction ran), deletes the job's notification rows, and KEEPS
+        the staged file + result so the restore endpoint can revive the
+        extraction within the GC TTL window."""
         env, client, upload_dir = api["db"], api["client"], api["upload_dir"]
         with open(os.path.join(upload_dir, "gone.pdf"), "wb") as f:
             f.write(PDF_BYTES)
@@ -462,24 +486,55 @@ class TestDismiss:
         assert row.status == "dismissed"
         assert _usage(env) == 0  # no refund for a done job
         assert env.query(Notification).filter(Notification.job_id == "job-d").count() == 0
-        assert not os.path.exists(os.path.join(upload_dir, "gone.pdf"))
+        # The staged file + result survive for restore.
+        assert os.path.exists(os.path.join(upload_dir, "gone.pdf"))
+        listing = await client.get("/api/import/jobs")
+        item = next(i for i in listing.json()["items"] if i["id"] == "job-d")
+        assert item["restorable"] is False  # no result was staged on this job
 
     @pytest.mark.asyncio
-    async def test_dismiss_queued_refunds(self, api, monkeypatch):
+    async def test_dismiss_queued_refunds_and_frees_the_file(self, api, monkeypatch):
         """Dismissing a queued job refunds — the extraction never ran
-        (same rule as a queued cancel)."""
-        env, client = api["db"], api["client"]
+        (same rule as a queued cancel) — and frees the staged file: with no
+        result it can never be restored, so keeping it would just eat the
+        staged-bytes cap."""
+        env, client, upload_dir = api["db"], api["client"], api["upload_dir"]
         monkeypatch.setattr(import_api, "_get_client", lambda: object())
-        monkeyish = await client.post("/api/import/jobs", files=_make_pdf())
-        assert monkeyish.status_code == 200
-        resp = await client.delete(f"/api/import/jobs/{monkeyish.json()['job_id']}")
+        resp = await client.post("/api/import/jobs", files=_make_pdf())
+        assert resp.status_code == 200
+        job_id = resp.json()["job_id"]
+        env.rollback()
+        row = env.query(ExtractionJob).filter(ExtractionJob.id == job_id).one()
+        staged = os.path.join(upload_dir, os.path.basename(row.file_path))
+        assert os.path.exists(staged)
+        assert (await client.delete(f"/api/import/jobs/{job_id}")).status_code == 200
+        env.rollback()
+        row = env.query(ExtractionJob).filter(ExtractionJob.id == job_id).one()
+        assert row.status == "dismissed"
+        assert row.result is None
+        assert _usage(env) == 0  # refunded
+        assert not os.path.exists(staged)
+
+    @pytest.mark.asyncio
+    async def test_dismiss_failed_frees_the_file(self, api):
+        """A failed job has no result — dismissing it frees the staged file
+        (retry is impossible from dismissed, so the file is dead weight)."""
+        env, client, upload_dir = api["db"], api["client"], api["upload_dir"]
+        with open(os.path.join(upload_dir, "failed.pdf"), "wb") as f:
+            f.write(PDF_BYTES)
+        env.add(ExtractionJob(
+            id="job-f", user_id=TEST_USER_ID, status="failed",
+            error_key="ai.ocr_quota", error_params={},
+            original_filename="f.pdf", file_path="/static/uploads/failed.pdf", file_size=5,
+        ))
+        env.commit()
+        resp = await client.delete("/api/import/jobs/job-f")
         assert resp.status_code == 200
         env.rollback()
-        row = env.query(ExtractionJob).filter(
-            ExtractionJob.id == monkeyish.json()['job_id']
-        ).one()
+        row = env.query(ExtractionJob).filter(ExtractionJob.id == "job-f").one()
         assert row.status == "dismissed"
-        assert _usage(env) == 0  # refunded
+        assert row.result is None
+        assert not os.path.exists(os.path.join(upload_dir, "failed.pdf"))
 
     @pytest.mark.asyncio
     async def test_dismiss_history_rows_conflict(self, api):
@@ -557,6 +612,340 @@ class TestDismiss:
         """(superseded — dismiss on processing now flags the worker; covered
         by test_dismiss_processing_flags_the_worker.)"""
         assert True
+
+
+class TestRestore:
+    @staticmethod
+    def _done_result(date="2026-01-15"):
+        return StandardizedMedicalRecord(
+            entry_type="blood_test", date=date, biomarkers=[],
+        ).model_dump()
+
+    @pytest.mark.asyncio
+    async def test_restore_dismissed_done_revives_to_reviewable(self, api):
+        """CAS dismissed->done: the staged result + file survive the dismiss,
+        the bell notification is recreated in the same commit, and the job
+        re-enters the tracker's active list."""
+        env, client, upload_dir = api["db"], api["client"], api["upload_dir"]
+        with open(os.path.join(upload_dir, "revive.pdf"), "wb") as f:
+            f.write(PDF_BYTES)
+        env.add(ExtractionJob(
+            id="job-disc", user_id=TEST_USER_ID, status="dismissed",
+            result=self._done_result(),
+            original_filename="d.pdf", file_path="/static/uploads/revive.pdf", file_size=5,
+        ))
+        env.commit()
+        resp = await client.post("/api/import/jobs/job-disc/restore")
+        assert resp.status_code == 200
+        assert resp.json() == {"job_id": "job-disc", "status": "done"}
+        env.rollback()
+        row = env.query(ExtractionJob).filter(ExtractionJob.id == "job-disc").one()
+        assert row.status == "done"
+        assert row.result is not None
+        assert os.path.exists(os.path.join(upload_dir, "revive.pdf"))
+        notif = env.query(Notification).filter(Notification.job_id == "job-disc").one()
+        assert notif.type == "import_job_done"
+        assert notif.read_at is None
+        listing = await client.get("/api/import/jobs")
+        item = next(i for i in listing.json()["items"] if i["id"] == "job-disc")
+        assert item["status"] == "done"
+        assert item["restorable"] is False
+
+    @pytest.mark.asyncio
+    async def test_list_marks_dismissed_done_restorable(self, api):
+        """Restorable = dismissed with a result AND its staged file still on
+        disk within the TTL (the file sweep ends the window)."""
+        env, client, upload_dir = api["db"], api["client"], api["upload_dir"]
+        for name in ("revive-r.pdf", "revive-n.pdf"):
+            with open(os.path.join(upload_dir, name), "wb") as f:
+                f.write(PDF_BYTES)
+        env.add(ExtractionJob(
+            id="job-rest", user_id=TEST_USER_ID, status="dismissed",
+            result=self._done_result(),
+            original_filename="r.pdf", file_path="/static/uploads/revive-r.pdf", file_size=5,
+        ))
+        env.add(ExtractionJob(
+            id="job-nores", user_id=TEST_USER_ID, status="dismissed",
+            original_filename="n.pdf", file_path="/static/uploads/revive-n.pdf", file_size=5,
+        ))
+        env.commit()
+        resp = await client.get("/api/import/jobs")
+        items = {i["id"]: i for i in resp.json()["items"]}
+        assert items["job-rest"]["restorable"] is True
+        assert items["job-nores"]["restorable"] is False
+
+    @pytest.mark.asyncio
+    async def test_list_dismissed_not_restorable_after_window(self, api):
+        """Past the TTL (or once the sweep has freed the file) the dismissed
+        row stays visible but is no longer restorable."""
+        env, client = api["db"], api["client"]
+        env.add(ExtractionJob(
+            id="job-window-shut", user_id=TEST_USER_ID, status="dismissed",
+            result=self._done_result(),
+            original_filename="w.pdf", file_path="/static/uploads/w.pdf", file_size=5,
+            updated_at=datetime.now(timezone.utc) - timedelta(hours=200),
+        ))
+        env.add(ExtractionJob(
+            id="job-file-swept", user_id=TEST_USER_ID, status="dismissed",
+            result=self._done_result(),
+            original_filename="fs.pdf", file_path="/static/uploads/fs.pdf",
+            file_size=0,
+        ))
+        # On-disk gap: fresh row, file_size recorded, but the file was
+        # removed externally — not restorable either.
+        env.add(ExtractionJob(
+            id="job-file-gone", user_id=TEST_USER_ID, status="dismissed",
+            result=self._done_result(),
+            original_filename="fg.pdf", file_path="/static/uploads/never-disk.pdf",
+            file_size=5,
+        ))
+        env.commit()
+        resp = await client.get("/api/import/jobs")
+        items = {i["id"]: i for i in resp.json()["items"]}
+        assert items["job-window-shut"]["restorable"] is False
+        assert items["job-file-swept"]["restorable"] is False
+        assert items["job-file-gone"]["restorable"] is False
+        # The rows themselves are still listed (permanent history).
+        assert "job-window-shut" in items and "job-file-swept" in items
+
+    @pytest.mark.asyncio
+    async def test_restore_rejects_non_dismissed(self, api):
+        env, client = api["db"], api["client"]
+        env.add(ExtractionJob(
+            id="job-live", user_id=TEST_USER_ID, status="done",
+            original_filename="l.pdf", file_path="/static/uploads/l.pdf", file_size=5,
+        ))
+        env.commit()
+        resp = await client.post("/api/import/jobs/job-live/restore")
+        assert resp.status_code == 409
+        assert "dismissed" in resp.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_restore_rejects_no_result_job(self, api):
+        """A job dismissed from queued/failed has no extracted data — it can
+        never come back as a reviewable done job."""
+        env, client = api["db"], api["client"]
+        env.add(ExtractionJob(
+            id="job-nores-restore", user_id=TEST_USER_ID, status="dismissed",
+            original_filename="n.pdf", file_path="/static/uploads/n.pdf", file_size=5,
+        ))
+        env.commit()
+        resp = await client.post("/api/import/jobs/job-nores-restore/restore")
+        assert resp.status_code == 409
+        env.rollback()
+        assert env.query(ExtractionJob).filter(
+            ExtractionJob.id == "job-nores-restore"
+        ).one().status == "dismissed"
+
+    @pytest.mark.asyncio
+    async def test_restore_missing_file_rolls_back_to_dismissed(self, api):
+        """GC deletes a dismissed row's file together with the row; a missing
+        file therefore means a dead end — the CAS transition is rolled back
+        instead of staging a ghost save."""
+        env, client = api["db"], api["client"]
+        env.add(ExtractionJob(
+            id="job-ghost", user_id=TEST_USER_ID, status="dismissed",
+            result=self._done_result(),
+            original_filename="g.pdf", file_path="/static/uploads/never-there.pdf", file_size=5,
+        ))
+        env.commit()
+        resp = await client.post("/api/import/jobs/job-ghost/restore")
+        assert resp.status_code == 409
+        env.rollback()
+        assert env.query(ExtractionJob).filter(
+            ExtractionJob.id == "job-ghost"
+        ).one().status == "dismissed"
+
+    @pytest.mark.asyncio
+    async def test_restore_past_ttl_is_404(self, api):
+        """Past the GC TTL the row is (about to be) swept — the CAS on
+        updated_at loses and the restore is a tenant-scoped 404."""
+        env, client = api["db"], api["client"]
+        env.add(ExtractionJob(
+            id="job-stale", user_id=TEST_USER_ID, status="dismissed",
+            result=self._done_result(),
+            original_filename="s.pdf", file_path="/static/uploads/s.pdf", file_size=5,
+            updated_at=datetime.now(timezone.utc) - timedelta(hours=200),
+        ))
+        env.commit()
+        resp = await client.post("/api/import/jobs/job-stale/restore")
+        assert resp.status_code == 404
+        env.rollback()
+        assert env.query(ExtractionJob).filter(
+            ExtractionJob.id == "job-stale"
+        ).one().status == "dismissed"
+
+    @pytest.mark.asyncio
+    async def test_restore_tenant_scoped_404(self, api):
+        env, client = api["db"], api["client"]
+        env.add(ExtractionJob(
+            id="job-foreign-disc", user_id=OTHER_USER_ID, status="dismissed",
+            result=self._done_result(),
+            original_filename="x.pdf", file_path="/static/uploads/x.pdf", file_size=5,
+        ))
+        env.commit()
+        resp = await client.post("/api/import/jobs/job-foreign-disc/restore")
+        assert resp.status_code == 404
+
+
+class TestMergeOverlap:
+    @staticmethod
+    def _seed_day_entry(env, entry_id="entry-day", date=datetime(2026, 1, 15, 10, 0)):
+        from app.db.models import BiomarkerDefinition, BiomarkerReading, MedicalEntry
+
+        defn = BiomarkerDefinition(
+            id="def-gluc", loinc_code="1558-6", names={"en": "Glucose"},
+            synonyms=["Glu"], category="hematology", unit="mg/dL",
+        )
+        entry = MedicalEntry(
+            id=entry_id, patient_id=TEST_USER_ID, type="blood_test",
+            date=date, title="Panel",
+        )
+        reading = BiomarkerReading(
+            entry_id=entry_id, biomarker_id="def-gluc", value=5.0, status="normal",
+        )
+        env.add_all([defn, entry, reading])
+
+    @staticmethod
+    def _biomarker(**overrides):
+        b = {
+            "raw_name": "Glucose", "raw_value": "5.0", "raw_unit": "mmol/L",
+            "standard_name_en": "Glucose", "standard_unit": "mg/dL",
+            "definition_id": "def-gluc",
+        }
+        b.update(overrides)
+        return b
+
+    @pytest.mark.asyncio
+    async def test_list_flags_merge_conflicts_for_done_blood_tests(self, api):
+        env, client = api["db"], api["client"]
+        self._seed_day_entry(env)
+        result = StandardizedMedicalRecord(
+            entry_type="blood_test", date="2026-01-15",
+            biomarkers=[self._biomarker()],
+        ).model_dump()
+        env.add(ExtractionJob(
+            id="job-conflict", user_id=TEST_USER_ID, status="done",
+            result=result, original_filename="c.pdf",
+            file_path="/static/uploads/c.pdf", file_size=5,
+        ))
+        env.add(ExtractionJob(
+            id="job-clean", user_id=TEST_USER_ID, status="done",
+            result=StandardizedMedicalRecord(
+                entry_type="blood_test", date="2026-02-01", biomarkers=[],
+            ).model_dump(),
+            original_filename="cl.pdf", file_path="/static/uploads/cl.pdf", file_size=5,
+        ))
+        env.add(ExtractionJob(
+            id="job-visit", user_id=TEST_USER_ID, status="done",
+            result=StandardizedMedicalRecord(
+                entry_type="doctor_visit", date="2026-01-15", biomarkers=[self._biomarker()],
+            ).model_dump(),
+            original_filename="v.pdf", file_path="/static/uploads/v.pdf", file_size=5,
+        ))
+        env.commit()
+        resp = await client.get("/api/import/jobs")
+        items = {i["id"]: i for i in resp.json()["items"]}
+        # Overlapping done blood test is flagged with display names...
+        assert items["job-conflict"]["merge_conflicts"] == ["Glucose"]
+        # ...a different date is clean, and non-blood-test records are never checked.
+        assert items["job-clean"]["merge_conflicts"] == []
+        assert items["job-visit"]["merge_conflicts"] == []
+
+    @pytest.mark.asyncio
+    async def test_list_merge_conflicts_match_by_name_without_definition(self, api):
+        """Staged rows without a definition_id (manual-typed path) conflict by
+        display name — exact on names, substring on synonyms — mirroring the
+        server's manual-row resolution on save."""
+        env, client = api["db"], api["client"]
+        self._seed_day_entry(env)
+        result = StandardizedMedicalRecord(
+            entry_type="blood_test", date="2026-01-15",
+            biomarkers=[
+                self._biomarker(raw_name="glucose", definition_id=""),
+                self._biomarker(raw_name="Glu", definition_id=""),
+            ],
+        ).model_dump()
+        env.add(ExtractionJob(
+            id="job-nameconflict", user_id=TEST_USER_ID, status="done",
+            result=result, original_filename="nc.pdf",
+            file_path="/static/uploads/nc.pdf", file_size=5,
+        ))
+        env.commit()
+        resp = await client.get("/api/import/jobs")
+        item = next(i for i in resp.json()["items"] if i["id"] == "job-nameconflict")
+        # "glucose" matches the definition name exactly; "Glu" is contained in
+        # the "Glu" synonym (server resolves manual rows as ILIKE '%name%').
+        # Both overlap → merge blocked.
+        assert sorted(item["merge_conflicts"]) == ["Glu", "glucose"]
+
+    @pytest.mark.asyncio
+    async def test_list_merge_conflicts_contained_name(self, api):
+        """A manual row whose name is CONTAINED in the stored name ("Hb" vs
+        "Hemoglobin") conflicts — the server's manual-row fallback is
+        ILIKE '%name%', so the merge would 409; the warning must not miss it."""
+        env, client = api["db"], api["client"]
+        self._seed_day_entry(env)
+        env.add(ExtractionJob(
+            id="job-hb", user_id=TEST_USER_ID, status="done",
+            result=StandardizedMedicalRecord(
+                entry_type="blood_test", date="2026-01-15",
+                biomarkers=[self._biomarker(raw_name="gluc", definition_id="")],
+            ).model_dump(),
+            original_filename="hb.pdf", file_path="/static/uploads/hb.pdf", file_size=5,
+        ))
+        env.commit()
+        resp = await client.get("/api/import/jobs")
+        item = next(i for i in resp.json()["items"] if i["id"] == "job-hb")
+        assert item["merge_conflicts"] == ["gluc"]
+
+    @pytest.mark.asyncio
+    async def test_list_merge_conflicts_clear_when_the_blocking_entry_is_deleted(self, api):
+        """Conflicts are computed at LIST time — deleting the blocking entry
+        from the timeline clears the warning on the next poll."""
+        env, client = api["db"], api["client"]
+        self._seed_day_entry(env)
+        env.add(ExtractionJob(
+            id="job-unblock", user_id=TEST_USER_ID, status="done",
+            result=StandardizedMedicalRecord(
+                entry_type="blood_test", date="2026-01-15",
+                biomarkers=[self._biomarker()],
+            ).model_dump(),
+            original_filename="u.pdf", file_path="/static/uploads/u.pdf", file_size=5,
+        ))
+        env.commit()
+        resp = await client.get("/api/import/jobs")
+        item = next(i for i in resp.json()["items"] if i["id"] == "job-unblock")
+        assert item["merge_conflicts"] == ["Glucose"]
+        from app.db.models import BiomarkerReading, MedicalEntry
+
+        env.query(BiomarkerReading).filter(
+            BiomarkerReading.entry_id == "entry-day"
+        ).delete(synchronize_session=False)
+        env.query(MedicalEntry).filter(MedicalEntry.id == "entry-day").delete(
+            synchronize_session=False
+        )
+        env.commit()
+        resp = await client.get("/api/import/jobs")
+        item = next(i for i in resp.json()["items"] if i["id"] == "job-unblock")
+        assert item["merge_conflicts"] == []
+
+    @pytest.mark.asyncio
+    async def test_list_merge_conflicts_ignores_bad_dates_and_saved_entries(self, api):
+        env, client = api["db"], api["client"]
+        self._seed_day_entry(env)
+        env.add(ExtractionJob(
+            id="job-baddate", user_id=TEST_USER_ID, status="done",
+            result=StandardizedMedicalRecord(
+                entry_type="blood_test", date="not-a-date",
+                biomarkers=[self._biomarker()],
+            ).model_dump(),
+            original_filename="b.pdf", file_path="/static/uploads/b.pdf", file_size=5,
+        ))
+        env.commit()
+        resp = await client.get("/api/import/jobs")
+        item = next(i for i in resp.json()["items"] if i["id"] == "job-baddate")
+        assert item["merge_conflicts"] == []
 
 
 class TestAnonFlow:

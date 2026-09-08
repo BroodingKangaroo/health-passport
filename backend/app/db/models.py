@@ -221,11 +221,14 @@ class ExtractionJob(Base):
     # queued | processing | done | failed | cancelled | dismissed. "saving"
     # is a transient claim state used by the save endpoint's CAS so the GC
     # sweep can never unlink the staged file mid-save. "saved" and
-    # "dismissed" are HISTORY states (never GC-expired, display-only in the
-    # tracker): saved = the review consumed the staged job (entry created,
-    # result cleared, staged file now owned by the entry's Attachment);
-    # dismissed = the user abandoned the import (staged file freed, the row
-    # stays as a history record).
+    # "dismissed" are PERMANENT HISTORY states (rows never GC-deleted,
+    # display-only in the tracker): saved = the review consumed the staged
+    # job (entry created, result cleared, staged file now owned by the
+    # entry's Attachment); dismissed = the user abandoned the import — a
+    # done-extraction's staged file + result are kept so the restore endpoint
+    # can revive it back to reviewable ("done") within the GC TTL window;
+    # past the TTL the sweep frees the file (file_size zeroed) and the
+    # window closes, while the row stays visible forever.
     status = Column(String, nullable=False, default="queued")
     # Entry id the staged record became when the user saved it (saved rows
     # only) — kept for traceability / future deep-links.

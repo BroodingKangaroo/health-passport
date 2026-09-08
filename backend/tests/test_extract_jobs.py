@@ -191,6 +191,36 @@ class TestGcSweep:
         assert ej.sweep_expired_jobs() == 0
         assert db.query(ExtractionJob).count() == 1
 
+    def test_gc_ends_dismissed_restore_window_but_keeps_the_row(self, jobs_db):
+        """A dismissed row is PERMANENT history — past the TTL only its
+        staged file is swept (file_size zeroed, ending the 72h restore
+        window); the row itself stays visible forever. No refund (a
+        dismissed job was already refunded/refused on its own transitions)."""
+        db, _sm, upload_dir = jobs_db
+        dismissed = make_job(db, status="dismissed")
+        self._expire(db, dismissed)
+        fresh = make_job(
+            db, id="dismissed-fresh", status="dismissed",
+            file_path="/static/uploads/fresh-d.bin",
+        )
+        staged = os.path.join(upload_dir, JOB_FILE_NAME)
+        with open(staged, "wb") as f:
+            f.write(b"pdf-bytes")
+        db.commit()
+        dismissed_id, fresh_id = dismissed.id, fresh.id
+
+        removed = ej.sweep_expired_jobs()
+        # No rows removed — the dismissed expiry is not a deletion.
+        assert removed == 0
+        db.expire_all()
+        row = db.query(ExtractionJob).filter(ExtractionJob.id == dismissed_id).one()
+        assert row.status == "dismissed"
+        assert row.file_size == 0
+        assert row.result is None  # dead payload bounded like a saved row
+        assert db.query(ExtractionJob).filter(ExtractionJob.id == fresh_id).one().file_size == 1234
+        assert not os.path.exists(staged)
+        assert get_usage(db).ai_extraction_count == 3  # no refund on sweep
+
 
 class TestSingleProcessGuard:
     def test_guard_trips_on_live_foreign_pid(self, monkeypatch, tmp_path):

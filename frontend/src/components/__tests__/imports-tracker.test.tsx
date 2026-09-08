@@ -8,6 +8,7 @@ import { TestI18nProvider } from '@/test/i18n-test-provider'
 import {
   cancelImportJob,
   dismissImportJob,
+  restoreImportJob,
   retryImportJob,
   fetchImportJobs,
   type ImportJobSummary,
@@ -19,16 +20,19 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock, refresh: vi.fn() }),
   usePathname: () => '/imports',
 }))
+vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }))
 vi.mock('@/services/import-jobs', () => ({
   cancelImportJob: vi.fn(),
   retryImportJob: vi.fn(),
   dismissImportJob: vi.fn(),
+  restoreImportJob: vi.fn(),
   fetchImportJobs: vi.fn(),
 }))
 
 const cancelMock = vi.mocked(cancelImportJob)
 const retryMock = vi.mocked(retryImportJob)
 const dismissMock = vi.mocked(dismissImportJob)
+const restoreMock = vi.mocked(restoreImportJob)
 const fetchJobsMock = vi.mocked(fetchImportJobs)
 
 function job(overrides: Partial<ImportJobSummary>): ImportJobSummary {
@@ -42,6 +46,8 @@ function job(overrides: Partial<ImportJobSummary>): ImportJobSummary {
     created_at: null,
     updated_at: null,
     error: null,
+    restorable: false,
+    merge_conflicts: [],
     ...overrides,
   }
 }
@@ -63,6 +69,7 @@ beforeEach(() => {
   cancelMock.mockResolvedValue(undefined)
   retryMock.mockResolvedValue(undefined)
   dismissMock.mockResolvedValue(undefined)
+  restoreMock.mockResolvedValue(undefined)
 })
 
 describe('ImportsTracker', () => {
@@ -77,7 +84,7 @@ describe('ImportsTracker', () => {
     )
   })
 
-  it('lists active jobs with metadata, history rows muted and display-only', async () => {
+  it('lists active jobs with metadata and a collapsed history section', async () => {
     dismissMock.mockResolvedValue(undefined)
     fetchJobsMock.mockResolvedValue({
       items: [
@@ -94,9 +101,13 @@ describe('ImportsTracker', () => {
     expect(screen.getByText('old.pdf')).toBeInTheDocument()
     expect(screen.getByText('Identifying medical data...')).toBeInTheDocument()
     expect(screen.getByText('OCR quota exceeded (HTTP 429).')).toBeInTheDocument()
-    // History: saved/dismissed/cancelled — muted, display-only, each with a
-    // distinct status label (saved vs dismissed are distinguishable).
-    expect(screen.getByTestId('imports-history-title')).toHaveTextContent('Earlier imports')
+    // History is COLLAPSED behind a toggle — nothing but the button shows.
+    const toggle = screen.getByTestId('imports-history-toggle')
+    expect(toggle).toHaveTextContent('Show earlier imports (3)')
+    expect(screen.queryByTestId('imports-history-row')).toBeNull()
+    // Expanding reveals the muted rows: cancelled/saved/dismissed, each
+    // with a distinct status label.
+    fireEvent.click(toggle)
     const historyRows = screen.getAllByTestId('imports-history-row')
     expect(historyRows).toHaveLength(3)
     expect(historyRows[0].textContent).toContain('gone.pdf')
@@ -105,10 +116,13 @@ describe('ImportsTracker', () => {
     expect(historyRows[1].textContent).toContain('Saved')
     expect(historyRows[2].textContent).toContain('dropped.pdf')
     expect(historyRows[2].textContent).toContain('Dismissed')
-    // No buttons in history rows at all.
+    // No buttons in non-restorable history rows.
     expect(historyRows[0].querySelector('button')).toBeNull()
     expect(historyRows[1].querySelector('button')).toBeNull()
     expect(historyRows[2].querySelector('button')).toBeNull()
+    // Collapsing again hides the rows behind the toggle.
+    fireEvent.click(toggle)
+    await waitFor(() => expect(screen.queryByTestId('imports-history-row')).toBeNull())
     // Active done row: Review link + a Dismiss button (moves it to history).
     const doneRow = screen.getAllByTestId('imports-row').find((r) => r.textContent?.includes('old.pdf'))
     expect(doneRow!.querySelector('[data-testid="row-review"]')).not.toBeNull()
@@ -121,6 +135,49 @@ describe('ImportsTracker', () => {
     expect(metas.length).toBeGreaterThanOrEqual(3)
     expect(metas[0].textContent).not.toMatch(/Submitted|Extracted|Failed|Saved/)
     expect(metas[0].textContent).toMatch(/KB|MB/)
+  })
+
+  it('auto-expands the history for restorable dismissed rows and restores on click', async () => {
+    restoreMock.mockResolvedValue(undefined)
+    fetchJobsMock.mockResolvedValue({
+      items: [
+        job({ id: 'job-g', status: 'saved', original_filename: 'kept.pdf' }),
+        job({ id: 'job-h', status: 'dismissed', restorable: true, original_filename: 'revive.pdf' }),
+      ],
+    })
+    renderTracker(<ImportsTracker />)
+    // No explicit toggle needed: a restorable dismissed row forces the
+    // section open so Restore is discoverable.
+    const restoreBtn = await screen.findByTestId('row-restore')
+    expect(restoreBtn).toHaveTextContent('Restore')
+    expect(restoreBtn.closest('li')!.textContent).toContain('revive.pdf')
+    fireEvent.click(restoreBtn)
+    await waitFor(() => expect(restoreMock).toHaveBeenCalledWith('job-h'))
+  })
+
+  it('warns on done rows whose record overlaps a same-date entry', async () => {
+    fetchJobsMock.mockResolvedValue({
+      items: [
+        job({
+          id: 'job-overlap',
+          status: 'done',
+          original_filename: 'overlap.pdf',
+          merge_conflicts: ['Glucose', 'Hemoglobin'],
+        }),
+        job({ id: 'job-clean', status: 'done', original_filename: 'clean.pdf' }),
+      ],
+    })
+    renderTracker(<ImportsTracker />)
+    await screen.findByText('overlap.pdf')
+    // One concise line: a count + hover tooltip with the full analyte list.
+    const warning = screen.getByTestId('row-merge-warning')
+    expect(warning.textContent).toContain('2 existing biomarkers')
+    expect(warning.textContent).toContain('merging will be blocked')
+    expect(warning).toHaveAttribute('title', 'Glucose, Hemoglobin')
+    const cleanRow = screen
+      .getAllByTestId('imports-row')
+      .find((r) => r.textContent?.includes('clean.pdf'))
+    expect(cleanRow!.querySelector('[data-testid="row-merge-warning"]')).toBeNull()
   })
 
   it('renders the in-flight progress view with the shared upload-screen visuals', async () => {

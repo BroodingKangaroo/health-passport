@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
-import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, Plus, X } from 'lucide-react'
+import { toast } from 'sonner'
+import { AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Loader2, Plus, X } from 'lucide-react'
 
 import { cn, formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -14,6 +15,7 @@ import { ExtractionProgressCard } from './extraction-progress-card'
 import {
   cancelImportJob,
   dismissImportJob,
+  restoreImportJob,
   retryImportJob,
   type ImportJobSummary,
 } from '@/services/import-jobs'
@@ -27,19 +29,21 @@ const STAGE_LABEL_KEYS: Record<string, 'stageOcrLabel' | 'stageExtractLabel' | '
 /**
  * Imports tracker (/imports): every caller job, newest-first, in two
  * sections — active work (queued/processing/failed/done, clickable as
- * before) and "Earlier imports" (saved + cancelled history rows, muted,
- * display-only apart from dismiss). Shares the ONE ['import-jobs'] poll
- * with the batch panel. Each row carries a metadata line (submitted/
- * extracted/failed/saved/cancelled time + file size); saved rows are kept
- * server-side as history (status='saved') instead of being deleted on save.
- * Click behavior: done → review editor, queued/processing → the
- * extraction-process view (the upload screen's stage visuals driven by job
- * progress; transitions into the review editor on completion), failed →
- * inline error + retry/dismiss.
+ * before) and "Earlier imports" (saved + cancelled + dismissed rows,
+ * muted, collapsed behind a toggle — auto-expanded while it holds a
+ * restorable dismissed row). Shares the ONE ['import-jobs'] poll with the
+ * batch panel. Each row carries a metadata line (submitted/extracted/
+ * failed/saved/cancelled time + file size); saved rows are kept server-side
+ * as history (status='saved') instead of being deleted on save. Click
+ * behavior: done → review editor, queued/processing → the extraction-
+ * process view (the upload screen's stage visuals driven by job progress;
+ * transitions into the review editor on completion), failed → inline error
+ * + retry/dismiss. Done rows warn when the staged record overlaps a
+ * same-date entry (merge would be refused); restorable dismissed rows offer
+ * Restore (revives the extraction back into the active list).
  */
 export function ImportsTracker() {
   const t = useTranslations('import')
-  const tBack = useTranslations('misc.backLinks')
   const tUpload = useTranslations('upload')
   const locale = useLocale()
   const router = useRouter()
@@ -52,6 +56,10 @@ export function ImportsTracker() {
       : new URLSearchParams(window.location.search).get('focus'),
   )
   const [busyId, setBusyId] = useState<string | null>(null)
+  // "Earlier imports" collapse: null = auto (expanded only while the
+  // section holds a restorable dismissed row — the Restore affordance must
+  // stay discoverable); any explicit toggle wins from then on.
+  const [historyOverride, setHistoryOverride] = useState<boolean | null>(null)
   // Jobs submitted from /add-entry that have not been opened yet (#76
   // rework): badged as new until each is viewed (progress view, review
   // editor or the in-view auto-transition), so fresh extractions are
@@ -83,16 +91,31 @@ export function ImportsTracker() {
     }
   }, [selected, router])
 
-  async function act(id: string, action: 'cancel' | 'retry' | 'dismiss') {
+  async function act(
+    id: string,
+    action: 'cancel' | 'retry' | 'dismiss' | 'restore',
+  ) {
     setBusyId(id)
     try {
-      if (action === 'cancel') await cancelImportJob(id)
-      if (action === 'retry') await retryImportJob(id)
-      if (action === 'dismiss') await dismissImportJob(id)
-      await jobsQuery.refetch()
+      if (action === 'restore') {
+        await restoreImportJob(id)
+        toast.success(t('trackerRestoredToast'))
+      } else {
+        if (action === 'cancel') await cancelImportJob(id)
+        if (action === 'retry') await retryImportJob(id)
+        if (action === 'dismiss') await dismissImportJob(id)
+      }
     } catch {
       /* row keeps its last known state */
+      if (action === 'restore') toast.error(t('trackerRestoreFailed'))
     } finally {
+      // A failed refetch must not misreport a completed restore as failed —
+      // the shared poll recovers on its next tick anyway.
+      try {
+        await jobsQuery.refetch()
+      } catch {
+        /* ignore */
+      }
       setBusyId(null)
     }
   }
@@ -264,6 +287,20 @@ export function ImportsTracker() {
                   <p className="truncate text-[11px] text-muted-foreground/80" data-testid="row-meta">
                     {rowMeta(job)}
                   </p>
+                  {job.status === 'done' &&
+                    !!job.merge_conflicts?.length && (
+                      <p
+                        className="mt-0.5 flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500"
+                        data-testid="row-merge-warning"
+                        // Full analyte list on hover — the row itself stays one line.
+                        title={job.merge_conflicts.join(', ')}
+                      >
+                        <AlertTriangle className="size-3.5 shrink-0" />
+                        <span className="min-w-0 truncate">
+                          {t('mergeOverlapWarning', { count: job.merge_conflicts.length })}
+                        </span>
+                      </p>
+                    )}
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                   {job.status === 'done' && (
@@ -271,7 +308,7 @@ export function ImportsTracker() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="hover:bg-primary/10 hover:text-primary"
+                        className="hover:bg-primary/20 hover:text-primary hover:border-primary/50"
                         onClick={(e) => {
                           e.stopPropagation()
                           router.push(`/review-import?job=${job.id}`)
@@ -340,55 +377,80 @@ export function ImportsTracker() {
             ))}
           </ul>
 
-          {history.length > 0 && (
-            <>
-              <h2
-                className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-                data-testid="imports-history-title"
-              >
-                {t('trackerHistoryTitle')}
-              </h2>
-              <ul className="space-y-1.5">
-                {history.map((job) => (
-                  <li
-                    key={job.id}
-                    className="flex items-center gap-3 rounded-lg border border-border/60 bg-card/60 px-3 py-2 opacity-80"
-                    data-testid="imports-history-row"
-                  >
-                    {job.status === 'saved' ? (
-                      <CheckCircle2 className="size-4 shrink-0 text-primary/70" />
-                    ) : (
-                      <X className="size-4 shrink-0 text-muted-foreground" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium text-foreground/80">
-                        {job.original_filename}
-                      </p>
-                      {/* Status word + plain time/size — the label and the
-                          timestamp are not duplicated (#4). */}
-                      <p className="truncate text-[11px] text-muted-foreground">
-                        {job.status === 'saved'
-                          ? t('trackerSaved')
-                          : job.status === 'dismissed'
-                            ? t('trackerDismissed')
-                            : t('trackerCancelled')}{' '}
-                        · {rowMeta(job)}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
+          {history.length > 0 &&
+            (() => {
+              const restorableCount = history.filter((j) => j.restorable).length
+              const historyOpen = historyOverride ?? restorableCount > 0
+              return (
+                <>
+                  <div className="mb-2 mt-6" data-testid="imports-history-title">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setHistoryOverride(!historyOpen)}
+                      className="gap-1 px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                      aria-expanded={historyOpen}
+                      data-testid="imports-history-toggle"
+                    >
+                      {historyOpen ? (
+                        <ChevronDown className="size-3.5" />
+                      ) : (
+                        <ChevronRight className="size-3.5" />
+                      )}
+                      {historyOpen
+                        ? t('trackerHistoryTitle')
+                        : t('trackerShowHistory', { count: history.length })}
+                    </Button>
+                  </div>
+                  {historyOpen && (
+                    <ul className="space-y-1.5">
+                      {history.map((job) => (
+                        <li
+                          key={job.id}
+                          className="flex items-center gap-3 rounded-lg border border-border/60 bg-card/60 px-3 py-2 opacity-80"
+                          data-testid="imports-history-row"
+                        >
+                          {job.status === 'saved' ? (
+                            <CheckCircle2 className="size-4 shrink-0 text-primary/70" />
+                          ) : (
+                            <X className="size-4 shrink-0 text-muted-foreground" />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-medium text-foreground/80">
+                              {job.original_filename}
+                            </p>
+                            {/* Status word + plain time/size — the label and the
+                                timestamp are not duplicated (#4). */}
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              {job.status === 'saved'
+                                ? t('trackerSaved')
+                                : job.status === 'dismissed'
+                                  ? t('trackerDismissed')
+                                  : t('trackerCancelled')}{' '}
+                              · {rowMeta(job)}
+                            </p>
+                          </div>
+                          {job.restorable && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={busyId === job.id}
+                              className="shrink-0 hover:bg-primary/20 hover:text-primary"
+                              onClick={() => void act(job.id, 'restore')}
+                              data-testid="row-restore"
+                            >
+                              {t('trackerRestore')}
+                            </Button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )
+            })()}
         </>
       )}
-
-      <div className="mt-6 text-center">
-        <Button variant="ghost" onClick={() => router.push('/')}>
-          <ArrowLeft className="size-4" />
-          {tBack('dashboard')}
-        </Button>
-      </div>
     </div>
   )
 }

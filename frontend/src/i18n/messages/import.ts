@@ -38,6 +38,10 @@ export const importMessages = {
       trackerNew: 'New',
       trackerActiveTitle: 'In progress',
       trackerHistoryTitle: 'Earlier imports',
+      trackerShowHistory: 'Show earlier imports ({count})',
+      trackerRestore: 'Restore',
+      trackerRestoredToast: 'Import restored — ready for review',
+      trackerRestoreFailed: 'Couldn’t restore the import — it may have expired.',
       trackerSaved: 'Saved',
       trackerDismissed: 'Dismissed',
       trackerQueued: 'Waiting',
@@ -58,6 +62,8 @@ export const importMessages = {
       reviewBack: 'Back to timeline',
       reviewLoadFailed: 'Couldn’t load the extracted document.',
       reviewLoading: 'Loading…',
+      mergeOverlapWarning:
+        'Overlaps {count, plural, one {# existing biomarker} other {# existing biomarkers}} — merging will be blocked',
     },
   },
   ru: {
@@ -97,6 +103,10 @@ export const importMessages = {
       trackerNew: 'Новый',
       trackerActiveTitle: 'В процессе',
       trackerHistoryTitle: 'Прошлые импорты',
+      trackerShowHistory: 'Показать прошлые импорты ({count})',
+      trackerRestore: 'Восстановить',
+      trackerRestoredToast: 'Импорт восстановлен — готов к проверке',
+      trackerRestoreFailed: 'Не удалось восстановить импорт — возможно, срок его действия истёк.',
       trackerSaved: 'Сохранён',
       trackerDismissed: 'Отклонён',
       trackerQueued: 'Ожидает',
@@ -117,6 +127,8 @@ export const importMessages = {
       reviewBack: 'К хронологии',
       reviewLoadFailed: 'Не удалось загрузить распознанный документ.',
       reviewLoading: 'Загрузка…',
+      mergeOverlapWarning:
+        'Пересекается с существующей записью: {count, plural, one {# биомаркер} few {# биомаркера} many {# биомаркеров} other {# биомаркера}} — объединение будет недоступно',
     },
   },
 }

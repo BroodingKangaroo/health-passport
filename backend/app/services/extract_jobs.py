@@ -255,22 +255,27 @@ def sweep_expired_jobs(db: Session | None = None) -> int:
     Returns the number of jobs removed. Callers (import API) invoke this
     lazily on enqueue + list-read — no scheduler.
 
-    ``saved`` history rows never expire (they are tiny — the result payload
-    is cleared on save — and the staged file is by then the entry's
-    Attachment, so nothing can leak).
+    ``saved`` AND ``dismissed`` rows are PERMANENT history (they never
+    disappear from the tracker): nothing is deleted for them. For an expired
+    ``dismissed`` row only its staged FILE is swept (and ``file_size``
+    zeroed, so the staged-bytes cap stops counting it) — that is what ends
+    the 72h restore window; the row itself stays visible forever with its
+    result cleared of any file to re-attach.
     """
     cutoff = _utcnow() - timedelta(hours=IMPORT_JOB_TTL_H)
     own_db = db is None
     if own_db:
         db = get_sessionmaker()()
     expired = []
+    dismissed_expired = []
     refunds: list[tuple[str, bool]] = []
     file_paths: list[str] = []
     freed = 0
     try:
         # ``saving`` rows are CAS claims of an in-flight save-with-job-id —
         # never swept, or the staged file could be unlinked mid-save.
-        # ``saved``/``dismissed`` rows are history records — never swept.
+        # ``saved``/``dismissed`` rows are permanent history — their rows are
+        # never deleted (an expired dismissed row only loses its file).
         expired = (
             db.query(ExtractionJob)
             .filter(
@@ -279,19 +284,39 @@ def sweep_expired_jobs(db: Session | None = None) -> int:
             )
             .all()
         )
-        if expired:
+        dismissed_expired = (
+            db.query(ExtractionJob)
+            .filter(
+                ExtractionJob.updated_at < cutoff,
+                ExtractionJob.status == "dismissed",
+                ExtractionJob.file_size > 0,
+            )
+            .all()
+        )
+        if expired or dismissed_expired:
             expired_ids = [j.id for j in expired]
-            file_paths = [j.file_path for j in expired]
+            file_paths = [j.file_path for j in expired] + [
+                j.file_path for j in dismissed_expired
+            ]
+            # An expired dismissed row keeps its history forever — only the
+            # file goes: file_size=0 (takes it out of the staged-bytes cap
+            # and the restore file check) and result=None (the payload can
+            # never be re-attached once the window is shut — bound the row's
+            # size like the saved-row result-clearing rule).
+            for j in dismissed_expired:
+                j.file_size = 0
+                j.result = None
             refunds = [
                 (j.user_id, bool(j.is_anonymous))
                 for j in expired
                 if j.status in ("queued", "processing")
             ]
-            db.execute(
-                delete(Notification).where(Notification.job_id.in_(expired_ids))
-            )
-            for job in expired:
-                db.delete(job)
+            if expired:
+                db.execute(
+                    delete(Notification).where(Notification.job_id.in_(expired_ids))
+                )
+                for job in expired:
+                    db.delete(job)
             db.commit()
             # After the rows are gone: the staged file is unreferenced (no
             # Attachment row ever points at a staged job file) — unlink it.
@@ -302,7 +327,7 @@ def sweep_expired_jobs(db: Session | None = None) -> int:
     finally:
         if own_db:
             db.close()
-    if not expired:
+    if not expired and not dismissed_expired:
         return 0
     for user_id, is_anonymous in refunds:
         try:
@@ -312,7 +337,9 @@ def sweep_expired_jobs(db: Session | None = None) -> int:
                 "Expired-job quota refund failed for user %s", user_id, exc_info=True
             )
     logger.info(
-        "Import-job GC: removed %d expired jobs, freed %d bytes", len(expired), freed
+        "Import-job GC: removed %d expired jobs (%d dismissed rows kept as "
+        "history, file swept), freed %d bytes",
+        len(expired), len(dismissed_expired), freed,
     )
     return len(expired)
 
