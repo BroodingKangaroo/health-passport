@@ -125,8 +125,3 @@ docs updated where a documented statement changed):
 
 ---
 
-## Acceptance criteria for the remaining one
-
-1. `/imports` dismiss buttons: clear hover state (e.g., `hover:bg-destructive/10 hover:text-destructive`)
-
-UI/UX improvement; no backend schema changes needed (endpoint already exists).

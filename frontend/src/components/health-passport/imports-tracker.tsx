@@ -268,17 +268,23 @@ export function ImportsTracker() {
                 <div className="flex shrink-0 items-center gap-1.5">
                   {job.status === 'done' && (
                     <>
-                      <Link
-                        href={`/review-import?job=${job.id}`}
-                        className="text-xs font-semibold text-primary underline underline-offset-2"
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="hover:bg-primary/10 hover:text-primary"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          router.push(`/review-import?job=${job.id}`)
+                        }}
                         data-testid="row-review"
                       >
                         {t('trackerReview')}
-                      </Link>
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
                         disabled={busyId === job.id}
+                        className="hover:bg-destructive/10 hover:text-destructive"
                         onClick={(e) => {
                           e.stopPropagation()
                           void act(job.id, 'dismiss')
@@ -293,6 +299,7 @@ export function ImportsTracker() {
                       variant="ghost"
                       size="sm"
                       disabled={busyId === job.id}
+                      className="hover:bg-destructive/10 hover:text-destructive"
                       onClick={(e) => {
                         e.stopPropagation()
                         void act(job.id, 'cancel')
@@ -318,6 +325,7 @@ export function ImportsTracker() {
                         variant="ghost"
                         size="sm"
                         disabled={busyId === job.id}
+                        className="hover:bg-destructive/10 hover:text-destructive"
                         onClick={(e) => {
                           e.stopPropagation()
                           void act(job.id, 'dismiss')
