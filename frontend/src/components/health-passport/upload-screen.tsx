@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { UploadCloud, Pencil, AlertCircle, ShieldCheck } from 'lucide-react'
+import { UploadCloud, Pencil, ShieldCheck } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
@@ -21,7 +21,6 @@ interface UploadScreenProps {
   biomarkerCount: number | null
   elapsedSeconds: number
   plannedEndSeconds: number | null
-  multiFileNotice: string | null
   onFiles: (files: FileList | null) => void
   onStartManual: () => void
 }
@@ -32,7 +31,6 @@ export function UploadScreen({
   biomarkerCount,
   elapsedSeconds,
   plannedEndSeconds,
-  multiFileNotice,
   onFiles,
   onStartManual,
 }: UploadScreenProps) {
@@ -135,13 +133,6 @@ export function UploadScreen({
           />
         )}
       </button>
-
-      {multiFileNotice && (
-        <p className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-400">
-          <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-          {multiFileNotice}
-        </p>
-      )}
 
       {uploadState === 'idle' && (
         <>

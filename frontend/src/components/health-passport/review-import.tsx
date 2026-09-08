@@ -10,6 +10,7 @@ import { AlertCircle, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { HeaderBar } from './header-bar'
 import { AddEntry } from './add-entry'
+import { markImportJobSeen } from '@/lib/new-import-jobs'
 import {
   dismissImportJob,
   fetchImportJob,
@@ -62,6 +63,9 @@ export function ReviewImport() {
 
   useEffect(() => {
     if (!detail || detail.status !== 'done' || !detail.result) return
+    // Opening the review editor counts as viewing the job — it loses the
+    // tracker's New badge (covers bell deep-links too).
+    markImportJobSeen(detail.id)
     let cancelled = false
     fetchImportJobFile(detail.id)
       .then((blob) => {

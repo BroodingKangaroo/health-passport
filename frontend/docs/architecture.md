@@ -483,25 +483,31 @@ four surfaces, all fed by ONE shared react-query cache key:
   Language conventions as `services/api.ts` (which now exports
   `extractDetail` for its sibling service modules). `ImportJobDetail.result`
   is the SSE result-event shape verbatim.
-- **Batch mode on `/add-entry`** (`batch-import.tsx`): dropping >1 file
-  routes to `BatchImportPanel` instead of the single-file SSE flow
-  (`UploadScreen`'s picker/dropzone accept `multiple`). Submission is
-  CAPPED, not shotgun: `min(N, remaining)` sequential POSTs from
-  `fetchUsageLimits()`; a failed submit stops the loop (never
-  fire-all-and-eat-429s); files beyond the quota stay picked as the disabled
-  "register to import" group (anon notice shows the 5-doc trial limit).
-  Per-row progress reuses the upload-screen stage labels driven by the
-  polled job `progress` (incl. `estimate_s`); cancel/retry/remove per row.
-- **Leave-guard is NOT armed in batch mode** — nothing is lost by leaving
+- **Submission on `/add-entry`** (headless, `lib/hooks/useBatchSubmit.ts` —
+  ISSUES.md #76 rework, the interactive `BatchImportPanel` is GONE): dropping
+  or picking ANY number of files (the `UploadScreen` picker/dropzone accept
+  `multiple`) submits one background job per document from the page itself —
+  capped, SEQUENTIAL `min(N, remaining)` POSTs from `fetchUsageLimits()`; a
+  failed submit stops the loop (never fire-all-and-eat-429s); a failed limits
+  check fails closed (no submissions). Files beyond the quota are skipped
+  with a warning toast; with nothing accepted the user stays on /add-entry
+  with an error toast (the file is not lost — re-drop to retry). While
+  submissions are in flight the dropzone shows a transient "Submitting…
+  documents" card and a plain `beforeunload` prompt fires; on success the
+  page redirects to /imports (`AddEntryView.onTrackImports`: single job →
+  `/imports?focus=<id>`, several → the plain list). The submitter also
+  registers the accepted job ids as NEW (see the tracker below). The armed
+  leave-guard+abort behavior stays exclusive to the single-file SSE
+  replacement-extraction path (`useExtraction`).
+- **Leave-guard is NOT armed for submissions** — nothing is lost by leaving
   (extraction continues server-side), so the guard's Back interception and
-  modal would be pure friction. Only a plain `beforeunload` prompt fires
-  while submissions are still in flight (uploads not yet accepted). The
-  armed guard+abort behavior stays exclusive to the single-file SSE path
-  (`useExtraction`).
+  modal would be pure friction. Only the plain `beforeunload` prompt fires
+  while submissions are still in flight (uploads not yet accepted).
 - **Shared poll** (`lib/hooks/useImportJobs.ts`): `['import-jobs']` polled
   ~3s while mounted + refetch on window focus (iOS Safari suspends JS in
-  background tabs; all catch-ups must surface on resume). The batch panel
-  and the tracker share this one cache, so they never disagree.
+  background tabs; all catch-ups must surface on resume). /add-entry's
+  post-submit invalidation surfaces fresh jobs without waiting for the next
+  tick; the tracker is the only mounted consumer.
 - **Bell** (`notification-bell.tsx` in the header, right of the language
   switch, visible for anonymous sessions too): `['notifications']` polled
   ~10s + focus refetch; badge = unread count, cleared on open (read-all).
@@ -526,8 +532,15 @@ four surfaces, all fed by ONE shared react-query cache key:
   `progress.estimate_s`, indeterminate bar, in-view cancel. A job completing
   in view auto-transitions into the review editor. Empty state links to
   `/add-entry`. Entry points: the bell's footer link, the review page's
-  back nav, and the batch completion panel's "Track remaining
-  extractions".
+  back nav, and the automatic redirect after /add-entry submissions.
+  NEW-job badges (ISSUES.md #76 rework): ids accepted from /add-entry are
+  recorded by `lib/new-import-jobs.ts` in sessionStorage (per tab);
+  `imports-tracker.tsx` reads the set per render (no mirror state) and
+  pills active rows not yet opened, so freshly added extractions are
+  recognisable from previously viewed ones. Opening a job — the focused
+  redirect or a row click into the progress view, the review editor mount
+  (covers bell deep-links), or the in-view auto-transition — marks it seen
+  and the pill disappears.
 - **Review `/review-import?job=<id>`** (`review-import.tsx`): fetches the
   staged record and prefills the EXISTING `AddEntry` editor machinery —
   `AddEntry` takes a `stagedJob` prop and applies the record through the

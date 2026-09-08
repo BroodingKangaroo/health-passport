@@ -113,18 +113,6 @@ docs updated where a documented statement changed):
 
 ## New issues reported (2026-09-06) — pending
 
-### 76. `/add-entry` in-progress extraction: no direct navigation to review
-
-**Context**: On the `/add-entry` page, when extraction is in progress (the scanning/processing UI), there's no button or link to jump directly to the review page (`/review-import?job=<id>`) for that specific document. Users currently have to navigate to `/imports` and click the in-progress job to reach the extraction view, then wait for completion and click "Review" to get to the review page.
-
-**Expected**: A "View extraction" / "Open review" button on the in-progress screen (`/add-entry` while uploading) that takes the user directly to `/review-import?job=<jobId>` for that document.
-
-**Location**: `frontend/src/components/health-passport/add-entry.tsx` (UploadScreen scanning state) and `frontend/src/views/AddEntryView.tsx`.
-
-**Related**: The upload screen (`frontend/src/components/health-passport/upload-screen.tsx`) shows the progress; a navigation button there would be the natural UX.
-
----
-
 ### 78. Dismiss button on `/imports` page has poor hover visibility
 
 **Context**: On the `/imports` page, the "Dismiss" button (ghost variant) for active jobs (queued/processing/done) has very subtle hover styling — barely visible change on hover, making it hard to discover and use.
@@ -137,9 +125,8 @@ docs updated where a documented statement changed):
 
 ---
 
-## Acceptance criteria for the remaining two
+## Acceptance criteria for the remaining one
 
-1. `/add-entry` in-progress: visible "View extraction" link/button → `/review-import?job=<id>`
-2. `/imports` dismiss buttons: clear hover state (e.g., `hover:bg-destructive/10 hover:text-destructive`)
+1. `/imports` dismiss buttons: clear hover state (e.g., `hover:bg-destructive/10 hover:text-destructive`)
 
-All are UI/UX improvements; no backend schema changes needed (endpoints already exist).
+UI/UX improvement; no backend schema changes needed (endpoint already exists).

@@ -3,32 +3,17 @@
 export const importMessages = {
   en: {
     import: {
-      // ----- Batch mode on /add-entry -----
-      batchTitle: 'Importing {count, plural, one {# document} other {# documents}}',
-      batchSubtitle:
-        'Extraction runs in the background — you are free to leave this page. Finished documents appear in the bell menu.',
-      batchQuotaAnon:
-        'You can import up to {limit} documents without an account — register to import more.',
-      batchRemaining: '{count} of {limit} extractions left',
-      batchRegisterToImport: 'Register to import',
-      batchOverLimit:
-        '{count, plural, one {# document exceeds} other {# documents exceed}} your remaining quota — {count, plural, one {it stays} other {they stay}} selected for after registration.',
-      batchWaiting: 'Waiting',
-      batchDone: 'Extracted',
-      batchFailed: 'Failed',
-      batchCancelled: 'Cancelled',
-      batchEta: '≈ {seconds}s',
-      batchOverall: '{done} of {total} ready',
+      // ----- Batch submission on /add-entry (headless, then redirect) -----
+      batchSubmitting:
+        'Submitting {count, plural, one {# document} other {# documents}}…',
+      batchSubmittingHint: 'You will be taken to the imports page.',
+      batchSkippedOverQuota:
+        '{count, plural, one {# document wasn’t submitted — extraction limit reached.} other {# documents weren’t submitted — extraction limit reached.}}',
+      batchLimitsUnavailable:
+        'Couldn’t check your extraction quota — please try again.',
       batchSubmitFailed: 'Couldn’t submit: {error}',
-      batchReviewNow: 'Review now',
-      batchTrackImports: 'Track remaining extractions',
-      batchAllDone:
-        '{count, plural, one {# document extracted — review it} other {# documents extracted — review them}}',
-      batchLeaveHint: 'Nothing is lost by leaving — extraction continues on the server.',
+      batchEta: '≈ {seconds}s',
       batchBack: 'Back to upload',
-      batchCancel: 'Cancel',
-      batchRetry: 'Retry',
-      batchRemove: 'Remove',
       // ----- Notifications bell (B2) -----
       bellLabel: 'Notifications',
       bellEmpty: 'No notifications',
@@ -50,13 +35,11 @@ export const importMessages = {
       trackerRetry: 'Retry',
       trackerDismiss: 'Dismiss',
       trackerReview: 'Review',
+      trackerNew: 'New',
       trackerActiveTitle: 'In progress',
       trackerHistoryTitle: 'Earlier imports',
       trackerSaved: 'Saved',
       trackerDismissed: 'Dismissed',
-      batchOverLimitRegistered:
-        'You have used all {limit} extractions — {count, plural, one {# document stays} other {# documents stay}} selected for later.',
-      batchDismissed: 'Dismissed',
       trackerQueued: 'Waiting',
       trackerDone: 'Extracted',
       trackerFailed: 'Failed',
@@ -79,32 +62,17 @@ export const importMessages = {
   },
   ru: {
     import: {
-      // ----- Batch mode on /add-entry -----
-      batchTitle: 'Импортируется {count, plural, one {# документ} few {# документа} many {# документов} other {# документа}}',
-      batchSubtitle:
-        'Распознавание идёт в фоне — со страницы можно уйти. Готовые документы появятся в колокольчике.',
-      batchQuotaAnon:
-        'Без аккаунта можно импортировать до {limit} документов — зарегистрируйтесь, чтобы импортировать больше.',
-      batchRemaining: 'Осталось распознаваний: {count} из {limit}',
-      batchRegisterToImport: 'Зарегистрироваться для импорта',
-      batchOverLimit:
-        '{count, plural, one {# документ превышает} few {# документа превышают} many {# документов превышают} other {# документа превышают}} оставшуюся квоту — {count, plural, one {он останется} few {они останутся} many {они останутся} other {они останутся}} выбранными после регистрации.',
-      batchWaiting: 'Ожидает',
-      batchDone: 'Распознано',
-      batchFailed: 'Ошибка',
-      batchCancelled: 'Отменено',
-      batchEta: '≈ {seconds} с',
-      batchOverall: 'Готово: {done} из {total}',
+      // ----- Batch submission on /add-entry (headless, then redirect) -----
+      batchSubmitting:
+        'Отправка {count, plural, one {# документа} few {# документов} many {# документов} other {# документов}}…',
+      batchSubmittingHint: 'Сейчас откроется страница импортов.',
+      batchSkippedOverQuota:
+        '{count, plural, one {# документ не отправлен — достигнут лимит распознаваний.} few {# документа не отправлено — достигнут лимит распознаваний.} many {# документов не отправлено — достигнут лимит распознаваний.} other {# документа не отправлено — достигнут лимит распознаваний.}}',
+      batchLimitsUnavailable:
+        'Не удалось проверить квоту распознаваний — попробуйте ещё раз.',
       batchSubmitFailed: 'Не удалось отправить: {error}',
-      batchReviewNow: 'Проверить сейчас',
-      batchTrackImports: 'Отслеживать остальные',
-      batchAllDone:
-        '{count, plural, one {# документ распознан — проверьте его} few {# документа распознаны — проверьте их} many {# документов распознано — проверьте их} other {# документа распознано — проверьте их}}',
-      batchLeaveHint: 'Уходить не страшно — распознавание продолжается на сервере.',
+      batchEta: '≈ {seconds} с',
       batchBack: 'Вернуться к загрузке',
-      batchCancel: 'Отменить',
-      batchRetry: 'Повторить',
-      batchRemove: 'Убрать',
       // ----- Notifications bell (B2) -----
       bellLabel: 'Уведомления',
       bellEmpty: 'Нет уведомлений',
@@ -126,13 +94,11 @@ export const importMessages = {
       trackerRetry: 'Повторить',
       trackerDismiss: 'Убрать',
       trackerReview: 'Проверить',
+      trackerNew: 'Новый',
       trackerActiveTitle: 'В процессе',
       trackerHistoryTitle: 'Прошлые импорты',
       trackerSaved: 'Сохранён',
       trackerDismissed: 'Отклонён',
-      batchOverLimitRegistered:
-        'Вы использовали все {limit} распознаваний — {count, plural, one {# документ останется} few {# документа останутся} many {# документов останутся} other {# документа останутся}} выбранными на потом.',
-      batchDismissed: 'Отклонено',
       trackerQueued: 'Ожидает',
       trackerDone: 'Распознано',
       trackerFailed: 'Ошибка',

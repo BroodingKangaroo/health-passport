@@ -5,18 +5,13 @@ import { SessionProvider } from 'next-auth/react'
 import { AddEntry } from '../health-passport/add-entry'
 import { LeaveGuardProvider } from '@/providers/leave-guard-provider'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
+import { createImportJob } from '@/services/import-jobs'
+import { fetchUsageLimits } from '@/services/api'
 import type { StandardizedMedicalRecord, EntriesByDateResponse } from '@/lib/types'
 
-const { mockExtract, mockSave, mockFetchUsageLimits } = vi.hoisted(() => ({
+const { mockExtract, mockSave } = vi.hoisted(() => ({
   mockExtract: vi.fn(),
   mockSave: vi.fn(),
-  mockFetchUsageLimits: vi.fn().mockResolvedValue({
-    is_anonymous: false,
-    ai_extraction_count: 0,
-    ai_extraction_limit: 50,
-    total_upload_size_bytes: 0,
-    total_upload_limit_bytes: 200 * 1024 * 1024,
-  }),
 }))
 const mockMerge = vi.fn()
 const mockFetchByDate = vi.fn().mockResolvedValue({ date: '2026-10-12', count: 0 })
@@ -117,6 +112,7 @@ function dropFiles(element: HTMLElement, files: File[]) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  sessionStorage.clear()
 })
 
 describe('AddEntry', () => {
@@ -138,9 +134,9 @@ describe('AddEntry', () => {
     expect(screen.getByText('Save to HealthPassport')).toBeInTheDocument()
   })
 
-  it('submits a single dropped file as a background import job', async () => {
-    // Single-file submissions no longer run the interactive SSE extraction:
-    // they become background jobs tracked on /imports.
+  it('submits a single dropped file as a background import job and redirects', async () => {
+    // File submissions never run the interactive SSE extraction: they become
+    // background jobs and the page redirects to the /imports tracker (#76).
     const onTrackImports = vi.fn()
 
     const { container } = renderWithProviders(
@@ -150,25 +146,93 @@ describe('AddEntry', () => {
     dropFiles(zone, [createFile('dropped.pdf')])
 
     expect(mockExtract).not.toHaveBeenCalled()
-    expect(screen.getByTestId('batch-import-panel')).toBeInTheDocument()
     await waitFor(() => expect(onTrackImports).toHaveBeenCalledWith(['job-mock']))
+    // The tracker badges the fresh job as new until it is opened.
+    expect(sessionStorage.getItem('imports_new_job_ids')).toContain('job-mock')
   })
 
-
-  it('opens the batch import panel when multiple files are dropped', () => {
-    mockExtract.mockImplementation(
-      () => new Promise(() => {}),
+  it('shows the transient submitting card while submissions are in flight', async () => {
+    const onTrackImports = vi.fn()
+    let resolveJob: (id: string) => void = () => {}
+    vi.mocked(createImportJob).mockImplementationOnce(
+      () =>
+        new Promise<string>((res) => {
+          resolveJob = res
+        }),
     )
 
-    const { container } = renderWithProviders(<AddEntry onSave={vi.fn()} />)
+    const { container } = renderWithProviders(
+      <AddEntry onSave={vi.fn()} onTrackImports={onTrackImports} />,
+    )
+    const zone = container.querySelector('button[type="button"]') as HTMLButtonElement
+    dropFiles(zone, [createFile('dropped.pdf')])
+
+    // The submitting card mounts synchronously; the POST itself fires once
+    // the quota pre-flight resolves.
+    expect(screen.getByTestId('batch-submitting')).toBeInTheDocument()
+    await waitFor(() => expect(createImportJob).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      resolveJob('job-hang')
+    })
+    await waitFor(() => expect(onTrackImports).toHaveBeenCalledWith(['job-hang']))
+    expect(screen.queryByTestId('batch-submitting')).not.toBeInTheDocument()
+  })
+
+  it('submits multiple dropped files and redirects to the tracker list', async () => {
+    const onTrackImports = vi.fn()
+
+    const { container } = renderWithProviders(
+      <AddEntry onSave={vi.fn()} onTrackImports={onTrackImports} />,
+    )
     const zone = container.querySelector('button[type="button"]') as HTMLButtonElement
     dropFiles(zone, [createFile('first.pdf'), createFile('second.pdf')])
 
-    // >1 file routes to the background-jobs batch panel (capped submission,
-    // per-row progress); the single-file SSE extraction never runs.
+    // >1 file also goes through the headless submission (capped, sequential);
+    // the SSE extraction never runs and there is no interactive batch panel.
     expect(mockExtract).not.toHaveBeenCalled()
-    expect(screen.getByTestId('batch-import-panel')).toBeInTheDocument()
-    expect(screen.getByText('Importing 2 documents')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(onTrackImports).toHaveBeenCalledWith(['job-mock', 'job-mock']),
+    )
+  })
+
+  it('skips files beyond the remaining quota and redirects with the submitted ones', async () => {
+    const onTrackImports = vi.fn()
+    // Remaining quota: 5 - 3 = 2 extractions.
+    vi.mocked(fetchUsageLimits).mockResolvedValueOnce({
+      is_anonymous: false,
+      ai_extraction_count: 3,
+      ai_extraction_limit: 5,
+      total_upload_size_bytes: 0,
+      total_upload_limit_bytes: 200 * 1024 * 1024,
+    })
+
+    const { container } = renderWithProviders(
+      <AddEntry onSave={vi.fn()} onTrackImports={onTrackImports} />,
+    )
+    const zone = container.querySelector('button[type="button"]') as HTMLButtonElement
+    dropFiles(zone, [createFile('a.pdf'), createFile('b.pdf'), createFile('c.pdf')])
+
+    // Capped: only the remaining 2 are submitted, never a doomed third.
+    await waitFor(() =>
+      expect(onTrackImports).toHaveBeenCalledWith(['job-mock', 'job-mock']),
+    )
+    expect(createImportJob).toHaveBeenCalledTimes(2)
+  })
+
+  it('stays on the dropzone with an error when the first submission fails', async () => {
+    const onTrackImports = vi.fn()
+    vi.mocked(createImportJob).mockRejectedValueOnce(new Error('boom'))
+
+    const { container } = renderWithProviders(
+      <AddEntry onSave={vi.fn()} onTrackImports={onTrackImports} />,
+    )
+    const zone = container.querySelector('button[type="button"]') as HTMLButtonElement
+    dropFiles(zone, [createFile('a.pdf')])
+
+    await waitFor(() => expect(createImportJob).toHaveBeenCalledTimes(1))
+    expect(onTrackImports).not.toHaveBeenCalled()
+    // The dropzone returns (the user can re-drop the failed file).
+    expect(await screen.findByText(/click to browse/i)).toBeInTheDocument()
   })
 
   it('pre-fills blood test form from AI data', async () => {

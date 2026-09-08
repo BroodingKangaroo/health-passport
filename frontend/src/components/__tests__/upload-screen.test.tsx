@@ -13,7 +13,6 @@ function idleProps() {
     biomarkerCount: null,
     elapsedSeconds: 0,
     plannedEndSeconds: null,
-    multiFileNotice: null,
     onFiles: vi.fn(),
     onStartManual: vi.fn(),
   }

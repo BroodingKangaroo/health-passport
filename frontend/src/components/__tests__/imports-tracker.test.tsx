@@ -59,6 +59,7 @@ function renderTracker(ui: ReactNode) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  sessionStorage.clear()
   cancelMock.mockResolvedValue(undefined)
   retryMock.mockResolvedValue(undefined)
   dismissMock.mockResolvedValue(undefined)
@@ -189,5 +190,57 @@ describe('ImportsTracker', () => {
     await waitFor(() => expect(dismissMock).toHaveBeenCalledWith('job-fail'))
     fireEvent.click(screen.getByText('Cancel'))
     await waitFor(() => expect(cancelMock).toHaveBeenCalledWith('job-run'))
+  })
+
+  it('badges freshly submitted jobs as new until each is opened (#76 rework)', async () => {
+    sessionStorage.setItem(
+      'imports_new_job_ids',
+      JSON.stringify(['job-run', 'job-done']),
+    )
+    fetchJobsMock.mockResolvedValue({
+      items: [
+        job({ id: 'job-run', status: 'queued', original_filename: 'run.pdf' }),
+        job({ id: 'job-done', status: 'done', original_filename: 'done.pdf' }),
+        job({ id: 'job-old', status: 'done', original_filename: 'old.pdf' }),
+      ],
+    })
+    renderTracker(<ImportsTracker />)
+    const rows = await screen.findAllByTestId('imports-row')
+    expect(rows).toHaveLength(3)
+    // Only the two submitted-but-unopened jobs carry the New pill.
+    const badged = rows.filter((r) => r.querySelector('[data-testid="row-new"]'))
+    expect(badged).toHaveLength(2)
+    expect(
+      badged.every(
+        (r) => r.textContent?.includes('run.pdf') || r.textContent?.includes('done.pdf'),
+      ),
+    ).toBe(true)
+
+    // Opening the in-flight job's progress view consumes its badge.
+    fireEvent.click(screen.getByText('run.pdf'))
+    await waitFor(() =>
+      expect(sessionStorage.getItem('imports_new_job_ids')).toBe(
+        JSON.stringify(['job-done']),
+      ),
+    )
+    fireEvent.click(await screen.findByText('Back to upload'))
+    const rowsAfter = await screen.findAllByTestId('imports-row')
+    const runRow = rowsAfter.find((r) => r.textContent?.includes('run.pdf'))
+    const doneRow = rowsAfter.find((r) => r.textContent?.includes('done.pdf'))
+    expect(runRow!.querySelector('[data-testid="row-new"]')).toBeNull()
+    expect(doneRow!.querySelector('[data-testid="row-new"]')).not.toBeNull()
+  })
+
+  it('opening a done job consumes its badge and routes to the review editor', async () => {
+    sessionStorage.setItem('imports_new_job_ids', JSON.stringify(['job-done']))
+    fetchJobsMock.mockResolvedValue({
+      items: [job({ id: 'job-done', status: 'done', original_filename: 'done.pdf' })],
+    })
+    renderTracker(<ImportsTracker />)
+    fireEvent.click(await screen.findByTestId('imports-row'))
+    await waitFor(() =>
+      expect(pushMock).toHaveBeenCalledWith('/review-import?job=job-done'),
+    )
+    await waitFor(() => expect(sessionStorage.getItem('imports_new_job_ids')).toBeNull())
   })
 })

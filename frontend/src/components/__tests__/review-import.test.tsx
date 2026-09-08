@@ -83,6 +83,7 @@ function renderReview(jobId?: string) {
 beforeEach(() => {
   vi.clearAllMocks()
   capturedAddEntryProps.length = 0
+  sessionStorage.clear()
   dismissMock.mockResolvedValue(undefined)
   jobFileMock.mockResolvedValue(new Blob(['%PDF fake'], { type: 'application/pdf' }))
 })
@@ -201,5 +202,13 @@ describe('ReviewImport', () => {
     renderReview()
     await screen.findByTestId('review-gone')
     expect(jobDetailMock).not.toHaveBeenCalled()
+  })
+
+  it('opening the review editor consumes the job’s New marker (#76 rework)', async () => {
+    sessionStorage.setItem('imports_new_job_ids', JSON.stringify(['job-1']))
+    jobDetailMock.mockResolvedValue(detail({}))
+    renderReview('job-1')
+    await screen.findByTestId('add-entry-stub')
+    await waitFor(() => expect(sessionStorage.getItem('imports_new_job_ids')).toBeNull())
   })
 })

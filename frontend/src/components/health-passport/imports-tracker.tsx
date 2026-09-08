@@ -9,6 +9,7 @@ import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, Plus, X } from 'lucide-r
 import { cn, formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useImportJobs } from '@/lib/hooks/useImportJobs'
+import { getNewImportJobIds, markImportJobSeen } from '@/lib/new-import-jobs'
 import { ExtractionProgressCard } from './extraction-progress-card'
 import {
   cancelImportJob,
@@ -51,6 +52,14 @@ export function ImportsTracker() {
       : new URLSearchParams(window.location.search).get('focus'),
   )
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Jobs submitted from /add-entry that have not been opened yet (#76
+  // rework): badged as new until each is viewed (progress view, review
+  // editor or the in-view auto-transition), so fresh extractions are
+  // recognisable from previously added and viewed ones. Read per render
+  // (not mirrored into state): every markImportJobSeen is paired with a
+  // re-render trigger — a selection change or a navigation — so the pill
+  // clears exactly when the job is opened.
+  const newIds = getNewImportJobIds()
 
   const items = useMemo(() => jobsQuery.data?.items ?? [], [jobsQuery.data])
   const selected = useMemo(
@@ -58,10 +67,18 @@ export function ImportsTracker() {
     [items, selectedId],
   )
 
+  // Opening a job (the focused redirect or a row click into the progress
+  // view) counts as viewing it — the New badge goes away.
+  useEffect(() => {
+    if (!selectedId) return
+    markImportJobSeen(selectedId)
+  }, [selectedId])
+
   // A job completing in the extraction-process view transitions straight
   // into the review editor — same experience as the SSE flow, resumable.
   useEffect(() => {
     if (selected?.status === 'done') {
+      markImportJobSeen(selected.id)
       router.push(`/review-import?job=${selected.id}`)
     }
   }, [selected, router])
@@ -200,7 +217,10 @@ export function ImportsTracker() {
                     'cursor-pointer hover:bg-accent/60',
                 )}
                 onClick={() => {
-                  if (job.status === 'done') router.push(`/review-import?job=${job.id}`)
+                  if (job.status === 'done') {
+                    markImportJobSeen(job.id)
+                    router.push(`/review-import?job=${job.id}`)
+                  }
                   if (job.status === 'queued' || job.status === 'processing')
                     setSelectedId(job.id)
                 }}
@@ -214,9 +234,19 @@ export function ImportsTracker() {
                   <Loader2 className="size-5 shrink-0 animate-spin text-primary" />
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-foreground">
-                    {job.original_filename}
-                  </p>
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {job.original_filename}
+                    </p>
+                    {newIds.includes(job.id) && (
+                      <span
+                        className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
+                        data-testid="row-new"
+                      >
+                        {t('trackerNew')}
+                      </span>
+                    )}
+                  </div>
                   <p
                     className={cn(
                       'truncate text-xs',

@@ -40,7 +40,9 @@ export function AddEntryView() {
       <main className="p-5">
         <AddEntry
           onSave={() => router.push('/')}
-          onTrackImports={(jobIds) => router.push(`/imports?focus=${jobIds[0]}`)}
+          onTrackImports={(jobIds) =>
+            router.push(jobIds.length === 1 ? `/imports?focus=${jobIds[0]}` : '/imports')
+          }
         />
       </main>
     </div>

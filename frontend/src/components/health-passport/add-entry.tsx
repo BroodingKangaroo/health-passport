@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState, useRef, useMemo } from 'react'
-import { Sparkles, AlertCircle, RefreshCw } from 'lucide-react'
+import { Sparkles, AlertCircle, RefreshCw, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 
@@ -15,7 +15,6 @@ import { DoctorVisitForm } from './DoctorVisitForm'
 import { LabResultForm } from './LabResultForm'
 import { InstrumentalTestForm } from './InstrumentalTestForm'
 import { UploadScreen } from './upload-screen'
-import { BatchImportPanel } from './batch-import'
 import { DocumentPreviewPane } from './document-preview-pane'
 import { UnitConflictDialog } from './unit-conflict-dialog'
 import { ExtractionConfirmDialog } from './extraction-confirm-dialog'
@@ -35,6 +34,8 @@ import {
 import { useExtraction } from '@/lib/hooks/useExtraction'
 import { useMergePreflight } from '@/lib/hooks/useMergePreflight'
 import { useUnitConflicts } from '@/lib/hooks/useUnitConflicts'
+import { useBatchSubmit } from '@/lib/hooks/useBatchSubmit'
+import { addNewImportJobIds } from '@/lib/new-import-jobs'
 import type {
   EntryMode,
   ExtractedInstrumentalData,
@@ -56,8 +57,9 @@ export function AddEntry({
    * callback navigates home, so Cancel leaving = the same thing). Pages that
    * distinguish "save succeeded" from "leave without saving" pass both. */
   onCancel?: () => Promise<void> | void
-  /** Navigate to the imports tracker (after a single-file submission is
-   * accepted — the tracker is the cockpit for in-progress extraction). */
+  /** Navigate to the imports tracker (after a submission is accepted — the
+   * tracker is the single cockpit for in-progress extraction; single-file
+   * submissions focus their job, multi-file ones land on the list). */
   onTrackImports?: (jobIds: string[]) => void
   /** Batch-import review: prefill from a staged job's record and save with
    * import_job_id instead of re-uploading the file. `file` (fetched from the
@@ -71,6 +73,7 @@ export function AddEntry({
 }) {
   const queryClient = useQueryClient()
   const t = useTranslations('editor')
+  const tImport = useTranslations('import')
   const [entryMode, setEntryMode] = useState<EntryMode>('ai')
   const [categories, setCategories] = useState<FormCategory[]>(manualCategories())
   const [documentType, setDocumentType] = useState('blood_test')
@@ -83,10 +86,6 @@ export function AddEntry({
   const [dateValue, setDateValue] = useState('')
   const [dateError, setDateError] = useState<string | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [multiFileNotice, setMultiFileNotice] = useState<string | null>(null)
-  // Batch mode: >1 dropped file → per-document background extraction jobs
-  // (BatchImportPanel). Null = single-file flow (unchanged SSE path).
-  const [batchFiles, setBatchFiles] = useState<File[] | null>(null)
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   // A replacement document waiting for the user to confirm its extraction
   // over the form data already present (null = no confirmation pending).
@@ -173,6 +172,11 @@ export function AddEntry({
     onSuccess: applyExtractedRecord,
     onFailure: handleExtractionFailed,
   })
+
+  // Headless batch submission (the interactive batch panel is gone): every
+  // dropped file becomes a background job, then the imports tracker takes
+  // over as the single cockpit.
+  const { submitting, total: submittingTotal, submit: submitBatch } = useBatchSubmit()
 
   function updateRow(
     catId: string,
@@ -261,15 +265,31 @@ export function AddEntry({
     resizeNotes()
   }, [resizeNotes, prefillNotes])
 
-  function handleFiles(files: FileList | null) {
+  async function handleFiles(files: FileList | null) {
     const list = files ? Array.from(files) : []
     if (list.length === 0) return
     // Every dropped document becomes a background import job (one per
-    // file); the user is free to leave while the server works through the
-    // queue. A single file lands on /imports right after its submission is
-    // accepted (onSubmittedAll → onTrackImports); multi-file stays on the
-    // batch panel with its per-row progress and completion links.
-    setBatchFiles(list)
+    // file); the imports tracker is the single cockpit — this page
+    // redirects there as soon as the submissions are accepted. Files
+    // beyond the quota are skipped with a toast; a failed submit stops
+    // the loop (and with nothing accepted, the user stays here to retry).
+    const outcome = await submitBatch(list)
+    if (outcome.cancelled) return
+    if (outcome.submittedIds.length > 0) {
+      // The tracker badges these as new until each is opened.
+      addNewImportJobIds(outcome.submittedIds)
+      if (outcome.skippedCount > 0) {
+        toast.warning(tImport('batchSkippedOverQuota', { count: outcome.skippedCount }))
+      }
+      queryClient.invalidateQueries({ queryKey: ['import-jobs'] })
+      onTrackImports?.(outcome.submittedIds)
+      return
+    }
+    if (outcome.error?.kind === 'limits') {
+      toast.error(tImport('batchLimitsUnavailable'))
+    } else if (outcome.error?.kind === 'submit') {
+      toast.error(tImport('batchSubmitFailed', { error: outcome.error.message }))
+    }
   }
 
   function startManual() {
@@ -279,7 +299,6 @@ export function AddEntry({
     setPreviewFile(null)
     setSourceLanguage(null)
     clearError()
-    setMultiFileNotice(null)
   }
 
   // Switching the document type must clear the companion form state, the same
@@ -325,7 +344,6 @@ export function AddEntry({
     // removed file via the fileRef fallback.
     if (fileRef.current) fileRef.current.value = ''
     clearError()
-    setMultiFileNotice(null)
   }
 
   function removeRow(catId: string, rowId: string) {
@@ -491,15 +509,22 @@ export function AddEntry({
     }
   }, [stagedJobId, stagedFile, setPreviewFile])
 
-  if (batchFiles !== null) {
+  // Submissions in flight: a transient card on the dropzone screen — the
+  // imports tracker (not this page) is the progress cockpit, and the
+  // redirect happens as soon as the loop settles.
+  if (submitting) {
     return (
-      <BatchImportPanel
-        files={batchFiles}
-        onBack={() => setBatchFiles(null)}
-        // Single-file import: the accepted job is tracked on /imports —
-        // same background pipeline, same in-progress visuals.
-        onSubmittedAll={batchFiles.length === 1 ? onTrackImports : undefined}
-      />
+      <div className="mx-auto max-w-3xl py-4" data-testid="batch-submitting">
+        <div className="rounded-xl border-2 border-dashed border-primary/30 bg-accent/40 p-12 text-center">
+          <Loader2 className="mx-auto size-8 animate-spin text-primary" />
+          <p className="mt-4 text-sm font-semibold text-foreground">
+            {tImport('batchSubmitting', { count: submittingTotal })}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {tImport('batchSubmittingHint')}
+          </p>
+        </div>
+      </div>
     )
   }
 
@@ -511,7 +536,6 @@ export function AddEntry({
         biomarkerCount={biomarkerCount}
         elapsedSeconds={elapsedSeconds}
         plannedEndSeconds={plannedEndSeconds}
-        multiFileNotice={multiFileNotice}
         onFiles={handleFiles}
         onStartManual={startManual}
       />
