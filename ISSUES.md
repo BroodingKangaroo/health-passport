@@ -109,19 +109,4 @@ docs updated where a documented statement changed):
   merged/biomarkers-at-date flag handling (`TimelineView.biomarkersAtDate`)
 - LOINC reference model (interval/qualitative), compact number formatting,
   reference editor, registration + DOB validation
----
-
-## New issues reported (2026-09-06) — pending
-
-### 78. Dismiss button on `/imports` page has poor hover visibility
-
-**Context**: On the `/imports` page, the "Dismiss" button (ghost variant) for active jobs (queued/processing/done) has very subtle hover styling — barely visible change on hover, making it hard to discover and use.
-
-**Expected**: The dismiss button should have a clear hover state (e.g., `hover:bg-destructive/10 hover:text-destructive` or similar) to be clearly interactive.
-
-**Location**: `frontend/src/components/health-passport/imports-tracker.tsx` — the dismiss button in the active rows list (around line 280-290 in current code).
-
-**Suggested fix**: Update the dismiss button classes to include clear hover/active states, e.g., `hover:bg-destructive/10 hover:text-destructive` or match the retry button's visibility.
-
----
 
