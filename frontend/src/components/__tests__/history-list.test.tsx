@@ -57,6 +57,26 @@ describe('HistoryList', () => {
     expect(container.querySelector('.bg-event-doctor-visit-bg')).not.toBeNull()
   })
 
+  it('keeps the card shrinkable inside its column (min-w-0 on the row flex item)', () => {
+    // Regression guard for the card-blowout bug: the card button is a flex
+    // item of the row; without min-w-0 its automatic minimum size is the
+    // truncated title's full nowrap width and a long title blows the card
+    // out of the sidebar column (jsdom can't measure layout, so pin the
+    // classes instead).
+    const { container } = renderI18n(
+      <HistoryList
+        events={[eventWithLongClinic]}
+        selectedId=""
+        onSelect={vi.fn()}
+      />,
+    )
+
+    const card = container.querySelector('button.rounded-xl')
+    expect(card).not.toBeNull()
+    expect(card?.className).toContain('min-w-0')
+    expect(card?.querySelector('p.truncate')).not.toBeNull()
+  })
+
   it('gives each rail node its type color and marks the selected node', () => {
     const { container } = renderI18n(
       <HistoryList

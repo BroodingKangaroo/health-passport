@@ -163,7 +163,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
           >
             <SlidersHorizontal className="size-4" />
             {activeFilterCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex size-3.5 items-center justify-center rounded-full bg-status-high text-[9px] font-bold text-white">
+              <span className="absolute -right-1 -top-1 flex size-3.5 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
                 {activeFilterCount}
               </span>
             )}
@@ -312,7 +312,8 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
       {/* Type filter chips — the legend for the type colors (dot), a one-tap
           filter, and the per-type counts. Color never signals state: the dot
           stays type-colored whether the chip is on or off. Compact short
-          labels (chip* keys) keep the row to ~one line in both locales. */}
+          labels (chip* keys) keep the chips small; the row wraps gracefully
+          when all five don't fit (e.g. RU at narrow viewports). */}
       <div className="flex flex-wrap gap-1 px-1" role="group" aria-label={t('entryType')}>
         <button
           onClick={() => setTypeFilters(ALL_TYPES)}

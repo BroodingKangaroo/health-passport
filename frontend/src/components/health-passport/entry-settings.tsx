@@ -7,6 +7,7 @@ import {
   Settings,
   Trash2,
   Calendar,
+  FileText,
   Pill,
   ClipboardList,
   FlaskConical,
@@ -124,6 +125,9 @@ export function EntrySettings({
 
   const attachments = useMemo(() => event.attachments ?? [], [event.attachments])
   const attachmentCount = attachments.length
+  // Defensive fallback: an unrecognized runtime type must not crash the tab.
+  const typeVisual =
+    TYPE_VISUALS[event.type as keyof typeof TYPE_VISUALS] ?? null
   const totalSizeBytes = useMemo(
     () => attachments.reduce((sum, a) => sum + parseSizeToBytes(a.size), 0),
     [attachments],
@@ -212,8 +216,8 @@ export function EntrySettings({
 
         <div className="divide-y divide-border/60">
           <StatRow
-            icon={TYPE_VISUALS[event.type].icon}
-            iconClassName={TYPE_VISUALS[event.type].textClass}
+            icon={typeVisual?.icon ?? FileText}
+            iconClassName={typeVisual?.textClass}
             label={t('type')}
             value={typeLabel}
             hint={event.clinic || undefined}

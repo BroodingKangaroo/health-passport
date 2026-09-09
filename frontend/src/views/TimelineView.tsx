@@ -96,7 +96,11 @@ export function TimelineContent({
 
   return (
     <main className="mx-auto grid max-w-[1400px] gap-5 p-5 lg:grid-cols-[minmax(240px,28%)_1fr]">
-      <aside>
+      {/* min-w-0: grid items default to min-width:auto — without it a long
+          unbreakable card title inflates the aside's intrinsic min-content
+          and blows the column out below the lg breakpoint (the fixed
+          minmax() track only protects >=lg). */}
+      <aside className="min-w-0">
         <HistoryList
           events={events}
           selectedId={effectiveSelected}

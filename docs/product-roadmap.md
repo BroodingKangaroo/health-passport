@@ -160,8 +160,8 @@ first-time visitors don't hand over their first document.
   abnormal statuses, so it visibly demonstrates the two-channel rule.
 - The print editor is explicitly out of scope — see the "Print editor (future
   change)" note in `frontend/docs/architecture.md`.
-- EN/RU labels reused from the existing catalogs (one new key: `filterAll`);
-  covered by the parity test.
+- EN/RU labels reused from the existing catalogs (new keys: `filterAll` +
+  compact `chip*` short labels); covered by the parity test.
 
 ---
 
