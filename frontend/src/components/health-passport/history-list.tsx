@@ -311,16 +311,17 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
 
       {/* Type filter chips — the legend for the type colors (dot), a one-tap
           filter, and the per-type counts. Color never signals state: the dot
-          stays type-colored whether the chip is on or off. */}
-      <div className="flex flex-wrap gap-1.5 px-1" role="group" aria-label={t('entryType')}>
+          stays type-colored whether the chip is on or off. Compact short
+          labels (chip* keys) keep the row to ~one line in both locales. */}
+      <div className="flex flex-wrap gap-1 px-1" role="group" aria-label={t('entryType')}>
         <button
           onClick={() => setTypeFilters(ALL_TYPES)}
           aria-pressed={typeFilters.length === ALL_TYPES.length}
           className={cn(
-            'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+            'flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium transition-colors',
             typeFilters.length === ALL_TYPES.length
-              ? 'border-border bg-card text-foreground shadow-sm'
-              : 'border-transparent bg-muted/50 text-muted-foreground hover:text-foreground',
+              ? 'border border-border bg-card text-foreground'
+              : 'bg-muted/60 text-muted-foreground hover:text-foreground',
           )}
         >
           {t('filterAll')}
@@ -335,14 +336,14 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
               onClick={() => toggleType(type)}
               aria-pressed={active}
               className={cn(
-                'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                'flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium transition-colors',
                 active
-                  ? 'border-border bg-card text-foreground shadow-sm'
-                  : 'border-transparent bg-muted/50 text-muted-foreground hover:text-foreground',
+                  ? 'border border-border bg-card text-foreground'
+                  : 'bg-muted/60 text-muted-foreground hover:text-foreground',
               )}
             >
               <span aria-hidden className={cn('size-2 shrink-0 rounded-full', visual.dotClass)} />
-              {t(visual.labelKey)}
+              {t(visual.chipLabelKey)}
               <span className="text-muted-foreground/70">{typeCounts[type]}</span>
             </button>
           )
@@ -425,7 +426,11 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                   <button
                     onClick={() => onSelect(event.id)}
                     className={cn(
-                      'flex flex-1 items-center gap-3 rounded-xl border p-3 text-left transition-all',
+                      // min-w-0 is critical: as a row flex item the button's
+                      // automatic minimum size would otherwise be the
+                      // truncated title's full nowrap width, blowing the card
+                      // out of the sidebar column (and over the detail panel).
+                      'flex min-w-0 flex-1 items-center gap-3 rounded-xl border p-3 text-left transition-all',
                       active
                         ? 'border-primary/30 bg-accent shadow-sm'
                         : 'border-border bg-card hover:border-primary/20 hover:bg-accent/40',

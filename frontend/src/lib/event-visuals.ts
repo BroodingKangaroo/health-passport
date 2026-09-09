@@ -34,6 +34,11 @@ export interface EventTypeVisual {
   /** Message-key suffix shared by the `timeline.historyList` (plural) and
       `timeline.entrySettings` (singular) namespaces, e.g. `typeBloodTest`. */
   labelKey: string
+  /** Message-key suffix for the COMPACT filter-chip labels
+      (`timeline.historyList.chip*`) — short forms that keep the chip row to
+      one line in both locales (e.g. RU «Обследования» instead of
+      «Инструментальные исследования»). */
+  chipLabelKey: string
 }
 
 export const TYPE_VISUALS: Record<EventType, EventTypeVisual> = {
@@ -45,6 +50,7 @@ export const TYPE_VISUALS: Record<EventType, EventTypeVisual> = {
     textClass: 'text-event-blood-test',
     chipClass: 'border-event-blood-test/30 bg-event-blood-test-bg text-event-blood-test',
     labelKey: 'typeBloodTest',
+    chipLabelKey: 'chipBloodTest',
   },
   doctor_visit: {
     icon: Stethoscope,
@@ -54,6 +60,7 @@ export const TYPE_VISUALS: Record<EventType, EventTypeVisual> = {
     textClass: 'text-event-doctor-visit',
     chipClass: 'border-event-doctor-visit/30 bg-event-doctor-visit-bg text-event-doctor-visit',
     labelKey: 'typeDoctorVisit',
+    chipLabelKey: 'chipDoctorVisit',
   },
   instrumental_test: {
     icon: Brain,
@@ -64,6 +71,7 @@ export const TYPE_VISUALS: Record<EventType, EventTypeVisual> = {
     chipClass:
       'border-event-instrumental-test/30 bg-event-instrumental-test-bg text-event-instrumental-test',
     labelKey: 'typeInstrumentalTest',
+    chipLabelKey: 'chipInstrumentalTest',
   },
   procedure: {
     icon: Syringe,
@@ -73,5 +81,6 @@ export const TYPE_VISUALS: Record<EventType, EventTypeVisual> = {
     textClass: 'text-event-procedure',
     chipClass: 'border-event-procedure/30 bg-event-procedure-bg text-event-procedure',
     labelKey: 'typeProcedure',
+    chipLabelKey: 'chipProcedure',
   },
 }

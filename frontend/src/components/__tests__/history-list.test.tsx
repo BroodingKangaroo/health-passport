@@ -72,7 +72,7 @@ describe('HistoryList', () => {
     expect(container.querySelector('.ring-2.ring-primary\\/40')).not.toBeNull()
   })
 
-  it('shows filter chips with per-type counts that double as the legend', () => {
+  it('shows compact filter chips with per-type counts that double as the legend', () => {
     renderI18n(
       <HistoryList
         events={[eventWithLongClinic, visitEvent]}
@@ -83,9 +83,10 @@ describe('HistoryList', () => {
 
     const group = screen.getByRole('group', { name: 'Entry Type' })
     expect(group).toBeInTheDocument()
+    // Chips use the compact short labels (full labels live in the popover).
     expect(screen.getByText('All')).toBeInTheDocument()
-    expect(screen.getByText('Blood Tests')).toBeInTheDocument()
-    expect(screen.getByText('Doctor Visits')).toBeInTheDocument()
+    expect(screen.getByText('Labs')).toBeInTheDocument()
+    expect(screen.getByText('Visits')).toBeInTheDocument()
   })
 
   it('shows the type-colored empty state when a single type filter has no matches', () => {
@@ -95,8 +96,8 @@ describe('HistoryList', () => {
 
     // Deselect every type except blood_test (of which there are no events):
     // chips toggle types off one by one until a single empty type remains.
-    fireEvent.click(screen.getByRole('button', { name: /Doctor Visits/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Instrumental Tests/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Visits/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Instrumental/ }))
     fireEvent.click(screen.getByRole('button', { name: /Procedures/ }))
 
     expect(screen.getByText('No matching records found')).toBeInTheDocument()
