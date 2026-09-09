@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { HistoryList } from '../health-passport/history-list'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type { MedicalEvent } from '@/lib/types'
@@ -109,19 +109,75 @@ describe('HistoryList', () => {
     expect(screen.getByText('Visits')).toBeInTheDocument()
   })
 
+  it('keeps the chip row on a single non-wrapping line (rail/details alignment)', () => {
+    const { container } = renderI18n(
+      <HistoryList
+        events={[eventWithLongClinic, visitEvent]}
+        selectedId=""
+        onSelect={vi.fn()}
+      />,
+    )
+
+    const group = container.querySelector('[role="group"]')
+    expect(group?.className).toContain('flex-nowrap')
+    expect(group?.className).toContain('overflow-x-auto')
+    expect(group?.className).not.toContain('flex-wrap')
+  })
+
+  it('renders zero-count type chips disabled instead of hiding them', () => {
+    renderI18n(
+      <HistoryList events={[visitEvent]} selectedId="" onSelect={vi.fn()} />,
+    )
+
+    const instrumental = screen.getByRole('button', { name: /Instrumental/ })
+    const procedures = screen.getByRole('button', { name: /Procedures/ })
+    // Still present as the type legend, but not interactive (filtering to
+    // an empty type is a no-op).
+    expect(instrumental).toHaveAttribute('aria-disabled', 'true')
+    expect(procedures).toHaveAttribute('aria-disabled', 'true')
+    expect(instrumental.getAttribute('title')).toBe('No records of this type yet')
+
+    const labs = screen.getByRole('button', { name: /Labs/ })
+    expect(labs).toHaveAttribute('aria-disabled', 'true')
+    const visits = screen.getByRole('button', { name: /Visits/ })
+    expect(visits.getAttribute('aria-disabled')).toBeNull()
+  })
+
   it('shows the type-colored empty state when a single type filter has no matches', () => {
     const { container } = renderI18n(
       <HistoryList events={[visitEvent]} selectedId="" onSelect={vi.fn()} />,
     )
 
-    // Deselect every type except blood_test (of which there are no events):
-    // chips toggle types off one by one until a single empty type remains.
-    fireEvent.click(screen.getByRole('button', { name: /Visits/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Instrumental/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Procedures/ }))
+    // Zero-count chips are disabled, so the empty state is reached through
+    // the filter popover: deselect every type except blood_test (of which
+    // there are no events) until a single empty type remains.
+    fireEvent.click(screen.getByRole('button', { name: 'Filter history' }))
+    const popover = document.querySelector('.shadow-xl')!
+    fireEvent.click(within(popover as HTMLElement).getByRole('button', { name: /Doctor Visits/ }))
+    fireEvent.click(within(popover as HTMLElement).getByRole('button', { name: /Instrumental Tests/ }))
+    fireEvent.click(within(popover as HTMLElement).getByRole('button', { name: /Procedures/ }))
 
     expect(screen.getByText('No matching records found')).toBeInTheDocument()
     // The empty state borrows the remaining type's color family.
     expect(container.querySelector('.bg-event-blood-test-bg')).not.toBeNull()
+  })
+
+  it('wraps long card titles to two lines instead of ellipsizing', () => {
+    const longTitleEvent: MedicalEvent = {
+      ...eventWithLongClinic,
+      title:
+        'Исследование состава микробиоты кишечника с определением чувствительности к бактериофагам',
+    }
+    const { container } = renderI18n(
+      <HistoryList
+        events={[longTitleEvent]}
+        selectedId=""
+        onSelect={vi.fn()}
+      />,
+    )
+
+    const title = container.querySelector('p.line-clamp-2')
+    expect(title).not.toBeNull()
+    expect(title?.getAttribute('title')).toBe(longTitleEvent.title)
   })
 })

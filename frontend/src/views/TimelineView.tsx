@@ -80,7 +80,7 @@ export function TimelineContent({
 
   if (isLoading) {
     return (
-      <main className="mx-auto max-w-[1400px] p-5 text-center text-sm text-muted-foreground">
+      <main className="mx-auto max-w-[1800px] p-5 text-center text-sm text-muted-foreground">
         {tc('loading')}
       </main>
     )
@@ -88,14 +88,14 @@ export function TimelineContent({
 
   if (error) {
     return (
-      <main className="mx-auto max-w-[1400px] p-5 text-center text-sm text-status-high">
+      <main className="mx-auto max-w-[1800px] p-5 text-center text-sm text-status-high">
         {t('loadError')}
       </main>
     )
   }
 
   return (
-    <main className="mx-auto grid max-w-[1400px] gap-5 p-5 lg:grid-cols-[minmax(240px,28%)_1fr]">
+    <main className="mx-auto grid max-w-[1800px] gap-5 p-5 lg:grid-cols-[minmax(260px,26%)_1fr]">
       {/* min-w-0: grid items default to min-width:auto — without it a long
           unbreakable card title inflates the aside's intrinsic min-content
           and blows the column out below the lg breakpoint (the fixed

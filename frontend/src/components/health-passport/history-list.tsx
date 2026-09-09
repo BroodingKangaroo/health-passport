@@ -37,6 +37,35 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
 
   const popoverRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
+  const chipsRef = useRef<HTMLDivElement>(null)
+  const [chipOverflow, setChipOverflow] = useState({ left: false, right: false })
+
+  // The nowrap chip row scrolls horizontally instead of wrapping (rail/
+  // details alignment depends on its fixed height) — edge fades are the
+  // scroll affordance, since a 22px-tall scroller shows no visible
+  // scrollbar (macOS overlay scrollbars).
+  const updateChipOverflow = useCallback(() => {
+    const el = chipsRef.current
+    if (!el) return
+    setChipOverflow({
+      left: el.scrollLeft > 2,
+      right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2,
+    })
+  }, [])
+
+  useEffect(() => {
+    updateChipOverflow()
+    const el = chipsRef.current
+    if (!el) return
+    el.addEventListener('scroll', updateChipOverflow, { passive: true })
+    // Overflow also changes when the aside column resizes (window resize,
+    // locale switch, filter changes re-rendering chips).
+    window.addEventListener('resize', updateChipOverflow)
+    return () => {
+      el.removeEventListener('scroll', updateChipOverflow)
+      window.removeEventListener('resize', updateChipOverflow)
+    }
+  }, [updateChipOverflow, events, locale])
 
   const activeFilterCount =
     (search ? 1 : 0) +
@@ -311,15 +340,38 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
 
       {/* Type filter chips — the legend for the type colors (dot), a one-tap
           filter, and the per-type counts. Color never signals state: the dot
-          stays type-colored whether the chip is on or off. Compact short
-          labels (chip* keys) keep the chips small; the row wraps gracefully
-          when all five don't fit (e.g. RU at narrow viewports). */}
-      <div className="flex flex-wrap gap-1 px-1" role="group" aria-label={t('entryType')}>
+          stays type-colored whether the chip is on or off. Zero-count types
+          stay rendered (the chips double as the type legend) but are DISABLED
+          — dimmed, aria-disabled, non-interactive — since filtering to an
+          empty type is a no-op. The row never wraps: nowrap + horizontal
+          scroll overflow keeps the chip row a fixed height, which pins the
+          chronology rail's top edge to the details panel's top edge
+          (the wrapped row was the rail/details misalignment). Compact short
+          labels (chip* keys) keep the chips small. */}
+      <div className="relative">
+        {chipOverflow.left && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 left-0 z-10 w-5 bg-gradient-to-r from-background to-transparent"
+          />
+        )}
+        {chipOverflow.right && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 right-0 z-10 w-5 bg-gradient-to-l from-background to-transparent"
+          />
+        )}
+        <div
+          ref={chipsRef}
+          className="flex min-h-[22px] flex-nowrap gap-1 overflow-x-auto px-1"
+          role="group"
+          aria-label={t('entryType')}
+        >
         <button
           onClick={() => setTypeFilters(ALL_TYPES)}
           aria-pressed={typeFilters.length === ALL_TYPES.length}
           className={cn(
-            'flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium transition-colors',
+            'flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium transition-colors',
             typeFilters.length === ALL_TYPES.length
               ? 'border border-border bg-card text-foreground'
               : 'bg-muted/60 text-muted-foreground hover:text-foreground',
@@ -331,16 +383,21 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
         {ALL_TYPES.map((type) => {
           const visual = TYPE_VISUALS[type]
           const active = typeFilters.includes(type)
+          const empty = typeCounts[type] === 0
           return (
             <button
               key={type}
               onClick={() => toggleType(type)}
               aria-pressed={active}
+              aria-disabled={empty || undefined}
+              title={empty ? t('noRecordsOfType') : undefined}
               className={cn(
-                'flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium transition-colors',
+                'flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium transition-colors',
+                empty && 'cursor-not-allowed opacity-40',
+                !empty && !active && 'hover:text-foreground',
                 active
                   ? 'border border-border bg-card text-foreground'
-                  : 'bg-muted/60 text-muted-foreground hover:text-foreground',
+                  : 'bg-muted/60 text-muted-foreground',
               )}
             >
               <span aria-hidden className={cn('size-2 shrink-0 rounded-full', visual.dotClass)} />
@@ -349,6 +406,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
             </button>
           )
         })}
+        </div>
       </div>
 
       {/* Chronology rail: a quiet hairline spine with a type-colored node
@@ -446,7 +504,10 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                       <Icon className="size-4" />
                     </div>
                     <div className="min-w-0 leading-tight">
-                      <p className="truncate text-sm font-semibold text-foreground">
+                      {/* Wraps to two lines instead of ellipsizing: long
+                          visit/lab titles stay readable; the full title
+                          remains reachable via the tooltip. */}
+                      <p className="line-clamp-2 text-sm font-semibold text-foreground" title={event.title}>
                         {event.title}
                       </p>
                       <p className="text-xs text-muted-foreground">{formatDate(event.date, locale)}</p>

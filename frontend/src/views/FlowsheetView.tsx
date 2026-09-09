@@ -17,7 +17,7 @@ export function FlowsheetView() {
       <div className="min-h-screen bg-background">
         <HeaderBar />
         <NavBar activeTab="flowsheet" />
-        <main className="mx-auto max-w-[1400px] p-5 text-center text-sm text-muted-foreground">
+        <main className="p-5 text-center text-sm text-muted-foreground">
           {tc('loading')}
         </main>
       </div>
@@ -29,7 +29,7 @@ export function FlowsheetView() {
       <div className="min-h-screen bg-background">
         <HeaderBar />
         <NavBar activeTab="flowsheet" />
-        <main className="mx-auto max-w-[1400px] p-5 text-center text-sm text-status-high">
+        <main className="p-5 text-center text-sm text-status-high">
           {t('loadError')}
         </main>
       </div>
@@ -40,7 +40,7 @@ export function FlowsheetView() {
     <div className="min-h-screen bg-background">
       <HeaderBar />
       <NavBar activeTab="flowsheet" />
-      <main className="mx-auto max-w-[1400px] p-5">
+      <main className="w-full p-4 xl:px-6">
         <FlowsheetMatrix
           dates={data!.dates}
           matrix={data!.matrix}

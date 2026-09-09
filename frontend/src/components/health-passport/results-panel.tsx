@@ -381,10 +381,13 @@ function FlowRow({
           expandable && 'cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none',
         )}
       >
-        <span className="truncate font-semibold text-foreground">
+        <span className="truncate font-semibold text-foreground" title={biomarker.definition.names.en}>
           {biomarker.definition.names.en}
         </span>
-        <span className="truncate text-xs text-muted-foreground/70">
+        <span
+          className="truncate text-xs text-muted-foreground/70"
+          title={biomarker.original_name || biomarker.definition.names.ru}
+        >
           {biomarker.original_name || biomarker.definition.names.ru}
         </span>
         <span className="font-medium text-foreground">

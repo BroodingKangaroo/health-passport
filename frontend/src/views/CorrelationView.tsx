@@ -16,7 +16,7 @@ export function CorrelationView() {
       <div className="min-h-screen bg-background">
         <HeaderBar />
         <NavBar activeTab="correlation" />
-        <main className="mx-auto max-w-[1400px] p-5 text-center text-sm text-muted-foreground">
+        <main className="mx-auto max-w-[1800px] p-5 text-center text-sm text-muted-foreground">
           {t('loading')}
         </main>
       </div>
@@ -28,7 +28,7 @@ export function CorrelationView() {
       <div className="min-h-screen bg-background">
         <HeaderBar />
         <NavBar activeTab="correlation" />
-        <main className="mx-auto max-w-[1400px] p-5 text-center text-sm text-status-high">
+        <main className="mx-auto max-w-[1800px] p-5 text-center text-sm text-status-high">
           {t('failedToLoad')}
         </main>
       </div>
@@ -39,7 +39,7 @@ export function CorrelationView() {
     <div className="flex h-screen flex-col bg-background">
       <HeaderBar />
       <NavBar activeTab="correlation" />
-      <main className="mx-auto min-h-0 w-full max-w-[1400px] flex-1 p-5">
+      <main className="mx-auto min-h-0 w-full max-w-[1800px] flex-1 p-5">
         <CorrelationChart biomarkers={biomarkers} />
       </main>
     </div>
