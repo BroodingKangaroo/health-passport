@@ -80,6 +80,12 @@ Replaces the old `range_min`/`range_max` + qualitative-flag model:
   `SECRET_KEY` as JWTs (`app/auth.py`). `verify_anon_cookie` (`app/api/
   anon_session.py`) rejects unsigned, tampered, or non-`anon-`-prefixed values;
   `get_current_user_or_anon` then treats that request as a fresh session.
+- `get_current_user_or_anon_strict` (import-job + notification endpoints):
+  a token that IS present but fails to validate (bad signature, unknown
+  user, expired) is a hard 401 — never the anonymous fallback; a fully
+  ABSENT token still degrades to the anonymous session. Guards against the
+  frontend's mount-time auth race answering with another principal's (empty)
+  list as a 200, which the client would cache until the next poll tick.
 - The raw cookie is **never** trusted as the authorization principal: forging it
   to another tenant's id (registered uuid or another anon id) yields a brand-new
   session, never the victim's data. A hard cutover — legacy unsigned cookies are

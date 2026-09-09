@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { SessionProvider } from 'next-auth/react'
 
 import { NotificationBell, freshImportNotifications } from '../health-passport/notification-bell'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
@@ -58,9 +59,13 @@ function renderBell() {
   })
   return render(
     <QueryClientProvider client={client}>
-      <TestI18nProvider>
-        <NotificationBell />
-      </TestI18nProvider>
+      {/* session={null} resolves next-auth's status to 'unauthenticated' —
+          opens the useAuthPrincipal gate immediately. */}
+      <SessionProvider session={null}>
+        <TestI18nProvider>
+          <NotificationBell />
+        </TestI18nProvider>
+      </SessionProvider>
     </QueryClientProvider>,
   )
 }

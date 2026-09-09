@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { SessionProvider } from 'next-auth/react'
 import type { StandardizedMedicalRecord } from '@/lib/types'
 
 const pushMock = vi.fn()
@@ -79,9 +80,13 @@ function renderReview(jobId?: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
-      <TestI18nProvider>
-        <ReviewImport />
-      </TestI18nProvider>
+      {/* session={null} resolves next-auth's status to 'unauthenticated' —
+          opens the useAuthPrincipal gate immediately. */}
+      <SessionProvider session={null}>
+        <TestI18nProvider>
+          <ReviewImport />
+        </TestI18nProvider>
+      </SessionProvider>
     </QueryClientProvider>,
   )
 }

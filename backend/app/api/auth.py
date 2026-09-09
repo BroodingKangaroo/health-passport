@@ -154,6 +154,31 @@ async def get_current_user_or_anon(
         raise
 
 
+async def get_current_user_or_anon_strict(
+    request: Request,
+    response: Response,
+    token: Optional[str] = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+) -> tuple[Optional[models.Patient], str, bool]:
+    """Like ``get_current_user_or_anon``, but a token that IS present and
+    fails to validate (bad signature, unknown user, expired) is a hard 401
+    instead of silently degrading to an anonymous session.
+
+    Used by the import-job / notification endpoints: an auth race there must
+    never answer with ANOTHER principal's (usually empty) list as a 200 — the
+    frontend caches it and the real data only appears on the next poll tick.
+    A fully ABSENT token still resolves to the anonymous session, so the
+    anonymous flow (bell + tracker for anon's ≤5-doc imports) is unchanged."""
+    if not token:
+        from app.api.anon_session import get_or_create_anon_id
+        anon_id = get_or_create_anon_id(request, response)
+        return (None, anon_id, True)
+    # No 401 catch: invalid/expired tokens raise straight through
+    # get_current_user (TokenExpiredError is itself a 401 HTTPException).
+    user = await get_current_user(token, db)
+    return (user, user.id, False)
+
+
 class UserCreateWithMigration(BaseModel):
     email: EmailStr
     password: str

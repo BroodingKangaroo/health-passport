@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { useAuthPrincipal } from '@/lib/hooks/useAuthPrincipal'
 import {
   dismissNotification,
   fetchNotifications,
@@ -48,6 +49,7 @@ export function NotificationBell() {
   const t = useTranslations('import')
   const router = useRouter()
   const queryClient = useQueryClient()
+  const { uid, authReady } = useAuthPrincipal()
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   // Newest seen notification created_at (null = nothing seen yet — the
@@ -57,11 +59,20 @@ export function NotificationBell() {
   const loadedRef = useRef(false)
 
   const { data } = useQuery({
-    queryKey: ['notifications'],
+    queryKey: ['notifications', uid],
     queryFn: fetchNotifications,
-    refetchInterval: 10_000,
     refetchOnWindowFocus: true,
+    enabled: authReady,
+    refetchInterval: authReady ? 10_000 : false,
   })
+
+  // A login/logout principal switch re-keys the query but the seen refs
+  // survive — reset them so the new principal's first load is treated as a
+  // fresh "never seen anything" (never toast their backlog).
+  useEffect(() => {
+    seenRef.current = null
+    loadedRef.current = false
+  }, [uid])
 
   const unreadCount = data?.unread_count ?? 0
   const items = data?.items ?? []
@@ -121,7 +132,11 @@ export function NotificationBell() {
       // Badge clears on open; toasts keep keying off created_at.
       void markAllNotificationsRead()
         .then(() => queryClient.invalidateQueries({ queryKey: ['notifications'] }))
-        .catch(() => {})
+        .catch(() => {
+          // A silently-swallowed failure would read as "read didn't stick"
+          // when the badge reappears on the next poll — surface it.
+          toast.error(t('bellActionFailed'))
+        })
     }
   }
 
@@ -130,7 +145,7 @@ export function NotificationBell() {
       await markAllNotificationsRead()
       await queryClient.invalidateQueries({ queryKey: ['notifications'] })
     } catch {
-      /* badge stays until the next poll */
+      toast.error(t('bellActionFailed'))
     }
   }
 
@@ -157,7 +172,10 @@ export function NotificationBell() {
     if (!item.read_at) {
       void markNotificationRead(item.id)
         .then(() => queryClient.invalidateQueries({ queryKey: ['notifications'] }))
-        .catch(() => {})
+        .catch(() => {
+          // Same silent-failure trap as toggle() — surface it.
+          toast.error(t('bellActionFailed'))
+        })
     }
   }
 

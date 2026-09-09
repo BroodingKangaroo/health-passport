@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app import i18n
-from app.api.auth import get_current_user_or_anon
+from app.api.auth import get_current_user_or_anon_strict
 from app.db.models import Notification, Patient
 from app.db.session import get_db
 
@@ -33,7 +33,7 @@ def _serialize(row: Notification) -> dict:
 @router.get("/api/notifications")
 async def list_notifications(
     db: Session = Depends(get_db),
-    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon_strict),
 ):
     _user, user_id, _is_anonymous = user_data
     rows = (
@@ -67,7 +67,7 @@ def _own_notification(db: Session, notification_id: str, user_id: str) -> Notifi
 async def mark_notification_read(
     notification_id: str,
     db: Session = Depends(get_db),
-    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon_strict),
 ):
     _user, user_id, _is_anonymous = user_data
     row = _own_notification(db, notification_id, user_id)
@@ -80,7 +80,7 @@ async def mark_notification_read(
 @router.post("/api/notifications/read-all")
 async def mark_all_notifications_read(
     db: Session = Depends(get_db),
-    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon_strict),
 ):
     _user, user_id, _is_anonymous = user_data
     now = datetime.now(timezone.utc)
@@ -95,7 +95,7 @@ async def mark_all_notifications_read(
 async def dismiss_notification(
     notification_id: str,
     db: Session = Depends(get_db),
-    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon_strict),
 ):
     _user, user_id, _is_anonymous = user_data
     row = _own_notification(db, notification_id, user_id)

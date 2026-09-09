@@ -503,14 +503,26 @@ four surfaces, all fed by ONE shared react-query cache key:
   (extraction continues server-side), so the guard's Back interception and
   modal would be pure friction. Only the plain `beforeunload` prompt fires
   while submissions are still in flight (uploads not yet accepted).
-- **Shared poll** (`lib/hooks/useImportJobs.ts`): `['import-jobs']` polled
-  ~3s while mounted + refetch on window focus (iOS Safari suspends JS in
+- **Shared poll** (`lib/hooks/useImportJobs.ts`): `['import-jobs', uid]`
+  (`uid = session?.user?.id ?? 'anon'` from `useAuthPrincipal`) polled ~3s
+  while mounted + refetch on window focus (iOS Safari suspends JS in
   background tabs; all catch-ups must surface on resume). /add-entry's
   post-submit invalidation surfaces fresh jobs without waiting for the next
-  tick; the tracker is the only mounted consumer.
+  tick (the `['import-jobs']` prefix still matches); the tracker is the only
+  mounted consumer. The query is GATED on session readiness
+  (`useAuthPrincipal`: `enabled: status !== 'loading'`): mounting fires
+  before next-auth resolves the bearer token, and a tokenless request would
+  be answered by the ANONYMOUS principal (HTTP 200 + empty list) and cached
+  until the next poll tick — the reload pop-in. The per-user key suffix also
+  means a login/logout switch can never serve the previous principal's
+  cached data; the tracker renders a skeleton (`imports-loading`) while
+  pending, never the empty state.
 - **Bell** (`notification-bell.tsx` in the header, right of the language
-  switch, visible for anonymous sessions too): `['notifications']` polled
-  ~10s + focus refetch; badge = unread count, cleared on open (read-all).
+  switch, visible for anonymous sessions too): `['notifications', uid]`
+  polled ~10s + focus refetch, gated on session readiness exactly like the
+  jobs poll; badge = unread count, cleared on open (read-all; a failed
+  read-all surfaces an error toast — it must not silently read as "read
+  didn't stick" when the badge reappears on the next poll).
   Toasts are COALESCED via the pure `freshImportNotifications()` helper —
   >1 newly-arrived unread notifications produce ONE summary toast linking to
   `/imports`; a single one toasts individually with a review deep-link.
@@ -553,7 +565,10 @@ four surfaces, all fed by ONE shared react-query cache key:
   (covers bell deep-links), or the in-view auto-transition — marks it seen
   and the pill disappears.
 - **Review `/review-import?job=<id>`** (`review-import.tsx`): fetches the
-  staged record and prefills the EXISTING `AddEntry` editor machinery —
+  staged record (GATED on session readiness like the polls — a deep-link
+  hard-reload would otherwise fetch tokenless, get the tenant-scoped 404 and
+  park the page in the permanent "gone" state, since that query has
+  `retry: false`) and prefills the EXISTING `AddEntry` editor machinery —
   `AddEntry` takes a `stagedJob` prop and applies the record through the
   same fill path as the SSE result (render-time derived-state adjustment,
   once per job id — unit-conflict dialog, merge checkbox and document-type

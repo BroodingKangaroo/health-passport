@@ -215,7 +215,16 @@ export function ImportsTracker() {
         </p>
       </div>
 
-      {items.length === 0 ? (
+      {/* Loading skeleton — the query is also GATED on session readiness
+          (useAuthPrincipal), so this state covers the pre-hydration window
+          instead of flashing the "no documents" empty state first. */}
+      {jobsQuery.isPending ? (
+        <div className="space-y-2" data-testid="imports-loading" aria-busy="true">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-14 animate-pulse rounded-lg border bg-muted/40" />
+          ))}
+        </div>
+      ) : items.length === 0 ? (
         <div className="rounded-xl border border-dashed p-8 text-center" data-testid="imports-empty">
           <p className="text-sm text-muted-foreground">{t('trackerEmpty')}</p>
           <Link

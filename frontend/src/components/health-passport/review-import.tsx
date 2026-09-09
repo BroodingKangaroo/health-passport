@@ -12,6 +12,7 @@ import { HeaderBar } from './header-bar'
 import { AddEntry } from './add-entry'
 import { BackNav } from '@/components/shared/BackNav'
 import { markImportJobSeen } from '@/lib/new-import-jobs'
+import { useAuthPrincipal } from '@/lib/hooks/useAuthPrincipal'
 import {
   dismissImportJob,
   fetchImportJob,
@@ -40,15 +41,20 @@ export function ReviewImport() {
   const queryClient = useQueryClient()
   const searchParams = useSearchParams()
   const jobId = searchParams.get('job')
+  const { authReady } = useAuthPrincipal()
 
   // The staged document for the preview pane (best-effort — a failed fetch
   // leaves the preview empty but never blocks the review).
   const [stagedFile, setStagedFile] = useState<File | null>(null)
   const [dismissing, setDismissing] = useState(false)
+  // GATED on session readiness: on a hard reload/deep-link the mount fires
+  // before next-auth resolves the bearer token — a tokenless fetch would 404
+  // (the job belongs to the user's tenant, the anon principal sees nothing)
+  // and `retry: false` would park the page in the permanent "gone" state.
   const { data: detail, isPending, isError } = useQuery({
     queryKey: ['import-job', jobId],
     queryFn: () => fetchImportJob(jobId!),
-    enabled: !!jobId,
+    enabled: !!jobId && authReady,
     retry: false,
   })
 

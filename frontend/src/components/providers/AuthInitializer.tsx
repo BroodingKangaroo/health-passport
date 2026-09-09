@@ -7,8 +7,6 @@ import { setAccessToken } from "@/lib/auth-token"
 export function AuthInitializer() {
   const { data: session } = useSession()
 
-  setAccessToken(session?.accessToken ?? null)
-
   useEffect(() => {
     setAccessToken(session?.accessToken ?? null)
   }, [session?.accessToken])

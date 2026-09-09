@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { SessionProvider } from 'next-auth/react'
 
 import { ImportsTracker } from '../health-passport/imports-tracker'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
@@ -58,7 +59,11 @@ function renderTracker(ui: ReactNode) {
   })
   return render(
     <QueryClientProvider client={client}>
-      <TestI18nProvider>{ui}</TestI18nProvider>
+      {/* session={null} resolves next-auth's status to 'unauthenticated' —
+          opens the useAuthPrincipal gate immediately. */}
+      <SessionProvider session={null}>
+        <TestI18nProvider>{ui}</TestI18nProvider>
+      </SessionProvider>
     </QueryClientProvider>,
   )
 }
@@ -82,6 +87,15 @@ describe('ImportsTracker', () => {
       'href',
       '/add-entry',
     )
+  })
+
+  it('shows a loading skeleton instead of the empty state while pending', async () => {
+    // Never-resolving fetch: the pre-hydration window must not flash the
+    // "no documents" empty state (the reload pop-in bug).
+    fetchJobsMock.mockImplementation(() => new Promise(() => {}))
+    renderTracker(<ImportsTracker />)
+    expect(screen.getByTestId('imports-loading')).toBeInTheDocument()
+    expect(screen.queryByTestId('imports-empty')).not.toBeInTheDocument()
   })
 
   it('lists active jobs with metadata and a collapsed history section', async () => {

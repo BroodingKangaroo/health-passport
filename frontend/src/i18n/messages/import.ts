@@ -24,6 +24,7 @@ export const importMessages = {
       bellFailedTitle: 'Extraction failed',
       bellFailedAction: 'Retry',
       bellDismiss: 'Dismiss',
+      bellActionFailed: 'Couldn’t update notifications.',
       bellToastSingle: '{filename} extracted — ready for review',
       bellToastMany: '{count, plural, one {# document extracted} other {# documents extracted}} — review',
       // ----- Tracker page /imports (B3) -----
@@ -89,6 +90,7 @@ export const importMessages = {
       bellFailedTitle: 'Ошибка распознавания',
       bellFailedAction: 'Повторить',
       bellDismiss: 'Убрать',
+      bellActionFailed: 'Не удалось обновить уведомления.',
       bellToastSingle: '{filename} распознан — готов к проверке',
       bellToastMany: '{count, plural, one {# документ распознан} few {# документа распознаны} many {# документов распознано} other {# документа распознано}} — проверьте',
       // ----- Tracker page /imports (B3) -----

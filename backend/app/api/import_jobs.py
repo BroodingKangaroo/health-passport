@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 
 from app import i18n
 from app.api.ai import MAX_EXTRACT_FILE_SIZE, _get_client
-from app.api.auth import get_current_user_or_anon
+from app.api.auth import get_current_user_or_anon_strict
 from app.db.models import (
     BiomarkerDefinition,
     BiomarkerReading,
@@ -261,7 +261,7 @@ def _merge_overlap_conflicts(
 async def create_import_job(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon_strict),
 ):
     _user, user_id, is_anonymous = user_data
     if not file.filename:
@@ -384,7 +384,7 @@ async def create_import_job(
 @router.get("/jobs")
 async def list_import_jobs(
     db: Session = Depends(get_db),
-    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon_strict),
 ):
     _user, user_id, _is_anonymous = user_data
     # Lazy global GC on the list-read path too.
@@ -408,7 +408,7 @@ async def list_import_jobs(
 async def get_import_job(
     job_id: str,
     db: Session = Depends(get_db),
-    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon_strict),
 ):
     _user, user_id, _is_anonymous = user_data
     job = _own_job(db, job_id, user_id)
@@ -426,7 +426,7 @@ async def get_import_job(
 async def download_import_job_file(
     job_id: str,
     db: Session = Depends(get_db),
-    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon_strict),
 ):
     """Serve the STAGED file to its owner (preview in the review editor).
 
@@ -466,7 +466,7 @@ async def download_import_job_file(
 async def cancel_import_job(
     job_id: str,
     db: Session = Depends(get_db),
-    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon_strict),
 ):
     """CAS transitions only: a QUEUED job is cancelled (refunded, file
     deleted) by the winning UPDATE; a PROCESSING job belongs to the worker —
@@ -507,7 +507,7 @@ async def cancel_import_job(
 async def retry_import_job(
     job_id: str,
     db: Session = Depends(get_db),
-    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon_strict),
 ):
     """CAS failed->queued: re-charge quota atomically with the winning
     transition; the LLM genuinely runs again. Rejects non-failed jobs and a
@@ -561,7 +561,7 @@ async def retry_import_job(
 async def restore_import_job(
     job_id: str,
     db: Session = Depends(get_db),
-    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon_strict),
 ):
     """RESTORE a dismissed import — CAS ``dismissed -> done`` so a done
     extraction becomes reviewable again (re-enters the tracker's active list
@@ -621,7 +621,7 @@ async def restore_import_job(
 async def dismiss_import_job(
     job_id: str,
     db: Session = Depends(get_db),
-    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
+    user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon_strict),
 ):
     """DISMISS an active job — a CAS transition into the ``dismissed`` state
     (the row is KEPT and shows in the tracker's history; it is not deleted):

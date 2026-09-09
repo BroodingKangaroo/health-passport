@@ -75,7 +75,7 @@ async def api(client, db_session, monkeypatch, tmp_path):
 async def anon_api(db_session, monkeypatch, tmp_path):
     """Anonymous principal against the same routers (bell + tracker work for
     anon's <=5-doc imports)."""
-    from app.api.auth import get_current_user_or_anon
+    from app.api.auth import get_current_user_or_anon_strict
 
     engine = create_engine(
         "sqlite:///:memory:",
@@ -104,7 +104,7 @@ async def anon_api(db_session, monkeypatch, tmp_path):
         return (None, "anon-import-user", True)
 
     app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[get_current_user_or_anon] = override_anon
+    app.dependency_overrides[get_current_user_or_anon_strict] = override_anon
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield {"upload_dir": str(upload_dir), "db": db, "client": ac}
@@ -1025,3 +1025,45 @@ class TestStagedFileDownload:
         assert foreign.status_code == 404
         missing = await client.get("/api/import/jobs/job-gone-file/file")
         assert missing.status_code == 404
+
+
+class TestStrictPrincipal:
+    """The import/notification endpoints take
+    ``get_current_user_or_anon_strict``: a PRESENT token that fails to
+    validate is a hard 401, never a silent anonymous fallback — an auth race
+    on reload must not answer with another principal's empty list as a 200
+    (the frontend would cache it until the next poll tick). No token at all
+    still degrades to the anonymous session."""
+
+    @pytest_asyncio.fixture
+    async def strict_api(self, db_session, monkeypatch):
+        """Real strict dependency (NO principal override) + the test engine."""
+        app = FastAPI()
+        # NO principal override: the REAL strict dependency runs, so an
+        # invalid bearer token must surface as a hard 401.
+        app.include_router(import_jobs_router)
+
+        async def override_get_db():
+            yield db_session
+
+        app.dependency_overrides[get_db] = override_get_db
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
+
+    @pytest.mark.asyncio
+    async def test_invalid_present_token_is_hard_401(self, strict_api, monkeypatch):
+        monkeypatch.setattr(ej, "sweep_expired_jobs", lambda: None)
+        resp = await strict_api.get(
+            "/api/import/jobs", headers={"Authorization": "Bearer not-a-jwt"}
+        )
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_absent_token_still_falls_back_to_anonymous(
+        self, strict_api, monkeypatch
+    ):
+        monkeypatch.setattr(ej, "sweep_expired_jobs", lambda: None)
+        resp = await strict_api.get("/api/import/jobs")
+        assert resp.status_code == 200
+        assert resp.json() == {"items": []}

@@ -88,7 +88,11 @@ def auth_token(db_session):
 async def client(db_session, auth_token):
     from app.api.account import router as account_router
     from app.api.ai import router as ai_router
-    from app.api.auth import get_current_user, get_current_user_or_anon
+    from app.api.auth import (
+        get_current_user,
+        get_current_user_or_anon,
+        get_current_user_or_anon_strict,
+    )
     from app.api.biomarkers import router as biomarkers_router
     from app.api.entries import router as entries_router
     from app.api.flowsheet import router as flowsheet_router
@@ -134,6 +138,9 @@ async def client(db_session, auth_token):
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
     app.dependency_overrides[get_current_user_or_anon] = override_get_current_user_or_anon
+    # The import-job / notification endpoints take the STRICT principal
+    # dependency (invalid-but-present token -> hard 401); same test principal.
+    app.dependency_overrides[get_current_user_or_anon_strict] = override_get_current_user_or_anon
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
