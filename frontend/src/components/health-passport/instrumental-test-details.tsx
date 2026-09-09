@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 
 import { cn, fetchAuthedObjectUrl, printAuthedDocument } from '@/lib/utils'
+import { TYPE_VISUALS } from '@/lib/event-visuals'
 import { EntrySettings } from './entry-settings'
 import type { InstrumentalData, MedicalEvent } from '@/lib/types'
 
@@ -44,6 +45,8 @@ export function InstrumentalTestDetails({
   onDeleted?: () => void
 }) {
   const t = useTranslations('timeline.instrumentalTest')
+  const te = useTranslations('timeline.entrySettings')
+  const TypeIcon = TYPE_VISUALS.instrumental_test.icon
   const [activeTab, setActiveTab] = useState<'summary' | 'document' | 'settings'>('summary')
   const [activeAttachmentId, setActiveAttachmentId] = useState<string | null>(null)
 
@@ -82,6 +85,16 @@ export function InstrumentalTestDetails({
     <div className="flex h-full w-full flex-col bg-background px-6 pb-6">
       <div className="flex items-center justify-between">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold',
+              TYPE_VISUALS.instrumental_test.chipClass,
+            )}
+          >
+            <TypeIcon className="size-3.5" />
+            {te('typeInstrumentalTest')}
+          </span>
+          <span aria-hidden className="text-sm text-muted-foreground/20">|</span>
           <button
             onClick={() => setActiveTab('summary')}
             className={

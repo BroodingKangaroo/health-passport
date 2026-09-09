@@ -5,10 +5,6 @@ import type { ComponentType } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import {
   SlidersHorizontal,
-  Droplet,
-  Stethoscope,
-  Brain,
-  Syringe,
   Paperclip,
   Search,
   X,
@@ -17,22 +13,8 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
+import { TYPE_VISUALS } from '@/lib/event-visuals'
 import type { MedicalEvent, EventType, BiomarkerResult } from '@/lib/types'
-
-const iconMap: Record<EventType, ComponentType<{ className?: string }>> = {
-  blood_test: Droplet,
-  doctor_visit: Stethoscope,
-  instrumental_test: Brain,
-  procedure: Syringe,
-}
-
-// Data values → message keys; unknown values fall back to the raw value.
-const TYPE_LABEL_KEYS: Record<string, string> = {
-  blood_test: 'typeBloodTest',
-  doctor_visit: 'typeDoctorVisit',
-  instrumental_test: 'typeInstrumentalTest',
-  procedure: 'typeProcedure',
-}
 
 const ALL_TYPES: EventType[] = ['blood_test', 'doctor_visit', 'instrumental_test', 'procedure']
 
@@ -145,6 +127,24 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
     return result
   }, [events, typeFilters, search, abnormalOnly, attachmentsOnly, sortOrder, biomarkers])
 
+  // Per-type counts over ALL events — the chips double as the visual legend,
+  // so the counts must not shift while filtering.
+  const typeCounts = useMemo(() => {
+    const counts = {} as Record<EventType, number>
+    for (const type of ALL_TYPES) counts[type] = 0
+    for (const e of events) {
+      if (counts[e.type] !== undefined) counts[e.type] += 1
+    }
+    return counts
+  }, [events])
+
+  // Empty state borrows the single remaining type's visual family when the
+  // emptiness is caused by type filtering alone (no search / quick filters).
+  const emptySingleType =
+    !search && !abnormalOnly && !attachmentsOnly && typeFilters.length === 1
+      ? typeFilters[0]
+      : null
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between px-1">
@@ -225,7 +225,8 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                   </label>
                   <div className="flex flex-col gap-1">
                     {ALL_TYPES.map((type) => {
-                      const Icon = iconMap[type]
+                      const visual = TYPE_VISUALS[type]
+                      const Icon = visual.icon
                       const active = typeFilters.includes(type)
                       return (
                         <button
@@ -259,7 +260,10 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                             )}
                           </div>
                           <Icon className="size-4" />
-                          {TYPE_LABEL_KEYS[type] ? t(TYPE_LABEL_KEYS[type]) : type}
+                          {t(visual.labelKey)}
+                          <span className="ml-auto text-xs text-muted-foreground/60">
+                            {typeCounts[type]}
+                          </span>
                         </button>
                       )
                     })}
@@ -305,65 +309,155 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
         </div>
       </div>
 
-      <div className="flex flex-col gap-2">
-        {filteredEvents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Search className="mb-2 size-8 text-muted-foreground/40" />
-            <p className="text-sm font-medium text-muted-foreground">
-              {t('noMatching')}
-            </p>
-            {activeFilterCount > 0 && (
-              <button
-                onClick={resetFilters}
-                className="mt-2 text-xs text-primary hover:underline"
-              >
-                {t('resetFilters')}
-              </button>
-            )}
-          </div>
-        ) : (
-          filteredEvents.map((event) => {
-            const active = event.id === selectedId
-            const Icon = iconMap[event.type]
-            const count = event.attachments?.length ?? 0
-            return (
-              <button
-                key={event.id}
-                onClick={() => onSelect(event.id)}
+      {/* Type filter chips — the legend for the type colors (dot), a one-tap
+          filter, and the per-type counts. Color never signals state: the dot
+          stays type-colored whether the chip is on or off. */}
+      <div className="flex flex-wrap gap-1.5 px-1" role="group" aria-label={t('entryType')}>
+        <button
+          onClick={() => setTypeFilters(ALL_TYPES)}
+          aria-pressed={typeFilters.length === ALL_TYPES.length}
+          className={cn(
+            'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+            typeFilters.length === ALL_TYPES.length
+              ? 'border-border bg-card text-foreground shadow-sm'
+              : 'border-transparent bg-muted/50 text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {t('filterAll')}
+          <span className="text-muted-foreground/70">{events.length}</span>
+        </button>
+        {ALL_TYPES.map((type) => {
+          const visual = TYPE_VISUALS[type]
+          const active = typeFilters.includes(type)
+          return (
+            <button
+              key={type}
+              onClick={() => toggleType(type)}
+              aria-pressed={active}
+              className={cn(
+                'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                active
+                  ? 'border-border bg-card text-foreground shadow-sm'
+                  : 'border-transparent bg-muted/50 text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <span aria-hidden className={cn('size-2 shrink-0 rounded-full', visual.dotClass)} />
+              {t(visual.labelKey)}
+              <span className="text-muted-foreground/70">{typeCounts[type]}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Chronology rail: a quiet hairline spine with a type-colored node
+          per event. The node carries the type channel only; selection is the
+          primary accent (ring), never a type color. No icons inside nodes —
+          the card bubble already carries the icon. The spine is drawn as
+          per-row half-segments (top segment on every non-first row, bottom
+          segment on every non-last row) so it starts and ends exactly at the
+          first/last node and never renders in the empty state. Segments
+          extend through the inter-row gap to stay continuous. */}
+      <div>
+        <div className="flex flex-col gap-2">
+          {filteredEvents.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div
                 className={cn(
-                  'flex items-center gap-3 rounded-xl border p-3 text-left transition-all',
-                  active
-                    ? 'border-primary/30 bg-accent shadow-sm'
-                    : 'border-border bg-card hover:border-primary/20 hover:bg-accent/40',
+                  'mb-2 flex size-9 items-center justify-center rounded-full',
+                  emptySingleType
+                    ? TYPE_VISUALS[emptySingleType].bubbleClass
+                    : 'bg-muted text-muted-foreground/40',
                 )}
               >
-                <div
-                  className={cn(
-                    'flex size-9 shrink-0 items-center justify-center rounded-full',
-                    active
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-secondary text-primary',
-                  )}
-                >
-                  <Icon className="size-4" />
-                </div>
-                <div className="min-w-0 leading-tight">
-                  <p className="truncate text-sm font-semibold text-foreground">
-                    {event.title}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{formatDate(event.date, locale)}</p>
-                  <p className="truncate text-xs text-muted-foreground/80" title={event.clinic}>{event.clinic}</p>
-                </div>
-                {count > 0 && (
-                  <span className="ml-auto flex shrink-0 items-center gap-1 text-sm text-muted-foreground/50">
-                    <Paperclip className="size-4" />
-                    {count}
-                  </span>
+                {emptySingleType ? (
+                  (() => {
+                    const EmptyIcon = TYPE_VISUALS[emptySingleType].icon
+                    return <EmptyIcon className="size-4" />
+                  })()
+                ) : (
+                  <Search className="size-4" />
                 )}
-              </button>
-            )
-          })
-        )}
+              </div>
+              <p className="text-sm font-medium text-muted-foreground">
+                {t('noMatching')}
+              </p>
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={resetFilters}
+                  className="mt-2 text-xs text-primary hover:underline"
+                >
+                  {t('resetFilters')}
+                </button>
+              )}
+            </div>
+          ) : (
+            filteredEvents.map((event, idx) => {
+              const active = event.id === selectedId
+              const visual = TYPE_VISUALS[event.type]
+              const Icon = visual.icon
+              const count = event.attachments?.length ?? 0
+              const isFirst = idx === 0
+              const isLast = idx === filteredEvents.length - 1
+              return (
+                <div key={event.id} className="relative flex items-center pl-5 sm:pl-7">
+                  {/* Node center: mobile x=6px (size-3), sm x=7.5px (15px) —
+                      the spine half-segments below align to the same x. */}
+                  {!isFirst && (
+                    <span
+                      aria-hidden
+                      className="absolute -top-2 bottom-1/2 left-[6px] w-px -translate-x-1/2 bg-border sm:left-[7.5px]"
+                    />
+                  )}
+                  {!isLast && (
+                    <span
+                      aria-hidden
+                      className="absolute bottom-[-8px] left-[6px] top-1/2 w-px -translate-x-1/2 bg-border sm:left-[7.5px]"
+                    />
+                  )}
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'absolute left-0 z-10 size-3 rounded-full border-2 border-background sm:size-[15px]',
+                      visual.nodeClass,
+                      active && 'ring-2 ring-primary/40 ring-offset-2 ring-offset-background',
+                    )}
+                  />
+                  <button
+                    onClick={() => onSelect(event.id)}
+                    className={cn(
+                      'flex flex-1 items-center gap-3 rounded-xl border p-3 text-left transition-all',
+                      active
+                        ? 'border-primary/30 bg-accent shadow-sm'
+                        : 'border-border bg-card hover:border-primary/20 hover:bg-accent/40',
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        'flex size-9 shrink-0 items-center justify-center rounded-full',
+                        visual.bubbleClass,
+                      )}
+                    >
+                      <Icon className="size-4" />
+                    </div>
+                    <div className="min-w-0 leading-tight">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {event.title}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{formatDate(event.date, locale)}</p>
+                      <p className="truncate text-xs text-muted-foreground/80" title={event.clinic}>{event.clinic}</p>
+                    </div>
+                    {count > 0 && (
+                      <span className="ml-auto flex shrink-0 items-center gap-1 text-sm text-muted-foreground/50">
+                        <Paperclip className="size-4" />
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              )
+            })
+          )}
+        </div>
       </div>
     </div>
   )

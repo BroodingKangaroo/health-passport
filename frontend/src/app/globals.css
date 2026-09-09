@@ -45,6 +45,14 @@
   --color-status-low-bg: var(--status-low-bg);
   --color-status-high: var(--status-high);
   --color-status-high-bg: var(--status-high-bg);
+  --color-event-blood-test: var(--event-blood-test);
+  --color-event-blood-test-bg: var(--event-blood-test-bg);
+  --color-event-doctor-visit: var(--event-doctor-visit);
+  --color-event-doctor-visit-bg: var(--event-doctor-visit-bg);
+  --color-event-instrumental-test: var(--event-instrumental-test);
+  --color-event-instrumental-test-bg: var(--event-instrumental-test-bg);
+  --color-event-procedure: var(--event-procedure);
+  --color-event-procedure-bg: var(--event-procedure-bg);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -88,6 +96,22 @@
   --status-low-bg: oklch(0.96 0.04 18);
   --status-high: oklch(0.62 0.16 65);
   --status-high-bg: oklch(0.96 0.06 75);
+
+  /* Event-type categorical tokens (roadmap 0.6 timeline scannability).
+     Channel contract (see src/lib/event-visuals.ts): type colors paint ONLY
+     icon bubbles, rail nodes, and header chips — never status-bearing text.
+     Status colors stay semantic; primary accent stays selection/focus. */
+  /* Light-mode fg values sit at L ≤ 0.53 so chip text and bubble icons clear
+     4.5:1 / 3:1 on their ~0.95 tints; violet is pushed to hue 305 to stay
+     ≥50° from indigo (255); rose chroma stays low near the red status hue. */
+  --event-blood-test: oklch(0.52 0.1 195);
+  --event-blood-test-bg: oklch(0.95 0.03 195);
+  --event-doctor-visit: oklch(0.52 0.11 255);
+  --event-doctor-visit-bg: oklch(0.94 0.03 255);
+  --event-instrumental-test: oklch(0.52 0.16 305);
+  --event-instrumental-test-bg: oklch(0.95 0.04 305);
+  --event-procedure: oklch(0.53 0.11 350);
+  --event-procedure-bg: oklch(0.96 0.03 350);
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -123,6 +147,24 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+
+  /* Clinical status tokens (dark overrides) */
+  --status-normal: oklch(0.72 0.14 155);
+  --status-normal-bg: oklch(0.28 0.05 155);
+  --status-low: oklch(0.7 0.19 18);
+  --status-low-bg: oklch(0.28 0.05 18);
+  --status-high: oklch(0.75 0.14 75);
+  --status-high-bg: oklch(0.28 0.05 75);
+
+  /* Event-type categorical tokens (dark overrides) */
+  --event-blood-test: oklch(0.72 0.09 195);
+  --event-blood-test-bg: oklch(0.3 0.04 195);
+  --event-doctor-visit: oklch(0.68 0.1 255);
+  --event-doctor-visit-bg: oklch(0.28 0.05 255);
+  --event-instrumental-test: oklch(0.7 0.13 305);
+  --event-instrumental-test-bg: oklch(0.29 0.06 305);
+  --event-procedure: oklch(0.72 0.1 350);
+  --event-procedure-bg: oklch(0.3 0.05 350);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -159,6 +201,24 @@
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
+
+    /* Clinical status tokens (dark overrides) */
+    --status-normal: oklch(0.72 0.14 155);
+    --status-normal-bg: oklch(0.28 0.05 155);
+    --status-low: oklch(0.7 0.19 18);
+    --status-low-bg: oklch(0.28 0.05 18);
+    --status-high: oklch(0.75 0.14 75);
+    --status-high-bg: oklch(0.28 0.05 75);
+
+    /* Event-type categorical tokens (dark overrides) */
+    --event-blood-test: oklch(0.72 0.09 195);
+    --event-blood-test-bg: oklch(0.3 0.04 195);
+    --event-doctor-visit: oklch(0.68 0.1 255);
+    --event-doctor-visit-bg: oklch(0.28 0.05 255);
+    --event-instrumental-test: oklch(0.7 0.13 305);
+    --event-instrumental-test-bg: oklch(0.29 0.06 305);
+    --event-procedure: oklch(0.72 0.1 350);
+    --event-procedure-bg: oklch(0.3 0.05 350);
     --sidebar: oklch(0.205 0 0);
     --sidebar-foreground: oklch(0.985 0 0);
     --sidebar-primary: oklch(0.488 0.243 264.376);

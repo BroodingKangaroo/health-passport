@@ -6,7 +6,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   Settings,
   Trash2,
-  FileText,
   Calendar,
   Pill,
   ClipboardList,
@@ -20,7 +19,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { formatDate } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
+import { TYPE_VISUALS } from '@/lib/event-visuals'
 import { useDemoMode } from '@/providers/demo-provider'
 import { deleteEntry } from '@/services/api'
 import type {
@@ -81,16 +81,19 @@ function StatRow({
   label,
   value,
   hint,
+  iconClassName,
 }: {
   icon: React.ComponentType<{ className?: string }>
   label: string
   value: string | number
   hint?: string
+  // Optional color override for the icon (type channel in the type row).
+  iconClassName?: string
 }) {
   return (
     <div className="flex items-center justify-between gap-4 py-2">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Icon className="size-4" />
+        <Icon className={cn('size-4', iconClassName)} />
         <span>{label}</span>
       </div>
       <div className="min-w-0 text-right">
@@ -209,7 +212,8 @@ export function EntrySettings({
 
         <div className="divide-y divide-border/60">
           <StatRow
-            icon={FileText}
+            icon={TYPE_VISUALS[event.type].icon}
+            iconClassName={TYPE_VISUALS[event.type].textClass}
             label={t('type')}
             value={typeLabel}
             hint={event.clinic || undefined}

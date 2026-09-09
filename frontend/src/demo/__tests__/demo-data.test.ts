@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { buildDemoTimeline, DEMO_BT1_ID, DEMO_BT2_ID, DEMO_VISIT_ID } from '../demo-data'
+import {
+  buildDemoTimeline,
+  DEMO_BT1_ID,
+  DEMO_BT2_ID,
+  DEMO_VISIT_ID,
+  DEMO_INSTRUMENTAL_ID,
+  DEMO_PROCEDURE_ID,
+} from '../demo-data'
 import type { BiomarkerResult, Reference } from '@/lib/types'
 
 // Fixed anchor so day offsets are deterministic in assertions.
@@ -28,12 +35,23 @@ function allReadings(b: BiomarkerResult) {
 describe('demo fixture', () => {
   const timeline = buildDemoTimeline('en', NOW)
 
-  it('has three events in ascending date order (two blood tests + one visit)', () => {
-    expect(timeline.events.map((e) => e.id)).toEqual([DEMO_BT1_ID, DEMO_VISIT_ID, DEMO_BT2_ID])
+  it('has five events in ascending date order covering all four event types', () => {
+    expect(timeline.events.map((e) => e.id)).toEqual([
+      DEMO_BT1_ID,
+      DEMO_INSTRUMENTAL_ID,
+      DEMO_VISIT_ID,
+      DEMO_PROCEDURE_ID,
+      DEMO_BT2_ID,
+    ])
     const dates = timeline.events.map((e) => new Date(e.date).getTime())
     for (let i = 1; i < dates.length; i++) {
       expect(dates[i]).toBeGreaterThanOrEqual(dates[i - 1])
     }
+    // All four event types are represented so /demo shows the full
+    // event-type visual language (roadmap 0.6).
+    expect(new Set(timeline.events.map((e) => e.type))).toEqual(
+      new Set(['blood_test', 'doctor_visit', 'instrumental_test', 'procedure']),
+    )
   })
 
   it('relativizes dates around now (never ages)', () => {
@@ -89,6 +107,14 @@ describe('demo fixture', () => {
     expect(visit.notes.length).toBeGreaterThan(0)
     expect(visit.prescriptions.length).toBeGreaterThan(0)
     expect(visit.recommendations.length).toBeGreaterThan(0)
+  })
+
+  it('instrumental data exists for the ultrasound event and is fictional', () => {
+    const instr = timeline.instrumental[DEMO_INSTRUMENTAL_ID]
+    expect(instr).toBeDefined()
+    expect(instr.modality.trim()).not.toBe('')
+    expect(instr.findings.trim()).not.toBe('')
+    expect(instr.conclusion.trim()).not.toBe('')
   })
 
   it('RU and EN builds contain the same events and biomarker ids', () => {

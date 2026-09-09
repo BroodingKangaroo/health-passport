@@ -2,8 +2,8 @@
 
 **Status:** approved direction; Phase 0 partially shipped (statuses marked
 below).
-**Created:** 2026-08-31. **Updated:** 2026-09-03 (0.1/0.2/0.3/0.5 shipped;
-0.3 redesigned as a landing-embedded demo surface).
+**Created:** 2026-08-31. **Updated:** 2026-09-09 (0.6 shipped; flowsheet touch
+consciously dropped — see the 0.6 scope note).
 **Scope:** user-experience and marketing-driven improvements. Technical designs are
 summarized at roadmap level with code pointers for implementers; detailed designs
 happen per-feature at implementation time.
@@ -132,18 +132,36 @@ first-time visitors don't hand over their first document.
   dev-only secrets"; they are in fact gitignored and untracked. Corrected in
   AGENTS.md alongside the demo-mode change.
 
-### 0.6 Timeline scannability
+### 0.6 Timeline scannability — ✅ SHIPPED
 
 - Problem: timeline rows are visually generic — blood tests vs doctor visits
   are not distinguishable at a glance.
-- Give each event type (blood test / doctor visit / instrumental test) a
-  distinct icon + consistent color family, applied consistently across the
-  history list, detail-view headers, and the flowsheet, so the visual language
-  carries everywhere. Timeline rail nodes take the type color.
-- **Rule:** status colors stay semantic (`low`/`high`/`abnormal`) and type
-  colors stay categorical — the two channels must never be mixed, or "high"
-  stops meaning anything.
-- Must respect dark/light theme and EN/RU labels.
+- Shipped: each event type (blood test / doctor visit / instrumental test /
+  procedure — the code's type union has a 4th member beyond the original
+  three) has a distinct icon + color family (teal / indigo / violet / rose)
+  via `frontend/src/lib/event-visuals.ts`, applied to the history-list icon
+  bubbles, detail-view header chips, and `entry-settings.tsx`.
+- **Rule (unchanged, now documented and test-guarded):** status colors stay
+  semantic (`low`/`high`/`abnormal`) and type colors stay categorical — the
+  two channels are never mixed (channel contract in `event-visuals.ts` +
+  `frontend/src/lib/__tests__/event-visuals.test.ts`).
+- Net-new quiet chronology rail (hairline spine + type-colored nodes, no
+  icons inside nodes; selection stays accent-colored) and type filter chips
+  with counts that double as the legend. Filtered-empty state borrows the
+  single active type's color family.
+- Dark/light theme: explicit per-theme oklch tokens for all four families
+  under `:root`/`.dark`/media-fallback; the change also added the previously
+  missing `.dark` overrides for the semantic `--status-*` tokens.
+- **Scope deviation from the original wording:** the flowsheet touch was
+  consciously dropped — the flowsheet is blood-test-only today, so a second
+  color system there adds semantic risk for near-zero scannability gain.
+  Revisit only if the flowsheet becomes multi-type.
+- The /demo surface now carries fixtures for all four event types plus
+  abnormal statuses, so it visibly demonstrates the two-channel rule.
+- The print editor is explicitly out of scope — see the "Print editor (future
+  change)" note in `frontend/docs/architecture.md`.
+- EN/RU labels reused from the existing catalogs (one new key: `filterAll`);
+  covered by the parity test.
 
 ---
 

@@ -7,6 +7,7 @@ import { FileText, Download, Printer, FlaskConical, Paperclip, Settings } from '
 
 import { cn, fetchAuthedObjectUrl, printAuthedDocument } from '@/lib/utils'
 import { activateOnKey } from '@/lib/a11y'
+import { TYPE_VISUALS } from '@/lib/event-visuals'
 import { ResultsPanel } from './results-panel'
 import { EntrySettings } from './entry-settings'
 import type { MedicalEvent, BiomarkerResult } from '@/lib/types'
@@ -44,6 +45,8 @@ export function BloodTestDetails({
   onDeleted,
 }: BloodTestDetailsProps) {
   const t = useTranslations('timeline.bloodTest')
+  const te = useTranslations('timeline.entrySettings')
+  const TypeIcon = TYPE_VISUALS.blood_test.icon
   const [activeTab, setActiveTab] = useState<'results' | 'document' | 'settings'>('results')
 
   const attachments = event.attachments ?? []
@@ -74,6 +77,16 @@ export function BloodTestDetails({
   return (
     <div className="flex h-full w-full flex-col bg-background px-6 pb-6">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold',
+            TYPE_VISUALS.blood_test.chipClass,
+          )}
+        >
+          <TypeIcon className="size-3.5" />
+          {te('typeBloodTest')}
+        </span>
+        <span aria-hidden className="text-sm text-muted-foreground/20">|</span>
         <button
           onClick={() => setActiveTab('results')}
           className={

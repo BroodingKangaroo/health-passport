@@ -58,17 +58,52 @@ describe('DemoTimelineView', () => {
     expect(cta).toHaveAttribute('href', '/add-entry')
   })
 
-  it('renders the three demo events and the newest blood test by default', () => {
+  it('renders the five demo events (all four types) and the newest blood test by default', () => {
     renderDemo(<DemoTimelineView />)
 
     expect(screen.getAllByRole('button', { name: /Blood test/ })).toHaveLength(2)
     expect(screen.getAllByRole('button', { name: /Gastroenterologist consultation/ })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: /Abdominal ultrasound/ })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: /IV iron infusion/ })).toHaveLength(1)
     // The newest event (repeat panel) is selected by default: its rows show
     // statuses including a persistent high cholesterol and still-low hemoglobin.
     expect(screen.getByText('Hemoglobin')).toBeInTheDocument()
     expect(screen.getByText('Cholesterol, total')).toBeInTheDocument()
     expect(screen.getByText('Low')).toBeInTheDocument()
     expect(screen.getByText('High')).toBeInTheDocument()
+  })
+
+  it('renders the event-type visual language (colored bubbles, rail nodes, chips)', () => {
+    const { container } = renderDemo(<DemoTimelineView />)
+
+    // All four type families appear in the fixture, so all four bubbles and
+    // rail nodes must be present.
+    expect(container.querySelector('.bg-event-blood-test-bg')).not.toBeNull()
+    expect(container.querySelector('.bg-event-doctor-visit-bg')).not.toBeNull()
+    expect(container.querySelector('.bg-event-instrumental-test-bg')).not.toBeNull()
+    expect(container.querySelector('.bg-event-procedure-bg')).not.toBeNull()
+    expect(container.querySelector('.bg-event-procedure')).not.toBeNull()
+    // Filter chips double as the legend: colored dots per type.
+    expect(container.querySelectorAll('[aria-label="Entry Type"] .rounded-full.size-2').length).toBe(4)
+  })
+
+  it('selecting the ultrasound renders its instrumental detail view', () => {
+    renderDemo(<DemoTimelineView />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Abdominal ultrasound/ }))
+    expect(screen.getByText('Instrumental Test')).toBeInTheDocument()
+    expect(
+      screen.getByText(/Sonographic signs consistent with chronic gastritis/),
+    ).toBeInTheDocument()
+  })
+
+  it('selecting the procedure shows a summary card instead of a dead end', () => {
+    renderDemo(<DemoTimelineView />)
+
+    fireEvent.click(screen.getByRole('button', { name: /IV iron infusion/ }))
+    expect(screen.getByText('Procedure')).toBeInTheDocument()
+    // The list row and the summary card both carry the title.
+    expect(screen.getAllByText('IV iron infusion').length).toBeGreaterThanOrEqual(2)
   })
 
   it('shows an abnormal flag on the older panel after selecting it', async () => {

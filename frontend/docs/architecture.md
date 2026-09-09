@@ -92,6 +92,42 @@ backend to include the site).
   from the landing footer and the settings page. Shipping demo traffic is
   gated on this page being live (roadmap sequencing rule).
 
+## Event-type visual language (timeline scannability, roadmap 0.6)
+
+- `src/lib/event-visuals.ts` (`TYPE_VISUALS: Record<EventType, …>`) is the
+  single source for event-type → presentation (icon, color classes, i18n
+  label key), mirroring the `status-labels.ts` precedent. Consumers:
+  `history-list.tsx` (icon bubbles, chronology rail nodes, filter chips,
+  popover type rows), the three detail views (identity chip next to the tab
+  strip), and `entry-settings.tsx` (type row icon).
+- **Channel contract** (also documented on the module): type colors are
+  CATEGORICAL and paint only icon bubbles, rail nodes, filter-chip dots, and
+  header chips — never status-bearing text. Status colors (`STATUS_TEXT_CLASS`,
+  Badge variants) are SEMANTIC (low/high/abnormal). The primary accent is
+  INTERACTION (selection/hover/focus). Type is always encoded by icon shape +
+  label, never color alone. `src/lib/__tests__/event-visuals.test.ts` guards
+  this structurally (distinct tokens, no `status-*` collision).
+- Color tokens are CSS vars in `globals.css` (`--event-<type>[-bg]`, teal /
+  indigo / violet / rose) defined under `:root`, `.dark`, AND the
+  `prefers-color-scheme: dark` fallback block — all three must stay in sync.
+  The same change added the previously missing `.dark` overrides for the
+  `--status-*` tokens.
+- The chronology rail in `history-list.tsx` is a quiet hairline spine with a
+  solid type-colored node per event (no icons inside nodes); the selected
+  node gets an accent ring — selection is never a type color.
+- Filter chips (All + per type, colored dot + count) double as the visual
+  legend; counts are computed over ALL events, not the filtered set.
+- Procedures have no dedicated detail view; `TimelineContent` renders them as
+  a minimal type-chip summary card (title/date/clinic) instead of the generic
+  "no detail view" stub — the /demo surface includes a procedure event, so
+  the stub would otherwise be a visible dead end on the marketing surface.
+- **Print editor (future change — do not forget):** the event-type colors are
+  intentionally NOT applied to the printed passport / print editor; the
+  printed document keeps its own neutral, language-independent layout (its
+  7-language maps are document-language, not UI locale). If/when the print
+  editor is redesigned, consciously decide whether type colors carry over —
+  until then, keep print styling free of `event-*` tokens.
+
 ## Print/export translation flow
 
 - `print-setup.tsx` "Generate Document" actually performs its promised AI

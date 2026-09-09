@@ -4,8 +4,12 @@
  * used anywhere in this fixture: values are authored (not copied from any
  * real document) to exercise the product's status model — interval low /
  * normal / high and qualitative normal / abnormal — and to tell a small
- * coherent story (iron deficiency and H. pylori found, treated at the
- * doctor visit, improving on the repeat panel).
+ * coherent story (iron deficiency and H. pylori found, ultrasound and
+ * doctor visit, IV iron infusion, improving on the repeat panel). The event
+ * list also covers all four event types (blood test, instrumental test,
+ * doctor visit, procedure) so the /demo surface shows the full event-type
+ * visual language next to semantic statuses — the two-channel rule in
+ * action.
  *
  * Dates are relativized at build time (day offsets from "now") so the demo
  * never ages. Qualitative values use the backend's canonical English enum
@@ -19,6 +23,7 @@ import type {
   BiomarkerDefinition,
   BiomarkerResult,
   EventType,
+  InstrumentalData,
   MedicalEvent,
   Reading,
   Reference,
@@ -40,8 +45,10 @@ function daysAgoIso(now: Date, days: number): string {
 // Demo event ids. History readings reference these, so they double as
 // foreign keys inside the fixture.
 export const DEMO_BT1_ID = 'demo-bt-1' // 45 days ago — first panel
-export const DEMO_BT2_ID = 'demo-bt-2' // 3 days ago — repeat panel
+export const DEMO_INSTRUMENTAL_ID = 'demo-instr-1' // 30 days ago — ultrasound
 export const DEMO_VISIT_ID = 'demo-visit-1' // 10 days ago — doctor visit
+export const DEMO_PROCEDURE_ID = 'demo-proc-1' // 8 days ago — IV iron infusion
+export const DEMO_BT2_ID = 'demo-bt-2' // 3 days ago — repeat panel
 
 const COPY = {
   en: {
@@ -50,6 +57,13 @@ const COPY = {
     clinic: 'VitaMed Diagnostics',
     provider: 'Dr. Anna Volkova',
     specialty: 'Gastroenterology',
+    instrumentalTitle: 'Abdominal ultrasound',
+    instrumentalModality: 'Abdominal ultrasound',
+    instrumentalFindings:
+      'Liver of normal size and echogenicity. Spleen not enlarged. Gastric wall slightly thickened. Free fluid absent.',
+    instrumentalConclusion:
+      'Sonographic signs consistent with chronic gastritis. No other abdominal pathology detected.',
+    procedureTitle: 'IV iron infusion',
   },
   ru: {
     btTitle: 'Анализ крови — ОАК и биохимия',
@@ -57,6 +71,13 @@ const COPY = {
     clinic: 'ВитаМед Диагностика',
     provider: 'Волкова Анна Сергеевна',
     specialty: 'Гастроэнтерология',
+    instrumentalTitle: 'УЗИ органов брюшной полости',
+    instrumentalModality: 'УЗИ органов брюшной полости',
+    instrumentalFindings:
+      'Печень обычных размеров и эхогенности. Селезёнка не увеличена. Стенка желудка умеренно утолщена. Свободной жидкости нет.',
+    instrumentalConclusion:
+      'Эхографические признаки хронического гастрита. Иной патологии органов брюшной полости не выявлено.',
+    procedureTitle: 'Внутривенная инфузия препарата железа',
   },
 } as const
 
@@ -399,7 +420,9 @@ export function buildDemoTimeline(
   now: Date = new Date(),
 ): TimelineResponse {
   const bt1Date = daysAgoIso(now, 45)
+  const instrumentalDate = daysAgoIso(now, 30)
   const visitDate = daysAgoIso(now, 10)
+  const procedureDate = daysAgoIso(now, 8)
   const bt2Date = daysAgoIso(now, 3)
 
   const event = (
@@ -423,7 +446,15 @@ export function buildDemoTimeline(
 
   const events: MedicalEvent[] = [
     event(DEMO_BT1_ID, 'blood_test', bt1Date, COPY[locale].btTitle, 'Completed'),
+    event(
+      DEMO_INSTRUMENTAL_ID,
+      'instrumental_test',
+      instrumentalDate,
+      COPY[locale].instrumentalTitle,
+      'Completed',
+    ),
     event(DEMO_VISIT_ID, 'doctor_visit', visitDate, COPY[locale].visitTitle, ''),
+    event(DEMO_PROCEDURE_ID, 'procedure', procedureDate, COPY[locale].procedureTitle, 'Completed'),
     event(DEMO_BT2_ID, 'blood_test', bt2Date, COPY[locale].btTitle, 'Completed'),
   ]
 
@@ -461,5 +492,14 @@ export function buildDemoTimeline(
     [DEMO_VISIT_ID]: visitDataOf(locale, visitDate),
   }
 
-  return { events, biomarkers, visits, instrumental: {} }
+  const instrumental: Record<string, InstrumentalData> = {
+    [DEMO_INSTRUMENTAL_ID]: {
+      modality: COPY[locale].instrumentalModality,
+      findings: COPY[locale].instrumentalFindings,
+      conclusion: COPY[locale].instrumentalConclusion,
+      attachments: [],
+    },
+  }
+
+  return { events, biomarkers, visits, instrumental }
 }

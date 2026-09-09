@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 
 import { HeaderBar } from '@/components/health-passport/header-bar'
 import { NavBar } from '@/components/shared/NavBar'
@@ -10,6 +10,8 @@ import { HistoryList } from '@/components/health-passport/history-list'
 import { DoctorVisitDetails } from '@/components/health-passport/doctor-visit-details'
 import { BloodTestDetails } from '@/components/health-passport/blood-test-details'
 import { InstrumentalTestDetails } from '@/components/health-passport/instrumental-test-details'
+import { TYPE_VISUALS } from '@/lib/event-visuals'
+import { cn, formatDate } from '@/lib/utils'
 import { useTimelineData } from '@/hooks/useTimelineData'
 import type { MedicalEvent, BiomarkerResult, Reading, TimelineResponse } from '@/lib/types'
 
@@ -56,6 +58,8 @@ export function TimelineContent({
 }: TimelineContentProps) {
   const t = useTranslations('timeline.views.timeline')
   const tc = useTranslations('common')
+  const te = useTranslations('timeline.entrySettings')
+  const locale = useLocale()
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
 
   const events: MedicalEvent[] = data?.events ?? []
@@ -67,6 +71,7 @@ export function TimelineContent({
   const effectiveSelected =
     selectedEvent ?? events[events.length - 1]?.id ?? events[0]?.id ?? ''
   const selectedEventData = events.find((e) => e.id === effectiveSelected)
+  const ProcedureIcon = TYPE_VISUALS.procedure.icon
 
   const eventBiomarkers = useMemo(
     () => biomarkersAtDate(biomarkers, selectedEventData?.id ?? ''),
@@ -135,6 +140,32 @@ export function TimelineContent({
         ) : selectedEventData?.type === 'instrumental_test' ? (
           <div className="flex h-full min-h-[300px] items-center justify-center text-sm text-muted-foreground">
             <p>{t('instrumentalDetailsUnavailable')}</p>
+          </div>
+        ) : selectedEventData?.type === 'procedure' ? (
+          // Procedures have no dedicated detail view yet; render a minimal
+          // summary card rather than a dead end (the /demo surface includes
+          // a procedure event, so this stub is user-visible marketing).
+          <div className="rounded-xl border border-border bg-card p-6">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold',
+                  TYPE_VISUALS.procedure.chipClass,
+                )}
+              >
+                <ProcedureIcon className="size-3.5" />
+                {te('typeProcedure')}
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {formatDate(selectedEventData.date, locale)}
+              </span>
+              <span className="truncate text-sm text-muted-foreground">
+                {selectedEventData.clinic}
+              </span>
+            </div>
+            <h2 className="mt-3 text-lg font-semibold text-foreground">
+              {selectedEventData.title}
+            </h2>
           </div>
         ) : selectedEventData ? (
           <div className="flex h-full min-h-[300px] items-center justify-center text-sm text-muted-foreground">
