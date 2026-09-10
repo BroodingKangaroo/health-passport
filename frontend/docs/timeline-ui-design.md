@@ -140,6 +140,8 @@ heading).
   granularity varies ("Jun 25, 2026 at 16:17" vs "Jun 19, 2026").
 - The attachment count floats vertically centered at the far right
   (`ml-auto`, `:517`), detached from the metadata.
+  → **Resolved (T4 rework):** moved in-flow onto the clinic row and pill-ified
+  (`chip` variant) as part of the bottom-right signal cluster (§5.6).
 - No per-entry status hint: finding the abnormal labs among 19 entries needs
   the hidden "Abnormal results" filter (popover, `:316`) or opening each card.
 
@@ -407,29 +409,71 @@ Per card (status summary chips — T4; the T3 compact-card pass is skipped):
   `p-2.5`/`size-8`/one-line-title density change was implemented and
   reviewed but rejected on looks; cards keep their current `p-3`/`size-9`/
   three-line layout. The chip placement below applies to that existing card.
-- Title row: title (`min-w-0 flex-1`) + status chips (below) at the right.
+- Title row: title only, full width (`line-clamp-2`, tooltip). The original
+  T4 placement (chips right of the title) was reworked twice (below): first
+  to `items-center` without the `pt-0.5` optical hack, then — owner decision
+  — the chips moved out of the title row entirely, because the vertical
+  distance to the bottom-right attachment count varied with the title's
+  line count and nothing read as an aligned block.
+
+Signal cluster (bottom-right corner of every card):
+
+- One right-aligned pill row on the clinic line: flagged status pills first
+  (priority signal), attachment pill last — `[↑2] [↓1] [!1] [📎3]`.
+  Rendered when any status count is non-zero (`blood_test` only) or the
+  event has attachments; hidden entirely otherwise (clinic line regains
+  full width).
+- Rationale (owner decision, round 2): a single cluster at a constant
+  position (the card's bottom-right, the last text row) is cross-card
+  consistent regardless of title wrapping, keeps the title and date rows
+  full width (the old title-right placement squeezed the title to ~40-58px
+  at the 288px sidebar floor on 3-status panels, which exist in real data),
+  and gives the paperclip a home in the same visual family. The clinic line
+  absorbs the width pressure instead: cluster worst case (3 statuses +
+  attachment) ≈ 167px of the ~186px text row at 288px — the clinic
+  truncates (tooltip covers it), never the cluster.
 
 Status summary chip (only for `blood_test` events, only non-zero):
 
 - **Reuse the existing single source of truth** (review comment 3):
-  `badgeVariants` (`components/ui/badge.tsx`: `normal|low|high|abnormal`) and
-  the matching icons from `components/shared/StatusBadge.tsx`
-  (`Check`, `ArrowDown`, `ArrowUp`, `AlertTriangle`). There is **no
-  `--status-abnormal` token**: `abnormal` deliberately reuses the `high`
-  tokens (`badge.tsx`, `status-labels.ts:26-31`), so the chip reuses them
-  too and disambiguates via icon/label — never an invented "amber". If a
-  distinct abnormal hue is ever wanted, add `--status-abnormal[-bg]` under
-  `:root`, `.dark`, **and** the `prefers-color-scheme` fallback
+  `badgeVariants` (`components/ui/badge.tsx`) and the matching icons from
+  `components/shared/StatusBadge.tsx`
+  (`Check`, `ArrowDown`, `ArrowUp`, `AlertTriangle`).
+- **Quiet treatment (T4 rework 2026-09-10, owner decision):** the original
+  tinted alert pills (`low`/`high`/`abnormal` badge variants) read as red
+  alert rows on flagged cards. Card chips now share one additive neutral
+  variant `chip` (`bg-muted text-muted-foreground tabular-nums`, tightened
+  to `px-1.5` via `className` — `cn`'s tailwind-merge overrides the badge
+  base `px-2` reliably); the status color lives ONLY on the icon
+  (`text-status-low` on the low arrow, `text-status-high` on the high arrow
+  and the abnormal triangle). There is **no `--status-abnormal` token**:
+  `abnormal` deliberately reuses the `high` tokens (via the icon now),
+  disambiguated by icon/label — never an invented "amber". If a distinct
+  abnormal hue is ever wanted, add `--status-abnormal[-bg]` under `:root`,
+  `.dark`, **and** the `prefers-color-scheme` fallback
   (`globals.css:180-233`) in one change (invariant 1) — explicitly out of
-  scope here.
-- Compact chip form: `↑{n}` high, `↓{n}` low, `!{n}` abnormal, each using the
-  corresponding badge variant classes.
-- `aria-label`/`title` with the localized full text; `sr-only` announces all
-  counts.
-- Computation: extract the existing per-event matching logic
-  (`history-list.tsx:131-144`) into `statusCountsAtEvent(biomarkers, eventId)`
-  and memoize a `Map<eventId, counts>`; O(E x R) once per data change, so the
-  abnormal filter and the chips cannot drift.
+  scope here. The details pane keeps the tinted `StatusBadge` (full-detail
+  view; only the card treatment went quiet).
+- Compact chip form: `↑{n}` high, `↓{n}` low, `!{n}` abnormal — neutral
+  pill + colored icon, count in `tabular-nums`.
+- Icon size ladder (T4 rework): ALL cluster pill icons = `size-3`
+  (matching `StatusBadge` and the mobile rail-node diameter — the paperclip
+  uses it too); bubble icon = `size-4` inside the `size-9` bubble; rail
+  nodes stay icon-free type-colored dots (the card bubble carries the
+  icon).
+- `title` with the localized full text (announcement goes through the
+  `sr-only` joined summary; chips are `aria-hidden`).
+- Attachment pill: the attachment count renders as a `chip` pill
+  (`Paperclip size-3` + count) inside the same cluster span — outside the
+  `aria-hidden` wrapper so the count stays announced to AT. No `title`
+  tooltip and no new i18n key: a paperclip + number is self-explanatory,
+  unlike the status arrows. The attachment pill renders for any event type
+  with attachments, status pills only for flagged blood tests.
+- Computation: `statusCountsAtEvent` / `statusCountsByEvent` live in
+  `event-status.ts:14-27,38-44`, memoized per events/biomarkers change at
+  `history-list.tsx:121-124` and consumed by both the abnormal-only filter
+  (`history-list.tsx:143-146`) and the chips; O(E x R) once per data change,
+  so the abnormal filter and the chips cannot drift.
 - New i18n keys (EN/RU): high/low/abnormal count labels, flagged summary.
 - Server-side counts are explicitly out of scope; revisit only if event or
   biomarker counts grow by an order of magnitude.
@@ -688,8 +732,8 @@ the 288px sidebar, search at 390px, and focus-ring clipping.
 | Loading/error states | `src/views/TimelineView.tsx:83,91` |
 | Chrome | `src/components/health-passport/header-bar.tsx:76`; `src/components/shared/NavBar.tsx:29` |
 | History root/header/chips/popover | `src/components/health-passport/history-list.tsx:178,179,203,365` |
-| Rail rows, cards, meta | `src/components/health-passport/history-list.tsx:454,462,492,510-519` |
-| Abnormal-only matching | `src/components/health-passport/history-list.tsx:131-144` |
+| Rail rows, cards, meta | `src/components/health-passport/history-list.tsx:462,471,494,515-552` |
+| Abnormal-only matching | `src/lib/event-status.ts:14-27` (memoized at `src/components/health-passport/history-list.tsx:121-124`) |
 | Details root/tabs/wrappers | `src/components/health-passport/blood-test-details.tsx:50,78,79,128,132,202,209` |
 | Results grid/header/table | `src/components/health-passport/results-panel.tsx:29,225,226,235,246,247,251,380,440` |
 | Input base | `src/components/ui/input.tsx` (`h-8 w-full`) |

@@ -211,6 +211,59 @@ without opening each card.
   chip/filter-parity tests in `history-list.test.tsx`.
 - No design-doc statement changed; no new tokens, API, or backend change.
 
+### Rework — quiet chips + attachment corner (2026-09-10, owner-directed)
+
+The original chips (tinted `low`/`high`/`abnormal` pills) were reworked for
+usability after the owner found them glaring (red alert rows on flagged
+cards) and misaligned with the card's other icons:
+
+- **Quiet treatment**: one additive `flagged` badge variant
+  (`bg-muted text-muted-foreground tabular-nums`) is now the single source
+  for all three card chips; status color lives only on the icon
+  (`text-status-low` / `text-status-high`; abnormal still reuses the `high`
+  tokens via the triangle icon). No new tokens, channel contract intact;
+  the details pane's tinted `StatusBadge` is unchanged.
+- **Alignment**: title row switched to `items-center` (the `pt-0.5`
+  optical hack is gone); icon size ladder documented in §5.6 (chip icons
+  `size-3` = `StatusBadge` = mobile rail node; paperclip `size-3.5`;
+  bubble icon `size-4`; rail nodes stay icon-free dots — owner confirmed).
+- **Attachment count** (F8 bullet 3): moved off the vertically-centered
+  `ml-auto` slot into the clinic row (bottom-right corner, in-flow,
+  same right edge as the chips; `text-xs text-muted-foreground/70
+  tabular-nums` + `size-3.5` icon). Owner decision: corner placement so it
+  interferes neither with the chips nor the card content — title-row
+  placement was rejected on width math (three chips + a fourth pill leave
+  ~0-27px for the title at the 288px sidebar floor).
+- Tests: chip test now pins the quiet `bg-muted` treatment; EN/RU keys and
+  the `event-status.ts` single source of truth unchanged.
+- Design doc §5.6 updated to the reworked spec; F8 bullet 3 marked
+  resolved.
+
+### Rework round 2 — unified signal cluster (2026-09-10, owner-directed)
+
+After round 1 the owner reported the status pills (title row) and the
+attachment chip (clinic row) as unaligned / "out of place": two right-edge
+elements in two visual languages at heights that varied with the title's
+line count. Owner chose the corner-cluster option:
+
+- **Placement**: status chips moved off the title row into the clinic row,
+  joining the attachment pill — one right-aligned cluster
+  `[↑2] [↓1] [!1] [📎3]` at the card's bottom-right on every card,
+  regardless of title wrapping. Title and date rows regain full width (the
+  3-status title squeeze at the 288px floor is gone; 3-status panels exist
+  in real data — demo fixture BT1). Clinic line absorbs the width pressure
+  and truncates (tooltip) in the worst case.
+- **Unification**: the attachment count is now a `chip` pill
+  (`Paperclip size-3` + count, `px-1.5`), the same neutral pill family as
+  the status pills; all cluster icons are `size-3` (= `StatusBadge` = rail
+  node). The attachment pill sits outside the `aria-hidden` wrapper so the
+  count stays announced; no new i18n keys.
+- **Rename**: the additive badge variant `flagged` → `chip` (it now hosts
+  the non-status attachment pill too).
+- Tests: added an attachment-pill test (`getByText('3')` has `bg-muted`);
+  existing chip assertions unchanged. Design §5.6 rewritten to the cluster
+  spec; F8 bullet 3 resolution note updated.
+
 ---
 
 ## T5 — Results table polish (Stage 3a)

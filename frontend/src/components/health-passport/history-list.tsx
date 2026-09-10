@@ -513,29 +513,45 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                       <Icon className="size-4" />
                     </div>
                     <div className="min-w-0 flex-1 leading-tight">
-                      <div className="flex min-w-0 items-start gap-2">
-                        {/* Wraps to two lines instead of ellipsizing: long
-                            visit/lab titles stay readable; the full title
-                            remains reachable via the tooltip. */}
+                      {/* Wraps to two lines instead of ellipsizing: long
+                          visit/lab titles stay readable; the full title
+                          remains reachable via the tooltip. */}
+                      <p
+                        className="line-clamp-2 text-sm font-semibold text-foreground"
+                        title={event.title}
+                      >
+                        {event.title}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{formatDate(event.date, locale)}</p>
+                      {/* Signal cluster (bottom-right corner): the flagged
+                          status pills and the attachment count as one
+                          right-aligned pill row, so they read as a single
+                          aligned block on every card regardless of title
+                          wrapping. Status pills come first (priority
+                          signal); the clinic line truncates before the
+                          cluster ever shrinks. */}
+                      <div className="flex items-center gap-2">
                         <p
-                          className="line-clamp-2 min-w-0 flex-1 text-sm font-semibold text-foreground"
-                          title={event.title}
+                          className="min-w-0 flex-1 truncate text-xs text-muted-foreground/80"
+                          title={event.clinic}
                         >
-                          {event.title}
+                          {event.clinic}
                         </p>
-                        {event.type === 'blood_test' && eventCounts && hasFlagged(eventCounts) && (
-                          <StatusSummaryChips counts={eventCounts} />
+                        {((event.type === 'blood_test' && hasFlagged(eventCounts)) || count > 0) && (
+                          <span className="flex shrink-0 items-center gap-1">
+                            {event.type === 'blood_test' && eventCounts && hasFlagged(eventCounts) && (
+                              <StatusSummaryChips counts={eventCounts} />
+                            )}
+                            {count > 0 && (
+                              <Badge variant="chip" className="px-1.5">
+                                <Paperclip className="size-3" />
+                                {count}
+                              </Badge>
+                            )}
+                          </span>
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground">{formatDate(event.date, locale)}</p>
-                      <p className="truncate text-xs text-muted-foreground/80" title={event.clinic}>{event.clinic}</p>
                     </div>
-                    {count > 0 && (
-                      <span className="ml-auto flex shrink-0 items-center gap-1 text-sm text-muted-foreground/50">
-                        <Paperclip className="size-4" />
-                        {count}
-                      </span>
-                    )}
                   </button>
                 </div>
               )
@@ -558,22 +574,22 @@ function StatusSummaryChips({ counts }: { counts: StatusCounts }) {
     .join(', ')
   return (
     <>
-      <span aria-hidden className="flex shrink-0 items-center gap-1 pt-0.5">
+      <span aria-hidden className="flex shrink-0 items-center gap-1">
         {counts.high > 0 && (
-          <Badge variant="high" title={t('flaggedHigh', { count: counts.high })}>
-            <ArrowUp className="size-3" />
+          <Badge variant="chip" className="px-1.5" title={t('flaggedHigh', { count: counts.high })}>
+            <ArrowUp className="size-3 text-status-high" />
             {counts.high}
           </Badge>
         )}
         {counts.low > 0 && (
-          <Badge variant="low" title={t('flaggedLow', { count: counts.low })}>
-            <ArrowDown className="size-3" />
+          <Badge variant="chip" className="px-1.5" title={t('flaggedLow', { count: counts.low })}>
+            <ArrowDown className="size-3 text-status-low" />
             {counts.low}
           </Badge>
         )}
         {counts.abnormal > 0 && (
-          <Badge variant="abnormal" title={t('flaggedAbnormal', { count: counts.abnormal })}>
-            <AlertTriangle className="size-3" />
+          <Badge variant="chip" className="px-1.5" title={t('flaggedAbnormal', { count: counts.abnormal })}>
+            <AlertTriangle className="size-3 text-status-high" />
             {counts.abnormal}
           </Badge>
         )}

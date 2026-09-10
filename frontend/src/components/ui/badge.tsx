@@ -14,6 +14,7 @@ const badgeVariants = cva(
         low: 'border-transparent bg-status-low-bg text-status-low',
         high: 'border-transparent bg-status-high-bg text-status-high',
         abnormal: 'border-transparent bg-status-high-bg text-status-high',
+        chip: 'border-transparent bg-muted text-muted-foreground tabular-nums',
       },
     },
     defaultVariants: {

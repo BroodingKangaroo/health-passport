@@ -47,6 +47,19 @@ const cleanLabEvent: MedicalEvent = {
   attachments: [],
 }
 
+const visitWithAttachments: MedicalEvent = {
+  id: 'visit-att',
+  date: 'Apr 1, 2027',
+  type: 'doctor_visit',
+  title: 'Cardiology consultation',
+  clinic: 'City Clinic',
+  attachments: [
+    { id: 'a1', name: 'ECG.pdf', type: 'application/pdf', size: '12 KB' },
+    { id: 'a2', name: 'Report.pdf', type: 'application/pdf', size: '18 KB' },
+    { id: 'a3', name: 'Notes.pdf', type: 'application/pdf', size: '9 KB' },
+  ],
+}
+
 function makeBiomarker(overrides: Partial<BiomarkerResult>): BiomarkerResult {
   return {
     id: 'hb',
@@ -254,9 +267,31 @@ describe('HistoryList', () => {
     expect(screen.getByTitle('2 high results')).toHaveTextContent('2')
     expect(screen.getByTitle('1 low result')).toHaveTextContent('1')
     expect(screen.getByTitle('1 abnormal result')).toHaveTextContent('1')
+    // Quiet treatment (T4 rework): neutral bg-muted pills, status color only
+    // on the icon — not the old tinted alert pills. (SVG className is an
+    // SVGAnimatedString in jsdom, so assert via the class attribute.)
+    expect(screen.getByTitle('2 high results')).toHaveClass('bg-muted')
+    expect(
+      screen
+        .getByTitle('2 high results')
+        .querySelector('svg')
+        ?.getAttribute('class'),
+    ).toContain('text-status-high')
     expect(
       screen.getByText('Flagged results: 2 high results, 1 low result, 1 abnormal result'),
     ).toBeInTheDocument()
+  })
+
+  it('renders the attachment count as a chip pill in the signal cluster', () => {
+    renderI18n(
+      <HistoryList
+        events={[visitWithAttachments]}
+        selectedId=""
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('3')).toHaveClass('bg-muted')
   })
 
   it('hides the chips when no reading is flagged or the entry is not a lab', () => {
