@@ -451,20 +451,30 @@ Optional later: sticky month/day group headers in the rail (`Jun 2026`).
 ### 5.8 Tab strip restyle (Stage 1b)
 
 - Replace `|` separators and font-weight-only active state with the NavBar
-  idiom: underline indicator (`absolute inset-x -bottom-px h-0.5 bg-primary`),
-  inactive `text-muted-foreground hover:text-foreground`.
+  idiom: underline indicator, inactive `text-muted-foreground
+  hover:text-foreground`. **Implemented deviation (T2):** the tab strip is an
+  `overflow-x` scroller, which clips descendants at its padding box, so the
+  bar sits at `bottom-0` over the strip's own scoped `border-b` instead of
+  straddling the rule with NavBar's `-bottom-px` (that exact class only works
+  on a non-scroller). Visually identical; §5.8 is the record.
 - `role="tablist"` / `role="tab"` / `aria-selected` on the buttons and
-  `role="tabpanel"` on the content. The toggles stay normal Tab-reachable
-  buttons; **no** roving-tabindex/arrow-key machinery (review comment 7:
-  complexity with little a11y gain for static in-page toggles — revisit only
-  if an audit asks).
-- `flex-nowrap overflow-x-auto` with edge fades (same pattern/`chipsRef`
+  `role="tabpanel"` on the content. `aria-controls` on each tab targets the
+  lazily-mounted active panel (the APG lazy pattern); ids are `useId`-based.
+  The toggles stay normal Tab-reachable buttons; **no** roving-tabindex/
+  arrow-key machinery (review comment 7: complexity with little a11y gain for
+  static in-page toggles — revisit only if an audit asks).
+- `flex-nowrap overflow-x-auto px-1` with edge fades (same pattern/`chipsRef`
   technique as the type chips at `history-list.tsx:47-68`) for long RU labels;
   no wrap, no orphan separators. The type identity chip stays at the left,
   followed by a gap, then tabs.
-- On activation/focus, `scrollIntoView({ inline: 'nearest' })` on the active
-  tab so it is never left under an edge fade (review comment 8).
-- `scrollbar-none` or 22px scroller treatment as in the chips row.
+- On activation/focus, `scrollIntoView({ inline: 'nearest', block: 'nearest' })`
+  on the active tab so it is never left under an edge fade (review comment 8);
+  `block: 'nearest'` prevents a vertical jump when the page itself can scroll
+  (below `lg`).
+- `scrollbar-none` or 22px scroller treatment as in the chips row
+  (**implemented:** `[scrollbar-width:none]` +
+  `[&::-webkit-scrollbar]:hidden` on the tab scroller; the chips row keeps its
+  pre-existing classic-scrollbar exposure from Stage 1a).
 
 ---
 

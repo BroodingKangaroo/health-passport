@@ -129,7 +129,7 @@ describe('DemoTimelineView', () => {
   it('hides the delete danger zone in the entry settings tab (nothing to delete)', async () => {
     renderDemo(<DemoTimelineView />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Settings' }))
     expect(screen.queryByText('Delete this entry')).not.toBeInTheDocument()
     expect(screen.queryByText('Danger Zone')).not.toBeInTheDocument()
   })

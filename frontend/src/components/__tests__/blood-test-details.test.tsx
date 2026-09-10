@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BloodTestDetails } from '../health-passport/blood-test-details'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
@@ -135,13 +135,49 @@ describe('BloodTestDetails', () => {
   it('renders a Settings tab and switches to it on click', () => {
     renderI18n(<BloodTestDetails event={baseEvent} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} onDeleted={vi.fn()} />)
 
-    const settingsTab = screen.getByRole('button', { name: 'Settings' })
+    const settingsTab = screen.getByRole('tab', { name: 'Settings' })
     expect(settingsTab).toBeDefined()
     fireEvent.click(settingsTab)
 
     // The Settings panel surfaces the entry type and a Danger Zone heading
     expect(screen.getByText('Entry Details')).toBeDefined()
     expect(screen.getByText('Danger Zone')).toBeDefined()
+  })
+
+  it('exposes the detail toggles as a tablist wired to a single tabpanel', () => {
+    renderI18n(<BloodTestDetails event={baseEvent} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} />)
+
+    const tablist = screen.getByRole('tablist')
+    expect(within(tablist).getAllByRole('tab')).toHaveLength(3)
+
+    const resultsTab = screen.getByRole('tab', { name: 'Test Results' })
+    expect(resultsTab).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', resultsTab.id)
+
+    const documentsTab = screen.getByRole('tab', { name: 'Documents (2)' })
+    fireEvent.click(documentsTab)
+    expect(documentsTab).toHaveAttribute('aria-selected', 'true')
+    expect(resultsTab).toHaveAttribute('aria-selected', 'false')
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', documentsTab.id)
+    expect(documentsTab).toHaveAttribute('aria-controls', screen.getByRole('tabpanel').id)
+  })
+
+  it('scrolls the activated/focused tab into view without a roving tabindex', () => {
+    const scrollSpy = vi.spyOn(Element.prototype, 'scrollIntoView')
+    renderI18n(<BloodTestDetails event={baseEvent} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} />)
+
+    const documentsTab = screen.getByRole('tab', { name: 'Documents (2)' })
+    fireEvent.click(documentsTab)
+    expect(scrollSpy).toHaveBeenCalledWith({ inline: 'nearest', block: 'nearest' })
+
+    scrollSpy.mockClear()
+    fireEvent.focus(screen.getByRole('tab', { name: 'Settings' }))
+    expect(scrollSpy).toHaveBeenCalledWith({ inline: 'nearest', block: 'nearest' })
+
+    // Normal Tab stops — no roving tabindex on any tab.
+    expect(documentsTab).not.toHaveAttribute('tabindex')
+    expect(screen.getByRole('tab', { name: 'Settings' })).not.toHaveAttribute('tabindex')
+    scrollSpy.mockRestore()
   })
 
   describe('merged readings section', () => {

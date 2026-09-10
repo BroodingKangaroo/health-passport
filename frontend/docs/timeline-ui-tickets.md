@@ -93,8 +93,9 @@ Checks after the fixes: `pnpm lint` (0 errors), `pnpm typecheck`, `pnpm test`
 
 ---
 
-## T2 — Alignment + tab strip restyle (Stage 1b)
+## T2 — Alignment + tab strip restyle (Stage 1b) — `[x]`
 
+**Status:** shipped 2026-09-10; external review addressed (see dispositions).
 **Depends on:** T1. **Blocks:** none.
 
 ### Goal
@@ -117,6 +118,35 @@ detail tabs with the app's underline-tab idiom.
 - Active tab is unmistakable, never orphaned by wrapping; keyboard focus is
   never hidden under an edge fade.
 - All tests/lint/typecheck pass.
+
+### Review dispositions
+External review run 2026-09-10 (`opencode-go/glm-5.3-flash`, `--variant max`,
+read-only `plan` agent; the owner directed GLM 5.3 flash max thinking as the
+reviewer instead of `opencode-go/deepseek-v4-flash`). Verdict:
+**fix-then-ship** — all 6 comments addressed:
+
+- **MINOR** design §5.8 still prescribed the literal `-bottom-px` underline
+  and was silent on `aria-controls`/scrollbar treatment -> §5.8 updated with
+  the scroller-clipping deviation (`bottom-0` over the strip's own scoped
+  `border-b`), the lazy-panel `aria-controls` note, and the shipped
+  `[scrollbar-width:none]` treatment.
+- **MINOR** tab scroller had no breathing padding at scroll limits (focus
+  ring clipped, the T1/R10 hazard) -> `px-1` added to the tablist.
+- **MINOR** Settings tabpanel is a bare scroller but lacked the R8 focus
+  affordance -> `tabIndex={0}` added (matches the history rail region).
+- **NIT** inert `flex-1` on the tablist dropped; `activeTab` removed from the
+  overflow-effect deps (labels don't change geometry; tab switches update
+  fades via the scroll listener).
+- **NIT** `aria-controls` direction unasserted -> test now pins tab→panel.
+- **NIT** classic-scrollbar platforms would squash the 28px strip ->
+  `[scrollbar-width:none]` + `[&::-webkit-scrollbar]:hidden` on the tab
+  scroller; the chips row's pre-existing Stage 1a exposure is documented as
+  deferred in §5.8.
+
+Reviewer independently verified the 74px math at all breakpoints/locales,
+scope/contracts clean (no `ResultsPanel` API, i18n, backend, or
+`architecture.md` statement changed), `bottom-0` sound, and test coverage
+sufficient.
 
 ---
 

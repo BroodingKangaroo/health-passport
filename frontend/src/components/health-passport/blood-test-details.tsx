@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useId, useRef } from 'react'
 import dynamic from 'next/dynamic'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { FileText, Download, Printer, FlaskConical, Paperclip, Settings } from 'lucide-react'
 
 import { cn, fetchAuthedObjectUrl, printAuthedDocument } from '@/lib/utils'
@@ -29,6 +29,8 @@ const DocumentViewer = dynamic(
   },
 )
 
+type DetailTab = 'results' | 'document' | 'settings'
+
 interface BloodTestDetailsProps {
   event: MedicalEvent
   biomarkers: BiomarkerResult[]
@@ -46,8 +48,13 @@ export function BloodTestDetails({
 }: BloodTestDetailsProps) {
   const t = useTranslations('timeline.bloodTest')
   const te = useTranslations('timeline.entrySettings')
+  const locale = useLocale()
   const TypeIcon = TYPE_VISUALS.blood_test.icon
-  const [activeTab, setActiveTab] = useState<'results' | 'document' | 'settings'>('results')
+  const tabBaseId = useId()
+  const [activeTab, setActiveTab] = useState<DetailTab>('results')
+  const tabsRef = useRef<HTMLDivElement>(null)
+  const tabRefs = useRef<Partial<Record<DetailTab, HTMLButtonElement | null>>>({})
+  const [tabOverflow, setTabOverflow] = useState({ left: false, right: false })
 
   const attachments = event.attachments ?? []
   const [activeAttachmentId, setActiveAttachmentId] = useState<string | null>(null)
@@ -74,62 +81,125 @@ export function BloodTestDetails({
     }
   }, [])
 
+  // Same nowrap + edge-fade affordance as the HistoryList type chips: the
+  // 28px-tall strip never wraps, so long RU labels scroll instead.
+  const updateTabOverflow = useCallback(() => {
+    const el = tabsRef.current
+    if (!el) return
+    setTabOverflow({
+      left: el.scrollLeft > 2,
+      right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2,
+    })
+  }, [])
+
+  useEffect(() => {
+    updateTabOverflow()
+    const el = tabsRef.current
+    if (!el) return
+    el.addEventListener('scroll', updateTabOverflow, { passive: true })
+    window.addEventListener('resize', updateTabOverflow)
+    return () => {
+      el.removeEventListener('scroll', updateTabOverflow)
+      window.removeEventListener('resize', updateTabOverflow)
+    }
+  }, [updateTabOverflow, locale, attachments.length])
+
+  const tabId = (tab: DetailTab) => `${tabBaseId}-tab-${tab}`
+  const panelId = (tab: DetailTab) => `${tabBaseId}-panel-${tab}`
+
+  const selectTab = useCallback((tab: DetailTab) => {
+    setActiveTab(tab)
+    tabRefs.current[tab]?.scrollIntoView({ inline: 'nearest', block: 'nearest' })
+  }, [])
+
+  const TABS: { id: DetailTab; label: string; icon: typeof FlaskConical }[] = [
+    { id: 'results', label: t('testResults'), icon: FlaskConical },
+    { id: 'document', label: t('documents', { count: attachments.length }), icon: Paperclip },
+    { id: 'settings', label: t('settings'), icon: Settings },
+  ]
+
   return (
-    <div className="flex h-full w-full min-h-0 flex-col bg-background pb-6 print:block print:h-auto">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+    <div className="flex h-full w-full min-h-0 flex-col gap-3 bg-background pb-6 print:block print:h-auto">
+      <div className="flex min-w-0 shrink-0 items-center gap-3">
         <span
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold',
+            'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold',
             TYPE_VISUALS.blood_test.chipClass,
           )}
         >
           <TypeIcon className="size-3.5" />
           {te('typeBloodTest')}
         </span>
-        <span aria-hidden className="text-sm text-muted-foreground/20">|</span>
-        <button
-          onClick={() => setActiveTab('results')}
-          className={
-            activeTab === 'results'
-              ? 'inline-flex items-center gap-1.5 text-sm font-semibold text-foreground'
-              : 'inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
-          }
-        >
-          <FlaskConical className="size-4" />
-          {t('testResults')}
-        </button>
-        <span className="text-sm text-muted-foreground/20">|</span>
-        <button
-          onClick={() => setActiveTab('document')}
-          className={
-            activeTab === 'document'
-              ? 'inline-flex items-center gap-1.5 text-sm font-semibold text-foreground'
-              : 'inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
-          }
-        >
-          <Paperclip className="size-4" />
-          {t('documents', { count: attachments.length })}
-        </button>
-        <span className="text-sm text-muted-foreground/20">|</span>
-        <button
-          onClick={() => setActiveTab('settings')}
-          className={
-            activeTab === 'settings'
-              ? 'inline-flex items-center gap-1.5 text-sm font-semibold text-foreground'
-              : 'inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
-          }
-        >
-          <Settings className="size-4" />
-          {t('settings')}
-        </button>
+        <div className="relative min-w-0 flex-1">
+          {tabOverflow.left && (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-y-0 left-0 z-10 w-5 bg-gradient-to-r from-background to-transparent"
+            />
+          )}
+          {tabOverflow.right && (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-y-0 right-0 z-10 w-5 bg-gradient-to-l from-background to-transparent"
+            />
+          )}
+          <div
+            ref={tabsRef}
+            role="tablist"
+            className="flex h-7 flex-nowrap items-stretch overflow-x-auto border-b border-border px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {TABS.map((tab) => {
+              const Icon = tab.icon
+              const active = activeTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  ref={(el) => {
+                    tabRefs.current[tab.id] = el
+                  }}
+                  type="button"
+                  role="tab"
+                  id={tabId(tab.id)}
+                  aria-selected={active}
+                  aria-controls={panelId(tab.id)}
+                  onClick={() => selectTab(tab.id)}
+                  onFocus={(e) => e.currentTarget.scrollIntoView({ inline: 'nearest', block: 'nearest' })}
+                  className={cn(
+                    'relative flex shrink-0 items-center gap-1.5 whitespace-nowrap px-2 text-sm font-medium transition-colors',
+                    active ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <Icon className="size-4" />
+                  {tab.label}
+                  {active && (
+                    <span aria-hidden className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary" />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
       </div>
 
+      {/* 22px meta slot: keeps the details header zone at 28 + 12 + 22 + 12 = 74px, matching HistoryList (§5.5). */}
+      <div className="h-[22px] shrink-0" />
+
       {activeTab === 'results' ? (
-        <div className="mt-5 flex min-h-0 flex-1 flex-col">
+        <div
+          role="tabpanel"
+          id={panelId('results')}
+          aria-labelledby={tabId('results')}
+          className="flex min-h-0 flex-1 flex-col"
+        >
           <ResultsPanel date={event.date} labName={event.clinic} entryId={event.id} biomarkers={biomarkers} onViewDetails={onViewDetails} />
         </div>
       ) : activeTab === 'document' ? (
-        <div className="mt-5 flex w-full min-w-0 flex-1 flex-col min-h-0">
+        <div
+          role="tabpanel"
+          id={panelId('document')}
+          aria-labelledby={tabId('document')}
+          className="flex w-full min-w-0 flex-1 flex-col min-h-0"
+        >
           {attachments.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               {t('noDocuments')}
@@ -206,7 +276,13 @@ export function BloodTestDetails({
           )}
         </div>
       ) : (
-        <div className="mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div
+          role="tabpanel"
+          id={panelId('settings')}
+          aria-labelledby={tabId('settings')}
+          tabIndex={0}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        >
           <EntrySettings
             event={event}
             biomarkers={biomarkers}

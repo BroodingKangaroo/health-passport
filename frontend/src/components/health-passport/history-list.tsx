@@ -177,7 +177,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="flex shrink-0 items-center justify-between px-1">
+      <div className="flex shrink-0 items-center justify-between">
         <h2 id={headingId} className="text-sm font-semibold text-foreground">{t('title')}</h2>
         <div className="relative">
           <button
