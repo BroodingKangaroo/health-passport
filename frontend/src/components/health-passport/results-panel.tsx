@@ -139,12 +139,17 @@ export function ResultsPanel({
   biomarkers,
   labName,
   date,
+  title,
   entryId,
   onViewDetails,
 }: {
   biomarkers: BiomarkerResult[]
   labName: string
   date: string
+  // The entry's real title — the details pane must show it in full even
+  // when the history card truncates it. Falls back to the generic
+  // "resultsPanel.title" heading when absent/empty.
+  title?: string
   // Entry (medical event) this panel displays — keys the per-entry sort
   // memory: switching entries resets to document order, returning to an
   // entry restores the sort its user left behind.
@@ -159,6 +164,7 @@ export function ResultsPanel({
   const titleId = useId()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [hOverflow, setHOverflow] = useState({ left: false, right: false })
+  const [bottomFade, setBottomFade] = useState(false)
 
   // The region's scrollbar is hidden, so gradient fades signal horizontally
   // hidden columns when the 768px table overflows its pane (same affordance
@@ -172,17 +178,33 @@ export function ResultsPanel({
     })
   }, [])
 
+  // Vertical counterpart: dim the bottom edge only while rows remain below
+  // the fold (scroll-state aware, like the horizontal fades).
+  const updateBottomOverflow = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    setBottomFade(el.scrollHeight - el.scrollTop - el.clientHeight > 4)
+  }, [])
+
   useEffect(() => {
     updateHOverflow()
+    updateBottomOverflow()
     const el = scrollRef.current
     if (!el) return
     el.addEventListener('scroll', updateHOverflow, { passive: true })
+    el.addEventListener('scroll', updateBottomOverflow, { passive: true })
     window.addEventListener('resize', updateHOverflow)
+    window.addEventListener('resize', updateBottomOverflow)
     return () => {
       el.removeEventListener('scroll', updateHOverflow)
+      el.removeEventListener('scroll', updateBottomOverflow)
       window.removeEventListener('resize', updateHOverflow)
+      window.removeEventListener('resize', updateBottomOverflow)
     }
-  }, [updateHOverflow, locale, biomarkers])
+    // query/expandedId re-derive the fade when filtering or expanding changes
+    // the content height without scrolling (scrollTop===0 → no scroll event),
+    // mirroring the HistoryList rail, which re-derives via filteredEvents.
+  }, [updateHOverflow, updateBottomOverflow, locale, biomarkers, query, expandedId])
 
   const sortKey = entryId ?? '_default'
   const sort = sortsByEntry[sortKey] ?? NO_SORT
@@ -252,8 +274,14 @@ export function ResultsPanel({
     <Card className="flex h-full min-h-0 flex-col overflow-hidden border-border">
       <div className="flex shrink-0 flex-nowrap items-center justify-between gap-3 border-b border-border p-4">
         <div className="min-w-0 leading-tight">
-          <h2 id={titleId} className="text-base font-semibold text-foreground">
-            {t('title')}
+          {/* Real entry title (2-line clamp + tooltip, same idiom as the
+              history cards); generic heading when no title is passed. */}
+          <h2
+            id={titleId}
+            className="line-clamp-2 text-base font-semibold text-foreground"
+            title={title || undefined}
+          >
+            {title || t('title')}
           </h2>
           <p className="truncate text-xs text-muted-foreground" title={`${formatDate(date, locale)} · ${labName}`}>
             {formatDate(date, locale)} · {labName}
@@ -281,6 +309,12 @@ export function ResultsPanel({
           <span
             aria-hidden
             className="pointer-events-none absolute inset-y-0 right-0 z-20 w-5 bg-gradient-to-l from-card to-transparent"
+          />
+        )}
+        {bottomFade && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-6 bg-gradient-to-t from-card to-transparent"
           />
         )}
         <div

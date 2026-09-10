@@ -82,7 +82,7 @@ export function InstrumentalTestDetails({
   }
 
   return (
-    <div className="flex h-full w-full min-h-0 flex-col bg-background pb-6 print:block print:h-auto">
+    <div className="flex h-full w-full min-h-0 flex-col bg-background print:block print:h-auto">
       <div className="flex items-center justify-between">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <span

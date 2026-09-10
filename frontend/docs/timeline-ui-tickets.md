@@ -148,6 +148,11 @@ scope/contracts clean (no `ResultsPanel` API, i18n, backend, or
 `architecture.md` statement changed), `bottom-0` sound, and test coverage
 sufficient.
 
+> **Superseded (2026-09-10, owner request):** the 74px header zone was
+> replaced by the single 28px settings-row alignment — the visible History
+> heading row and the 22px meta spacer are gone; design §5.5 carries the
+> revised contract.
+
 ---
 
 ## T3 — Compact history cards (Stage 2a) — skipped

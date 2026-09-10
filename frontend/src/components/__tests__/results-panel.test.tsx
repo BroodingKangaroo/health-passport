@@ -310,4 +310,32 @@ describe('ResultsPanel sorting', () => {
     expect(scrollRegion!.contains(headerButton(NAME_HEADER))).toBe(true)
     expect(scrollRegion!.contains(screen.getByText('Apple'))).toBe(true)
   })
+
+  it('shows the entry title as the heading and falls back to the generic one', () => {
+    // The details pane must show the entry's real title in full (the
+    // history card truncates it): 2-line clamp + tooltip, same idiom as the
+    // history cards.
+    renderI18n(
+      <ResultsPanel
+        biomarkers={[makeBiomarker('a', 'Apple')]}
+        labName="Test Lab"
+        date="Jan 15, 2027"
+        title="Исследование состава микробиоты кишечника с определением чувствительности"
+      />,
+    )
+
+    const heading = screen.getByText(
+      'Исследование состава микробиоты кишечника с определением чувствительности',
+    )
+    expect(heading.className).toContain('line-clamp-2')
+    expect(heading.getAttribute('title')).toBe(
+      'Исследование состава микробиоты кишечника с определением чувствительности',
+    )
+
+    const { unmount } = renderI18n(
+      <ResultsPanel biomarkers={[makeBiomarker('a', 'Apple')]} labName="Lab" date="Jan 15, 2027" />,
+    )
+    expect(screen.getByText('Blood Test Results')).toBeInTheDocument()
+    unmount()
+  })
 })

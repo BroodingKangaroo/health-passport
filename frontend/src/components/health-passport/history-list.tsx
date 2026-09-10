@@ -47,7 +47,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
 
   // The nowrap chip row scrolls horizontally instead of wrapping (rail/
   // details alignment depends on its fixed height) — edge fades are the
-  // scroll affordance, since a 22px-tall scroller shows no visible
+  // scroll affordance, since a 28px-tall scroller shows no visible
   // scrollbar (macOS overlay scrollbars).
   const updateChipOverflow = useCallback(() => {
     const el = chipsRef.current
@@ -159,6 +159,31 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
     return result
   }, [events, typeFilters, search, abnormalOnly, attachmentsOnly, sortOrder, statusCounts])
 
+  // Bottom fade on the rail: same scroll-state-aware affordance as the
+  // horizontal fades — shown only while rows remain below the fold (never
+  // in the empty state or when scrolled to the very bottom).
+  const railRef = useRef<HTMLDivElement>(null)
+  const [bottomFade, setBottomFade] = useState(false)
+  const updateRailFade = useCallback(() => {
+    const el = railRef.current
+    if (!el) return
+    setBottomFade(el.scrollHeight - el.scrollTop - el.clientHeight > 4)
+  }, [])
+
+  useEffect(() => {
+    updateRailFade()
+    const el = railRef.current
+    if (!el) return
+    el.addEventListener('scroll', updateRailFade, { passive: true })
+    window.addEventListener('resize', updateRailFade)
+    return () => {
+      el.removeEventListener('scroll', updateRailFade)
+      window.removeEventListener('resize', updateRailFade)
+    }
+    // The rail's content is filteredEvents (transitively events + biomarkers
+    // via statusCounts); locale switches reformat the card text.
+  }, [updateRailFade, filteredEvents, locale])
+
   // Per-type counts over ALL events — the chips double as the visual legend,
   // so the counts must not shift while filtering.
   const typeCounts = useMemo(() => {
@@ -170,6 +195,44 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
     return counts
   }, [events])
 
+  // Month markers on the rail: an on-line label overlay on the FIRST card of
+  // each month-run in DISPLAY order — each event is compared with the
+  // previous one, so sort/filter changes re-derive the markers naturally.
+  // Invalid dates collapse to an 'invalid' key so they neither start nor
+  // join a run.
+  const monthStarts = useMemo(() => {
+    const starts = new Set<number>()
+    let prevKey: string | null = null
+    filteredEvents.forEach((e, i) => {
+      const d = new Date(e.date)
+      const key = Number.isNaN(d.getTime()) ? 'invalid' : `${d.getFullYear()}-${d.getMonth()}`
+      if (i === 0 || key !== prevKey) starts.add(i)
+      prevKey = key
+    })
+    return starts
+  }, [filteredEvents])
+
+  // Month numbers shared by ≥2 distinct years in the visible list — those
+  // groups' labels gain a 2-digit year line under the month ("Jun" / «'26»).
+  const crossYearMonths = useMemo(() => {
+    const yearsByMonth = new Map<number, Set<number>>()
+    for (const e of filteredEvents) {
+      const d = new Date(e.date)
+      if (Number.isNaN(d.getTime())) continue
+      const years = yearsByMonth.get(d.getMonth()) ?? new Set<number>()
+      years.add(d.getFullYear())
+      yearsByMonth.set(d.getMonth(), years)
+    }
+    const collisions = new Set<number>()
+    for (const [month, years] of yearsByMonth) {
+      if (years.size > 1) collisions.add(month)
+    }
+    return collisions
+  }, [filteredEvents])
+
+  const monthFmt = useMemo(() => new Intl.DateTimeFormat(locale, { month: 'short' }), [locale])
+  const yearFmt = useMemo(() => new Intl.DateTimeFormat(locale, { year: '2-digit' }), [locale])
+
   // Empty state borrows the single remaining type's visual family when the
   // emptiness is caused by type filtering alone (no search / quick filters).
   const emptySingleType =
@@ -178,9 +241,85 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
       : null
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="flex shrink-0 items-center justify-between">
-        <h2 id={headingId} className="text-sm font-semibold text-foreground">{t('title')}</h2>
+    <div className="relative flex h-full min-h-0 flex-col gap-3">
+      {/* sr-only: the visible History heading was dropped — the chips row +
+          filter button form the pane's single settings row (28px, same as
+          the details tab strip), lifting both panes' content up (§5.5). */}
+      <h2 id={headingId} className="sr-only">{t('title')}</h2>
+      {/* Type filter chips + the filter button: the pane's single settings
+          row. The chips are the legend for the type colors (dot), a one-tap
+          filter, and the per-type counts. Color never signals state: the dot
+          stays type-colored whether the chip is on or off. Zero-count types
+          stay rendered (the chips double as the type legend) but are DISABLED
+          — dimmed, aria-disabled, non-interactive — since filtering to an
+          empty type is a no-op. The row never wraps: nowrap + horizontal
+          scroll overflow keeps the chips a fixed height (h-7, the details
+          tab strip's height), so both panes share a 28px settings row + 12px
+          gap and the rail's top edge matches the details' first content row.
+          Compact short labels (chip* keys) keep the chips small. The chips
+          start at the cards' pl (pl-5 sm:pl-7), so the left 20/28px channel
+          stays empty from the block top down — the calendar line's channel. */}
+      <div className="flex shrink-0 items-center justify-between gap-2">
+        <div className="relative min-w-0 flex-1">
+          {chipOverflow.left && (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-y-0 left-0 z-10 w-5 bg-gradient-to-r from-background to-transparent"
+            />
+          )}
+          {chipOverflow.right && (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-y-0 right-0 z-10 w-5 bg-gradient-to-l from-background to-transparent"
+            />
+          )}
+          <div
+            ref={chipsRef}
+            className="scrollbar-none flex h-7 flex-nowrap gap-1 overflow-x-auto pl-5 sm:pl-7"
+            role="group"
+            aria-label={t('entryType')}
+          >
+          <button
+            onClick={() => setTypeFilters(ALL_TYPES)}
+            aria-pressed={typeFilters.length === ALL_TYPES.length}
+            className={cn(
+              'flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium transition-colors',
+              typeFilters.length === ALL_TYPES.length
+                ? 'border border-border bg-card text-foreground'
+                : 'bg-muted/60 text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {t('filterAll')}
+            <span className="text-muted-foreground/70">{events.length}</span>
+          </button>
+          {ALL_TYPES.map((type) => {
+            const visual = TYPE_VISUALS[type]
+            const active = typeFilters.includes(type)
+            const empty = typeCounts[type] === 0
+            return (
+              <button
+                key={type}
+                onClick={() => toggleType(type)}
+                aria-pressed={active}
+                aria-disabled={empty || undefined}
+                title={empty ? t('noRecordsOfType') : undefined}
+                className={cn(
+                  'flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium transition-colors',
+                  empty && 'cursor-not-allowed opacity-40',
+                  !empty && !active && 'hover:text-foreground',
+                  active
+                    ? 'border border-border bg-card text-foreground'
+                    : 'bg-muted/60 text-muted-foreground',
+                )}
+              >
+                <span aria-hidden className={cn('size-2 shrink-0 rounded-full', visual.dotClass)} />
+                {t(visual.chipLabelKey)}
+                <span className="text-muted-foreground/70">{typeCounts[type]}</span>
+              </button>
+            )
+          })}
+          </div>
+        </div>
         <div className="relative">
           <button
             ref={buttonRef}
@@ -341,92 +480,58 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
         </div>
       </div>
 
-      {/* Type filter chips — the legend for the type colors (dot), a one-tap
-          filter, and the per-type counts. Color never signals state: the dot
-          stays type-colored whether the chip is on or off. Zero-count types
-          stay rendered (the chips double as the type legend) but are DISABLED
-          — dimmed, aria-disabled, non-interactive — since filtering to an
-          empty type is a no-op. The row never wraps: nowrap + horizontal
-          scroll overflow keeps the chip row a fixed height, which pins the
-          chronology rail's top edge to the details panel's top edge
-          (the wrapped row was the rail/details misalignment). Compact short
-          labels (chip* keys) keep the chips small. */}
-      <div className="relative shrink-0">
-        {chipOverflow.left && (
-          <span
-            aria-hidden
-            className="pointer-events-none absolute inset-y-0 left-0 z-10 w-5 bg-gradient-to-r from-background to-transparent"
-          />
-        )}
-        {chipOverflow.right && (
-          <span
-            aria-hidden
-            className="pointer-events-none absolute inset-y-0 right-0 z-10 w-5 bg-gradient-to-l from-background to-transparent"
-          />
-        )}
-        <div
-          ref={chipsRef}
-          className="scrollbar-none flex min-h-[22px] flex-nowrap gap-1 overflow-x-auto px-1"
-          role="group"
-          aria-label={t('entryType')}
-        >
-        <button
-          onClick={() => setTypeFilters(ALL_TYPES)}
-          aria-pressed={typeFilters.length === ALL_TYPES.length}
-          className={cn(
-            'flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium transition-colors',
-            typeFilters.length === ALL_TYPES.length
-              ? 'border border-border bg-card text-foreground'
-              : 'bg-muted/60 text-muted-foreground hover:text-foreground',
-          )}
-        >
-          {t('filterAll')}
-          <span className="text-muted-foreground/70">{events.length}</span>
-        </button>
-        {ALL_TYPES.map((type) => {
-          const visual = TYPE_VISUALS[type]
-          const active = typeFilters.includes(type)
-          const empty = typeCounts[type] === 0
-          return (
-            <button
-              key={type}
-              onClick={() => toggleType(type)}
-              aria-pressed={active}
-              aria-disabled={empty || undefined}
-              title={empty ? t('noRecordsOfType') : undefined}
-              className={cn(
-                'flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium transition-colors',
-                empty && 'cursor-not-allowed opacity-40',
-                !empty && !active && 'hover:text-foreground',
-                active
-                  ? 'border border-border bg-card text-foreground'
-                  : 'bg-muted/60 text-muted-foreground',
-              )}
-            >
-              <span aria-hidden className={cn('size-2 shrink-0 rounded-full', visual.dotClass)} />
-              {t(visual.chipLabelKey)}
-              <span className="text-muted-foreground/70">{typeCounts[type]}</span>
-            </button>
-          )
-        })}
-        </div>
-      </div>
-
+      {/* Spine extension to the block top: bridges the chips row + gap
+          (h-10 = 28px + 12px) so the calendar line starts at the pane top
+          and meets the first row's top-0 segment. Root-relative x 10/11.5 =
+          the rows' spine page-x (row-x 6/7.5 + the rows container's 4px
+          clearance). Hidden in the empty state (no rows to connect to);
+          z-10 keeps it above the chips' edge fades. */}
+      {filteredEvents.length > 0 && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute left-[10px] top-0 z-10 h-10 w-px -translate-x-1/2 bg-border sm:left-[11.5px]"
+        />
+      )}
+      {/* Bottom fade: only while rows remain below the fold (scroll-state
+          aware, like the chips row's horizontal fades). Anchored to the root
+          — the rail is its last flex child, so the root's bottom edge is the
+          rail's bottom edge. z-20 paints over the rail's z-10 nodes, so dots
+          dim with the cards/spine at the bottom edge. */}
+      {bottomFade && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-6 bg-gradient-to-t from-background to-transparent"
+        />
+      )}
       {/* Chronology rail: a quiet hairline spine with a type-colored node
           per event. The node carries the type channel only; selection is the
           primary accent (ring), never a type color. No icons inside nodes —
           the card bubble already carries the icon. The spine is drawn as
-          per-row half-segments (top segment on every non-first row, bottom
-          segment on every non-last row) so it starts and ends exactly at the
-          first/last node and never renders in the empty state. Segments
-          extend through the inter-row gap to stay continuous. */}
+          per-row half-segments (top segment from the row's top edge on the
+          first row, from 8px into the gap on later rows; bottom segment to
+          the row's bottom edge on every non-last row) so each inter-row gap
+          is covered EXACTLY ONCE by the next row's top stub — no alpha
+          stacking (dark --border is 10%-alpha, overlapping layers read as
+          brighter patches) — and the spine starts/ends exactly at the
+          first/last node, never rendering in the empty state. Month markers
+          are zero-height overlays on the first card row of each month-run,
+          sitting just right of the spine (no background — the line reads
+          continuous; long months' ink may soft-cross the card edge); they
+          shift no layout, so the first card starts at the scroller's content
+          top. */}
       <div
+        ref={railRef}
         role="region"
         aria-labelledby={headingId}
         tabIndex={0}
-        className="scrollbar-none min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pb-1"
+        className="scrollbar-none min-h-0 flex-1 overflow-y-auto overscroll-contain pb-1"
       >
-        <div className="flex flex-col gap-2">
+        {/* pl-1/pr-1: 4px clip clearance both sides — the selected node's
+            ring-offset+ring extends 4px left of the node, and card focus
+            outlines need room on the right; without it the scroller's clip
+            edge (the scroller has no horizontal padding) cuts the ring into
+            a "C". Cards stay at page-x 20/28 (4 + pl-4/sm:pl-6). */}
+        <div className="flex flex-col gap-2 pl-1 pr-1">
           {filteredEvents.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <div
@@ -467,20 +572,26 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
               const eventCounts = statusCounts.get(event.id)
               const isFirst = idx === 0
               const isLast = idx === filteredEvents.length - 1
+              const d = new Date(event.date)
+              const showMonth = monthStarts.has(idx) && !Number.isNaN(d.getTime())
               return (
-                <div key={event.id} className="relative flex items-center pl-5 sm:pl-7">
-                  {/* Node center: mobile x=6px (size-3), sm x=7.5px (15px) —
-                      the spine half-segments below align to the same x. */}
-                  {!isFirst && (
-                    <span
-                      aria-hidden
-                      className="absolute -top-2 bottom-1/2 left-[6px] w-px -translate-x-1/2 bg-border sm:left-[7.5px]"
-                    />
-                  )}
+                <div key={event.id} className="relative flex items-center pl-4 sm:pl-6">
+                  {/* Node center: page-x 10px mobile / 11.5px sm (row-x 6/7.5
+                      + the rows container's 4px clearance) — the spine
+                      half-segments below align to the same x, and the node's
+                      left edge sits at page-x 4 so the ring's 4px left arc is
+                      unclipped. */}
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'absolute bottom-1/2 left-[6px] w-px -translate-x-1/2 bg-border sm:left-[7.5px]',
+                      isFirst ? 'top-0' : '-top-2',
+                    )}
+                  />
                   {!isLast && (
                     <span
                       aria-hidden
-                      className="absolute bottom-[-8px] left-[6px] top-1/2 w-px -translate-x-1/2 bg-border sm:left-[7.5px]"
+                      className="absolute bottom-0 left-[6px] top-1/2 w-px -translate-x-1/2 bg-border sm:left-[7.5px]"
                     />
                   )}
                   <span
@@ -491,6 +602,36 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                       active && 'ring-2 ring-primary/40 ring-offset-2 ring-offset-background',
                     )}
                   />
+                  {/* On-line month marker: zero-height overlay sitting just
+                      RIGHT of the spine line (row-x 7.5/9 = line + ~1.5px) —
+                      no background, so the line stays continuous behind it
+                      and nothing notches the card's corner; long months'
+                      glyph ink may soft-cross the card edge (no truncation).
+                      Year goes on a second line — inline "Jun '26" never
+                      fits the 20/28px gutter.
+                      Z-order guard: node and label are both z-10 and tree
+                      order decides (label later → on top if they ever met);
+                      safe at current card sizes (2-line label ≈20px vs node
+                      top ≈29px on the shortest cards, ring top ≈25px) —
+                      revisit if cards get more compact. */}
+                  {showMonth && (
+                    <span
+                      className="absolute left-[7.5px] top-0 z-10 flex flex-col items-start"
+                    >
+                      <span
+                        className={cn(
+                          'whitespace-nowrap text-[10px] font-medium uppercase leading-none tracking-wider text-muted-foreground/60',
+                        )}
+                      >
+                        {monthFmt.format(d)}
+                      </span>
+                      {crossYearMonths.has(d.getMonth()) && (
+                        <span className="whitespace-nowrap text-[10px] font-medium uppercase leading-none tracking-wider text-muted-foreground/60">
+                          {`'${yearFmt.format(d)}`}
+                        </span>
+                      )}
+                    </span>
+                  )}
                   <button
                     onClick={() => onSelect(event.id)}
                     className={cn(

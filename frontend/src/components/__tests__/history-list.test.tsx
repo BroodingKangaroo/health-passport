@@ -332,4 +332,99 @@ describe('HistoryList', () => {
     expect(screen.getByTitle('1 high result')).toBeInTheDocument()
     expect(screen.queryByText('Basic Panel')).not.toBeInTheDocument()
   })
+
+  describe('rail month markers', () => {
+    const janLater: MedicalEvent = {
+      id: 'jan-2',
+      date: 'Jan 25, 2027',
+      type: 'blood_test',
+      title: 'Follow-up Panel',
+      clinic: 'City Lab',
+      attachments: [],
+    }
+    const jan2026: MedicalEvent = {
+      id: 'jan-26',
+      date: 'Jan 20, 2026',
+      type: 'blood_test',
+      title: 'Old Panel',
+      clinic: 'City Lab',
+      attachments: [],
+    }
+
+    it('renders one on-line label per month-run in display order', () => {
+      // Newest first: Feb 1 2027 leads, Jan 15 2027 follows — a marker on
+      // the first card of each month-run.
+      renderI18n(
+        <HistoryList
+          events={[eventWithLongClinic, visitEvent]}
+          selectedId=""
+          onSelect={vi.fn()}
+        />,
+      )
+
+      expect(screen.getAllByText('Feb')).toHaveLength(1)
+      expect(screen.getAllByText('Jan')).toHaveLength(1)
+      // Zero-layout overlay: the label lives INSIDE the first card's row
+      // (absolute), not in a sibling divider row that would shift the card.
+      const row = screen.getByText('Feb').closest('div.relative')
+      expect(row?.className).toContain('pl-4')
+      expect(row?.querySelector('.flex-col.absolute')).not.toBeNull()
+    })
+
+    it('does not duplicate the marker for consecutive same-month events', () => {
+      renderI18n(
+        <HistoryList
+          events={[flaggedLabEvent, cleanLabEvent]}
+          selectedId=""
+          onSelect={vi.fn()}
+        />,
+      )
+
+      expect(screen.getAllByText('Mar')).toHaveLength(1)
+    })
+
+    it('keeps plain month labels within a single year', () => {
+      renderI18n(
+        <HistoryList
+          events={[eventWithLongClinic, janLater]}
+          selectedId=""
+          onSelect={vi.fn()}
+        />,
+      )
+
+      expect(screen.getByText('Jan')).toBeInTheDocument()
+      expect(screen.queryByText("'27")).toBeNull()
+    })
+
+    it('adds a 2-digit year line to month labels shared across years', () => {
+      // Inline "Jun '26" never fits the 20/28px gutter, so the year stacks
+      // under the month on its own line.
+      renderI18n(
+        <HistoryList
+          events={[eventWithLongClinic, jan2026]}
+          selectedId=""
+          onSelect={vi.fn()}
+        />,
+      )
+
+      expect(screen.getAllByText('Jan')).toHaveLength(2)
+      expect(screen.getByText("'27")).toBeInTheDocument()
+      expect(screen.getByText("'26")).toBeInTheDocument()
+    })
+
+    it('formats month labels with the ru locale', () => {
+      render(
+        <TestI18nProvider locale="ru">
+          <HistoryList
+            events={[eventWithLongClinic, visitEvent]}
+            selectedId=""
+            onSelect={vi.fn()}
+          />
+        </TestI18nProvider>,
+      )
+
+      expect(screen.getAllByText('февр.')).toHaveLength(1)
+      expect(screen.getAllByText('янв.')).toHaveLength(1)
+    })
+  })
 })

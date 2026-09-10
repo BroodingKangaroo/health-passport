@@ -119,7 +119,7 @@ export function BloodTestDetails({
   ]
 
   return (
-    <div className="flex h-full w-full min-h-0 flex-col gap-3 bg-background pb-6 print:block print:h-auto">
+    <div className="flex h-full w-full min-h-0 flex-col gap-3 bg-background print:block print:h-auto">
       <div className="flex min-w-0 shrink-0 items-center gap-3">
         <span
           className={cn(
@@ -146,7 +146,7 @@ export function BloodTestDetails({
           <div
             ref={tabsRef}
             role="tablist"
-            className="scrollbar-none flex h-7 flex-nowrap items-stretch overflow-x-auto border-b border-border px-1"
+            className="scrollbar-none flex h-7 flex-nowrap items-stretch overflow-x-auto px-1"
           >
             {TABS.map((tab) => {
               const Icon = tab.icon
@@ -181,9 +181,6 @@ export function BloodTestDetails({
         </div>
       </div>
 
-      {/* 22px meta slot: keeps the details header zone at 28 + 12 + 22 + 12 = 74px, matching HistoryList (§5.5). */}
-      <div className="h-[22px] shrink-0" />
-
       {activeTab === 'results' ? (
         <div
           role="tabpanel"
@@ -191,7 +188,7 @@ export function BloodTestDetails({
           aria-labelledby={tabId('results')}
           className="flex min-h-0 flex-1 flex-col"
         >
-          <ResultsPanel date={event.date} labName={event.clinic} entryId={event.id} biomarkers={biomarkers} onViewDetails={onViewDetails} />
+          <ResultsPanel date={event.date} labName={event.clinic} title={event.title} entryId={event.id} biomarkers={biomarkers} onViewDetails={onViewDetails} />
         </div>
       ) : activeTab === 'document' ? (
         <div

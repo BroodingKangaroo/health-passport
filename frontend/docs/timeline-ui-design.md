@@ -290,11 +290,23 @@ attributed the whole shell to `TimelineView` (review comment 1):
 ### 5.2 Left pane — `HistoryList` becomes self-contained
 
 ```tsx
-<div className="flex h-full min-h-0 flex-col gap-3">
-  <div className="shrink-0 flex items-center justify-between px-1">History + filter</div>
-  <div className="relative shrink-0">chips (unchanged)</div>
-  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-1">
-    <div className="flex flex-col gap-2">rail rows</div>
+<div className="relative flex h-full min-h-0 flex-col gap-3">
+  <h2 className="sr-only">History (aria-labelledby anchor for the rail region)</h2>
+  <div className="flex shrink-0 items-center justify-between gap-2">
+    <div className="relative min-w-0 flex-1">chips (h-7, nowrap, pl-5 sm:pl-7 + edge fades)</div>
+    <div className="relative">filter button + popover</div>
+  </div>
+  {filteredEvents.length > 0 && (
+    <span className="pointer-events-none absolute left-[10px] sm:left-[11.5px] top-0 z-10 h-10 w-px -translate-x-1/2 bg-border" />
+  )}
+  {bottomFade && (
+    <span className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-6 bg-gradient-to-t from-background" />
+  )}
+  <div className="scrollbar-none min-h-0 flex-1 overflow-y-auto overscroll-contain pb-1">
+    <div className="flex flex-col gap-2 pl-1 pr-1">
+      rail rows (cards at page-x 20/28; month labels = zero-height overlays
+      just right of the spine on the first card row of each month-run)
+    </div>
   </div>
 </div>
 ```
@@ -307,28 +319,30 @@ attributed the whole shell to `TimelineView` (review comment 1):
   with no extra markup.
 - The scroller gets `role="region"` labelled via `aria-labelledby` pointing at
   the "History" `<h2>` (T1 review comment 7 — no duplicated `aria-label`) and
-  `tabIndex={0}` so keyboard users can scroll it directly. `px-1`/`pb-1`
-  breathing room keeps the selected node's ring and card focus outlines from
-  being clipped by the scroller's overflow (T1 review comment 3).
+  `tabIndex={0}` so keyboard users can scroll it directly. `pb-1` breathing
+  room keeps the last card's focus outline from being clipped at the bottom
+  (T1 review comment 3); the scroller has no horizontal padding — the left
+  20/28px channel is the calendar line's, and the chips start at the cards'
+  `pl` so their left edges align (user follow-up 2).
 - The rail scroller and the chips row use the shared `scrollbar-none`
   utility (see §5.8): no visible scrollbar on any platform.
 
 ### 5.3 Right pane — `BloodTestDetails` owns per-tab scroll
 
 ```tsx
-<div className="flex h-full w-full min-h-0 flex-col bg-background pb-6">
+<div className="flex h-full w-full min-h-0 flex-col gap-3 bg-background print:block print:h-auto">
   <div className="shrink-0">type chip + tab strip (5.8)</div>
   {tab === 'results' && (
-    <div className="mt-3 flex min-h-0 flex-1 flex-col"><ResultsPanel /></div>
+    <div className="flex min-h-0 flex-1 flex-col"><ResultsPanel /></div>
   )}
   {tab === 'document' && (
-    <div className="mt-3 flex min-h-0 min-w-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">attachment rows</div>
       <div className="min-h-0 flex-1 overflow-hidden">DocumentViewer</div>
     </div>
   )}
   {tab === 'settings' && (
-    <div className="mt-3 min-h-0 flex-1 overflow-y-auto"><EntrySettings /></div>
+    <div className="min-h-0 flex-1 overflow-y-auto"><EntrySettings /></div>
   )}
 </div>
 ```
@@ -355,7 +369,8 @@ attributed the whole shell to `TimelineView` (review comment 1):
 ```tsx
 <Card className="flex h-full min-h-0 flex-col overflow-hidden border-border">
   <div className="shrink-0 flex items-center gap-3 border-b p-4">
-    {/* existing title/subtitle + search — markup unchanged in Stage 1a */}
+    {/* h2 = the entry's real title (line-clamp-2, tooltip; generic heading
+        as fallback) + date · lab subtitle + search */}
   </div>
   <div className="min-h-0 flex-1 overflow-auto">
     <div className="min-w-[768px]">
@@ -375,31 +390,49 @@ attributed the whole shell to `TimelineView` (review comment 1):
 
 ### 5.5 Alignment spec (Stage 1b)
 
-Target: both panes share a header zone of **28 + 12 + 22 + 12 = 74px** from
-the pane top to the first content row.
+Target: both panes share a header zone of **28 + 12 = 40px** from the pane
+top to the first content row — one 28px settings row + 12px gap. (Revised
+2026-09-10, owner request: supersedes the original 74px spec — 28 + 12 +
+22 + 12 with a visible History heading row and a 22px meta row/spacer; the
+heading row and the spacer are gone.)
 
-- Left: title row (`min-h-7`, already 28px with the filter button) / chips
-  (`min-h-[22px]`, exists) / 12px gaps. Change the "History" heading from
-  `px-1` (`history-list.tsx:179`) to `px-0` so the panes are truly flush to
-  the grid gutter (review comment 6 — residual 4px).
-- Right: tab strip `min-h-7` / a **22px meta row** / 12px gaps.
-- **Stage 1b uses the low-churn variant** (review comment 4): keep the
-  `ResultsPanel` title/subtitle header markup as-is and add a 22px spacer (or
-  a compact `Blood Test Results · {date} · {clinic}` line rendered by
-  `BloodTestDetails` while the card keeps its title — pick the simpler during
-  implementation). No `ResultsPanel` API change.
-- **Deferred (future polish, not Stage 1)**: hoisting the title/subtitle out
-  of `ResultsPanel` and swapping its card header for a toolbar
+- Left: the "History" heading is `sr-only` (the rail region keeps its
+  `aria-labelledby` link). The visible top row is the type chips scroller
+  (`h-7`, 28px, nowrap) with the filter button at its right end
+  (`history-list.tsx`). Chips scroll horizontally under edge fades instead
+  of wrapping; the fixed 28px height depends on `flex-nowrap`. The chips
+  start at the cards' `pl` (`pl-5 sm:pl-7`) — the left 20/28px channel stays
+  empty from the block top down, and a root-anchored `h-10` spine span
+  bridges chips row + gap so the calendar line reaches the pane top (user
+  follow-up 2).
+- Right: type chip + tab strip (`h-7`) — the 22px meta spacer was removed.
+  The `ResultsPanel` card header keeps its markup, but the `h2` now shows
+  the entry's real title (`line-clamp-2` + tooltip; generic heading as
+  fallback — user follow-up 4), and the strip's `border-b` rule is gone
+  (user follow-up 3, §5.8). Header zone drops 74 → 40 = **34px** (both top
+  rows rise to the same y at equal height); with the removed 24px `pb-6` on
+  the details root the total content travel is **~58px**.
+- **Deferred (future polish, not Stage 1)**: hoisting the title/subtitle
+  block out of `ResultsPanel` and swapping the card header for a toolbar
   (`N results · M flagged`). It aligns identically but rewrites
-  `results-panel.test.tsx` (43 assertions incl. the `h2`) and
-  `blood-test-details.test.tsx` — high churn for a marginal gain. Revisit
-  together with the F7 duplication cleanup after the shell lands.
+  `results-panel.test.tsx` and `blood-test-details.test.tsx` — high churn
+  for a marginal gain. Revisit together with the F7 duplication cleanup
+  after the shell lands.
+- Month markers: zero-height `absolute` overlays on the FIRST card row of
+  each month-run — small muted uppercase `Intl` short-month label sitting
+  just right of the spine line (~1.5px clear; no background, so the line
+  reads continuous and nothing notches the card's rounded corner — long
+  months' glyph ink may soft-cross the card edge, no truncation); the
+  2-digit year stacks on a second line when two visible years share a month
+  number (inline "Jun '26" never fits the 20/28px gutter). They consume no
+  layout space, so the first card starts exactly at the rail scroller's
+  content top, aligned with the details pane's first row (user follow-up 1).
 - Horizontal edges: both panes flush to the grid gutter; only the rail inset
   (20/28px) remains as intentional structure on the left.
-- **74px precondition**: the left chips row is `flex-nowrap` +
-  `overflow-x-auto` (`history-list.tsx:347-366`), so it scrolls horizontally
-  instead of wrapping and stays 22px. Verify the RU compact labels at the
-  narrowest `lg` sidebar (288px) in §8 (review comment 12).
+- **28px precondition**: the left chips row is `flex-nowrap` +
+  `overflow-x-auto`, so it scrolls horizontally instead of wrapping and
+  stays 28px (`h-7`). Verify the RU compact labels at the narrowest `lg`
+  sidebar (288px) in §8 (review comment 12).
 
 ### 5.6 History cards — compact + status summary (Stage 2)
 
@@ -503,9 +536,10 @@ Optional later: sticky month/day group headers in the rail (`Jun 2026`).
   idiom: underline indicator, inactive `text-muted-foreground
   hover:text-foreground`. **Implemented deviation (T2):** the tab strip is an
   `overflow-x` scroller, which clips descendants at its padding box, so the
-  bar sits at `bottom-0` over the strip's own scoped `border-b` instead of
-  straddling the rule with NavBar's `-bottom-px` (that exact class only works
-  on a non-scroller). Visually identical; §5.8 is the record.
+  bar sits at `bottom-0` of the strip. It originally straddled a strip-scoped
+  `border-b`; that rule has since been removed (user follow-up 3 — the active
+  tab's underline is the only rule under the strip), so the bar no longer
+  overlaps any strip-level line. §5.8 is the record.
 - `role="tablist"` / `role="tab"` / `aria-selected` on the buttons and
   `role="tabpanel"` on the content. `aria-controls` on each tab targets the
   lazily-mounted active panel (the APG lazy pattern); ids are `useId`-based.
@@ -554,7 +588,8 @@ horizontal page scroll; `/demo` unchanged; direct print preview not clipped.
 
 ### Stage 1b — alignment + tab restyle (next commit)
 
-7. Alignment spec §5.5 (heading `px-0`, 22px meta row/spacer).
+7. Alignment spec §5.5 (one 28px settings row per pane; History heading
+   `sr-only`, 22px meta row/spacer removed — see the §5.5 revision).
 8. Tab strip restyle + minimal ARIA (§5.8), including
    `scrollIntoView({ inline: 'nearest' })`.
 9. Tests touched in 1b: `blood-test-details.test.tsx` (tabs), and only if the
@@ -621,7 +656,7 @@ browser zoom 100% + 125%):
    shell utilities); no internal scrollers activate; no runtime errors.
 7. Direct print preview of the timeline page at A4 portrait + landscape: no
    clipping/blank panes (print guards in 5.1).
-8. RU + EN at the narrowest `lg` (sidebar 288px): chips row stays 22px (no
+8. RU + EN at the narrowest `lg` (sidebar 288px): chips row stays 28px (no
    wrap), tabs scroll under the fades, active tab visible when focused.
 9. Search input usable at 390px (no collapsed intrinsic width).
 10. Keyboard focus rings not amputated by pane edges; focused controls not
@@ -634,8 +669,9 @@ browser zoom 100% + 125%):
 ## 9. Open questions
 
 1. ~~Hoist the results identity/meta row?~~ **Resolved** (review comment 4):
-   deferred out of Stage 1; Stage 1b uses the spacer/low-churn variant (5.5);
-   revisit with the F7 duplication cleanup.
+   deferred out of Stage 1; Stage 1b used the spacer/low-churn variant (5.5 —
+   the spacer has since been removed by the 28px single-row alignment
+   revision); revisit with the F7 duplication cleanup.
 2. Frozen Biomarker column at narrow widths: worth the z-order complexity?
 3. Month grouping in the rail: Stage 2 or later?
 4. Status summary display: three directional chips (`↑2 ↓1 !1`, proposed,
@@ -731,11 +767,11 @@ the 288px sidebar, search at 390px, and focus-ring clipping.
 | Page root, grid | `src/views/TimelineView.tsx:22,98,103,111` |
 | Loading/error states | `src/views/TimelineView.tsx:83,91` |
 | Chrome | `src/components/health-passport/header-bar.tsx:76`; `src/components/shared/NavBar.tsx:29` |
-| History root/header/chips/popover | `src/components/health-passport/history-list.tsx:178,179,203,365` |
-| Rail rows, cards, meta | `src/components/health-passport/history-list.tsx:462,471,494,515-552` |
+| History root/sr-only heading/chips/popover | `src/components/health-passport/history-list.tsx:244,248,279,345` |
+| Rail rows, cards, on-line month markers, spine extension | `src/components/health-passport/history-list.tsx:483,524,567,605-635,636` |
 | Abnormal-only matching | `src/lib/event-status.ts:14-27` (memoized at `src/components/health-passport/history-list.tsx:121-124`) |
-| Details root/tabs/wrappers | `src/components/health-passport/blood-test-details.tsx:50,78,79,128,132,202,209` |
-| Results grid/header/table | `src/components/health-passport/results-panel.tsx:29,225,226,235,246,247,251,380,440` |
+| Details root/tabs/wrappers | `src/components/health-passport/blood-test-details.tsx:122,148,186,195,277` |
+| Results grid/header/table | `src/components/health-passport/results-panel.tsx:29,243,253,274,331,358,388,435,513` |
 | Input base | `src/components/ui/input.tsx` (`h-8 w-full`) |
 | Tokens/gutter | `src/app/globals.css:97,107,259` |
 | Channel contract | `frontend/docs/architecture.md` "Event-type visual language" |

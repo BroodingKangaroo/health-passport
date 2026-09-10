@@ -29,8 +29,10 @@ describe('TimelineContent shell', () => {
     )
 
     expect(screen.getByRole('region', { name: 'History' })).toBeInTheDocument()
-    expect(screen.getByText('Test Panel')).toBeInTheDocument()
-    expect(screen.getByText('Blood Test Results')).toBeInTheDocument()
+    // The entry title shows on the history card AND as the details heading
+    // (the details pane displays it in full instead of "Blood Test Results").
+    expect(screen.getAllByText('Test Panel')).toHaveLength(2)
+    expect(screen.queryByText('Blood Test Results')).toBeNull()
     expect(screen.getByPlaceholderText('Search biomarkers...')).toBeInTheDocument()
   })
 })
