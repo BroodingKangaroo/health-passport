@@ -238,6 +238,15 @@
   to { transform: scale(1); opacity: 1; }
 }
 
+/* Hidden scrollbars for the timeline panes (scroll affordance comes from
+   edge fades and partially-cut content — design §5.2, §5.8). */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

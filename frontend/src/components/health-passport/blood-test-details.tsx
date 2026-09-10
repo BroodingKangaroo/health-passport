@@ -146,7 +146,7 @@ export function BloodTestDetails({
           <div
             ref={tabsRef}
             role="tablist"
-            className="flex h-7 flex-nowrap items-stretch overflow-x-auto border-b border-border px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="scrollbar-none flex h-7 flex-nowrap items-stretch overflow-x-auto border-b border-border px-1"
           >
             {TABS.map((tab) => {
               const Icon = tab.icon
@@ -205,7 +205,7 @@ export function BloodTestDetails({
               {t('noDocuments')}
             </p>
           ) : (
-            <div className="flex max-h-72 shrink-0 flex-col gap-3 overflow-y-auto overscroll-contain print:max-h-none print:overflow-visible">
+            <div className="scrollbar-none flex max-h-72 shrink-0 flex-col gap-3 overflow-y-auto overscroll-contain print:max-h-none print:overflow-visible">
               {attachments.map((att) => {
                 const isActive = activeId === att.id
                 const url = att.url
@@ -269,7 +269,7 @@ export function BloodTestDetails({
               <p className="mt-4 mb-2 text-xs text-muted-foreground">
                 {t('viewing', { name: selectedAttachment.name })}
               </p>
-              <div className="min-h-0 flex-1 w-full overflow-y-auto rounded-xl border border-border">
+              <div className="scrollbar-none min-h-0 flex-1 w-full overflow-y-auto rounded-xl border border-border">
                 <DocumentViewer key={selectedAttachment.url} url={selectedAttachment.url} />
               </div>
             </>
@@ -281,7 +281,7 @@ export function BloodTestDetails({
           id={panelId('settings')}
           aria-labelledby={tabId('settings')}
           tabIndex={0}
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+          className="scrollbar-none min-h-0 flex-1 overflow-y-auto overscroll-contain"
         >
           <EntrySettings
             event={event}

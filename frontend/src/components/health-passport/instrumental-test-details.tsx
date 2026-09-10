@@ -134,7 +134,7 @@ export function InstrumentalTestDetails({
       </div>
 
       {activeTab === 'summary' ? (
-        <div className="mt-5 flex-1 space-y-6 overflow-y-auto">
+        <div className="scrollbar-none mt-5 flex-1 space-y-6 overflow-y-auto">
           {data.modality && (
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
@@ -185,7 +185,7 @@ export function InstrumentalTestDetails({
               {t('noDocuments')}
             </p>
           ) : (
-            <div className="flex max-h-72 shrink-0 flex-col gap-3 overflow-y-auto overscroll-contain print:max-h-none print:overflow-visible">
+            <div className="scrollbar-none flex max-h-72 shrink-0 flex-col gap-3 overflow-y-auto overscroll-contain print:max-h-none print:overflow-visible">
               {data.attachments.map((att) => {
                 const isActive = activeId === att.id
                 const url = att.url
@@ -245,14 +245,14 @@ export function InstrumentalTestDetails({
                 {t('viewing', { name: selectedAttachment.name })}
               </p>
 
-              <div className="min-h-0 flex-1 w-full overflow-y-auto rounded-xl border border-border">
+              <div className="scrollbar-none min-h-0 flex-1 w-full overflow-y-auto rounded-xl border border-border">
                 <DocumentViewer key={selectedAttachment.url} url={selectedAttachment.url} />
               </div>
             </>
           )}
         </div>
       ) : (
-        <div className="mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="scrollbar-none mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <EntrySettings
             event={eventForSettings}
             onDeleted={onDeleted ?? (() => {})}

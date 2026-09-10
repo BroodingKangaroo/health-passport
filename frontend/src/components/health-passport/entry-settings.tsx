@@ -205,7 +205,7 @@ export function EntrySettings({
   }
 
   return (
-    <div className="flex-1 space-y-6 overflow-y-auto">
+    <div className="space-y-6">
       <div className="rounded-xl border border-border bg-card p-6">
         <div className="mb-4 flex items-center gap-2">
           <Settings className="size-4 text-muted-foreground" />

@@ -149,7 +149,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
       </div>
 
       {activeTab === 'summary' ? (
-        <div className="mt-5 flex-1 space-y-6 overflow-y-auto">
+        <div className="scrollbar-none mt-5 flex-1 space-y-6 overflow-y-auto">
           <div className="flex items-center gap-4 border-b border-border/40 pb-3 text-sm text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <Stethoscope className="size-4" />
@@ -302,7 +302,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
               {t('noDocuments')}
             </p>
           ) : (
-          <div className="flex max-h-72 shrink-0 flex-col gap-3 overflow-y-auto overscroll-contain print:max-h-none print:overflow-visible">
+          <div className="scrollbar-none flex max-h-72 shrink-0 flex-col gap-3 overflow-y-auto overscroll-contain print:max-h-none print:overflow-visible">
               {visit.attachments.map((att) => {
                 const isActive = activeId === att.id
                 const url = att.url
@@ -362,14 +362,14 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
                 {t('viewing', { name: selectedAttachment.name })}
               </p>
 
-              <div className="min-h-0 flex-1 w-full overflow-y-auto rounded-xl border border-border">
+              <div className="scrollbar-none min-h-0 flex-1 w-full overflow-y-auto rounded-xl border border-border">
                 <DocumentViewer key={selectedAttachment.url} url={selectedAttachment.url} />
               </div>
             </>
           )}
         </div>
       ) : (
-        <div className="mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="scrollbar-none mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <EntrySettings
             event={eventForSettings}
             visit={visit}

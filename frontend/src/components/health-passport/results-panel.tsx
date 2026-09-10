@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import {
   Search,
@@ -156,6 +156,33 @@ export function ResultsPanel({
   const [sortsByEntry, setSortsByEntry] = useState<Record<string, SortState | null>>({})
   const t = useTranslations('timeline.resultsPanel')
   const locale = useLocale()
+  const titleId = useId()
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [hOverflow, setHOverflow] = useState({ left: false, right: false })
+
+  // The region's scrollbar is hidden, so gradient fades signal horizontally
+  // hidden columns when the 768px table overflows its pane (same affordance
+  // as the HistoryList chips row / tab strip).
+  const updateHOverflow = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    setHOverflow({
+      left: el.scrollLeft > 2,
+      right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2,
+    })
+  }, [])
+
+  useEffect(() => {
+    updateHOverflow()
+    const el = scrollRef.current
+    if (!el) return
+    el.addEventListener('scroll', updateHOverflow, { passive: true })
+    window.addEventListener('resize', updateHOverflow)
+    return () => {
+      el.removeEventListener('scroll', updateHOverflow)
+      window.removeEventListener('resize', updateHOverflow)
+    }
+  }, [updateHOverflow, locale, biomarkers])
 
   const sortKey = entryId ?? '_default'
   const sort = sortsByEntry[sortKey] ?? NO_SORT
@@ -225,7 +252,7 @@ export function ResultsPanel({
     <Card className="flex h-full min-h-0 flex-col overflow-hidden border-border">
       <div className="flex shrink-0 flex-nowrap items-center justify-between gap-3 border-b border-border p-4">
         <div className="min-w-0 leading-tight">
-          <h2 className="text-base font-semibold text-foreground">
+          <h2 id={titleId} className="text-base font-semibold text-foreground">
             {t('title')}
           </h2>
           <p className="truncate text-xs text-muted-foreground" title={`${formatDate(date, locale)} · ${labName}`}>
@@ -243,7 +270,26 @@ export function ResultsPanel({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 scroll-pt-10 overflow-auto">
+      <div className="relative min-h-0 flex-1">
+        {hOverflow.left && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 left-0 z-20 w-5 bg-gradient-to-r from-card to-transparent"
+          />
+        )}
+        {hOverflow.right && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 right-0 z-20 w-5 bg-gradient-to-l from-card to-transparent"
+          />
+        )}
+        <div
+          ref={scrollRef}
+          role="region"
+          aria-labelledby={titleId}
+          tabIndex={0}
+          className="scrollbar-none h-full scroll-pt-10 overflow-auto"
+        >
         <div className="min-w-[768px]">
           <div
             className={cn(
@@ -298,6 +344,7 @@ export function ResultsPanel({
                 : t('empty')}
             </p>
           )}
+        </div>
         </div>
       </div>
     </Card>

@@ -172,7 +172,7 @@ heading).
 - Sticky chrome will need an explicit z-scale; currently only local z-values
   exist (popover `z-50`, user menu `z-20`, notifications).
 - Loading/error states are bare centered text (`TimelineView.tsx:83,91`).
-- `html { overflow-y: scroll }` (`globals.css:250`) will keep an empty
+- `html { overflow-y: scroll }` (`globals.css:259`) will keep an empty
   scrollbar gutter in an `h-screen` shell on platforms with classic
   scrollbars — acceptable, but worth knowing.
 
@@ -298,7 +298,8 @@ attributed the whole shell to `TimelineView` (review comment 1):
 ```
 
 - The header/popover stay outside the scroller, so the popover is never
-  clipped by it.
+  clipped by it. The popover keeps its own scrollbar — it is the one overlay
+  exception, since the bar is its only scroll affordance.
 - Below `lg` (and on `/demo`), `h-full` resolves to auto and `flex-1` grows
   with content: the component degrades to the current page-scroll behavior
   with no extra markup.
@@ -307,6 +308,8 @@ attributed the whole shell to `TimelineView` (review comment 1):
   `tabIndex={0}` so keyboard users can scroll it directly. `px-1`/`pb-1`
   breathing room keeps the selected node's ring and card focus outlines from
   being clipped by the scroller's overflow (T1 review comment 3).
+- The rail scroller and the chips row use the shared `scrollbar-none`
+  utility (see §5.8): no visible scrollbar on any platform.
 
 ### 5.3 Right pane — `BloodTestDetails` owns per-tab scroll
 
@@ -333,7 +336,10 @@ attributed the whole shell to `TimelineView` (review comment 1):
 - Non-blood-test details (`DoctorVisitDetails`, `InstrumentalTestDetails`,
   procedure stub) are shorter-lived; Stage 1 wraps each in the same
   `flex h-full min-h-0 flex-col` + `overflow-y-auto` body so every detail type
-  scrolls identically.
+  scrolls identically. Every per-tab scroller (results table region, document
+  attachment list/viewer, settings, and the visit/instrumental equivalents)
+  uses the shared `scrollbar-none` utility; the results table region keeps
+  `overflow-auto` for horizontal scrolling.
 - **Document-viewer deviation** (T1 review comment 6): the viewer wrapper is
   `overflow-y-auto` rather than the sketch's `overflow-hidden`, because
   `DocumentViewer` still sizes itself intrinsically (image branch `h-[80vh]`,
@@ -471,10 +477,10 @@ Optional later: sticky month/day group headers in the rail (`Jun 2026`).
   on the active tab so it is never left under an edge fade (review comment 8);
   `block: 'nearest'` prevents a vertical jump when the page itself can scroll
   (below `lg`).
-- `scrollbar-none` or 22px scroller treatment as in the chips row
-  (**implemented:** `[scrollbar-width:none]` +
-  `[&::-webkit-scrollbar]:hidden` on the tab scroller; the chips row keeps its
-  pre-existing classic-scrollbar exposure from Stage 1a).
+- The tab scroller and the nowrap chips row both use the shared
+  `@utility scrollbar-none` (`globals.css`: `scrollbar-width: none` +
+  `::-webkit-scrollbar { display: none }`), so neither shows a classic
+  scrollbar on any platform.
 
 ---
 
@@ -536,13 +542,13 @@ Verify per section 8 at all breakpoints/locales/themes; re-check `/demo`.
 | # | Risk | Mitigation |
 |---|------|-----------|
 | R1 | Percentage-height (`h-full`) behaves differently than reasoned (F2) | Verify each tab in a real browser at Stage 1; fall back to explicit `--chrome-h` calc (5.1). |
-| R2 | Nested scroll panes feel trapped on trackpads | `overscroll-contain`, visible scroll affordances, mobile fallback; panes keep their own scrollbars. |
+| R2 | Nested scroll panes feel trapped on trackpads | `overscroll-contain`, mobile fallback; panes remain independently scrollable but scrollbars are hidden (`scrollbar-none`), so the affordance is partially-cut content, plus edge fades on the horizontal strips (tab strip, chips row, results table) — revisit if trapping feedback says otherwise. |
 | R3 | Sticky z-order regressions (popovers under content, table header over frozen column) | Adopt the single z-scale in 5.1; assert manually with filter popover, user menu, bell open while scrolled. |
 | R4 | Test churn from alignment/tab changes | Title-hoist deferred out of Stage 1 (5.5, review comment 4); Stage 1a keeps `ResultsPanel` markup intact; 1b touches only the tab markup/tests; keep all pinned EN strings. |
 | R5 | Mobile switcher offset wrong when chrome wraps | ResizeObserver `--chrome-h`; conservative default; verify at 390px RU + zoom. |
-| R6 | Sticky header + horizontal scroll edge artifacts | Opaque `bg-card`, `min-w` wrapper, test at 1024/1280 with the scrollbar at both ends. |
+| R6 | Sticky header + horizontal scroll edge artifacts | Opaque `bg-card`, `min-w` wrapper, edge fades (`scrollbar-none` hides the bar), test at 1024/1280 with the table scrolled to both ends. |
 | R7 | Virtualization pressure | Data sizes are tens; explicitly deferred. |
-| R8 | Keyboard users cannot scroll panes | `tabindex=0` + `role=region`/label on scrollers; `scroll-padding-top` on the pane so focus is never hidden under sticky headers. |
+| R8 | Keyboard users cannot scroll panes | `tabindex=0` + `role=region`/label on the primary scrollers (history rail, results region); `scroll-padding-top` on the pane so focus is never hidden under sticky headers; the remaining scrollers are reached via their focusable content (Chrome also auto-focuses scrollers). |
 | R9 | Direct Ctrl+P of the timeline clips panes via `lg:h-screen`/`overflow-hidden` | `print:h-auto print:overflow-visible print:static` guards throughout the shell (5.1); print-preview check at A4 portrait + landscape (§8). |
 | R10 | Focus rings / edge fades clipped by pane `overflow-hidden` | `scroll-padding-top` on scrollers, `scrollIntoView({inline:'nearest'})` for tabs, internal `pb-1`/`pr-1` breathing room; verify in the keyboard pass (§8 item 10). |
 | R11 | `/demo` no longer behaves as today | Guarantee + verify the page-scroll degradation (5.1, §8 item 6); escape hatch: a `layout?: 'shell' \| 'page'` prop on `TimelineContent`. |
@@ -557,7 +563,9 @@ Manual matrix (each at 1920, 1440, 1280, 1024, 768, 390; EN + RU; light + dark;
 browser zoom 100% + 125%):
 
 1. No horizontal page scroll; no clipped content at 1024 (table may scroll
-   horizontally inside its card).
+   horizontally inside its card); no visible scrollbars in either pane (the
+   filter popover keeps its own) and the results table stays horizontally
+   operable via the edge fades / trackpad / shift+wheel.
 2. Header/nav pinned at `lg+`; both panes scroll independently; switching
    events never requires scrolling the history pane (select the oldest event,
    scroll the table to its end, verify the history list did not move).
@@ -686,7 +694,7 @@ the 288px sidebar, search at 390px, and focus-ring clipping.
 | Details root/tabs/wrappers | `src/components/health-passport/blood-test-details.tsx:50,78,79,128,132,202,209` |
 | Results grid/header/table | `src/components/health-passport/results-panel.tsx:29,225,226,235,246,247,251,380,440` |
 | Input base | `src/components/ui/input.tsx` (`h-8 w-full`) |
-| Tokens/gutter | `src/app/globals.css:97,107,250` |
+| Tokens/gutter | `src/app/globals.css:97,107,259` |
 | Channel contract | `frontend/docs/architecture.md` "Event-type visual language" |
 | Merged semantics | `frontend/docs/architecture.md` "Merge UI + merged-readings sections" |
 | Recent alignment commit | `2744608` (timeline alignment claim) |

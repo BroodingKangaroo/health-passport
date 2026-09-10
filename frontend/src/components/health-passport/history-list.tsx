@@ -364,7 +364,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
         )}
         <div
           ref={chipsRef}
-          className="flex min-h-[22px] flex-nowrap gap-1 overflow-x-auto px-1"
+          className="scrollbar-none flex min-h-[22px] flex-nowrap gap-1 overflow-x-auto px-1"
           role="group"
           aria-label={t('entryType')}
         >
@@ -422,7 +422,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
         role="region"
         aria-labelledby={headingId}
         tabIndex={0}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pb-1"
+        className="scrollbar-none min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pb-1"
       >
         <div className="flex flex-col gap-2">
           {filteredEvents.length === 0 ? (

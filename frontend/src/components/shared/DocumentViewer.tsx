@@ -259,7 +259,7 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
             {t('imagePreview')}
           </span>
         </div>
-        <div className="flex-1 flex items-center justify-center overflow-auto bg-muted/20 p-4">
+        <div className="scrollbar-none flex-1 flex items-center justify-center overflow-auto bg-muted/20 p-4">
           {imgSrc ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
@@ -332,7 +332,7 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
       {/* Scrollable area with grab cursor */}
       <div
         ref={scrollRef}
-        className="flex min-h-[300px] min-w-0 flex-col overflow-auto bg-muted/20 p-4 select-none"
+        className="scrollbar-none flex min-h-[300px] min-w-0 flex-col overflow-auto bg-muted/20 p-4 select-none"
         style={{ height: fitHeight ? fitHeight + 32 : undefined, cursor: loading ? '' : 'grab' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
