@@ -40,6 +40,10 @@ export const timelineMessages = {
         typeInstrumentalTest: 'Instrumental Tests',
         typeProcedure: 'Procedures',
         noRecordsOfType: 'No records of this type yet',
+        flaggedHigh: '{count, plural, one {# high result} other {# high results}}',
+        flaggedLow: '{count, plural, one {# low result} other {# low results}}',
+        flaggedAbnormal: '{count, plural, one {# abnormal result} other {# abnormal results}}',
+        flaggedSummary: 'Flagged results: {details}',
       },
       resultsPanel: {
         title: 'Blood Test Results',
@@ -216,6 +220,10 @@ export const timelineMessages = {
         typeInstrumentalTest: 'Инструментальные исследования',
         typeProcedure: 'Процедуры',
         noRecordsOfType: 'Записей этого типа пока нет',
+        flaggedHigh: '{count, plural, one {# высокий результат} few {# высоких результата} many {# высоких результатов} other {# высоких результатов}}',
+        flaggedLow: '{count, plural, one {# низкий результат} few {# низких результата} many {# низких результатов} other {# низких результатов}}',
+        flaggedAbnormal: '{count, plural, one {# отклонение} few {# отклонения} many {# отклонений} other {# отклонений}}',
+        flaggedSummary: 'Отклонения: {details}',
       },
       resultsPanel: {
         title: 'Результаты анализов',

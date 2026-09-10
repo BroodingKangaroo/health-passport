@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { HistoryList } from '../health-passport/history-list'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
-import type { MedicalEvent } from '@/lib/types'
+import type { BiomarkerResult, MedicalEvent } from '@/lib/types'
 
 // Wrap renders with the i18n context (English) — HistoryList uses useTranslations.
 const renderI18n = ((ui: React.ReactElement, options?: Parameters<typeof render>[1]) =>
@@ -27,6 +27,45 @@ const visitEvent: MedicalEvent = {
   title: 'Cardiology consultation',
   clinic: 'City Clinic',
   attachments: [],
+}
+
+const flaggedLabEvent: MedicalEvent = {
+  id: 'lab-1',
+  date: 'Mar 2, 2027',
+  type: 'blood_test',
+  title: 'Lipid Panel',
+  clinic: 'City Lab',
+  attachments: [],
+}
+
+const cleanLabEvent: MedicalEvent = {
+  id: 'lab-2',
+  date: 'Mar 3, 2027',
+  type: 'blood_test',
+  title: 'Basic Panel',
+  clinic: 'City Lab',
+  attachments: [],
+}
+
+function makeBiomarker(overrides: Partial<BiomarkerResult>): BiomarkerResult {
+  return {
+    id: 'hb',
+    entry_id: 'lab-1',
+    definition: {
+      id: 'hb',
+      names: { en: 'Hemoglobin', ru: 'Гемоглобин' },
+      synonyms: [],
+      category: 'Complete Blood Count',
+      unit: 'g/L',
+      reference: null,
+      scope: 'global',
+      reference_source: 'global',
+    },
+    value: 150,
+    date: 'Mar 2, 2027',
+    status: 'normal',
+    ...overrides,
+  }
 }
 
 describe('HistoryList', () => {
@@ -194,5 +233,68 @@ describe('HistoryList', () => {
     expect(region).toHaveAttribute('tabindex', '0')
     expect(within(region).getByText('Basic Metabolic Panel')).toBeInTheDocument()
     expect(within(region).getByText('Cardiology consultation')).toBeInTheDocument()
+  })
+
+  it('shows compact flagged-result chips on blood-test cards', () => {
+    renderI18n(
+      <HistoryList
+        events={[flaggedLabEvent, visitEvent]}
+        selectedId=""
+        onSelect={vi.fn()}
+        biomarkers={[
+          makeBiomarker({ id: 'a', status: 'high' }),
+          makeBiomarker({ id: 'b', status: 'high' }),
+          makeBiomarker({ id: 'c', status: 'low' }),
+          makeBiomarker({ id: 'd', status: 'abnormal' }),
+          makeBiomarker({ id: 'e', status: 'normal' }),
+        ]}
+      />,
+    )
+
+    expect(screen.getByTitle('2 high results')).toHaveTextContent('2')
+    expect(screen.getByTitle('1 low result')).toHaveTextContent('1')
+    expect(screen.getByTitle('1 abnormal result')).toHaveTextContent('1')
+    expect(
+      screen.getByText('Flagged results: 2 high results, 1 low result, 1 abnormal result'),
+    ).toBeInTheDocument()
+  })
+
+  it('hides the chips when no reading is flagged or the entry is not a lab', () => {
+    renderI18n(
+      <HistoryList
+        events={[cleanLabEvent, visitEvent]}
+        selectedId=""
+        onSelect={vi.fn()}
+        biomarkers={[
+          makeBiomarker({ entry_id: 'lab-2', status: 'normal' }),
+          makeBiomarker({ entry_id: 'test-2', status: 'high' }),
+        ]}
+      />,
+    )
+
+    expect(screen.queryByTitle(/high result|low result|abnormal result/)).toBeNull()
+    expect(screen.queryByText(/Flagged results/)).toBeNull()
+  })
+
+  it('filters to exactly the events that carry flagged chips', () => {
+    renderI18n(
+      <HistoryList
+        events={[flaggedLabEvent, cleanLabEvent]}
+        selectedId=""
+        onSelect={vi.fn()}
+        biomarkers={[
+          makeBiomarker({ id: 'a', status: 'high' }),
+          makeBiomarker({ id: 'b', entry_id: 'lab-2', status: 'normal' }),
+        ]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filter history' }))
+    const popover = document.querySelector('.shadow-xl')!
+    fireEvent.click(within(popover as HTMLElement).getByRole('button', { name: /Abnormal Results/ }))
+
+    expect(screen.getByText('Lipid Panel')).toBeInTheDocument()
+    expect(screen.getByTitle('1 high result')).toBeInTheDocument()
+    expect(screen.queryByText('Basic Panel')).not.toBeInTheDocument()
   })
 })

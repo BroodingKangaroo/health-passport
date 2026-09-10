@@ -10,10 +10,14 @@ import {
   X,
   RotateCcw,
   ArrowUpDown,
+  ArrowDown,
+  ArrowUp,
   AlertTriangle,
 } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { TYPE_VISUALS } from '@/lib/event-visuals'
+import { Badge } from '@/components/ui/badge'
+import { hasFlagged, statusCountsByEvent, type StatusCounts } from '@/lib/event-status'
 import type { MedicalEvent, EventType, BiomarkerResult } from '@/lib/types'
 
 const ALL_TYPES: EventType[] = ['blood_test', 'doctor_visit', 'instrumental_test', 'procedure']
@@ -112,6 +116,13 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
     )
   }, [])
 
+  // Per-event flagged counts, computed once; the abnormal-only filter and
+  // the card chips both read this map, so they cannot drift.
+  const statusCounts = useMemo(
+    () => statusCountsByEvent(biomarkers ?? [], events.map((e) => e.id)),
+    [events, biomarkers],
+  )
+
   const filteredEvents = useMemo(() => {
     let result = [...events]
 
@@ -130,18 +141,9 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
     }
 
     if (abnormalOnly) {
-      result = result.filter((e) => {
-        if (e.type !== 'blood_test') return false
-        if (!biomarkers) return false
-        return biomarkers.some((b) => {
-          const all = [
-            ...(b.history ?? []),
-            { entry_id: b.entry_id, date: b.date, value: b.value, status: b.status },
-          ]
-          const match = all.find((r) => r.entry_id === e.id)
-          return match && (match.status === 'high' || match.status === 'low' || match.status === 'abnormal')
-        })
-      })
+      result = result.filter(
+        (e) => e.type === 'blood_test' && hasFlagged(statusCounts.get(e.id)),
+      )
     }
 
     if (attachmentsOnly) {
@@ -155,7 +157,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
     })
 
     return result
-  }, [events, typeFilters, search, abnormalOnly, attachmentsOnly, sortOrder, biomarkers])
+  }, [events, typeFilters, search, abnormalOnly, attachmentsOnly, sortOrder, statusCounts])
 
   // Per-type counts over ALL events — the chips double as the visual legend,
   // so the counts must not shift while filtering.
@@ -462,6 +464,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
               const visual = TYPE_VISUALS[event.type]
               const Icon = visual.icon
               const count = event.attachments?.length ?? 0
+              const eventCounts = statusCounts.get(event.id)
               const isFirst = idx === 0
               const isLast = idx === filteredEvents.length - 1
               return (
@@ -509,13 +512,21 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                     >
                       <Icon className="size-4" />
                     </div>
-                    <div className="min-w-0 leading-tight">
-                      {/* Wraps to two lines instead of ellipsizing: long
-                          visit/lab titles stay readable; the full title
-                          remains reachable via the tooltip. */}
-                      <p className="line-clamp-2 text-sm font-semibold text-foreground" title={event.title}>
-                        {event.title}
-                      </p>
+                    <div className="min-w-0 flex-1 leading-tight">
+                      <div className="flex min-w-0 items-start gap-2">
+                        {/* Wraps to two lines instead of ellipsizing: long
+                            visit/lab titles stay readable; the full title
+                            remains reachable via the tooltip. */}
+                        <p
+                          className="line-clamp-2 min-w-0 flex-1 text-sm font-semibold text-foreground"
+                          title={event.title}
+                        >
+                          {event.title}
+                        </p>
+                        {event.type === 'blood_test' && eventCounts && hasFlagged(eventCounts) && (
+                          <StatusSummaryChips counts={eventCounts} />
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground">{formatDate(event.date, locale)}</p>
                       <p className="truncate text-xs text-muted-foreground/80" title={event.clinic}>{event.clinic}</p>
                     </div>
@@ -533,6 +544,42 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
         </div>
       </div>
     </div>
+  )
+}
+
+function StatusSummaryChips({ counts }: { counts: StatusCounts }) {
+  const t = useTranslations('timeline.historyList')
+  const details = [
+    counts.high > 0 ? t('flaggedHigh', { count: counts.high }) : '',
+    counts.low > 0 ? t('flaggedLow', { count: counts.low }) : '',
+    counts.abnormal > 0 ? t('flaggedAbnormal', { count: counts.abnormal }) : '',
+  ]
+    .filter(Boolean)
+    .join(', ')
+  return (
+    <>
+      <span aria-hidden className="flex shrink-0 items-center gap-1 pt-0.5">
+        {counts.high > 0 && (
+          <Badge variant="high" title={t('flaggedHigh', { count: counts.high })}>
+            <ArrowUp className="size-3" />
+            {counts.high}
+          </Badge>
+        )}
+        {counts.low > 0 && (
+          <Badge variant="low" title={t('flaggedLow', { count: counts.low })}>
+            <ArrowDown className="size-3" />
+            {counts.low}
+          </Badge>
+        )}
+        {counts.abnormal > 0 && (
+          <Badge variant="abnormal" title={t('flaggedAbnormal', { count: counts.abnormal })}>
+            <AlertTriangle className="size-3" />
+            {counts.abnormal}
+          </Badge>
+        )}
+      </span>
+      <span className="sr-only">{t('flaggedSummary', { details })}</span>
+    </>
   )
 }
 

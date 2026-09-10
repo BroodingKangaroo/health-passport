@@ -150,29 +150,35 @@ sufficient.
 
 ---
 
-## T3 — Compact history cards (Stage 2a)
+## T3 — Compact history cards (Stage 2a) — skipped
 
-**Depends on:** T1 (T2 optional). **Design refs:** §5.6.
+**Status:** skipped 2026-09-10 — the compact-card direction was implemented
+and externally reviewed (verdict: ship), but the owner rejected it on looks;
+the card reverts to its pre-T3 layout and nothing from this ticket ships. The
+anomaly-discovery goal continues in T4 (status summary only).
+**Depends on:** T1. **Blocks:** none. **Design refs:** §5.6.
 
-### Goal
+### Goal (abandoned)
 Raise history-list density ~40% so more of the chronology is visible at once.
 
-### Deliverables
+### Original deliverables (not shipped)
 - Card `p-2.5`, bubble `size-8`, title `truncate` at `sm+` (`line-clamp-2` on
   mobile), tooltip kept.
 - Meta row: date (`tabular-nums`) + clinic + inline paperclip count; remove
   the vertically-centered floating count.
 - Update `history-list.test.tsx` if text structure moves.
 
-### Acceptance criteria
+### Acceptance criteria (not pursued)
 - Card height ~56–60px for typical entries; no truncation regressions on RU.
 - Selection, filters, and a11y semantics unchanged.
 
 ---
 
-## T4 — Per-event status summary (Stage 2b)
+## T4 — Per-event status summary (Stage 2b) — `[x]`
 
-**Depends on:** T3. **Design refs:** §5.6.
+**Status:** implemented 2026-09-10; lint/typecheck/tests green. External
+review not run (not requested).
+**Depends on:** T1 (T3 skipped). **Design refs:** §5.6.
 
 ### Goal
 Surface out-of-range results per blood-test entry so anomalies are findable
@@ -190,6 +196,20 @@ without opening each card.
 - Chips match the "Abnormal results" filter results exactly (same helper).
 - No new color tokens; channel contract intact (type vs status).
 - i18n parity test passes.
+
+### Implementation notes
+- `frontend/src/lib/event-status.ts` (`statusCountsAtEvent`, `hasFlagged`,
+  `statusCountsByEvent`) is the single source of truth for the abnormal-only
+  filter and the chips; the filter now reads the memoized
+  `Map<eventId, counts>`.
+- Chips sit at the right of the title row (`min-w-0 flex-1` title), render on
+  `blood_test` cards only, and are hidden when all counts are zero. Each chip
+  reuses `badgeVariants` (`high`/`low`/`abnormal`) + the `StatusBadge` icon
+  and carries a `title` with the full localized text; one `sr-only` joined
+  summary announces all counts (chips are `aria-hidden`).
+- Unit tests: `frontend/src/lib/__tests__/event-status.test.ts`; card-level
+  chip/filter-parity tests in `history-list.test.tsx`.
+- No design-doc statement changed; no new tokens, API, or backend change.
 
 ---
 

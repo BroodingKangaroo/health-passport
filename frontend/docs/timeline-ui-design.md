@@ -207,7 +207,7 @@ heading).
 | Desktop scroll | (a) one page scroll + sticky bars; (b) two-pane shell; (c) minimal fixes | **b** | Long tables + long history both need stable context; matches flowsheet precedent of internal scroll. |
 | Pinning mechanism | (a) `sticky` within one scroller; (b) self-contained panes with internal scrollers | **b** | Avoids magic sticky offsets (`top-[64px]`) that break when headers wrap or locale changes. |
 | Desktop scroll (alt.) | window scroll + per-pane `position: sticky; top: var(--chrome-h); max-height: calc(100vh - var(--chrome-h)); overflow: auto` | rejected for now | Same context retention without `h-screen`/`overflow-hidden` (no print clipping, less scroll-trapping), but needs `--chrome-h` measurement on desktop from day one and `align-self: start` sticky-in-grid handling; kept as the fallback in §5.1 if R2 materializes. |
-| Card density | (a) compact + summary; (b) compact only; (c) polish only | **a** | 19 entries need at-a-glance anomaly discovery. |
+| Card density | (a) compact + summary; (b) compact only; (c) polish only | **c + summary** | 19 entries need at-a-glance anomaly discovery; compacting (a/b) was rejected on looks at T3, so only the summary chips ship (T4). |
 | `<lg` | (a) master-detail + switcher; (b) capped history; (c) defer | **a** | Details must be reachable in one gesture. |
 | Delivery | (a) staged; (b) one change; (c) pick items | **a** | Isolate the risky shell restructure; review it before density work. |
 
@@ -401,14 +401,13 @@ the pane top to the first content row.
 
 ### 5.6 History cards — compact + status summary (Stage 2)
 
-Per card:
+Per card (status summary chips — T4; the T3 compact-card pass is skipped):
 
-- padding `p-2.5`; bubble `size-8`; title `text-sm font-semibold`
-  `truncate sm:line-clamp-1` (mobile keeps `line-clamp-2`), tooltip kept.
+- **T3 compact-card pass skipped (owner decision 2026-09-10):** the
+  `p-2.5`/`size-8`/one-line-title density change was implemented and
+  reviewed but rejected on looks; cards keep their current `p-3`/`size-9`/
+  three-line layout. The chip placement below applies to that existing card.
 - Title row: title (`min-w-0 flex-1`) + status chips (below) at the right.
-- Meta row: `formatDate` (add `tabular-nums`) + `·` + clinic (truncate) +
-  `Paperclip n` inline. The floating `ml-auto` count is removed.
-- Expected height ~56-60px vs 84-100px today (~40% more entries visible).
 
 Status summary chip (only for `blood_test` events, only non-zero):
 
