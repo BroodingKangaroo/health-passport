@@ -232,6 +232,15 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
 
   const monthFmt = useMemo(() => new Intl.DateTimeFormat(locale, { month: 'short' }), [locale])
   const yearFmt = useMemo(() => new Intl.DateTimeFormat(locale, { year: '2-digit' }), [locale])
+  // Month markers are centered ON the spine and the gutter is only 20/28px
+  // wide (line at x 10/11.5, card at x 20/28), so the label may never exceed
+  // ~2× the line offset or it would cross the card corner. Intl short months
+  // run 3–5 glyphs ("февр.", "июнь"), so drop the dot and cap at 3 — a fixed
+  // width that fits every EN/RU month ("Jan", "фев", "сен").
+  const monthAbbr = useCallback(
+    (d: Date) => monthFmt.format(d).replace(/\./g, '').slice(0, 3),
+    [monthFmt],
+  )
 
   // Empty state borrows the single remaining type's visual family when the
   // emptiness is caused by type filtering alone (no search / quick filters).
@@ -259,7 +268,20 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
           Compact short labels (chip* keys) keep the chips small. The chips
           start at the cards' pl (pl-5 sm:pl-7), so the left 20/28px channel
           stays empty from the block top down — the calendar line's channel. */}
-      <div className="flex shrink-0 items-center justify-between gap-2">
+      <div className="relative z-20 flex shrink-0 items-center justify-between gap-2">
+        {/* Notch mask over the rail's top strip: the scroller is pulled up
+            behind this row (`-mt-10` below), so cards scrolling up would
+            otherwise show through around the chips. It starts at the cards'
+            left edge (20/28px) so the line gutter stays clear — the spine,
+            nodes and month labels remain visible while scrolling; the row's
+            chips/filter are positioned and paint above it. `-bottom-3`
+            extends it over the 12px settings gap (row 28 + 12 = the 40px
+            pane-top zone the first row's stub bridges). pointer-events-none
+            lets the wheel reach the scroller underneath. */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -bottom-3 left-5 right-0 top-0 bg-background sm:left-7"
+        />
         <div className="relative min-w-0 flex-1">
           {chipOverflow.left && (
             <span
@@ -480,18 +502,6 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
         </div>
       </div>
 
-      {/* Spine extension to the block top: bridges the chips row + gap
-          (h-10 = 28px + 12px) so the calendar line starts at the pane top
-          and meets the first row's top-0 segment. Root-relative x 10/11.5 =
-          the rows' spine page-x (row-x 6/7.5 + the rows container's 4px
-          clearance). Hidden in the empty state (no rows to connect to);
-          z-10 keeps it above the chips' edge fades. */}
-      {filteredEvents.length > 0 && (
-        <span
-          aria-hidden
-          className="pointer-events-none absolute left-[10px] top-0 z-10 h-10 w-px -translate-x-1/2 bg-border sm:left-[11.5px]"
-        />
-      )}
       {/* Bottom fade: only while rows remain below the fold (scroll-state
           aware, like the chips row's horizontal fades). Anchored to the root
           — the rail is its last flex child, so the root's bottom edge is the
@@ -513,18 +523,27 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
           is covered EXACTLY ONCE by the next row's top stub — no alpha
           stacking (dark --border is 10%-alpha, overlapping layers read as
           brighter patches) — and the spine starts/ends exactly at the
-          first/last node, never rendering in the empty state. Month markers
-          are zero-height overlays on the first card row of each month-run,
-          sitting just right of the spine (no background — the line reads
-          continuous; long months' ink may soft-cross the card edge); they
-          shift no layout, so the first card starts at the scroller's content
-          top. */}
+          first/last node, never rendering in the empty state.
+          The first row's top stub runs the full 40px overhang (-top-10,
+          chips row 28 + gap 12) into the scroller's top padding: the line is
+          part of the scrolled content, so it translates with the list during
+          macOS elastic overscroll and can never separate from the rest of
+          the spine (a pane-anchored segment would leave a gap when the list
+          rubber-bands). The scroller is pulled up behind the settings row
+          (-mt-10 + pt-10 = net zero, content still starts at pane y40) so
+          that overhang is inside the scroller's clip box; overflow-x is
+          hidden so no sideways rubber-band. Rows scrolled under the settings
+          row pass behind its notch mask, which deliberately spares the
+          line gutter. `scroll-pt-10` keeps focus/scroll-into-view from
+          parking a card behind the mask. Month markers are zero-height
+          overlays on the first card row of each month-run — see the marker
+          below for the centering/width contract. */}
       <div
         ref={railRef}
         role="region"
         aria-labelledby={headingId}
         tabIndex={0}
-        className="scrollbar-none min-h-0 flex-1 overflow-y-auto overscroll-contain pb-1"
+        className="scrollbar-none -mt-10 min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pt-10 scroll-pt-10 pb-1"
       >
         {/* pl-1/pr-1: 4px clip clearance both sides — the selected node's
             ring-offset+ring extends 4px left of the node, and card focus
@@ -580,12 +599,15 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                       + the rows container's 4px clearance) — the spine
                       half-segments below align to the same x, and the node's
                       left edge sits at page-x 4 so the ring's 4px left arc is
-                      unclipped. */}
+                      unclipped. First row's top segment reaches the pane top
+                      (-top-10) so the line starts there; it lives in the
+                      scrolled content, so it bounces with the list instead of
+                      tearing at the chips row (see the rail comment). */}
                   <span
                     aria-hidden
                     className={cn(
                       'absolute bottom-1/2 left-[6px] w-px -translate-x-1/2 bg-border sm:left-[7.5px]',
-                      isFirst ? 'top-0' : '-top-2',
+                      isFirst ? '-top-10' : '-top-2',
                     )}
                   />
                   {!isLast && (
@@ -602,31 +624,38 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
                       active && 'ring-2 ring-primary/40 ring-offset-2 ring-offset-background',
                     )}
                   />
-                  {/* On-line month marker: zero-height overlay sitting just
-                      RIGHT of the spine line (row-x 7.5/9 = line + ~1.5px) —
-                      no background, so the line stays continuous behind it
-                      and nothing notches the card's corner; long months'
-                      glyph ink may soft-cross the card edge (no truncation).
+                  {/* On-line month marker: centered ON the spine (same
+                      row-x 6/7.5 as the half-segments) and, between two
+                      month-runs, centered in the 8px inter-entry gap
+                      (-top-1 + -translate-y-1/2). The first run has no gap
+                      above it, so it stays at the row's top edge. The
+                      `bg-background` chip is what CUTS the line behind the
+                      label (the label is z-10, the stubs are z auto); it is
+                      padded only by the line box. Labels are capped at 3
+                      letters (monthAbbr) and shrink to 8px below sm / 9px
+                      at sm+ (measured Geist: the widest RU months are
+                      19.5px/21.9px): the centered box must stay inside the
+                      20/28px gutter or it would touch the card corner
+                      (user-critical).
                       Year goes on a second line — inline "Jun '26" never
-                      fits the 20/28px gutter.
+                      fits the width budget.
                       Z-order guard: node and label are both z-10 and tree
                       order decides (label later → on top if they ever met);
-                      safe at current card sizes (2-line label ≈20px vs node
-                      top ≈29px on the shortest cards, ring top ≈25px) —
+                      safe at current card sizes (2-line label bottom ≈ row
+                      top + 6px vs node top ≈29px on the shortest cards) —
                       revisit if cards get more compact. */}
                   {showMonth && (
                     <span
-                      className="absolute left-[7.5px] top-0 z-10 flex flex-col items-start"
+                      className={cn(
+                        'absolute left-[6px] z-10 flex -translate-x-1/2 flex-col items-center bg-background text-center sm:left-[7.5px]',
+                        isFirst ? 'top-0' : '-top-1 -translate-y-1/2',
+                      )}
                     >
-                      <span
-                        className={cn(
-                          'whitespace-nowrap text-[10px] font-medium uppercase leading-none tracking-wider text-muted-foreground/60',
-                        )}
-                      >
-                        {monthFmt.format(d)}
+                      <span className="whitespace-nowrap text-[8px] font-medium uppercase leading-none tracking-normal text-muted-foreground/60 sm:text-[9px]">
+                        {monthAbbr(d)}
                       </span>
                       {crossYearMonths.has(d.getMonth()) && (
-                        <span className="whitespace-nowrap text-[10px] font-medium uppercase leading-none tracking-wider text-muted-foreground/60">
+                        <span className="whitespace-nowrap text-[8px] font-medium uppercase leading-none tracking-normal text-muted-foreground/60 sm:text-[9px]">
                           {`'${yearFmt.format(d)}`}
                         </span>
                       )}

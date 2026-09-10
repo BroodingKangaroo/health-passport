@@ -292,20 +292,20 @@ attributed the whole shell to `TimelineView` (review comment 1):
 ```tsx
 <div className="relative flex h-full min-h-0 flex-col gap-3">
   <h2 className="sr-only">History (aria-labelledby anchor for the rail region)</h2>
-  <div className="flex shrink-0 items-center justify-between gap-2">
+  <div className="relative z-20 flex shrink-0 items-center justify-between gap-2">
+    <span className="pointer-events-none absolute -bottom-3 left-5 right-0 top-0 bg-background sm:left-7" />
     <div className="relative min-w-0 flex-1">chips (h-7, nowrap, pl-5 sm:pl-7 + edge fades)</div>
     <div className="relative">filter button + popover</div>
   </div>
-  {filteredEvents.length > 0 && (
-    <span className="pointer-events-none absolute left-[10px] sm:left-[11.5px] top-0 z-10 h-10 w-px -translate-x-1/2 bg-border" />
-  )}
   {bottomFade && (
     <span className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-6 bg-gradient-to-t from-background" />
   )}
-  <div className="scrollbar-none min-h-0 flex-1 overflow-y-auto overscroll-contain pb-1">
+  <div className="scrollbar-none -mt-10 min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pt-10 scroll-pt-10 pb-1">
     <div className="flex flex-col gap-2 pl-1 pr-1">
-      rail rows (cards at page-x 20/28; month labels = zero-height overlays
-      just right of the spine on the first card row of each month-run)
+      rail rows (cards at page-x 20/28; the first row's top spine stub runs
+      a -top-10 overhang to the pane top; month labels = zero-height
+      overlays centered ON the spine in the inter-entry gap, background
+      chip cutting the line)
     </div>
   </div>
 </div>
@@ -324,6 +324,19 @@ attributed the whole shell to `TimelineView` (review comment 1):
   (T1 review comment 3); the scroller has no horizontal padding — the left
   20/28px channel is the calendar line's, and the chips start at the cards'
   `pl` so their left edges align (user follow-up 2).
+- **Rail top / overscroll contract** (2026-09-10, owner follow-up): the
+  scroller is pulled up behind the settings row (`-mt-10 pt-10`, net zero —
+  content still starts at pane y40) and the first row's top spine stub runs
+  the full `-top-10` overhang into that padding, so the calendar line reaches
+  the pane top while living IN the scrolled content. It therefore translates
+  with the list during macOS elastic overscroll instead of tearing away from
+  a pane-anchored segment (the old root-anchored `h-10` span left a gap when
+  the list rubber-banded). `overflow-x-hidden` removes sideways
+  rubber-banding (vertical bounce is kept via `overscroll-contain`),
+  `scroll-pt-10` keeps focus/scroll-into-view from parking a card behind the
+  settings row, and the settings row's `-bottom-3 left-5 sm:left-7` notch
+  mask hides rows scrolling under it without covering the 20/28px line
+  gutter (so spine, nodes, and month labels stay visible while scrolling).
 - The rail scroller and the chips row use the shared `scrollbar-none`
   utility (see §5.8): no visible scrollbar on any platform.
 
@@ -402,8 +415,9 @@ heading row and the spacer are gone.)
   (`history-list.tsx`). Chips scroll horizontally under edge fades instead
   of wrapping; the fixed 28px height depends on `flex-nowrap`. The chips
   start at the cards' `pl` (`pl-5 sm:pl-7`) — the left 20/28px channel stays
-  empty from the block top down, and a root-anchored `h-10` spine span
-  bridges chips row + gap so the calendar line reaches the pane top (user
+  empty from the block top down; the first row's top spine stub carries the
+  chips row + gap `-top-10` overhang inside the scrolled content (bounces
+  with the list — §5.2), so the calendar line reaches the pane top (user
   follow-up 2).
 - Right: type chip + tab strip (`h-7`) — the 22px meta spacer was removed.
   The `ResultsPanel` card header keeps its markup, but the `h2` now shows
@@ -419,14 +433,18 @@ heading row and the spacer are gone.)
   for a marginal gain. Revisit together with the F7 duplication cleanup
   after the shell lands.
 - Month markers: zero-height `absolute` overlays on the FIRST card row of
-  each month-run — small muted uppercase `Intl` short-month label sitting
-  just right of the spine line (~1.5px clear; no background, so the line
-  reads continuous and nothing notches the card's rounded corner — long
-  months' glyph ink may soft-cross the card edge, no truncation); the
-  2-digit year stacks on a second line when two visible years share a month
-  number (inline "Jun '26" never fits the 20/28px gutter). They consume no
-  layout space, so the first card starts exactly at the rail scroller's
-  content top, aligned with the details pane's first row (user follow-up 1).
+  each month-run, centered ON the spine (same row-x 6/7.5 as the
+  half-segments) and, between two month-runs, centered in the 8px
+  inter-entry gap (`-top-1 -translate-y-1/2`; the first run has no gap above
+  it and stays at the row's top edge). A `bg-background` chip breaks the
+  line behind the label. Names are capped at 3 letters and shrink to 8px
+  below `sm` / 9px at `sm+` (measured Geist: widest RU months 19.5/21.9px),
+  so the centered box always stays inside the 20/28px gutter and never
+  crosses the card corner (owner-critical); the 2-digit year
+  stacks on a second line when two visible years share a month number
+  (inline "Jun '26" would blow the width budget). They consume no layout
+  space, so the first card starts exactly at the rail scroller's content
+  top, aligned with the details pane's first row (user follow-up 1).
 - Horizontal edges: both panes flush to the grid gutter; only the rail inset
   (20/28px) remains as intentional structure on the left.
 - **28px precondition**: the left chips row is `flex-nowrap` +
@@ -767,8 +785,8 @@ the 288px sidebar, search at 390px, and focus-ring clipping.
 | Page root, grid | `src/views/TimelineView.tsx:22,98,103,111` |
 | Loading/error states | `src/views/TimelineView.tsx:83,91` |
 | Chrome | `src/components/health-passport/header-bar.tsx:76`; `src/components/shared/NavBar.tsx:29` |
-| History root/sr-only heading/chips/popover | `src/components/health-passport/history-list.tsx:244,248,279,345` |
-| Rail rows, cards, on-line month markers, spine extension | `src/components/health-passport/history-list.tsx:483,524,567,605-635,636` |
+| History root/sr-only heading/chips/popover | `src/components/health-passport/history-list.tsx:253,257,299,365` |
+| Rail rows, cards, spine top overhang, on-line month markers | `src/components/health-passport/history-list.tsx:240,546,586-610,627-656` |
 | Abnormal-only matching | `src/lib/event-status.ts:14-27` (memoized at `src/components/health-passport/history-list.tsx:121-124`) |
 | Details root/tabs/wrappers | `src/components/health-passport/blood-test-details.tsx:122,148,186,195,277` |
 | Results grid/header/table | `src/components/health-passport/results-panel.tsx:29,243,253,274,331,358,388,435,513` |

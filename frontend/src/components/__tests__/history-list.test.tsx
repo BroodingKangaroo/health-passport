@@ -368,7 +368,15 @@ describe('HistoryList', () => {
       // (absolute), not in a sibling divider row that would shift the card.
       const row = screen.getByText('Feb').closest('div.relative')
       expect(row?.className).toContain('pl-4')
-      expect(row?.querySelector('.flex-col.absolute')).not.toBeNull()
+      const label = row?.querySelector('.flex-col.absolute')
+      expect(label).not.toBeNull()
+      // Centered on the spine (same x as the stubs + -translate-x-1/2) and
+      // the background chip is what cuts the line behind the text.
+      expect(label?.className).toContain('-translate-x-1/2')
+      expect(label?.className).toContain('bg-background')
+      // Jan run is not the first row → centered in the 8px inter-entry gap.
+      const janLabel = screen.getByText('Jan').closest('span.flex-col')
+      expect(janLabel?.className).toContain('-translate-y-1/2')
     })
 
     it('does not duplicate the marker for consecutive same-month events', () => {
@@ -423,8 +431,10 @@ describe('HistoryList', () => {
         </TestI18nProvider>,
       )
 
-      expect(screen.getAllByText('февр.')).toHaveLength(1)
-      expect(screen.getAllByText('янв.')).toHaveLength(1)
+      // 3-letter cap ("февр." → "фев") so a centered label always fits the
+      // 20/28px gutter without crossing the card corner.
+      expect(screen.getAllByText('фев')).toHaveLength(1)
+      expect(screen.getAllByText('янв')).toHaveLength(1)
     })
   })
 })
