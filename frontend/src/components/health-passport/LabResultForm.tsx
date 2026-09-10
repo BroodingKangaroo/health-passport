@@ -65,7 +65,7 @@ export function LabResultForm({
                 <span>{t('headerValue')}</span>
                 <span>{t('headerUnit')}</span>
                 <span>{t('headerReference')}</span>
-                <span aria-hidden />
+                <span aria-hidden className="w-7" />
               </div>
 
               {cat.rows.map((row) => {
@@ -136,7 +136,7 @@ export function LabResultForm({
                     </div>
                     <div
                       className={cn(
-                        'relative flex items-center gap-1 rounded-md transition-shadow',
+                        'relative flex min-w-0 items-center gap-1 rounded-md transition-shadow',
                         row.canonical_unit_inferred
                           ? 'ring-2 ring-blue-400/80 bg-blue-50/60 shadow-[0_0_6px_rgba(96,165,250,0.4)] dark:bg-blue-500/10 dark:shadow-[0_0_6px_rgba(96,165,250,0.25)] group'
                           : '',
@@ -169,7 +169,7 @@ export function LabResultForm({
                           const v = e.target.value
                           updateRow(cat.id, row.id, 'reference', v ? { kind: 'qualitative', expected: v } : null)
                         }}
-                        className="h-8 w-full rounded-lg border border-input bg-background px-2 text-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+                        className="h-8 w-full min-w-0 rounded-lg border border-input bg-background px-2 text-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
                       >
                         <option value="">—</option>
                         {QUALITATIVE_VALUES.map(qualOption)}
@@ -183,7 +183,7 @@ export function LabResultForm({
                     <button
                       aria-label={t('removeRow', { name: row.name || t('biomarkerFallback') })}
                       onClick={() => removeRow(cat.id, row.id)}
-                      className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-status-high-bg hover:text-status-high"
+                      className="flex h-8 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-status-high-bg hover:text-status-high"
                     >
                       <X className="size-4" />
                     </button>

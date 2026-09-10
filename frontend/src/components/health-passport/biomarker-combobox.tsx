@@ -120,7 +120,7 @@ export function BiomarkerCombobox({
 
   if (error) {
     return (
-      <div className="flex flex-col gap-0.5">
+      <div className="flex min-w-0 flex-col gap-0.5">
         <Input
           ref={inputRef}
           value={value}
@@ -140,7 +140,7 @@ export function BiomarkerCombobox({
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex min-w-0 flex-col">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -152,13 +152,15 @@ export function BiomarkerCombobox({
               !selected && 'text-muted-foreground',
             )}
           >
-            <span className="flex items-center gap-1.5 truncate">
+            <span className="min-w-0 truncate">
+              {selected ? selected.names.en : value || t('searchPlaceholder')}
+            </span>
+            <span className="ml-2 flex shrink-0 items-center gap-1.5">
               {scope === 'local' && (
                 <AlertTriangle className="size-3 shrink-0 text-amber-500" />
               )}
-              {selected ? selected.names.en : value || t('searchPlaceholder')}
+              <ChevronsUpDown className="size-3 shrink-0 opacity-50" />
             </span>
-            <ChevronsUpDown className="ml-2 size-3 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">

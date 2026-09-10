@@ -98,7 +98,9 @@ export function UnitCombobox({
             !value && 'text-muted-foreground',
           )}
         >
-          {value ? displayUnitLabel(value) : resolvedPlaceholder}
+          {value ? <span className="truncate">{displayUnitLabel(value)}</span> : (
+            <span className="truncate">{resolvedPlaceholder}</span>
+          )}
           <ChevronsUpDown className="ml-2 size-3 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>

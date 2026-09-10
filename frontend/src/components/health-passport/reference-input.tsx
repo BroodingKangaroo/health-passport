@@ -81,7 +81,7 @@ export function ReferenceInput({ value, onChange }: Props) {
   }
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex w-full items-center gap-1">
       <select
         value={type}
         onChange={(e) => handleTypeChange(e.target.value as RefType)}
@@ -93,19 +93,19 @@ export function ReferenceInput({ value, onChange }: Props) {
         <option value="none">{t('none')}</option>
       </select>
       {type === 'interval' && (
-        <div className="flex items-center gap-0.5">
+        <div className="flex min-w-0 flex-1 items-center gap-0.5">
           <input
             value={loVal}
             placeholder="0"
             onChange={(e) => handleLoChange(e.target.value)}
-            className="h-8 w-[52px] rounded-lg border border-input bg-background px-1.5 text-[11px] outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+            className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-1.5 text-[11px] outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
           />
           <span className="text-[11px] text-muted-foreground">–</span>
           <input
             value={hiVal}
             placeholder="0"
             onChange={(e) => handleHiChange(e.target.value)}
-            className="h-8 w-[52px] rounded-lg border border-input bg-background px-1.5 text-[11px] outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+            className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-1.5 text-[11px] outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
           />
         </div>
       )}
@@ -114,7 +114,7 @@ export function ReferenceInput({ value, onChange }: Props) {
           value={hiVal}
           placeholder={t('placeholderMax')}
           onChange={(e) => handleHiChange(e.target.value)}
-          className="h-8 w-[88px] rounded-lg border border-input bg-background px-1.5 text-[11px] outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+          className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-1.5 text-[11px] outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
         />
       )}
       {type === 'gt' && (
@@ -122,7 +122,7 @@ export function ReferenceInput({ value, onChange }: Props) {
           value={loVal}
           placeholder={t('placeholderMin')}
           onChange={(e) => handleLoChange(e.target.value)}
-          className="h-8 w-[88px] rounded-lg border border-input bg-background px-1.5 text-[11px] outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+          className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-1.5 text-[11px] outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
         />
       )}
       {type === 'none' && (
