@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback, useId } from 'react'
 import type { ComponentType } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import {
@@ -37,6 +37,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
 
   const popoverRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
+  const headingId = useId()
   const chipsRef = useRef<HTMLDivElement>(null)
   const [chipOverflow, setChipOverflow] = useState({ left: false, right: false })
 
@@ -175,9 +176,9 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
       : null
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between px-1">
-        <h2 className="text-sm font-semibold text-foreground">{t('title')}</h2>
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <div className="flex shrink-0 items-center justify-between px-1">
+        <h2 id={headingId} className="text-sm font-semibold text-foreground">{t('title')}</h2>
         <div className="relative">
           <button
             ref={buttonRef}
@@ -201,7 +202,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
           {showFilter && (
             <div
               ref={popoverRef}
-              className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border bg-card p-4 shadow-xl"
+              className="absolute right-0 top-full z-50 mt-2 max-h-[min(32rem,calc(100dvh-7rem))] w-72 overflow-y-auto overscroll-contain rounded-xl border bg-card p-4 shadow-xl"
             >
               <div className="space-y-4">
                 {/* Search */}
@@ -348,7 +349,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
           chronology rail's top edge to the details panel's top edge
           (the wrapped row was the rail/details misalignment). Compact short
           labels (chip* keys) keep the chips small. */}
-      <div className="relative">
+      <div className="relative shrink-0">
         {chipOverflow.left && (
           <span
             aria-hidden
@@ -417,7 +418,12 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
           segment on every non-last row) so it starts and ends exactly at the
           first/last node and never renders in the empty state. Segments
           extend through the inter-row gap to stay continuous. */}
-      <div>
+      <div
+        role="region"
+        aria-labelledby={headingId}
+        tabIndex={0}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pb-1"
+      >
         <div className="flex flex-col gap-2">
           {filteredEvents.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">

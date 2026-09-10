@@ -19,9 +19,11 @@ export function TimelineView() {
   const router = useRouter()
   const { data, isLoading, error, refetch } = useTimelineData()
   return (
-    <div className="min-h-screen bg-background">
-      <HeaderBar />
-      <NavBar activeTab="timeline" />
+    <div className="flex min-h-screen flex-col bg-background lg:h-screen lg:min-h-0 lg:overflow-hidden print:block print:h-auto print:min-h-0 print:overflow-visible">
+      <div className="sticky top-0 z-40 lg:static print:static">
+        <HeaderBar />
+        <NavBar activeTab="timeline" />
+      </div>
       <TimelineContent
         data={data}
         isLoading={isLoading}
@@ -95,12 +97,12 @@ export function TimelineContent({
   }
 
   return (
-    <main className="mx-auto grid max-w-[1800px] gap-5 p-5 lg:grid-cols-[minmax(260px,26%)_1fr]">
+    <main className="mx-auto grid w-full max-w-[1800px] flex-1 gap-5 p-5 lg:min-h-0 lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden lg:grid-cols-[minmax(288px,26%)_1fr] print:block print:h-auto print:overflow-visible">
       {/* min-w-0: grid items default to min-width:auto — without it a long
           unbreakable card title inflates the aside's intrinsic min-content
           and blows the column out below the lg breakpoint (the fixed
           minmax() track only protects >=lg). */}
-      <aside className="min-w-0">
+      <aside className="min-w-0 lg:min-h-0 print:h-auto">
         <HistoryList
           events={events}
           selectedId={effectiveSelected}
@@ -108,7 +110,7 @@ export function TimelineContent({
           biomarkers={biomarkers}
         />
       </aside>
-      <section className="min-w-0 overflow-x-hidden">
+      <section className="min-w-0 overflow-x-hidden lg:min-h-0 lg:overflow-hidden print:h-auto print:overflow-visible">
         {selectedEventData?.type === 'doctor_visit' && visits[selectedEventData.id] ? (
           <DoctorVisitDetails
             visit={visits[selectedEventData.id]}

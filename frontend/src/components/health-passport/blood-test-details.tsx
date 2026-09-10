@@ -75,7 +75,7 @@ export function BloodTestDetails({
   }, [])
 
   return (
-    <div className="flex h-full w-full flex-col bg-background px-6 pb-6">
+    <div className="flex h-full w-full min-h-0 flex-col bg-background pb-6 print:block print:h-auto">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <span
           className={cn(
@@ -125,7 +125,7 @@ export function BloodTestDetails({
       </div>
 
       {activeTab === 'results' ? (
-        <div className="mt-5 flex-1 overflow-y-auto">
+        <div className="mt-5 flex min-h-0 flex-1 flex-col">
           <ResultsPanel date={event.date} labName={event.clinic} entryId={event.id} biomarkers={biomarkers} onViewDetails={onViewDetails} />
         </div>
       ) : activeTab === 'document' ? (
@@ -135,7 +135,7 @@ export function BloodTestDetails({
               {t('noDocuments')}
             </p>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="flex max-h-72 shrink-0 flex-col gap-3 overflow-y-auto overscroll-contain print:max-h-none print:overflow-visible">
               {attachments.map((att) => {
                 const isActive = activeId === att.id
                 const url = att.url
@@ -199,14 +199,14 @@ export function BloodTestDetails({
               <p className="mt-4 mb-2 text-xs text-muted-foreground">
                 {t('viewing', { name: selectedAttachment.name })}
               </p>
-              <div className="flex-1 min-h-0 w-full overflow-hidden rounded-xl border border-border">
+              <div className="min-h-0 flex-1 w-full overflow-y-auto rounded-xl border border-border">
                 <DocumentViewer key={selectedAttachment.url} url={selectedAttachment.url} />
               </div>
             </>
           )}
         </div>
       ) : (
-        <div className="mt-5 flex-1 min-h-0">
+        <div className="mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <EntrySettings
             event={event}
             biomarkers={biomarkers}

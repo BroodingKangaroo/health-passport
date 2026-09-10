@@ -180,4 +180,19 @@ describe('HistoryList', () => {
     expect(title).not.toBeNull()
     expect(title?.getAttribute('title')).toBe(longTitleEvent.title)
   })
+
+  it('exposes the rail as a focusable region for keyboard scrolling', () => {
+    renderI18n(
+      <HistoryList
+        events={[eventWithLongClinic, visitEvent]}
+        selectedId=""
+        onSelect={vi.fn()}
+      />,
+    )
+
+    const region = screen.getByRole('region', { name: 'History' })
+    expect(region).toHaveAttribute('tabindex', '0')
+    expect(within(region).getByText('Basic Metabolic Panel')).toBeInTheDocument()
+    expect(within(region).getByText('Cardiology consultation')).toBeInTheDocument()
+  })
 })

@@ -93,6 +93,29 @@ describe('BloodTestDetails', () => {
     expect(screen.getByText('No documents available for this event.')).toBeDefined()
   })
 
+  it('renders every attachment row and keeps the last one selectable', () => {
+    const manyAttachments = {
+      ...baseEvent,
+      attachments: Array.from({ length: 6 }, (_, i) => ({
+        id: `att-${i + 1}`,
+        name: `report-${i + 1}.pdf`,
+        type: 'Lab Report',
+        size: '100 KB',
+        url: `/static/uploads/report-${i + 1}.pdf`,
+      })),
+    }
+    renderI18n(<BloodTestDetails event={manyAttachments} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} />)
+
+    fireEvent.click(screen.getByText('Documents (6)'))
+    expect(screen.getAllByText(/^report-\d\.pdf$/)).toHaveLength(6)
+
+    fireEvent.click(screen.getByText('report-6.pdf'))
+    expect(screen.getByTestId('document-viewer')).toHaveAttribute(
+      'data-url',
+      '/static/uploads/report-6.pdf',
+    )
+  })
+
   it('keeps search input on same row and shows full lab name on hover when lab name is long', () => {
     renderI18n(<BloodTestDetails event={eventWithLongLabName} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} />)
 

@@ -292,4 +292,22 @@ describe('ResultsPanel sorting', () => {
     expectRowOrder(['Zebra', 'Apple'])
     expect(ariaSortOf(VALUE_HEADER)).toBeNull()
   })
+
+  it('keeps the column header inside the same scroll region as the rows', () => {
+    // Regression guard for the sticky header: the column header row and the
+    // data rows must share the scroll container, or `sticky top-0` loses its
+    // reference and the header scrolls away.
+    const { container } = renderI18n(
+      <ResultsPanel
+        biomarkers={[makeBiomarker('a', 'Apple')]}
+        labName="Test Lab"
+        date="Jan 15, 2027"
+      />,
+    )
+
+    const scrollRegion = container.querySelector('.overflow-auto')
+    expect(scrollRegion).not.toBeNull()
+    expect(scrollRegion!.contains(headerButton(NAME_HEADER))).toBe(true)
+    expect(scrollRegion!.contains(screen.getByText('Apple'))).toBe(true)
+  })
 })
