@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useCallback, Fragment } from 'react'
-import dynamic from 'next/dynamic'
+import { useState, Fragment } from 'react'
 import { useTranslations } from 'next-intl'
 import {
   Stethoscope,
@@ -10,34 +9,16 @@ import {
   CheckCircle,
   FileText,
   Pill,
-  Download,
-  Printer,
   Paperclip,
   Languages,
   Settings,
 } from 'lucide-react'
 
-import { cn, fetchAuthedObjectUrl, printAuthedDocument } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { TYPE_VISUALS } from '@/lib/event-visuals'
 import { EntrySettings } from './entry-settings'
+import { DocumentTab } from './document-tab'
 import type { VisitData } from '@/lib/types'
-
-function ViewerLoadingFallback() {
-  const t = useTranslations('timeline.doctorVisit')
-  return (
-    <div className="flex min-h-[300px] items-center justify-center text-sm text-muted-foreground">
-      {t('loadingViewer')}
-    </div>
-  )
-}
-
-const DocumentViewer = dynamic(
-  () => import('@/components/shared/DocumentViewer').then((m) => m.DocumentViewer),
-  {
-    ssr: false,
-    loading: () => <ViewerLoadingFallback />,
-  },
-)
 
 export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: VisitData; entryId: string; onDeleted?: () => void }) {
   const t = useTranslations('timeline.doctorVisit')
@@ -45,29 +26,6 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
   const TypeIcon = TYPE_VISUALS.doctor_visit.icon
   const [activeTab, setActiveTab] = useState<'summary' | 'document' | 'settings'>('summary')
   const [showOriginal, setShowOriginal] = useState(false)
-  const [activeAttachmentId, setActiveAttachmentId] = useState<string | null>(null)
-
-  const selectedAttachment =
-    visit.attachments.find((a) => a.id === activeAttachmentId) ??
-    visit.attachments.find((a) => a.url) ??
-    visit.attachments[0] ??
-    null
-  const activeId = selectedAttachment?.id ?? null
-
-  const handleDownload = useCallback(async (name: string, url: string) => {
-    try {
-      const objectUrl = await fetchAuthedObjectUrl(url)
-      const a = document.createElement('a')
-      a.href = objectUrl
-      a.download = name
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
-    } catch (e) {
-      console.error('Download failed', e)
-    }
-  }, [])
 
   const verdictText = showOriginal ? visit.verdict.original : visit.verdict.translated_en
   const verdictLabel = showOriginal ? t('original') : t('translated')
@@ -297,76 +255,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
         </div>
       ) : activeTab === 'document' ? (
         <div className="mt-5 flex w-full min-w-0 flex-1 flex-col min-h-0">
-          {visit.attachments.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              {t('noDocuments')}
-            </p>
-          ) : (
-          <div className="scrollbar-none flex max-h-72 shrink-0 flex-col gap-3 overflow-y-auto overscroll-contain print:max-h-none print:overflow-visible">
-              {visit.attachments.map((att) => {
-                const isActive = activeId === att.id
-                const url = att.url
-              return (
-                <div
-                  key={att.id}
-                  onClick={() => setActiveAttachmentId(att.id)}
-                  className={cn(
-                    'flex cursor-pointer items-center justify-between rounded-xl border p-4 transition-colors',
-                    isActive
-                      ? 'border-muted-foreground/50 bg-muted/20'
-                      : 'border-border bg-card hover:bg-muted/10',
-                  )}
-                >
-                  <div className="flex items-center gap-4 min-w-0">
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                      <FileText className="size-5 text-muted-foreground" />
-                    </div>
-                    <div className="min-w-0 leading-tight">
-                      <p className="truncate text-sm font-semibold text-foreground">
-                        {att.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {att.type} · {att.size}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                      {url && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); printAuthedDocument(url) }}
-                        className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                      >
-                        <Printer className="size-4" />
-                        {t('print')}
-                      </button>
-                        )}
-                    {url && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDownload(att.name, url) }}
-                        className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                      >
-                        <Download className="size-4" />
-                        {t('download')}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          )}
-
-          {selectedAttachment && (
-            <>
-              <p className="mt-4 mb-2 text-xs text-muted-foreground">
-                {t('viewing', { name: selectedAttachment.name })}
-              </p>
-
-              <div className="min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border">
-                <DocumentViewer key={selectedAttachment.url} url={selectedAttachment.url} fill />
-              </div>
-            </>
-          )}
+          <DocumentTab attachments={visit.attachments} />
         </div>
       ) : (
         <div className="scrollbar-none mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain">

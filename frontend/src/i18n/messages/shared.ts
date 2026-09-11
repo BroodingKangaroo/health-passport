@@ -56,6 +56,7 @@ export const sharedMessages = {
         zoomIn: 'Zoom in',
         resetToWidth: 'Reset to fit width',
         reset: 'Reset',
+        rotateClockwise: 'Rotate clockwise',
       },
       scaleNote: {
         original: 'Original: {value}',
@@ -132,6 +133,7 @@ export const sharedMessages = {
         zoomIn: 'Увеличить',
         resetToWidth: 'Сбросить к ширине страницы',
         reset: 'Сбросить',
+        rotateClockwise: 'Повернуть по часовой стрелке',
       },
       scaleNote: {
         original: 'Оригинал: {value}',

@@ -80,16 +80,20 @@ describe('DoctorVisitDetails', () => {
     expect(viewer).toHaveAttribute('data-url', '/static/uploads/file2.png')
   })
 
-  it('renders attachment name and type in the list', () => {
+  it('renders attachment chips with inline size and type/size tooltip', () => {
     renderI18n(<DoctorVisitDetails visit={baseVisit} entryId={TEST_ENTRY_ID} />)
 
     const documentsTab = screen.getByText('Original Document (2)')
     fireEvent.click(documentsTab)
 
-    expect(screen.getByText('report.pdf')).toBeDefined()
-    expect(screen.getByText('Lab Report · 120 KB')).toBeDefined()
-    expect(screen.getByText('scan.png')).toBeDefined()
-    expect(screen.getByText('Diagnostic Image · 2 MB')).toBeDefined()
+    const reportChip = screen.getByText('report.pdf')
+    expect(reportChip).toBeDefined()
+    expect(reportChip.closest('button')?.getAttribute('title')).toBe('report.pdf · Lab Report · 120 KB')
+    const scanChip = screen.getByText('scan.png')
+    expect(scanChip).toBeDefined()
+    expect(scanChip.closest('button')?.getAttribute('title')).toBe('scan.png · Diagnostic Image · 2 MB')
+    expect(screen.getByText('120 KB')).toBeDefined()
+    expect(screen.getByText('2 MB')).toBeDefined()
   })
 
   it('does not fall back to a hardcoded pdf when attachment has no url', () => {
@@ -103,8 +107,8 @@ describe('DoctorVisitDetails', () => {
     expect(viewer).not.toHaveAttribute('data-url', expect.stringContaining('attachment-preview'))
 
     // No real url => Print/Download actions are hidden
-    expect(screen.queryByText('Print')).toBeNull()
-    expect(screen.queryByText('Download')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Print' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Download' })).toBeNull()
   })
 
   it('renders a Settings tab and switches to it on click', () => {

@@ -3,10 +3,59 @@
 import { useRef, useLayoutEffect, useEffect, useState, useCallback } from 'react'
 import * as pdfjs from 'pdfjs-dist'
 import { useTranslations } from 'next-intl'
+import { RotateCw } from 'lucide-react'
 import { getAccessToken } from '@/lib/auth-token'
 import { cn } from '@/lib/utils'
 
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+
+// p-4 padding around the image scroll area; subtracted from clientWidth/Height
+// when computing the fit size.
+const IMAGE_VIEWER_PADDING = 32
+
+function ZoomControls({
+  scale,
+  onZoom,
+  onReset,
+  resetTitle,
+}: {
+  scale: number
+  onZoom: (direction: 1 | -1) => void
+  onReset: () => void
+  resetTitle: string
+}) {
+  const t = useTranslations('misc.documentViewer')
+  return (
+    <>
+      <button
+        onClick={() => onZoom(-1)}
+        className="flex size-6 items-center justify-center rounded text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        title={t('zoomOut')}
+        aria-label={t('zoomOut')}
+      >
+        -
+      </button>
+      <span className="min-w-[36px] text-center text-xs tabular-nums text-muted-foreground">
+        {Math.round(scale * 100)}%
+      </span>
+      <button
+        onClick={() => onZoom(1)}
+        className="flex size-6 items-center justify-center rounded text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        title={t('zoomIn')}
+        aria-label={t('zoomIn')}
+      >
+        +
+      </button>
+      <button
+        onClick={onReset}
+        className="ml-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        title={resetTitle}
+      >
+        {t('reset')}
+      </button>
+    </>
+  )
+}
 
 interface DocumentViewerProps {
   url?: string
@@ -14,9 +63,13 @@ interface DocumentViewerProps {
   // pane and scrolls internally. Other callers (add-entry preview) keep the
   // intrinsic sizing.
   fill?: boolean
+  // Per-document actions (print/download) rendered in the viewer toolbar so
+  // they are visibly scoped to the document on screen; omitted by callers
+  // that only preview an unsaved attachment.
+  actions?: React.ReactNode
 }
 
-export function DocumentViewer({ url, fill = false }: DocumentViewerProps) {
+export function DocumentViewer({ url, fill = false, actions }: DocumentViewerProps) {
   const t = useTranslations('misc.documentViewer')
   const isImage =
     typeof url === 'string' &&
@@ -37,9 +90,14 @@ export function DocumentViewer({ url, fill = false }: DocumentViewerProps) {
   const [numPages, setNumPages] = useState(0)
   const [pageNum, setPageNum] = useState(1)
   const [scale, setScale] = useState(1)
+  // Clockwise rotation in 90° steps, applied on top of each PDF page's own
+  // rotation (or as a CSS transform for images).
+  const [rotation, setRotation] = useState(0)
   const [loading, setLoading] = useState(() => !url)
   const [loadFailed, setLoadFailed] = useState(false)
   const [imgSrc, setImgSrc] = useState<string | null>(null)
+  const [imgNatural, setImgNatural] = useState<{ w: number; h: number } | null>(null)
+  const [imgViewport, setImgViewport] = useState<{ w: number; h: number } | null>(null)
   const imgUrlRef = useRef<string | undefined>(undefined)
 
   // Reset the viewer whenever the requested document changes — adjusted during
@@ -51,9 +109,11 @@ export function DocumentViewer({ url, fill = false }: DocumentViewerProps) {
     setPrevUrl(urlKey)
     setPdf(null)
     setImgSrc(null)
+    setImgNatural(null)
     setNumPages(0)
     setPageNum(1)
     setScale(1)
+    setRotation(0)
     setLoading(true)
     setLoadFailed(false)
   }
@@ -131,7 +191,7 @@ export function DocumentViewer({ url, fill = false }: DocumentViewerProps) {
         renderTaskRef.current = null
       }
       const page = await pdf.getPage(pageNum)
-      const viewport = page.getViewport({ scale })
+      const viewport = page.getViewport({ scale, rotation: (page.rotate + rotation) % 360 })
       const canvas = canvasRef.current
       const ctx = canvas.getContext('2d')!
       canvas.width = viewport.width
@@ -146,7 +206,7 @@ export function DocumentViewer({ url, fill = false }: DocumentViewerProps) {
       await task.promise
       renderTaskRef.current = null
     } catch {}
-  }, [pdf, pageNum, scale])
+  }, [pdf, pageNum, scale, rotation])
 
   useLayoutEffect(() => {
     renderPage()
@@ -158,6 +218,28 @@ export function DocumentViewer({ url, fill = false }: DocumentViewerProps) {
   useEffect(() => {
     scaleRef.current = scale
   }, [scale])
+
+  // Track the image scroll area so the picture can be laid out at an explicit
+  // pixel size (fit-to-view scaled by the zoom factor) instead of relying on
+  // percentage heights inside the flex scroller.
+  useEffect(() => {
+    if (!imgSrc) return
+    const el = scrollRef.current
+    if (!el) return
+    const measure = () =>
+      setImgViewport({
+        w: Math.max(0, el.clientWidth - IMAGE_VIEWER_PADDING),
+        h: Math.max(0, el.clientHeight - IMAGE_VIEWER_PADDING),
+      })
+    measure()
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure)
+      return () => window.removeEventListener('resize', measure)
+    }
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [imgSrc])
 
   useEffect(() => {
     if (isImage) return
@@ -215,6 +297,24 @@ export function DocumentViewer({ url, fill = false }: DocumentViewerProps) {
     })
   }, [])
 
+  const zoomBy = useCallback((direction: 1 | -1) => {
+    setScale((s) => Math.max(0.5, Math.min(3, +(s + direction * 0.05).toFixed(2))))
+  }, [])
+
+  const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget
+    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+      setImgNatural({ w: img.naturalWidth, h: img.naturalHeight })
+    }
+  }, [])
+
+  const imgFit =
+    imgNatural && imgViewport && imgViewport.w > 0 && imgViewport.h > 0
+      ? Math.min(imgViewport.w / imgNatural.w, imgViewport.h / imgNatural.h)
+      : null
+  const imgDisplayW = imgNatural && imgFit ? Math.round(imgNatural.w * imgFit * scale) : null
+  const imgDisplayH = imgNatural && imgFit ? Math.round(imgNatural.h * imgFit * scale) : null
+
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!scrollRef.current) return
     e.currentTarget.setPointerCapture(e.pointerId)
@@ -245,6 +345,18 @@ export function DocumentViewer({ url, fill = false }: DocumentViewerProps) {
     }
   }, [])
 
+  const rotateButton = (
+    <button
+      type="button"
+      onClick={() => setRotation((r) => (r + 90) % 360)}
+      title={t('rotateClockwise')}
+      aria-label={t('rotateClockwise')}
+      className="flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+    >
+      <RotateCw className="size-3.5" />
+    </button>
+  )
+
   if (!url) {
     return (
       <div className="flex min-h-[300px] items-center justify-center text-sm text-muted-foreground">
@@ -265,17 +377,39 @@ export function DocumentViewer({ url, fill = false }: DocumentViewerProps) {
           <span className="text-xs font-medium text-muted-foreground">
             {t('imagePreview')}
           </span>
+          <div className="flex items-center gap-1">
+            {rotateButton}
+            <div className="ml-1 flex items-center gap-1 border-l border-border pl-2">
+              <ZoomControls scale={scale} onZoom={zoomBy} onReset={() => setScale(1)} resetTitle={t('reset')} />
+            </div>
+            {actions && (
+              <div className="ml-1 flex items-center gap-1 border-l border-border pl-2">
+                {actions}
+              </div>
+            )}
+          </div>
         </div>
-        <div className="scrollbar-none flex-1 flex items-center justify-center overflow-auto bg-muted/20 p-4">
+        <div ref={scrollRef} className="scrollbar-none flex flex-1 overflow-auto bg-muted/20 p-4">
           {imgSrc ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
-              src={imgSrc}
-              alt={t('documentPreview')}
-              className="h-full w-full object-contain"
-            />
+            <div
+              className="m-auto shrink-0"
+              style={
+                imgDisplayW !== null && imgDisplayH !== null
+                  ? { width: imgDisplayW, height: imgDisplayH }
+                  : undefined
+              }
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imgSrc}
+                alt={t('documentPreview')}
+                onLoad={handleImageLoad}
+                className="h-full w-full object-contain transition-transform"
+                style={{ transform: `rotate(${rotation}deg)` }}
+              />
+            </div>
           ) : (
-            <div className="text-sm text-muted-foreground">
+            <div className="m-auto text-sm text-muted-foreground">
               {loading ? t('loading') : t('previewUnavailable')}
             </div>
           )}
@@ -309,30 +443,18 @@ export function DocumentViewer({ url, fill = false }: DocumentViewerProps) {
         </div>
 
         <div className="flex items-center gap-1">
-          <button
-            onClick={() => zoomAtCenter(-1)}
-            className="flex size-6 items-center justify-center rounded text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            title={t('zoomOut')}
-          >
-            -
-          </button>
-          <span className="min-w-[36px] text-center text-xs tabular-nums text-muted-foreground">
-            {Math.round(scale * 100)}%
-          </span>
-          <button
-            onClick={() => zoomAtCenter(1)}
-            className="flex size-6 items-center justify-center rounded text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            title={t('zoomIn')}
-          >
-            +
-          </button>
-          <button
-            onClick={() => setScale(fitScaleRef.current)}
-            className="ml-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            title={t('resetToWidth')}
-          >
-            {t('reset')}
-          </button>
+          <div className="mr-1 flex items-center border-r border-border pr-2">{rotateButton}</div>
+          <ZoomControls
+            scale={scale}
+            onZoom={zoomAtCenter}
+            onReset={() => setScale(fitScaleRef.current)}
+            resetTitle={t('resetToWidth')}
+          />
+          {actions && (
+            <div className="ml-1 flex items-center gap-1 border-l border-border pl-2">
+              {actions}
+            </div>
+          )}
         </div>
       </div>
 

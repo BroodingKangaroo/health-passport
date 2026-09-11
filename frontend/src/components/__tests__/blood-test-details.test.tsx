@@ -95,7 +95,7 @@ describe('BloodTestDetails', () => {
     expect(screen.getByText('No documents available for this event.')).toBeDefined()
   })
 
-  it('renders every attachment row and keeps the last one selectable', () => {
+  it('renders a chip per attachment and keeps the last one selectable', () => {
     const manyAttachments = {
       ...baseEvent,
       attachments: Array.from({ length: 6 }, (_, i) => ({
@@ -109,9 +109,15 @@ describe('BloodTestDetails', () => {
     renderI18n(<BloodTestDetails event={manyAttachments} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} />)
 
     fireEvent.click(screen.getByText('Documents (6)'))
-    expect(screen.getAllByText(/^report-\d\.pdf$/)).toHaveLength(6)
+    const chips = screen.getAllByText(/^report-\d\.pdf$/)
+    expect(chips).toHaveLength(6)
+    expect(chips[0].closest('button')).toHaveAttribute('aria-pressed', 'true')
+    expect(chips[0].closest('button')?.parentElement?.className).toContain('h-9')
+    expect(screen.getByText('report-6.pdf').closest('button')).toHaveAttribute('aria-pressed', 'false')
 
     fireEvent.click(screen.getByText('report-6.pdf'))
+    expect(screen.getByText('report-6.pdf').closest('button')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('report-1.pdf').closest('button')).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByTestId('document-viewer')).toHaveAttribute(
       'data-url',
       '/static/uploads/report-6.pdf',

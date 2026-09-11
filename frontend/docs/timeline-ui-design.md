@@ -356,8 +356,7 @@ attributed the whole shell to `TimelineView` (review comment 1):
   )}
   {tab === 'document' && (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto">attachment rows</div>
-      <div className="min-h-0 flex-1 overflow-hidden">DocumentViewer</div>
+      <DocumentTab attachments={...} />
     </div>
   )}
   {tab === 'settings' && (
@@ -372,9 +371,9 @@ attributed the whole shell to `TimelineView` (review comment 1):
   procedure stub) are shorter-lived; Stage 1 wraps each in the same
   `flex h-full min-h-0 flex-col` + `overflow-y-auto` body so every detail type
   scrolls identically. Every per-tab scroller (results table region, document
-  attachment list/viewer, settings, and the visit/instrumental equivalents)
-  uses the shared `scrollbar-none` utility; the results table region keeps
-  `overflow-auto` for horizontal scrolling.
+  viewer, settings, and the visit/instrumental equivalents) uses the shared
+  `scrollbar-none` utility; the results table region keeps `overflow-auto` for
+  horizontal scrolling.
 - **Document-viewer fill** (T1 review comment 6, closed in T5): the timeline
   detail panes pass a `fill` prop (blood-test, doctor visit, instrumental);
   at `lg` the viewer root is `h-full min-h-0` and the PDF scroll area
@@ -382,8 +381,18 @@ attributed the whole shell to `TimelineView` (review comment 1):
   wrappers are `overflow-hidden` per the sketch. Below `lg` the intrinsic
   `h-[80vh]`/content sizing is kept, and the add-entry preview pane does not
   pass `fill` (a viewport-scoped `lg:` class would collapse its auto-height
-  parent). The attachment list above the viewer stays capped at `max-h-72`
-  with its own scroll.
+  parent).
+- **Documents tab — compact attachment strip**: the shared `DocumentTab`
+  (used by `BloodTestDetails`, `DoctorVisitDetails`, `InstrumentalTestDetails`)
+  renders attachments as one 36px-tall horizontal chip row (file icon +
+  truncated name + inline size, active chip highlighted, full `name · type ·
+  size` in the `title` tooltip) with `scrollbar-none`, edge fades, and
+  `print:flex-wrap`. Icon-only Print/Download buttons are passed into the
+  `DocumentViewer` toolbar via its `actions` prop, so they sit in the preview
+  chrome of the selected document (they only render when it has a URL; the
+  add-entry preview passes no `actions`). The separate `Viewing: {name}` line
+  is gone. This replaces the old `max-h-72` vertical card list, so the viewer
+  keeps maximum height regardless of attachment count.
 
 ### 5.4 Results panel — fixed card header + sticky column header
 
