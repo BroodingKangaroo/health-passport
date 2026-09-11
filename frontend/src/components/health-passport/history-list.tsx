@@ -537,13 +537,19 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
           line gutter. `scroll-pt-10` keeps focus/scroll-into-view from
           parking a card behind the mask. Month markers are zero-height
           overlays on the first card row of each month-run — see the marker
-          below for the centering/width contract. */}
+          below for the centering/width contract.
+          `lg:overscroll-contain` is deliberate: below lg the rail is
+          content-height (no internal scroll), and a non-scrolling
+          `overflow-y-auto` + containment swallows wheel/touch gestures —
+          the page must win there so the stacked list is scrollable at all.
+          At lg+ the rail really scrolls and containment keeps the panes
+          independent (R2). */}
       <div
         ref={railRef}
         role="region"
         aria-labelledby={headingId}
         tabIndex={0}
-        className="scrollbar-none -mt-10 min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pt-10 scroll-pt-10 pb-1"
+        className="scrollbar-none -mt-10 min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-10 scroll-pt-10 pb-1 lg:overscroll-contain"
       >
         {/* pl-1/pr-1: 4px clip clearance both sides — the selected node's
             ring-offset+ring extends 4px left of the node, and card focus

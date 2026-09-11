@@ -1,8 +1,10 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
+import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { HeaderBar } from '@/components/health-passport/header-bar'
 import { NavBar } from '@/components/shared/NavBar'
@@ -18,9 +20,33 @@ import type { MedicalEvent, BiomarkerResult, Reading, TimelineResponse } from '@
 export function TimelineView() {
   const router = useRouter()
   const { data, isLoading, error, refetch } = useTimelineData()
+  const chromeRef = useRef<HTMLDivElement>(null)
+  const [chromeH, setChromeH] = useState(0)
+
+  // The mobile switcher (§5.7) pins below the sticky chrome; its height
+  // changes when the header wraps (RU labels, zoom), so measure it instead of
+  // hardcoding an offset. /demo does not use this wrapper and inherits the
+  // `--chrome-h: 0px` default from globals.css.
+  useLayoutEffect(() => {
+    const el = chromeRef.current
+    if (!el) return
+    const measure = () => setChromeH(el.getBoundingClientRect().height)
+    measure()
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure)
+      return () => window.removeEventListener('resize', measure)
+    }
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   return (
-    <div className="flex min-h-screen flex-col bg-background lg:h-screen lg:min-h-0 lg:overflow-hidden print:block print:h-auto print:min-h-0 print:overflow-visible">
-      <div className="sticky top-0 z-40 lg:static print:static">
+    <div
+      style={{ '--chrome-h': `${chromeH}px` } as CSSProperties}
+      className="flex min-h-screen flex-col bg-background lg:h-screen lg:min-h-0 lg:overflow-hidden print:block print:h-auto print:min-h-0 print:overflow-visible"
+    >
+      <div ref={chromeRef} className="sticky top-0 z-40 lg:static print:static">
         <HeaderBar />
         <NavBar activeTab="timeline" />
       </div>
@@ -63,6 +89,8 @@ export function TimelineContent({
   const te = useTranslations('timeline.entrySettings')
   const locale = useLocale()
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
+  const detailsRef = useRef<HTMLElement>(null)
+  const listRef = useRef<HTMLElement>(null)
 
   const events: MedicalEvent[] = data?.events ?? []
   const biomarkers = useMemo(() => data?.biomarkers ?? [], [data?.biomarkers])
@@ -79,6 +107,29 @@ export function TimelineContent({
     () => biomarkersAtDate(biomarkers, selectedEventData?.id ?? ''),
     [biomarkers, selectedEventData?.id],
   )
+
+  // Card selection below lg: state first, then reveal the stacked details
+  // pane in the next frame (after React commits) and move focus into it, so
+  // keyboard users do not Tab onward from an off-screen card. Prev/next step
+  // the pane in place and never scroll (the switcher is already on screen).
+  const handleSelect = useCallback((id: string) => {
+    setSelectedEvent(id)
+    if (!isBelowLgViewport()) return
+    requestAnimationFrame(() => {
+      const el = detailsRef.current
+      if (!el) return
+      el.scrollIntoView({ block: 'start' })
+      el.focus({ preventScroll: true })
+    })
+  }, [])
+
+  const handleBackToHistory = useCallback(() => {
+    const el = listRef.current
+    if (!el) return
+    el.scrollIntoView({ block: 'start' })
+    // Land on the rail region (the T1 keyboard affordance), not on a card.
+    el.querySelector<HTMLElement>('[role="region"]')?.focus({ preventScroll: true })
+  }, [])
 
   if (isLoading) {
     return (
@@ -102,15 +153,35 @@ export function TimelineContent({
           unbreakable card title inflates the aside's intrinsic min-content
           and blows the column out below the lg breakpoint (the fixed
           minmax() track only protects >=lg). */}
-      <aside className="min-w-0 lg:min-h-0 print:h-auto">
+      <aside
+        ref={listRef}
+        className="min-w-0 scroll-mt-[var(--chrome-h)] lg:min-h-0 print:h-auto"
+      >
         <HistoryList
           events={events}
           selectedId={effectiveSelected}
-          onSelect={setSelectedEvent}
+          onSelect={handleSelect}
           biomarkers={biomarkers}
         />
       </aside>
-      <section className="min-w-0 overflow-x-hidden lg:min-h-0 lg:overflow-hidden print:h-auto print:overflow-visible">
+      <section
+        ref={detailsRef}
+        tabIndex={-1}
+        className="min-w-0 scroll-mt-[var(--chrome-h)] overflow-x-clip outline-none lg:min-h-0 lg:overflow-hidden print:h-auto print:overflow-visible [overflow-anchor:none]"
+      >
+        {/* `overflow-x-clip`, never `overflow-x-hidden`: hidden computes
+            overflow-y to auto, which makes the section a scroll container and
+            kills the switcher's position: sticky (verified in-browser).
+            `overflow-anchor: none` keeps Chrome scroll anchoring from
+            re-scrolling the document when prev/next swaps a short detail for
+            a tall one — the documented contract is "step the pane in place,
+            never scroll" (verified: 80→708px jump without it). */}
+        <MobileEventSwitcher
+          events={events}
+          currentId={effectiveSelected}
+          onSelect={setSelectedEvent}
+          onBack={handleBackToHistory}
+        />
         {selectedEventData?.type === 'doctor_visit' && visits[selectedEventData.id] ? (
           <DoctorVisitDetails
             visit={visits[selectedEventData.id]}
@@ -180,6 +251,86 @@ export function TimelineContent({
         ) : null}
       </section>
     </main>
+  )
+}
+
+/** Below the lg two-pane shell the list and details stack (§5.7). Mirrors
+ * Tailwind v4's generated `lg` query (`min-width: 64rem`) instead of px so a
+ * non-default browser default font size cannot decouple the layout from this
+ * guard; jsdom (no matchMedia) stays on the static shell path in tests. */
+function isBelowLgViewport(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    !window.matchMedia('(min-width: 64rem)').matches
+  )
+}
+
+interface MobileEventSwitcherProps {
+  events: MedicalEvent[]
+  currentId: string
+  onSelect: (id: string) => void
+  onBack: () => void
+}
+
+/**
+ * Sticky master-detail switcher for the stacked (<lg) layout: back to the
+ * history rail, position + title, older/newer steppers (§5.7). Hidden at lg+
+ * and in print, and not rendered for a single event (no dead controls). It
+ * walks the full ascending events array; filter-scoped stepping is deferred.
+ */
+function MobileEventSwitcher({ events, currentId, onSelect, onBack }: MobileEventSwitcherProps) {
+  const t = useTranslations('timeline.views.timeline')
+  const index = events.findIndex((e) => e.id === currentId)
+  if (events.length < 2 || index === -1) return null
+  const current = events[index]
+  const stepButtonClass =
+    'flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40'
+  return (
+    <div
+      role="group"
+      aria-label={t('eventNavigation')}
+      className="sticky top-[var(--chrome-h)] z-30 mb-3 flex h-10 items-center gap-1 border-b border-border bg-background lg:hidden print:hidden"
+    >
+      <button
+        type="button"
+        onClick={onBack}
+        aria-label={t('backToHistoryAria')}
+        className="flex h-9 shrink-0 items-center gap-1 rounded-lg px-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
+        <ArrowLeft className="size-3.5" />
+        {t('backToHistory')}
+      </button>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="sr-only">
+          {t('eventPosition', { current: index + 1, total: events.length })}
+        </span>
+        <span aria-hidden className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          {index + 1}/{events.length}
+        </span>
+        <span className="truncate text-sm font-semibold text-foreground" title={current.title}>
+          {current.title}
+        </span>
+      </div>
+      <button
+        type="button"
+        aria-label={t('previousEvent')}
+        disabled={index <= 0}
+        onClick={() => onSelect(events[index - 1].id)}
+        className={stepButtonClass}
+      >
+        <ChevronLeft className="size-4" />
+      </button>
+      <button
+        type="button"
+        aria-label={t('nextEvent')}
+        disabled={index >= events.length - 1}
+        onClick={() => onSelect(events[index + 1].id)}
+        className={stepButtonClass}
+      >
+        <ChevronRight className="size-4" />
+      </button>
+    </div>
   )
 }
 

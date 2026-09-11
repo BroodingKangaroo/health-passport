@@ -338,8 +338,12 @@ Improve scanability of the results table and its narrow-width behavior.
 
 ---
 
-## T6 — Mobile master-detail switcher (Stage 3b)
+## T6 — Mobile master-detail switcher (Stage 3b) — `[x]`
 
+**Status:** shipped 2026-09-11; lint/typecheck/tests green (484 passed).
+Browser-verified at 390 EN/RU (select-scroll, sticky, prev/next, back,
+print-hidden) and 1280 (bar `display:none`, two-pane intact). External
+review not run (not requested); a separate in-session verifier was used.
 **Depends on:** T1. **Design refs:** §5.7.
 
 ### Goal
@@ -352,10 +356,46 @@ the entire history list.
 - Sticky switcher bar (`← History | i/n title | ‹ ›`), rendered below `lg`
   only.
 - `--chrome-h` measured from the sticky chrome wrapper via
-  ResizeObserver/`useLayoutEffect`.
+  ResizeObserver/useLayoutEffect.
 - Focus/scroll-margin rules per design §5.7/§R8.
 
 ### Acceptance criteria
 - At 390px: select any card → details visible immediately; prev/next works;
   back-to-history returns to the list.
 - Chrome wrapping (RU, zoom 125%) keeps the switcher correctly offset.
+
+### Implementation notes (2026-09-11)
+
+- **`TimelineView.tsx`**: `chromeRef` + measured `--chrome-h` on the root
+  (`useLayoutEffect` + ResizeObserver, `window.resize` fallback);
+  `TimelineContent` gained `detailsRef`/`listRef`, `handleSelect` (rAF →
+  `scrollIntoView` + `focus({preventScroll})` on the section, guarded by
+  `matchMedia('(min-width: 64rem)')` negated — the rem query Tailwind v4
+  generates for `lg:`, so a non-default browser default font size cannot
+  decouple the layout from the guard) and `handleBackToHistory` (scroll
+  the aside + focus the rail region). The section's `overflow-x-hidden`
+  became `overflow-x-clip` — `hidden` computes `overflow-y: auto`, which
+  makes the section a scroll container and disables the sticky switcher
+  (measured live: `-22px` vs `0`).
+- **`MobileEventSwitcher`** (same file, inline): `h-10` opaque bar,
+  `sticky top-[var(--chrome-h)] z-30`, `lg:hidden print:hidden`, hidden for
+  `<2` events; walks the full ascending array (filter-scoped stepping
+  deferred), steppers disabled at the ends, no scroll on step.
+- **i18n**: 6 new keys under `timeline.views.timeline` (EN/RU) —
+  `eventNavigation`, `backToHistory`, `backToHistoryAria`, `previousEvent`,
+  `nextEvent`, `eventPosition`.
+- **globals.css**: `--chrome-h: 0px` default in `:root` (layout-only var;
+  `/demo` inherits it).
+- **Browser-review fixes (2026-09-11)**: rail `overscroll-contain` →
+  `lg:overscroll-contain` (below `lg` the content-height rail swallowed
+  wheel/touch gestures instead of chaining them to the page — a scroll dead
+  zone over the list); section gained `[overflow-anchor:none]` (Chrome scroll
+  anchoring re-scrolled the document 80→708px when prev/next swapped a short
+  detail for a tall one, contradicting "step in place, never scroll").
+  Both verified live after the fix.
+- **Tests**: `views/__tests__/timeline-content.test.tsx` — 5 new cases
+  (switcher presence/position, single-event absence, stepping without
+  scroll, below-lg select-scroll + focus, desktop no-scroll guard,
+  back-scroll + rail focus). `demo.test.tsx` needed no change.
+- No `architecture.md` statement changed. Design §5.7 carries the revised
+  implementation record.

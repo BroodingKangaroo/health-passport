@@ -306,7 +306,7 @@ attributed the whole shell to `TimelineView` (review comment 1):
   {bottomFade && (
     <span className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-6 bg-gradient-to-t from-background" />
   )}
-  <div className="scrollbar-none -mt-10 min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pt-10 scroll-pt-10 pb-1">
+  <div className="scrollbar-none -mt-10 min-h-0 flex-1 overflow-x-hidden overflow-y-auto lg:overscroll-contain pt-10 scroll-pt-10 pb-1">
     <div className="flex flex-col gap-2 pl-1 pr-1">
       rail rows (cards at page-x 20/28; the first row's top spine stub runs
       a -top-10 overhang to the pane top; month labels = zero-height
@@ -338,7 +338,10 @@ attributed the whole shell to `TimelineView` (review comment 1):
   with the list during macOS elastic overscroll instead of tearing away from
   a pane-anchored segment (the old root-anchored `h-10` span left a gap when
   the list rubber-banded). `overflow-x-hidden` removes sideways
-  rubber-banding (vertical bounce is kept via `overscroll-contain`),
+  rubber-banding (vertical bounce is kept via `lg:overscroll-contain` — below
+  `lg` the rail is content-height, and containment on a non-scrolling
+  overflow container swallows wheel/touch gestures: the page must win there
+  or the stacked list is a scroll dead zone; T6 browser review, 2026-09-11),
   `scroll-pt-10` keeps focus/scroll-into-view from parking a card behind the
   settings row, and the settings row's `-bottom-3 left-5 sm:left-7` notch
   mask hides rows scrolling under it without covering the 20/28px line
@@ -588,6 +591,42 @@ Optional later: sticky month/day group headers in the rail (`Jun 2026`).
   stepping is wanted later, lift `filteredEvents` state out of `HistoryList`.
 - "History" button scrolls back to the list top (anchor on the `HistoryList`
   root).
+
+**Implemented (T6, 2026-09-11) — deviations and decisions locked in browser:**
+
+- **`overflow-x-clip` is load-bearing.** The section's `overflow-x-hidden`
+  computes `overflow-y` to `auto`, making it a scroll container and killing
+  the switcher's `position: sticky` (measured: bar top `-22px` instead of
+  `0` while scrolled). The section now uses `overflow-x-clip`, which clips
+  identically without creating a scroll container (`overflow-y: visible`).
+  Do not "restore" `hidden`; `lg:overflow-hidden` (two-pane) still applies.
+- **`--chrome-h` plumbing:** default `--chrome-h: 0px` lives in
+  `globals.css :root`; `TimelineView` measures the sticky chrome wrapper in
+  `useLayoutEffect` + ResizeObserver (`window.resize` fallback where RO is
+  unavailable) and overrides the var on its root, which the switcher's
+  `top-[var(--chrome-h)]`, the section and the aside `scroll-mt` all
+  inherit. `/demo` has no sticky chrome and correctly keeps the 0 default.
+- **Switcher spec:** one `h-10` bar, opaque `bg-background border-b
+  border-border`, `z-30`, `mb-3`, `lg:hidden print:hidden`; back is a ghost
+  button (`ArrowLeft` + locale label), the middle is `sr-only` position text
+  + visible `i/n` + `truncate` title (tooltip; measured to fit EN/RU at
+  390px), steppers are 36px ghost icon buttons disabled at array ends. The
+  bar is not rendered for a single event (no dead controls).
+- **Select/back focus:** card select below `lg` runs `scrollIntoView({
+  block: 'start' })` + `focus({ preventScroll: true })` on the section
+  (`tabIndex={-1}`) in a `rAF`; Back scrolls the aside and focuses the rail
+  `role="region"`. Prev/next step the pane in place and never scroll; the
+  section carries `[overflow-anchor:none]` so Chrome scroll anchoring cannot
+  re-scroll the document when a short detail is swapped for a tall one
+  (measured 80→708px jump without it).
+- **Rail gesture chaining (T6 browser review):** the history rail's
+  `overscroll-contain` became `lg:overscroll-contain` — below `lg` it is
+  content-height, and containment on a non-scrolling overflow container
+  swallowed wheel/touch gestures (page `scrollY` stayed 0 while the cursor
+  was over the list), which would have made the new stacked master-detail
+  flow unscrollable through the list.
+- **Demo surface:** shared, so `/demo` renders the switcher below `lg` with
+  the 0 offset; the demo header is not sticky, so `top-0` is correct there.
 
 ### 5.8 Tab strip restyle (Stage 1b)
 

@@ -64,6 +64,9 @@
 
 :root {
   color-scheme: light;
+  /* Measured height of the sticky app chrome (T6 mobile switcher offset);
+     TimelineView overrides it on its root; /demo inherits the 0 default. */
+  --chrome-h: 0px;
   --background: oklch(0.985 0.003 240);
   --foreground: oklch(0.27 0.03 252);
   --card: oklch(1 0 0);
