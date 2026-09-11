@@ -271,8 +271,10 @@ line count. Owner chose the corner-cluster option:
 
 ---
 
-## T5 — Results table polish (Stage 3a)
+## T5 — Results table polish (Stage 3a) — `[x]`
 
+**Status:** shipped 2026-09-11; lint/typecheck/tests green. External review
+not run (not requested).
 **Depends on:** T1. **Design refs:** §F9, §5.4.
 
 ### Goal
@@ -292,6 +294,47 @@ Improve scanability of the results table and its narrow-width behavior.
 ### Acceptance criteria
 - Column behavior stable at 1024/1280 with horizontal scroll at both ends.
 - No regression in sort semantics or tier ordering.
+
+### Implementation notes (2026-09-11)
+
+- **Column order + alignment**: Reference and Unit were swapped (owner
+  request) so rows read "5.9 4 – 5.5 mmol/L" instead of "mmol/L 4 – 5.5";
+  order is now Latest | Reference | Unit. Latest + Reference cells are
+  `text-right tabular-nums` with `justify-end` headers, Unit is left-aligned
+  (`tabular-nums`): the reference→unit gap then stays at the 12px grid
+  gutter on every row, while the alternative (Reference left, Unit right)
+  left a 145-195px void that visually attached the unit to the Status badge
+  (live A/B, ink-extent measured). Accepted trade-off: Reference's left edge
+  is ragged (mixed interval/qualitative text).
+- **Sort affordance**: the inactive `ArrowUpDown` is always visible at
+  `text-muted-foreground/50` (hover deepens to full muted). A simulated
+  `opacity-40` on the already-50%-alpha icon measured ~253/255; do not stack
+  the two alphas.
+- **Frozen Biomarker column**: always-on `sticky left-0`; header row `z-20`,
+  frozen header `z-30`, frozen data `z-10`; the left edge fade is removed
+  (the frozen column is the left anchor). The frozen cell replays the row
+  hover/open tint as an **opaque composite**
+  (`color-mix(in oklab, var(--muted) N%, var(--card))`, N = 50 hover / 40
+  open) via `group-hover`/`group-focus-visible` — pixel-verified within
+  1/255 of the row tint; a translucent `bg-muted/50` over the row's own tint
+  would double-stack to ~75% and re-open the seam. Expanded detail panels
+  are not frozen.
+- **Table bottom fade**: `h-6` → `h-12 from-card` so the last visible row
+  dissolves over its own height like the history rail's cards. A/B of
+  24/40/48/64px against the rail picked 48px (64px dims the previous row's
+  baseline, 40px still hard-cuts the last row).
+- **DocumentViewer fill**: new `fill` prop (`lg:h-full lg:min-h-0` root,
+  `lg:flex-1 lg:min-h-0` PDF scroll area); `fitHeight` pixel sizing removed;
+  blood-test/doctor-visit/instrumental wrappers are `overflow-hidden`. The
+  add-entry preview pane does not pass `fill` and keeps intrinsic sizing —
+  a viewport-scoped `lg:` class would have collapsed its auto-height parent.
+- Tests: `results-panel.test.tsx` pins numeric alignment/tabular figures, the
+  hover-free sort affordance, and the frozen-cell contract;
+  `blood-test-details.test.tsx` and `doctor-visit-details.test.tsx` assert
+  the `fill` prop and the `overflow-hidden` wrapper.
+- Docs: design §F9 marked resolved, §5.3 viewer deviation closed, §5.4
+  rewritten to the shipped spec, open question 2 resolved. No
+  `architecture.md` statement changed.
 
 ---
 

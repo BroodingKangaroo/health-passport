@@ -245,8 +245,8 @@ export function InstrumentalTestDetails({
                 {t('viewing', { name: selectedAttachment.name })}
               </p>
 
-              <div className="scrollbar-none min-h-0 flex-1 w-full overflow-y-auto rounded-xl border border-border">
-                <DocumentViewer key={selectedAttachment.url} url={selectedAttachment.url} />
+              <div className="min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border">
+                <DocumentViewer key={selectedAttachment.url} url={selectedAttachment.url} fill />
               </div>
             </>
           )}

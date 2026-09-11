@@ -338,4 +338,58 @@ describe('ResultsPanel sorting', () => {
     expect(screen.getByText('Blood Test Results')).toBeInTheDocument()
     unmount()
   })
+
+  it('orders Latest | Reference | Unit and right-aligns value + reference', () => {
+    renderI18n(
+      <ResultsPanel
+        biomarkers={[makeBiomarker('a', 'Apple', { value: 12.5, reference: intervalRef(4, 11) })]}
+        labName="Lab"
+        date="Jan 15, 2027"
+      />,
+    )
+
+    // Rows read "12.5 4 – 11 g/L": the reference range precedes its unit.
+    expectRowOrder([VALUE_HEADER, REFERENCE_HEADER, UNIT_HEADER])
+
+    expect(headerButton(VALUE_HEADER).className).toContain('justify-end')
+    expect(headerButton(REFERENCE_HEADER).className).toContain('justify-end')
+    expect(headerButton(UNIT_HEADER).className).not.toContain('justify-end')
+
+    const row = screen.getByText('Apple').closest('[role="button"]') as HTMLElement
+    expect(row).not.toBeNull()
+    expect(row.children[2].className).toContain('text-right')
+    expect(row.children[2].className).toContain('tabular-nums')
+    expect(row.children[3].className).toContain('text-right')
+    expect(row.children[3].className).toContain('tabular-nums')
+    expect(row.children[4].className).toContain('tabular-nums')
+    expect(row.children[4].className).not.toContain('text-right')
+  })
+
+  it('keeps the inactive sort affordance visible without hover', () => {
+    renderI18n(
+      <ResultsPanel biomarkers={[makeBiomarker('a', 'Apple')]} labName="Lab" date="Jan 15, 2027" />,
+    )
+
+    const icon = headerButton(VALUE_HEADER).querySelector('svg')
+    expect(icon).not.toBeNull()
+    expect(icon!.getAttribute('class') ?? '').not.toContain('opacity-0')
+    expect(icon!.getAttribute('class') ?? '').toContain('text-muted-foreground/50')
+  })
+
+  it('freezes the Biomarker column with an opaque row-context background', () => {
+    renderI18n(
+      <ResultsPanel biomarkers={[makeBiomarker('a', 'Apple')]} labName="Lab" date="Jan 15, 2027" />,
+    )
+
+    const headerCell = screen.getByText(NAME_HEADER).closest('[role="columnheader"]') as HTMLElement
+    expect(headerCell.className).toContain('sticky')
+    expect(headerCell.className).toContain('left-0')
+    expect(headerCell.className).toContain('bg-card')
+
+    const row = screen.getByText('Apple').closest('[role="button"]') as HTMLElement
+    expect(row.className).toContain('group')
+    expect(row.children[0].className).toContain('sticky')
+    expect(row.children[0].className).toContain('left-0')
+    expect(row.children[0].className).toContain('bg-card')
+  })
 })

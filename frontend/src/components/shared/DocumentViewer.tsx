@@ -4,14 +4,19 @@ import { useRef, useLayoutEffect, useEffect, useState, useCallback } from 'react
 import * as pdfjs from 'pdfjs-dist'
 import { useTranslations } from 'next-intl'
 import { getAccessToken } from '@/lib/auth-token'
+import { cn } from '@/lib/utils'
 
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 
 interface DocumentViewerProps {
   url?: string
+  // Timeline detail panes are height-constrained at lg: the viewer fills the
+  // pane and scrolls internally. Other callers (add-entry preview) keep the
+  // intrinsic sizing.
+  fill?: boolean
 }
 
-export function DocumentViewer({ url }: DocumentViewerProps) {
+export function DocumentViewer({ url, fill = false }: DocumentViewerProps) {
   const t = useTranslations('misc.documentViewer')
   const isImage =
     typeof url === 'string' &&
@@ -35,7 +40,6 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
   const [loading, setLoading] = useState(() => !url)
   const [loadFailed, setLoadFailed] = useState(false)
   const [imgSrc, setImgSrc] = useState<string | null>(null)
-  const [fitHeight, setFitHeight] = useState(0)
   const imgUrlRef = useRef<string | undefined>(undefined)
 
   // Reset the viewer whenever the requested document changes — adjusted during
@@ -50,7 +54,6 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
     setNumPages(0)
     setPageNum(1)
     setScale(1)
-    setFitHeight(0)
     setLoading(true)
     setLoadFailed(false)
   }
@@ -106,7 +109,6 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
           const rect = scrollRef.current.getBoundingClientRect()
           fitScaleRef.current = Math.max(0.5, Math.min(3, (rect.width - 32) / width))
           setScale(fitScaleRef.current)
-          setFitHeight(page.getViewport({ scale: fitScaleRef.current }).height)
         }
         setLoading(false)
       })
@@ -253,7 +255,12 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
 
   if (isImage) {
     return (
-      <div className="flex min-h-[300px] h-[80vh] min-w-0 flex-col bg-muted/20">
+      <div
+        className={cn(
+          'flex h-[80vh] min-h-[300px] min-w-0 flex-col bg-muted/20',
+          fill && 'lg:h-full lg:min-h-0',
+        )}
+      >
         <div className="flex items-center justify-between border-b border-border bg-card px-3 py-2">
           <span className="text-xs font-medium text-muted-foreground">
             {t('imagePreview')}
@@ -278,7 +285,7 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
   }
 
   return (
-    <div className="flex min-w-0 flex-col bg-muted/20">
+    <div className={cn('flex min-w-0 flex-col bg-muted/20', fill && 'lg:h-full lg:min-h-0')}>
       {/* Toolbar */}
       <div className="flex items-center justify-between border-b border-border bg-card px-3 py-2">
         <div className="flex items-center gap-1">
@@ -332,8 +339,11 @@ export function DocumentViewer({ url }: DocumentViewerProps) {
       {/* Scrollable area with grab cursor */}
       <div
         ref={scrollRef}
-        className="scrollbar-none flex min-h-[300px] min-w-0 flex-col overflow-auto bg-muted/20 p-4 select-none"
-        style={{ height: fitHeight ? fitHeight + 32 : undefined, cursor: loading ? '' : 'grab' }}
+        className={cn(
+          'scrollbar-none flex min-h-[300px] min-w-0 flex-col overflow-auto bg-muted/20 p-4 select-none',
+          fill && 'lg:min-h-0 lg:flex-1',
+        )}
+        style={{ cursor: loading ? '' : 'grab' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

@@ -145,15 +145,21 @@ heading).
 - No per-entry status hint: finding the abnormal labs among 19 entries needs
   the hidden "Abnormal results" filter (popover, `:316`) or opening each card.
 
-### F9 — Results table polish gaps
+### F9 — Results table polish gaps (resolved in T5, 2026-09-11)
 
-- Numeric columns (Latest, Unit, Reference) are left-aligned in fractional
-  tracks (`GRID_COLS`, `results-panel.tsx:29`), no `tabular-nums`.
-- Sort affordance is hover-only (`opacity-0 group-hover:opacity-100`),
-  invisible on touch.
-- No sticky column header (F3).
-- Title/subtitle duplicated with the tab strip (F7); search input width bug
-  below `sm` (see F10).
+- **Resolved.** Column order is Latest | Reference | Unit (owner request:
+  rows read "5.9 4 – 5.5 mmol/L"). Latest and Reference right-align with
+  `tabular-nums` against their `justify-end` headers; Unit left-aligns so
+  the reference→unit gap is constant.
+- **Resolved.** The inactive sort affordance is always visible
+  (`text-muted-foreground/50`, hover deepens); the old
+  `opacity-0 group-hover:opacity-100` was invisible on touch.
+- **Resolved (T1).** Sticky column header, opaque `bg-card`, `z-20` under
+  the frozen header cell (`z-30`); the Biomarker column itself is now
+  frozen (§5.4).
+- **Partially resolved.** Search width fixed in T1 (`w-40 sm:w-64`); the
+  title/subtitle duplication with the tab strip stays deferred with the F7
+  cleanup (§5.5).
 
 ### F10 — Resolution behavior is uneven
 
@@ -369,13 +375,15 @@ attributed the whole shell to `TimelineView` (review comment 1):
   attachment list/viewer, settings, and the visit/instrumental equivalents)
   uses the shared `scrollbar-none` utility; the results table region keeps
   `overflow-auto` for horizontal scrolling.
-- **Document-viewer deviation** (T1 review comment 6): the viewer wrapper is
-  `overflow-y-auto` rather than the sketch's `overflow-hidden`, because
-  `DocumentViewer` still sizes itself intrinsically (image branch `h-[80vh]`,
-  PDF area `fitHeight + 32`). The attachment list above it is capped at
-  `max-h-72` with its own scroll. Follow-up (tracked in the tickets doc, T5):
-  give the viewer root `h-full min-h-0` and its scroll area `flex-1 min-h-0`,
-  drop the intrinsic heights, then restore the wrapper's `overflow-hidden`.
+- **Document-viewer fill** (T1 review comment 6, closed in T5): the timeline
+  detail panes pass a `fill` prop (blood-test, doctor visit, instrumental);
+  at `lg` the viewer root is `h-full min-h-0` and the PDF scroll area
+  `flex-1 min-h-0` and `fitHeight`/`h-[80vh]` pixel sizing is gone, so the
+  wrappers are `overflow-hidden` per the sketch. Below `lg` the intrinsic
+  `h-[80vh]`/content sizing is kept, and the add-entry preview pane does not
+  pass `fill` (a viewport-scoped `lg:` class would collapse its auto-height
+  parent). The attachment list above the viewer stays capped at `max-h-72`
+  with its own scroll.
 
 ### 5.4 Results panel — fixed card header + sticky column header
 
@@ -387,19 +395,43 @@ attributed the whole shell to `TimelineView` (review comment 1):
   </div>
   <div className="min-h-0 flex-1 overflow-auto">
     <div className="min-w-[768px]">
-      <div className={cn(GRID_COLS, 'sticky top-0 z-10 border-b bg-card px-4 py-2.5 ...')}>
+      <div className={cn(GRID_COLS, 'sticky top-0 z-20 border-b bg-card px-4 py-2.5 ...')}>
 ```
 
-- `bg-card` must be **opaque** (today's header row is transparent; rows would
-  show through while scrolling).
+- `bg-card` must be **opaque** (rows would show through while scrolling).
 - Horizontal scrolling moves the sticky header with the columns (correct
   behavior); the wrapper's `min-w-[768px]` keeps borders spanning the scroll
   width, mirroring the flowsheet fix.
 - Below `lg`/on `/demo` the card is auto-height and all of this is inert.
-- Optional Stage 3: freeze the Biomarker column with `sticky left-0` +
-  opaque background (flowsheet precedent) so names stay visible during
-  horizontal scroll at ~1024px. Z-order: header+frozen cell 30, header 20,
-  frozen cells 10.
+- **Column order + numeric alignment + tabular figures (T5)**: order is
+  Latest | Reference | Unit, so a row reads "5.9 4 – 5.5 mmol/L". Latest and
+  Reference right-align (`text-right` cells, `justify-end` headers) and Unit
+  left-aligns, which pins the reference→unit gap to the 12px grid gutter on
+  every row ("4 – 5.5 mmol/L" stays one phrase); all three carry
+  `tabular-nums`. Live A/B verdict: the alternative (Reference left, Unit
+  right) left a 145–195px void that visually attached the unit to the Status
+  badge; accepted trade-off is Reference's ragged left edge and a variable
+  value→reference gap.
+- **Sort affordance (T5)**: the inactive `ArrowUpDown` is always visible at
+  `text-muted-foreground/50`; hover deepens it to full muted. No stacked
+  opacity (a 0.4 opacity over the 50%-alpha icon measures ~253/255 —
+  invisible).
+- **Frozen Biomarker column (T5, resolves open question 2)**: always-on
+  `sticky left-0` — inert when the table does not overflow, so it
+  self-scopes to narrow widths (94px hidden at 1024, 420px at 390). Z-scale:
+  header row `z-20`, frozen header cell `z-30`, frozen data cells `z-10`;
+  the right and bottom fades stay `z-20`, and the left edge fade is gone —
+  the frozen column is the left anchor. Frozen cells carry their own opaque
+  background (`bg-card`; open rows a 40% composite) and replay the row tint
+  via `group-hover`/`group-focus-visible` with an **opaque composite**
+  (`color-mix(in oklab, var(--muted) N%, var(--card))`, N = 50 hover / 40
+  open) — a translucent `bg-muted/50` over the row's own tint would
+  double-stack to ~75% and re-open the seam. Expanded detail panels are not
+  frozen.
+- **Bottom fade (T5)**: `h-12 from-card` (was `h-6`) so the last visible row
+  dissolves over its own height like the history rail's cards instead of
+  being hard-cut mid-glyph; 24/40/48/64px were A/B'd live, 48px keeps the
+  rows above crisp while 64px starts dimming the previous row's baseline.
 
 ### 5.5 Alignment spec (Stage 1b)
 
@@ -690,7 +722,9 @@ browser zoom 100% + 125%):
    deferred out of Stage 1; Stage 1b used the spacer/low-churn variant (5.5 —
    the spacer has since been removed by the 28px single-row alignment
    revision); revisit with the F7 duplication cleanup.
-2. Frozen Biomarker column at narrow widths: worth the z-order complexity?
+2. ~~Frozen Biomarker column at narrow widths: worth the z-order
+   complexity?~~ **Resolved (T5)**: shipped always-on (§5.4) with an opaque
+   composite hover tint; lint/typecheck/tests green.
 3. Month grouping in the rail: Stage 2 or later?
 4. Status summary display: three directional chips (`↑2 ↓1 !1`, proposed,
    reusing `badgeVariants`) vs. a single "3 flagged" chip with a breakdown

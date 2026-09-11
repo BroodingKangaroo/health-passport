@@ -27,7 +27,7 @@ import { ExpandedBiomarkerDetails } from './expanded-biomarker-details'
 import type { BiomarkerResult, MergedSource, Status } from '@/lib/types'
 
 const GRID_COLS =
-  'grid grid-cols-[1.5fr_1.5fr_1fr_1fr_1.3fr_1.2fr_40px] items-center gap-x-3'
+  'grid grid-cols-[1.5fr_1.5fr_1fr_1.3fr_1fr_1.2fr_40px] items-center gap-x-3'
 
 type SortCol = 'name' | 'original' | 'value' | 'unit' | 'reference' | 'status'
 type SortDir = 'asc' | 'desc'
@@ -163,19 +163,17 @@ export function ResultsPanel({
   const locale = useLocale()
   const titleId = useId()
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [hOverflow, setHOverflow] = useState({ left: false, right: false })
+  const [hOverflow, setHOverflow] = useState({ right: false })
   const [bottomFade, setBottomFade] = useState(false)
 
-  // The region's scrollbar is hidden, so gradient fades signal horizontally
-  // hidden columns when the 768px table overflows its pane (same affordance
-  // as the HistoryList chips row / tab strip).
+  // The region's scrollbar is hidden, so a right-edge gradient fade signals
+  // horizontally hidden columns when the 768px table overflows its pane (same
+  // affordance as the HistoryList chips row / tab strip). There is no left
+  // fade: the frozen Biomarker column is the left anchor instead.
   const updateHOverflow = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
-    setHOverflow({
-      left: el.scrollLeft > 2,
-      right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2,
-    })
+    setHOverflow({ right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2 })
   }, [])
 
   // Vertical counterpart: dim the bottom edge only while rows remain below
@@ -299,12 +297,6 @@ export function ResultsPanel({
       </div>
 
       <div className="relative min-h-0 flex-1">
-        {hOverflow.left && (
-          <span
-            aria-hidden
-            className="pointer-events-none absolute inset-y-0 left-0 z-20 w-5 bg-gradient-to-r from-card to-transparent"
-          />
-        )}
         {hOverflow.right && (
           <span
             aria-hidden
@@ -314,7 +306,7 @@ export function ResultsPanel({
         {bottomFade && (
           <span
             aria-hidden
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-6 bg-gradient-to-t from-card to-transparent"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-12 bg-gradient-to-t from-card to-transparent"
           />
         )}
         <div
@@ -328,14 +320,14 @@ export function ResultsPanel({
           <div
             className={cn(
               GRID_COLS,
-              'sticky top-0 z-10 border-b border-border bg-card px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground',
+              'sticky top-0 z-20 border-b border-border bg-card px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground',
             )}
           >
-            <SortHeaderCell col="name" label={t('colBiomarker')} sort={sort} onCycle={cycleSort} />
+            <SortHeaderCell frozen col="name" label={t('colBiomarker')} sort={sort} onCycle={cycleSort} />
             <SortHeaderCell col="original" label={t('colOriginalName')} sort={sort} onCycle={cycleSort} />
-            <SortHeaderCell col="value" label={t('colLatest')} sort={sort} onCycle={cycleSort} />
+            <SortHeaderCell align="right" col="value" label={t('colLatest')} sort={sort} onCycle={cycleSort} />
+            <SortHeaderCell align="right" col="reference" label={t('colReference')} sort={sort} onCycle={cycleSort} />
             <SortHeaderCell col="unit" label={t('colUnit')} sort={sort} onCycle={cycleSort} />
-            <SortHeaderCell col="reference" label={t('colReference')} sort={sort} onCycle={cycleSort} />
             <SortHeaderCell col="status" label={t('colStatus')} sort={sort} onCycle={cycleSort} />
             <span aria-hidden />
           </div>
@@ -390,11 +382,15 @@ function SortHeaderCell({
   label,
   sort,
   onCycle,
+  align = 'left',
+  frozen = false,
 }: {
   col: SortCol
   label: string
   sort: SortState | null
   onCycle: (col: SortCol) => void
+  align?: 'left' | 'right'
+  frozen?: boolean
 }) {
   const t = useTranslations('timeline.resultsPanel')
   const active = sort?.col === col
@@ -402,7 +398,11 @@ function SortHeaderCell({
   return (
     <div
       role="columnheader"
-      className="group min-w-0"
+      className={cn(
+        'group min-w-0',
+        align === 'right' && 'text-right',
+        frozen && 'sticky left-0 z-30 bg-card',
+      )}
       aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : undefined}
     >
       <button
@@ -411,6 +411,7 @@ function SortHeaderCell({
         onClick={() => onCycle(col)}
         className={cn(
           'flex w-full min-w-0 items-center gap-1 text-left transition-colors',
+          align === 'right' && 'justify-end',
           active ? 'text-foreground' : 'hover:text-foreground',
         )}
       >
@@ -423,7 +424,7 @@ function SortHeaderCell({
         )}
         {!active && (
           <ArrowUpDown
-            className="size-3 shrink-0 text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            className="size-3 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground"
             aria-hidden
           />
         )}
@@ -457,12 +458,22 @@ function FlowRow({
           if (expandable) activateOnKey(e, onToggle)
         }}
         className={cn(
+          'group',
           GRID_COLS,
           'px-4 py-3 text-sm transition-colors',
           expandable && 'cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none',
         )}
       >
-        <span className="truncate font-semibold text-foreground" title={biomarker.definition.names.en}>
+        <span
+          className={cn(
+            'sticky left-0 z-10 truncate font-semibold text-foreground',
+            isOpen
+              ? 'bg-[color-mix(in_oklab,var(--muted)_40%,var(--card))]'
+              : 'bg-card',
+            'group-focus-visible:bg-[color-mix(in_oklab,var(--muted)_50%,var(--card))] group-hover:bg-[color-mix(in_oklab,var(--muted)_50%,var(--card))]',
+          )}
+          title={biomarker.definition.names.en}
+        >
           {biomarker.definition.names.en}
         </span>
         <span
@@ -471,14 +482,14 @@ function FlowRow({
         >
           {biomarker.original_name || biomarker.definition.names.ru}
         </span>
-        <span className="font-medium text-foreground">
+        <span className="text-right font-medium tabular-nums text-foreground">
           {qualitativeLabel(formatNumber(biomarker.value), locale) || '—'}
         </span>
-        <span className="text-muted-foreground">
-          {unitLabel(displayUnit(biomarker.definition), biomarker.reference ?? biomarker.definition.reference, locale)}
-        </span>
-        <span className="text-muted-foreground">
+        <span className="text-right tabular-nums text-muted-foreground">
           {formatReference(biomarker.reference ?? biomarker.definition.reference, null, { lang: locale })}
+        </span>
+        <span className="tabular-nums text-muted-foreground">
+          {unitLabel(displayUnit(biomarker.definition), biomarker.reference ?? biomarker.definition.reference, locale)}
         </span>
         <span>
           <StatusBadge status={biomarker.status} />

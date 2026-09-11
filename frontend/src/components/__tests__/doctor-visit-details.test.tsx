@@ -22,8 +22,8 @@ const renderI18n = ((ui: React.ReactElement, options?: Parameters<typeof render>
 
 vi.mock('next/dynamic', () => ({
   default: () => {
-    const MockComponent = ({ url }: { url: string }) => (
-      <div data-testid="document-viewer" data-url={url}>
+    const MockComponent = ({ url, fill }: { url: string; fill?: boolean }) => (
+      <div data-testid="document-viewer" data-url={url} data-fill={fill ? 'true' : 'false'}>
         Document Viewer: {url}
       </div>
     )
@@ -64,6 +64,8 @@ describe('DoctorVisitDetails', () => {
 
     const viewer = screen.getByTestId('document-viewer')
     expect(viewer).toHaveAttribute('data-url', '/static/uploads/file1.pdf')
+    expect(viewer).toHaveAttribute('data-fill', 'true')
+    expect(viewer.parentElement?.className).toContain('overflow-hidden')
   })
 
   it('switches DocumentViewer url when clicking a different attachment', () => {
