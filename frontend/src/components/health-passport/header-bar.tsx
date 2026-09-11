@@ -110,7 +110,11 @@ export function HeaderBar() {
         </div>
       </button>
 
-      <div className="flex items-center gap-2">
+      {/* flex-wrap: the action buttons are all shrink-0 (Button base), so
+          without wrapping this row's min-content (~450px EN / wider in RU)
+          exceeds phone widths and pushes the whole page into horizontal
+          scroll. Wrapping keeps every action labeled and reachable. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
         <Button size="sm" onClick={() => navigate('/add-entry')}>
           <Plus className="size-3.5" />
           {t('addNewEntry')}

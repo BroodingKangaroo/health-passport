@@ -31,7 +31,7 @@ export function DemoTimelineView() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="flex items-center justify-between gap-4 border-b border-border bg-card px-5 py-3">
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border bg-card px-5 py-3">
         <div className="flex items-center gap-3">
           <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <HeartPulse className="size-5" aria-hidden />

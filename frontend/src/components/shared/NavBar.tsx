@@ -27,7 +27,7 @@ export function NavBar({ activeTab }: { activeTab: NavTab }) {
 
   return (
     <nav className="border-b border-border bg-card px-5 print:hidden">
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-1">
         {TABS.map((tab) => {
           const isActive = tab.id === activeTab
           return (
