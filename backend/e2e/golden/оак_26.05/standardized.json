@@ -518,7 +518,7 @@
       "raw_range_string": "отсутствуют",
       "standard_name_en": "Nucleated Erythrocytes",
       "standard_value": 0.0,
-      "standard_unit": "кл/100 лейк.",
+      "standard_unit": "cells/100 leukocytes",
       "reference": {
         "kind": "interval",
         "low": null,

@@ -10,6 +10,71 @@ data layer, kept for traceability.
 `паразиты_1` (fix #9, offline only) are handled below; goldens verified &
 committed.
 
+## Pending system work — `helix_2023` (2026-09-12)
+
+`golden/helix_2023/standardized.json` was regenerated live, independently
+reviewed (all 47 document rows present), then **hand-corrected to the target
+output**. The live pipeline does not produce this yet; the FOR-REVIEW
+`_status` marker stays so the case cannot fail CI until the system catches
+up. Changes required to match the target:
+
+1. **Lipid curation + display overrides.** Curate the exact spellings
+   `ЛПВП-холестерин (HDL)` → `2085-9` and `ЛПНП-холестерин (LDL)` → `2089-1`
+   (only the `Холестерин ЛПВП` / `Холестерин ЛПНП` word order exists today)
+   and add `loinc_name_overrides.json` entries `2085-9 → "Cholesterol in
+   HDL"`, `2089-1 → "Cholesterol in LDL"`. Without the override the
+   `loinc_aliases.json` redirect folds both codes into `2093-3` (total
+   cholesterol) — confirmed root cause of the original collision.
+2. **MPV / RDW-SD curation + overrides.** `Средний объем тромбоцитов (MPV)`
+   → `32623-1`, override `"Mean platelet volume"`; `Ширина распределения
+   эритроцитов (RDW-SD)` → `21000-5`, override `"RBC distribution width
+   (RDW-SD)"`. Both are rank-0 codes; `_promote_loinc_from_csv` covers them
+   once curated. RDW-CV keeps `788-0`.
+3. **No-doc-range unit handling.** The legacy NULL-canonical path must not
+   emit a converted magnitude under the raw unit label. The target keeps the
+   document units (`Холестерин` 4.2 mmol/L, `Глюкоза (сыворотка)` 5.17
+   mmol/L vs the old 162.393/93.1427 labelled mmol/L).
+4. **Stratified reference bands → patient-applicable intervals.** The
+   cholesterol / LDL / HDL / glucose band texts and `Билирубин общий`'s age
+   note now carry the applicable band as an interval with `status: normal`
+   (cholesterol `{low: null, high: 5.17}`, LDL `{null, 2.59}`, HDL male
+   `{1.45, null}`, bilirubin adult `{null, 21}`, glucose adult <60
+   `{4.11, 5.89}`). `parse_reference` returns `None` for these texts today;
+   the sex/age-banded rows (HDL, glucose, bilirubin) need the patient's
+   sex/age at match time. The full printed text stays in `raw_range_string`.
+5. **Serology numeric index.** Anti-HCV / HBsAg keep the numeric index with
+   the negative cutoff as an interval (`{low: null, high: 0.9}`, status
+   `normal`) instead of `normalize_qual(nonzero)` → `"Present"`. The 3-band
+   rule collapses to binary — a grey-zone value would read `high`.
+6. **Extraction metadata.** `provider` must be the signer (`Лойко И.А.`),
+   never the patient header; `«Хроническая усталость»` is the Helix test
+   profile, so it belongs in `notes` — `visit_data.diagnosis` stays empty.
+   The СОЭ raw name keeps its full form (`…, венозная кровь`).
+7. **Мочевина code.** Target is `22664-7` (`Urea`, mmol/L), not `3094-0`
+   (`Urea nitrogen`/BUN, mg/dL); update the curated `Мочевина` synonym.
+8. **Unit/category typing.** `standard_unit` must always be English/UCUM
+   canonical: the CBC counts are translated `10^9 клеток/л` → `10*3/uL` and
+   `10^12 клеток/л` → `10*6/uL` (the seeded def units, matching
+   `оак_26.05`). `Коэффициент больших тромбоцитов (P-LCR)` keeps its printed
+   `%` unit (was anchored `ratio`); PDW / P-LCR categories → `Complete Blood
+   Count`; `Индекс атерогенности` → `Lipid Panel` (genuinely dimensionless
+   `ratio`); were `Кровь (общий анализ)` / `Биохимия` leaks.
+9. **Offline baseline after the English-unit targets.** `validate_offline.py`
+   auto-discovers `standardized.json`, so the corrected FOR-REVIEW case moves
+   the deterministic baseline from 5 diffs / 2 cases to **106 diffs / 4
+   cases** (`helix_2023` 100 — live-only rows fall back to `local-default-*`
+   offline, `normalize_unit` leaves the Cyrillic raw units untranslated, and
+   the stratified-band targets need patient sex/age; plus the existing 5 and
+   the new `оак_26.05` `Нормобласты` unit diff). Decide whether the guard
+   should skip `_status`-marked goldens or track a new baseline.
+10. **Bounded values keep the operator only in `raw_value`.** `CRP < 0.6`
+    stays numeric `0.6` (the schema has no relational field); showing
+    "below detection limit" in the UI is a schema/product change, not a
+    golden edit. Likewise the Helix «зона повышенного внимания» boxes (only
+    EO %, ALT, vitamin D) are a lab-specific alert channel — `status` stays
+    reference-derived per the model, so WBC / MPV / NEUT% / … legitimately
+    read `high`/`low` against the printed intervals.
+
 ## Local vs global scope
 
 - **`Активированные лимфоциты`** is intentionally `scope=local` (per-user). There
@@ -422,3 +487,10 @@ weakening value gates), mirroring the translated_en_alt precedent:
 - LOINC defs are promoted from `data/Loinc.csv` on first demand and persisted.
 - `app/mock_db.py` is **not** part of the server data path — the server seeds
   from `Loinc.csv` via `seed_loinc`. Edits there have no effect.
+- **`standard_unit` is English/UCUM on every golden** (2026-09-12): the
+  `helix_2023` target translates the CBC counts (`10^9 клеток/л` →
+  `10*3/uL`, `10^12 клеток/л` → `10*6/uL`), and verified `оак_26.05`
+  `Нормобласты` now carries `cells/100 leukocytes` (was `кл/100 лейк.`).
+  `converters.normalize_unit` has no `кл/100 лейк.` entry yet, so the live
+  `оак_26.05` case (and the offline guard) will mismatch until the
+  translator is fixed.

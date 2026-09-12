@@ -1,0 +1,1021 @@
+{
+  "entry_type": "blood_test",
+  "date": "20.02.2023",
+  "time": "07:54",
+  "clinic": "ООО «Международная лаборатория Хеликс»",
+  "provider": "Лойко И.А.",
+  "title": "Общий анализ крови (ОАК), биохимический анализ, вирусологические тесты",
+  "notes": "Хроническая усталость",
+  "source_language": "ru",
+  "biomarkers": [
+    {
+      "raw_name": "Тромбокрит (PCT)",
+      "raw_value": "0.32",
+      "raw_unit": "%",
+      "raw_range_string": "0.15 - 0.45",
+      "standard_name_en": "Plateletcrit",
+      "standard_value": 0.32,
+      "standard_unit": "%",
+      "reference": {
+        "kind": "interval",
+        "low": 0.15,
+        "high": 0.45
+      },
+      "status": "normal",
+      "category": "Complete Blood Count",
+      "definition_id": "51637-7",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Средний объем тромбоцитов (MPV)",
+      "raw_value": "10.6",
+      "raw_unit": "фл",
+      "raw_range_string": "7.4 - 10.4",
+      "standard_name_en": "Mean platelet volume",
+      "standard_value": 10.6,
+      "standard_unit": "fL",
+      "reference": {
+        "kind": "interval",
+        "low": 7.4,
+        "high": 10.4
+      },
+      "status": "high",
+      "category": "Complete Blood Count",
+      "definition_id": "32623-1",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Нейтрофильные гранулоциты (NEUT %)",
+      "raw_value": "25.9",
+      "raw_unit": "%",
+      "raw_range_string": "40 - 72",
+      "standard_name_en": "Neutrophils, %",
+      "standard_value": 25.9,
+      "standard_unit": "%",
+      "reference": {
+        "kind": "interval",
+        "low": 40.0,
+        "high": 72.0
+      },
+      "status": "low",
+      "category": "Complete Blood Count",
+      "definition_id": "770-8",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Нейтрофильные гранулоциты (NEUT)",
+      "raw_value": "2.5",
+      "raw_unit": "10^9 клеток/л",
+      "raw_range_string": "2 - 5.5",
+      "standard_name_en": "Neutrophils",
+      "standard_value": 2.5,
+      "standard_unit": "10*3/uL",
+      "reference": {
+        "kind": "interval",
+        "low": 2.0,
+        "high": 5.5
+      },
+      "status": "normal",
+      "category": "Complete Blood Count",
+      "definition_id": "751-8",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "ЛПНП-холестерин (LDL)",
+      "raw_value": "2.46",
+      "raw_unit": "ммоль/л",
+      "raw_range_string": "Уровни с учетом риска развития коронарной болезни сердца: <2.59 - оптимальный, 2.59-3.34 - выше оптимального, 3.37-4.12 - пригранично-высокий, 4.14-4.89 - высокий, ≥4.92 - очень высокий",
+      "standard_name_en": "Cholesterol in LDL",
+      "standard_value": 2.46,
+      "standard_unit": "mmol/L",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 2.59
+      },
+      "status": "normal",
+      "category": "Lipid Panel",
+      "definition_id": "2089-1",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "С-реактивный белок (CRP)",
+      "raw_value": "< 0.6",
+      "raw_unit": "мг/л",
+      "raw_range_string": "0.01 - 5",
+      "standard_name_en": "C reactive protein",
+      "standard_value": 0.6,
+      "standard_unit": "mg/L",
+      "reference": {
+        "kind": "interval",
+        "low": 0.01,
+        "high": 5.0
+      },
+      "status": "normal",
+      "category": "Chemistry",
+      "definition_id": "1988-5",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Тиреотропный гормон (ТТГ)",
+      "raw_value": "2.63",
+      "raw_unit": "мкМЕ/мл",
+      "raw_range_string": "0.27 - 4.2",
+      "standard_name_en": "Thyrotropin",
+      "standard_value": 2.63,
+      "standard_unit": "uIU/mL",
+      "reference": {
+        "kind": "interval",
+        "low": 0.27,
+        "high": 4.2
+      },
+      "status": "normal",
+      "category": "Thyroid Panel",
+      "definition_id": "3016-3",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Общий витамин D (25-ОН витамин D)",
+      "raw_value": "22.33",
+      "raw_unit": "нг/мл",
+      "raw_range_string": "> 30",
+      "standard_name_en": "Vitamin D+Metabolites",
+      "standard_value": 22.33,
+      "standard_unit": "ng/mL",
+      "reference": {
+        "kind": "interval",
+        "low": 30.0,
+        "high": null
+      },
+      "status": "low",
+      "category": "Chemistry",
+      "definition_id": "35365-6",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Калий ионизированный",
+      "raw_value": "4.73",
+      "raw_unit": "ммоль/л",
+      "raw_range_string": "3.5 - 5.1",
+      "standard_name_en": "Potassium",
+      "standard_value": 4.73,
+      "standard_unit": "mmol/L",
+      "reference": {
+        "kind": "interval",
+        "low": 3.5,
+        "high": 5.1
+      },
+      "status": "normal",
+      "category": "Chemistry",
+      "definition_id": "2823-3",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Натрий ионизированный",
+      "raw_value": "139",
+      "raw_unit": "ммоль/л",
+      "raw_range_string": "135 - 145",
+      "standard_name_en": "Sodium",
+      "standard_value": 139.0,
+      "standard_unit": "mmol/L",
+      "reference": {
+        "kind": "interval",
+        "low": 135.0,
+        "high": 145.0
+      },
+      "status": "normal",
+      "category": "Chemistry",
+      "definition_id": "2951-2",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Кальций общий",
+      "raw_value": "2.47",
+      "raw_unit": "ммоль/л",
+      "raw_range_string": "2.15 - 2.5",
+      "standard_name_en": "Calcium",
+      "standard_value": 2.47,
+      "standard_unit": "mmol/L",
+      "reference": {
+        "kind": "interval",
+        "low": 2.15,
+        "high": 2.5
+      },
+      "status": "normal",
+      "category": "Chemistry",
+      "definition_id": "17861-6",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Лейкоциты (WBC)",
+      "raw_value": "9.64",
+      "raw_unit": "10^9 клеток/л",
+      "raw_range_string": "4 - 9",
+      "standard_name_en": "Leukocytes",
+      "standard_value": 9.64,
+      "standard_unit": "10*3/uL",
+      "reference": {
+        "kind": "interval",
+        "low": 4.0,
+        "high": 9.0
+      },
+      "status": "high",
+      "category": "Complete Blood Count",
+      "definition_id": "6690-2",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Эритроциты (RBC)",
+      "raw_value": "5.2",
+      "raw_unit": "10^12 клеток/л",
+      "raw_range_string": "4 - 5.7",
+      "standard_name_en": "Erythrocytes",
+      "standard_value": 5.2,
+      "standard_unit": "10*6/uL",
+      "reference": {
+        "kind": "interval",
+        "low": 4.0,
+        "high": 5.7
+      },
+      "status": "normal",
+      "category": "Complete Blood Count",
+      "definition_id": "789-8",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Гемоглобин (HGB)",
+      "raw_value": "158",
+      "raw_unit": "г/л",
+      "raw_range_string": "130 - 170",
+      "standard_name_en": "Hemoglobin",
+      "standard_value": 158.0,
+      "standard_unit": "g/L",
+      "reference": {
+        "kind": "interval",
+        "low": 130.0,
+        "high": 170.0
+      },
+      "status": "normal",
+      "category": "Complete Blood Count",
+      "definition_id": "718-7",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Гематокрит (HCT)",
+      "raw_value": "47.3",
+      "raw_unit": "%",
+      "raw_range_string": "40 - 48",
+      "standard_name_en": "Hematocrit",
+      "standard_value": 47.3,
+      "standard_unit": "%",
+      "reference": {
+        "kind": "interval",
+        "low": 40.0,
+        "high": 48.0
+      },
+      "status": "normal",
+      "category": "Complete Blood Count",
+      "definition_id": "4544-3",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Тромбоциты (PLT)",
+      "raw_value": "299",
+      "raw_unit": "10^9 клеток/л",
+      "raw_range_string": "150 - 450",
+      "standard_name_en": "Platelets",
+      "standard_value": 299.0,
+      "standard_unit": "10*3/uL",
+      "reference": {
+        "kind": "interval",
+        "low": 150.0,
+        "high": 450.0
+      },
+      "status": "normal",
+      "category": "Complete Blood Count",
+      "definition_id": "777-3",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Лимфоциты (LYMPH)",
+      "raw_value": "3.93",
+      "raw_unit": "10^9 клеток/л",
+      "raw_range_string": "1.2 - 3",
+      "standard_name_en": "Lymphocytes",
+      "standard_value": 3.93,
+      "standard_unit": "10*3/uL",
+      "reference": {
+        "kind": "interval",
+        "low": 1.2,
+        "high": 3.0
+      },
+      "status": "high",
+      "category": "Complete Blood Count",
+      "definition_id": "26474-7",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Лимфоциты (LYMPH%)",
+      "raw_value": "40.8",
+      "raw_unit": "%",
+      "raw_range_string": "20 - 40",
+      "standard_name_en": "Lymphocytes, %",
+      "standard_value": 40.8,
+      "standard_unit": "%",
+      "reference": {
+        "kind": "interval",
+        "low": 20.0,
+        "high": 40.0
+      },
+      "status": "high",
+      "category": "Complete Blood Count",
+      "definition_id": "736-9",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Моноциты (MONO%)",
+      "raw_value": "8.2",
+      "raw_unit": "%",
+      "raw_range_string": "2 - 10",
+      "standard_name_en": "Monocytes, %",
+      "standard_value": 8.2,
+      "standard_unit": "%",
+      "reference": {
+        "kind": "interval",
+        "low": 2.0,
+        "high": 10.0
+      },
+      "status": "normal",
+      "category": "Complete Blood Count",
+      "definition_id": "5905-5",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Моноциты (MONO)",
+      "raw_value": "0.79",
+      "raw_unit": "10^9 клеток/л",
+      "raw_range_string": "0.06 - 0.8",
+      "standard_name_en": "Monocytes",
+      "standard_value": 0.79,
+      "standard_unit": "10*3/uL",
+      "reference": {
+        "kind": "interval",
+        "low": 0.06,
+        "high": 0.8
+      },
+      "status": "normal",
+      "category": "Complete Blood Count",
+      "definition_id": "742-7",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Эозинофилы (EO%)",
+      "raw_value": "23.9",
+      "raw_unit": "%",
+      "raw_range_string": "0.1 - 6",
+      "standard_name_en": "Eosinophils, %",
+      "standard_value": 23.9,
+      "standard_unit": "%",
+      "reference": {
+        "kind": "interval",
+        "low": 0.1,
+        "high": 6.0
+      },
+      "status": "high",
+      "category": "Complete Blood Count",
+      "definition_id": "713-8",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Эозинофилы (EO)",
+      "raw_value": "2.3",
+      "raw_unit": "10^9 клеток/л",
+      "raw_range_string": "0.02 - 0.3",
+      "standard_name_en": "Eosinophils",
+      "standard_value": 2.3,
+      "standard_unit": "10*3/uL",
+      "reference": {
+        "kind": "interval",
+        "low": 0.02,
+        "high": 0.3
+      },
+      "status": "high",
+      "category": "Complete Blood Count",
+      "definition_id": "711-2",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Базофилы (BASO%)",
+      "raw_value": "1.2",
+      "raw_unit": "%",
+      "raw_range_string": "0.0001 - 1",
+      "standard_name_en": "Basophils, %",
+      "standard_value": 1.2,
+      "standard_unit": "%",
+      "reference": {
+        "kind": "interval",
+        "low": 0.0001,
+        "high": 1.0
+      },
+      "status": "high",
+      "category": "Complete Blood Count",
+      "definition_id": "706-2",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Базофилы (BASO)",
+      "raw_value": "0.12",
+      "raw_unit": "10^9 клеток/л",
+      "raw_range_string": "≤ 0.1",
+      "standard_name_en": "Basophils",
+      "standard_value": 0.12,
+      "standard_unit": "10*3/uL",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 0.1
+      },
+      "status": "high",
+      "category": "Complete Blood Count",
+      "definition_id": "704-7",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "СОЭ (метод кинетики агрегации эритроцитов), венозная кровь",
+      "raw_value": "3",
+      "raw_unit": "мм/час",
+      "raw_range_string": "2 - 15",
+      "standard_name_en": "ESR",
+      "standard_value": 3.0,
+      "standard_unit": "mm/h",
+      "reference": {
+        "kind": "interval",
+        "low": 2.0,
+        "high": 15.0
+      },
+      "status": "normal",
+      "category": "Complete Blood Count",
+      "definition_id": "4537-7",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Общий белок",
+      "raw_value": "79.6",
+      "raw_unit": "г/л",
+      "raw_range_string": "66 - 87",
+      "standard_name_en": "Protein",
+      "standard_value": 79.6,
+      "standard_unit": "g/L",
+      "reference": {
+        "kind": "interval",
+        "low": 66.0,
+        "high": 87.0
+      },
+      "status": "normal",
+      "category": "Chemistry",
+      "definition_id": "2885-2",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Холестерин",
+      "raw_value": "4.2",
+      "raw_unit": "ммоль/л",
+      "raw_range_string": "желательный уровень холестерина <5.17, пограничный уровень холестерина 5.17-6.18, высокий уровень холестерина >6.21",
+      "standard_name_en": "Cholesterol",
+      "standard_value": 4.2,
+      "standard_unit": "mmol/L",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 5.17
+      },
+      "status": "normal",
+      "category": "Lipid Panel",
+      "definition_id": "2093-3",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Билирубин общий",
+      "raw_value": "11.1",
+      "raw_unit": "мкмоль/л",
+      "raw_range_string": "Взрослые: до 21, Дети: >1месяца: до 17",
+      "standard_name_en": "Bilirubin",
+      "standard_value": 11.1,
+      "standard_unit": "µmol/L",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 21.0
+      },
+      "status": "normal",
+      "category": "Liver Function",
+      "definition_id": "1975-2",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Билирубин прямой",
+      "raw_value": "4",
+      "raw_unit": "мкмоль/л",
+      "raw_range_string": "0.3 - 5",
+      "standard_name_en": "Direct Bilirubin",
+      "standard_value": 4.0,
+      "standard_unit": "µmol/L",
+      "reference": {
+        "kind": "interval",
+        "low": 0.3,
+        "high": 5.0
+      },
+      "status": "normal",
+      "category": "Chemistry",
+      "definition_id": "1968-7",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Гликированный гемоглобин",
+      "raw_value": "5.08",
+      "raw_unit": "%",
+      "raw_range_string": "4.8 - 5.9",
+      "standard_name_en": "Hemoglobin A1c",
+      "standard_value": 5.08,
+      "standard_unit": "%",
+      "reference": {
+        "kind": "interval",
+        "low": 4.8,
+        "high": 5.9
+      },
+      "status": "normal",
+      "category": "Chemistry",
+      "definition_id": "4548-4",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Глюкоза (сыворотка)",
+      "raw_value": "5.17",
+      "raw_unit": "ммоль/л",
+      "raw_range_string": "Сыворотка: взрослые < 60 лет 4.11-5.89; 60-90 лет 4.56-6.38; > 90 лет 4.16-6.72. Дети: 3.33-5.55; Новорожденные (1 день): 2.22-3.33; Новорожденные (> 1 дня): 2.78-4.44",
+      "standard_name_en": "Glucose",
+      "standard_value": 5.17,
+      "standard_unit": "mmol/L",
+      "reference": {
+        "kind": "interval",
+        "low": 4.11,
+        "high": 5.89
+      },
+      "status": "normal",
+      "category": "Comprehensive Metabolic Panel",
+      "definition_id": "2345-7",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Аланинаминотрансфераза (АЛТ)",
+      "raw_value": "43.4",
+      "raw_unit": "Ед/л",
+      "raw_range_string": "1 - 41",
+      "standard_name_en": "Alanine aminotransferase",
+      "standard_value": 43.4,
+      "standard_unit": "U/L",
+      "reference": {
+        "kind": "interval",
+        "low": 1.0,
+        "high": 41.0
+      },
+      "status": "high",
+      "category": "Liver Function",
+      "definition_id": "1742-6",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Аспартатаминотрансфераза (АСТ)",
+      "raw_value": "34.9",
+      "raw_unit": "Ед/л",
+      "raw_range_string": "1 - 40",
+      "standard_name_en": "Aspartate aminotransferase",
+      "standard_value": 34.9,
+      "standard_unit": "U/L",
+      "reference": {
+        "kind": "interval",
+        "low": 1.0,
+        "high": 40.0
+      },
+      "status": "normal",
+      "category": "Liver Function",
+      "definition_id": "1920-8",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Мочевина",
+      "raw_value": "4.7",
+      "raw_unit": "ммоль/л",
+      "raw_range_string": "2.76 - 8.07",
+      "standard_name_en": "Urea",
+      "standard_value": 4.7,
+      "standard_unit": "mmol/L",
+      "reference": {
+        "kind": "interval",
+        "low": 2.76,
+        "high": 8.07
+      },
+      "status": "normal",
+      "category": "Chemistry",
+      "definition_id": "22664-7",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Креатинин",
+      "raw_value": "97",
+      "raw_unit": "мкмоль/л",
+      "raw_range_string": "62 - 106",
+      "standard_name_en": "Creatinine",
+      "standard_value": 97.0,
+      "standard_unit": "µmol/L",
+      "reference": {
+        "kind": "interval",
+        "low": 62.0,
+        "high": 106.0
+      },
+      "status": "normal",
+      "category": "Comprehensive Metabolic Panel",
+      "definition_id": "2160-0",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Щелочная фосфатаза (ЩФ)",
+      "raw_value": "71",
+      "raw_unit": "Ед/л",
+      "raw_range_string": "40 - 129",
+      "standard_name_en": "Alkaline phosphatase",
+      "standard_value": 71.0,
+      "standard_unit": "U/L",
+      "reference": {
+        "kind": "interval",
+        "low": 40.0,
+        "high": 129.0
+      },
+      "status": "normal",
+      "category": "Chemistry",
+      "definition_id": "6768-6",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Средний объем эритроцита (MCV)",
+      "raw_value": "91",
+      "raw_unit": "фл",
+      "raw_range_string": "80 - 100",
+      "standard_name_en": "MCV",
+      "standard_value": 91.0,
+      "standard_unit": "fL",
+      "reference": {
+        "kind": "interval",
+        "low": 80.0,
+        "high": 100.0
+      },
+      "status": "normal",
+      "category": "Complete Blood Count",
+      "definition_id": "787-2",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Среднее содержание гемоглобина в эритроците (MCH)",
+      "raw_value": "30.4",
+      "raw_unit": "пг",
+      "raw_range_string": "27 - 33.3",
+      "standard_name_en": "MCH",
+      "standard_value": 30.4,
+      "standard_unit": "pg",
+      "reference": {
+        "kind": "interval",
+        "low": 27.0,
+        "high": 33.3
+      },
+      "status": "normal",
+      "category": "Complete Blood Count",
+      "definition_id": "785-6",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Средняя концентрация гемоглобина в эритроците (MCHC)",
+      "raw_value": "334",
+      "raw_unit": "г/л",
+      "raw_range_string": "300 - 380",
+      "standard_name_en": "MCHC",
+      "standard_value": 334.0,
+      "standard_unit": "g/L",
+      "reference": {
+        "kind": "interval",
+        "low": 300.0,
+        "high": 380.0
+      },
+      "status": "normal",
+      "category": "Complete Blood Count",
+      "definition_id": "786-4",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Ширина распределения эритроцитов (RDW-SD)",
+      "raw_value": "45.9",
+      "raw_unit": "фл",
+      "raw_range_string": "35.1 - 43.9",
+      "standard_name_en": "RBC distribution width (RDW-SD)",
+      "standard_value": 45.9,
+      "standard_unit": "fL",
+      "reference": {
+        "kind": "interval",
+        "low": 35.1,
+        "high": 43.9
+      },
+      "status": "high",
+      "category": "Complete Blood Count",
+      "definition_id": "21000-5",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Ширина распределения эритроцитов (RDW-CV)",
+      "raw_value": "13.7",
+      "raw_unit": "%",
+      "raw_range_string": "11.5 - 14.5",
+      "standard_name_en": "RBC distribution width",
+      "standard_value": 13.7,
+      "standard_unit": "%",
+      "reference": {
+        "kind": "interval",
+        "low": 11.5,
+        "high": 14.5
+      },
+      "status": "normal",
+      "category": "Complete Blood Count",
+      "definition_id": "788-0",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Ширина распределения тромбоцитов по объемам (PDW)",
+      "raw_value": "11.4",
+      "raw_unit": "%",
+      "raw_range_string": "10 - 20",
+      "standard_name_en": "Platelet Distribution Width",
+      "standard_value": 11.4,
+      "standard_unit": "%",
+      "reference": {
+        "kind": "interval",
+        "low": 10.0,
+        "high": 20.0
+      },
+      "status": "normal",
+      "category": "Complete Blood Count",
+      "definition_id": "local-492042b0124e496da8b9daa6b69fe17e-6122c72a0f2a",
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Коэффициент больших тромбоцитов (P-LCR)",
+      "raw_value": "28.7",
+      "raw_unit": "%",
+      "raw_range_string": "17.5 - 42.3",
+      "standard_name_en": "Large Cell Ratio",
+      "standard_value": 28.7,
+      "standard_unit": "%",
+      "reference": {
+        "kind": "interval",
+        "low": 17.5,
+        "high": 42.3
+      },
+      "status": "normal",
+      "category": "Complete Blood Count",
+      "definition_id": "local-492042b0124e496da8b9daa6b69fe17e-2ea5e5943e6d",
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Индекс атерогенности",
+      "raw_value": "1.84",
+      "raw_unit": "Ед",
+      "raw_range_string": "< 3",
+      "standard_name_en": "Atherogenic Index",
+      "standard_value": 1.84,
+      "standard_unit": "ratio",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 3.0
+      },
+      "status": "normal",
+      "category": "Lipid Panel",
+      "definition_id": "local-492042b0124e496da8b9daa6b69fe17e-0f27e30ba234",
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": true
+    },
+    {
+      "raw_name": "Вирус гепатита C (Anti-HCV), антитела (качеств.)",
+      "raw_value": "0.05",
+      "raw_unit": "Индекс",
+      "raw_range_string": "до 0.9 - отрицательный (нереактивный), от 0.9 до 1.0 - серая зона (пограничный), от 1.0 - положительный (реактивный)",
+      "standard_name_en": "Hepatitis C Virus Antibodies",
+      "standard_value": 0.05,
+      "standard_unit": "index",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 0.9
+      },
+      "status": "normal",
+      "category": "Microbiology",
+      "definition_id": "local-492042b0124e496da8b9daa6b69fe17e-aff888ae0dff",
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "HBsAg (австралийский антиген, поверхностный, качеств.)",
+      "raw_value": "0.49",
+      "raw_unit": "Индекс",
+      "raw_range_string": "до 0.9 - отрицательный (нереактивный), от 0.9 до 1.0 - серая зона (пограничный), от 1.0 - положительный (реактивный)",
+      "standard_name_en": "Hepatitis B Surface Antigen",
+      "standard_value": 0.49,
+      "standard_unit": "index",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 0.9
+      },
+      "status": "normal",
+      "category": "Microbiology",
+      "definition_id": "local-492042b0124e496da8b9daa6b69fe17e-f955c727231b",
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "ЛПВП-холестерин (HDL)",
+      "raw_value": "1.48",
+      "raw_unit": "ммоль/л",
+      "raw_range_string": "Уровни с учетом риска развития коронарной болезни сердца: женщины: >1.68 - отсутствие риска, 1.15-1.68 - условный риск, <1.15 - высокий риск; мужчины: >1.45 - отсутствие риска, 0.90-1.45 - условный риск, <0.90 - высокий риск",
+      "standard_name_en": "Cholesterol in HDL",
+      "standard_value": 1.48,
+      "standard_unit": "mmol/L",
+      "reference": {
+        "kind": "interval",
+        "low": 1.45,
+        "high": null
+      },
+      "status": "normal",
+      "category": "Lipid Panel",
+      "definition_id": "2085-9",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    }
+  ],
+  "visit_data": {
+    "diagnosis": {
+      "original": "",
+      "translated_en": ""
+    },
+    "chief_complaint": {
+      "original": "",
+      "translated_en": ""
+    },
+    "objective_findings": {
+      "original": "",
+      "translated_en": ""
+    },
+    "prescriptions": [],
+    "recommendations": []
+  },
+  "instrumental_data": {
+    "modality": "",
+    "findings": "",
+    "conclusion": ""
+  },
+  "_status": "FOR REVIEW - not auto-accepted"
+}
