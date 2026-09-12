@@ -397,6 +397,28 @@ def _parse_llm_response(result: object, markdown: str) -> RawMedicalRecord:
     )
 
 
+_ANTI_PREFIX_RE = re.compile(r"^\s*anti\s*[-–]?\s*", re.IGNORECASE)
+
+
+def _preserve_antibody_prefix(record: RawMedicalRecord) -> RawMedicalRecord:
+    """Restore the ``anti-`` prefix the source analyte name carries.
+
+    The extraction LLM tends to drop it in ``standard_name_en``
+    ("anti-Opisthorchis IgG" -> "Opisthorchis IgG"). For locally-defined
+    serology rows that English string becomes the analyte's stored name, so
+    the loss surfaces as a name diff against hand-verified goldens even
+    though the row resolved correctly. Deterministic and idempotent; leaves
+    names the LLM already prefixed (any case) and non-antibody names alone.
+    """
+    for b in record.biomarkers or []:
+        if not _ANTI_PREFIX_RE.match(b.name or ""):
+            continue
+        en = (b.standard_name_en or "").strip()
+        if en and not _ANTI_PREFIX_RE.match(en):
+            b.standard_name_en = f"anti-{en}"
+    return record
+
+
 def llm_extract(markdown: str, client: Mistral, *,
                 raise_on_hard_error: bool = False) -> RawMedicalRecord:
     """Run LLM extraction on OCR markdown text, returning a RawMedicalRecord.
@@ -430,4 +452,4 @@ def llm_extract(markdown: str, client: Mistral, *,
 
     result = chat_response.choices[0].message.content
     logger.info("LLM raw response: %s", result[:500] if isinstance(result, str) else type(result))
-    return _parse_llm_response(result, markdown)
+    return _preserve_antibody_prefix(_parse_llm_response(result, markdown))
