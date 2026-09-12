@@ -202,6 +202,15 @@ specimen-aware path; tracked until the standardized output exposes
 - **Still flaky (not yet curated):** `Тромбокрит (PCT)` occasionally folds
   onto `777-3 (Platelets)` instead of `51637-7 (Plateletcrit)`; needs a
   curated `"Тромбокрит (PCT)": "51637-7"` entry (same class as RDW-CV).
+- **Dotted dates normalized to ISO (`translation.py _normalize_date`).**
+  Documents print day-first dotted dates («Дата заказа: 20.02.2023 7:54»);
+  the standardized output kept them verbatim, which renders as an EMPTY
+  field in the UI review form (`<input type="date">` only shows ISO) while
+  the DB save path parsed them separately — the reported
+  "extractor doesn't extract the date" symptom. `20.02.2023` → `2023-02-20`
+  now (plus `7:54` → `07:54` for times); `helix_2023` goldens (e2e + corpus)
+  updated to the ISO date. Live still drops `helix_2023`'s time (golden
+  `07:54`) — extraction prompt gap, tracked.
 
 ## Local vs global scope
 

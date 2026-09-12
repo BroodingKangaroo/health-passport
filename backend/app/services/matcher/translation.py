@@ -44,27 +44,47 @@ Translation rules:
 Return ONLY valid JSON matching the provided schema. Do not include any text outside the JSON."""
 
 
+_DOTTED_DATE_FORMATS = ("%d.%m.%Y", "%d.%m.%y", "%d/%m/%Y", "%d/%m/%y")
+
+
 def _normalize_date(raw_date: str) -> str:
     if not raw_date:
         # Never fabricate a date: a document that prints none must stay empty
         # (the UI/save layer may supply its own fallback, not the matcher).
         return ""
+    text = str(raw_date).strip()
     try:
-        dt = datetime.fromisoformat(raw_date)
+        dt = datetime.fromisoformat(text)
         return dt.strftime("%Y-%m-%d")
     except (ValueError, TypeError):
         pass
+    # Documents routinely print day-first dotted dates («Дата заказа:
+    # 20.02.2023 7:54»). Leave the output ISO so UI date inputs can render it
+    # (a non-ISO value shows as an empty field in <input type="date">).
+    token = text.split()[0] if text.split() else text
+    for fmt in _DOTTED_DATE_FORMATS:
+        try:
+            return datetime.strptime(token, fmt).strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            continue
     return raw_date
 
 
 def _normalize_time(raw_time: str) -> str:
     if not raw_time:
         return ""
+    text = str(raw_time).strip()
     try:
-        dt = datetime.fromisoformat(raw_time)
+        dt = datetime.fromisoformat(text)
         return dt.strftime("%H:%M")
     except (ValueError, TypeError):
         pass
+    # «7:54» (single-digit hour) must become «07:54» for the same reason.
+    for fmt in ("%H:%M", "%H.%M"):
+        try:
+            return datetime.strptime(text, fmt).strftime("%H:%M")
+        except (ValueError, TypeError):
+            continue
     return raw_time
 
 

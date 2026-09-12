@@ -562,6 +562,19 @@ def test_normalize_date_empty_stays_empty():
     assert _normalize_date("") == ""
 
 
+def test_normalize_date_and_time_forms():
+    from app.services.matcher.translation import _normalize_date, _normalize_time
+    assert _normalize_date("20.02.2023") == "2023-02-20"
+    assert _normalize_date("20.02.23") == "2023-02-20"
+    assert _normalize_date("20/02/2023") == "2023-02-20"
+    assert _normalize_date("2023-02-20") == "2023-02-20"
+    assert _normalize_date("20.02.2023 7:54") == "2023-02-20"
+    assert _normalize_date("not a date") == "not a date"
+    assert _normalize_time("7:54") == "07:54"
+    assert _normalize_time("07:54") == "07:54"
+    assert _normalize_time("") == ""
+
+
 def test_strip_trailing_punct_keeps_balanced_closing_paren():
     from app.services.matcher.name_matching import _strip_trailing_punct
     assert _strip_trailing_punct("HIV 1/2 (Antibodies and p24 Antigen)") == \

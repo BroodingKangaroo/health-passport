@@ -14,7 +14,7 @@
     "helix_2023": {
       "document": "helix_2023.pdf",
       "document_sha256": "6c2544ed201541dbc109067d0862e92232e7e96d515043da2f9398c1cae54251",
-      "golden_sha256": "da670ea78b11d35b0bbec02ed3246a7db704aee995a647e9503c90dd99ea2312",
+      "golden_sha256": "189181b221134cc94f38b4836a11133d02c75e5ff02bf8baac34e16b4419bff0",
       "source": "e2e golden accepted as target truth (c7daccf, 2026-09-12)",
       "reviewer": "independent golden-review + user acceptance 2026-09-12",
       "date": "2026-09-12",
