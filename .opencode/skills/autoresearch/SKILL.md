@@ -78,7 +78,7 @@ Everything else is off-limits except README/journal state described below.
      a polluted run.
 
 4. **Keep rule**: get the verdict mechanically — this is the only sanctioned
-   decision path (F9):
+   decision path (F9/F15):
 
    ```
    cd backend && venv/bin/python benchmark/compare_reports.py reports/baseline_v6.json reports/iter_<k>.json
@@ -86,24 +86,37 @@ Everything else is off-limits except README/journal state described below.
 
    Exit codes: 0 KEEP, 1 DISCARD, 2 BROKEN (fingerprint/version/unclassified),
    3 POLLUTED. Add `--allow-env-drift` only for debugging, never for a keep.
-   The script encodes the rule below; the human-readable spec stays here so
+   The script encodes the rules below; the human-readable spec stays here so
    the rule is auditable:
 
-   - Keep iff `Δprimary ≥ 0.02` (epsilon margin — protects against noise,
-     extraction is LLM-flaky). A `mode=screen` report can never KEEP (run the
-     full verify first) — the script enforces this.
-   - Within ε but strictly positive: it's noise territory — discard by
-     default; at most once per session MAY re-run verify once and keep only
-     if still ≥ 0 ahead after that confirmation.
-   - Ties/negative: DISCARD (`git checkout -- <files>` or restore from the
-     iteration-start commit on `autoresearch/extraction`). `compare_reports`
-     reports which side an exact primary tie favors on cost
-     (`cost_tie_break`), but that stays informational until F15 makes cost
-     load-bearing.
-   - Also honor cost regression guard: if Δprimary ≥ ε but `wall_s` (sum of
-     run walls — NOT `wall_clock_s`, which shrinks when runs execute in
-     parallel) or tokens balloon >2× baseline, flag prominently in the
-     journal for human review.
+   - **Keep paths** (full `--runs 3` reports only; a `mode=screen` report can
+     never KEEP, but a cost win still marks it `promising` for the full run):
+     - *quality*: `Δprimary ≥ 0.02` (fixed cap — protects against noise,
+       extraction is LLM-flaky);
+     - *noise-aware*: positive `Δprimary ≥` relative ε (25% of the remaining
+       primary headroom `1 − baseline_primary`, floor 0.002) AND the paired
+       bootstrap 95% CI over per-run recognition excludes 0 (2000 draws,
+       fixed seed). This is how small real gains are kept once headroom drops
+       below the fixed cap;
+     - *cost* (`--cost-win`, default 25%): `Δprimary` non-inferior within
+       relative ε AND ≥25% win on `input_tokens`/`output_tokens`/`wall_s`
+       with no >2× regression on any cost ratio. Cost is load-bearing (F15),
+       not informational.
+   - **Per-case non-regression gate (F15)**: all keep paths are vetoed when
+     any case's recognition drops in a majority of paired runs by ≥5 points
+     (a consistent, material loss). A single contaminated run (the documented
+     visit-replay flake) or a sub-5-point wobble is treated as LLM noise. For
+     reports without per-run vectors, an aggregate recognition or stability
+     drop of ≥5 points vetoes.
+   - `--epsilon X` sets an absolute margin and disables relative scaling.
+   - Ties/negative/within-margin with no cost win: DISCARD
+     (`git checkout -- <files>` or restore from the iteration-start commit on
+     `autoresearch/extraction`). `cost_tie_break` remains informational when
+     the cost win is below the threshold.
+   - Also honor cost regression guard: if `wall_s` (sum of run walls — NOT
+     `wall_clock_s`, which shrinks when runs execute in parallel) or tokens
+     balloon >2× baseline, the cost keep path is vetoed and any other keep is
+     flagged prominently in the journal for human review.
 
 5. **Guards before any keep**:
    - `pytest tests/` and `ruff check .` must PASS outright.
@@ -170,8 +183,9 @@ Run once per setup (and after major runner/scoring edits):
 
 `.autoresearch/state.json` + `.autoresearch/autoresearch.md` are gitignored
 session memory. Schema v2 fields: `schema`, `session.{iteration,
-max_iterations}`, `baseline.{status,head,report,metrics}`, `epsilon`,
-`metric_version`, `corpus.{cases,runs,splits,manifest}`,
+max_iterations}`, `baseline.{status,head,report,metrics}`, `epsilon` (the
+fixed quality cap; the relative ε is computed per comparison from the
+baseline headroom), `metric_version`, `corpus.{cases,runs,splits,manifest}`,
 `guards.{baseline,latest}`, `fingerprints.snapshot_inputs`, and an
 **append-only** `history` array.
 

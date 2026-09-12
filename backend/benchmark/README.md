@@ -198,6 +198,15 @@ snapshot. Diffs come from `e2e/compare.py` (`compare_standardized`) at
   reads this one), `wall_clock_s` (invocation wall-clock; smaller than
   `wall_s` when runs execute in parallel), `stage_ocr_s` / `stage_extract_s`
   / `stage_match_s` (cumulative per-stage seconds).
+- **keep statistics** (F15, computed by `compare_reports.py`, not stored in
+  the report): *relative ε* = 25% of the remaining primary headroom
+  (`1 − baseline_primary`), floored at 0.002 and capped at the fixed 0.02
+  quality margin; *recognition CI* = paired bootstrap 95% CI of the aggregate
+  recognition difference (2000 draws over per-case `per_run_recognition`,
+  fixed seed, cases resampled then one run per case on each side); *per-case
+  gate* = any case whose recognition drops in a majority of paired runs by
+  ≥5 points (aggregate recognition/stability drop ≥5 points when per-run
+  vectors are absent).
 - **pollution counters** (loop keep-rule guard, SKILL.md):
   `fallback_extractions` counts extractions that ended in the silent
   "unknown + Raw OCR text" failure record; `provider_error_calls` counts
@@ -263,6 +272,14 @@ A/B variable, so it is recorded as informational `code_drift` and never
 vetoes a verdict; the data half (seed inputs, corpus/e2e goldens) stays a
 hard gate.
 
+The verdict itself (F15) has three KEEP paths on a full `--runs 3` report —
+quality (`Δprimary ≥ 0.02`), noise-aware (positive `Δprimary ≥` relative ε
+with a recognition CI excluding 0), and cost (`Δprimary` non-inferior within
+relative ε + a ≥25% token/`wall_s` win, `--cost-win`) — all vetoed by the
+per-case non-regression gate. Any `mode=screen` report (runs=1) is DISCARD
+even when a keep path would fire (its `promising` flag still tells the loop
+to run the full verify). `--epsilon X` makes the margin absolute.
+
 ### Why cold snapshots + warm-up
 
 - `verify_or_create` persists definitions/units on first sight (first-seen
@@ -282,8 +299,9 @@ hard gate.
 ## Loop contract (see .opencode/skills/autoresearch/SKILL.md)
 
 baseline → ONE focused change → `--screen` probe → full verify → mechanical
-verdict from `benchmark/compare_reports.py` (KEEP iff primary improves ≥ ε
-0.02; ties/within-ε are discards; screens can never keep) → guards
+verdict from `benchmark/compare_reports.py` (KEEP on a quality, noise-aware,
+or cost path — see "Report fingerprint" above; ties/within-margin are
+discards; screens can never keep) → guards
 (`pytest tests/`, `ruff check .`, `e2e/validate_offline.py` — deterministic,
 own cold DB, counts in `state.json`) → journal → repeat. Scope-locked to
 `app/services/extractor.py`, `app/services/matcher/`, and `benchmark/`;

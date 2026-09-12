@@ -19,7 +19,7 @@ files as they stand now.
 
 ---
 
-## Autoresearch improvements (landed 2026-09-12; F6 documents + F15 outstanding)
+## Autoresearch improvements (landed 2026-09-12; F6 documents outstanding)
 
 Deep structural review of the extraction autoresearch loop. Core diagnosis
 stands: the loop is **metric-saturated** — baseline_v5 primary 0.9940 leaves
@@ -53,6 +53,12 @@ territory before the objective can be re-decided with data.
 - **F14 resume protocol + state schema v2** — merged-branch/`main` drift
   detection, forced re-baseline on scope drift, append-only `history`, guard
   counts, archive rotation (`.autoresearch/archive-2026-09-12/`).
+- **F15 objective redesign** — noise-aware keep (relative ε scaled to
+  remaining headroom + bootstrap CI over per-run recognition), load-bearing
+  cost keep path (≥25% token/`wall_s` win on a quality-non-inferior report),
+  and the per-case non-regression gate; implemented in
+  `benchmark/compare_reports.py` with the SKILL.md keep rule and benchmark
+  README updated to match.
 
 ---
 
@@ -81,26 +87,6 @@ and seed/snapshot auto-invalidation. The 9 seeded cases are all
 
 **Deps**: none — F7 (metric v2) has landed and measures the time/clinic-heavy
 cases once they exist.
-
-### F15. Objective redesign (NOT IMPLEMENTED — deferred until F6 restores headroom)
-
-**Status**: deferred by design; do not start until the grown corpus restores
-headroom above ε.
-
-**Why**: with ~0.006 headroom, ε=0.02 is unreachable; cost wins are discarded
-by the tie rule even though cost is where the real gains came from (v5: −19%/−15%
-tokens, wall 320→174 s at flat primary).
-
-**Change (decide with baseline_v6 data)**:
-- Noise-aware keep rule: bootstrap/CI from per-run recognition, and/or relative
-  ε scaled to remaining headroom.
-- Cost-aware keep path: quality non-inferior within CI + token/wall improvement
-  ≥ X% ⇒ keep.
-- Per-case non-regression gate so a single improved case cannot mask a
-  regression elsewhere.
-
-**Docs**: SKILL.md keep rule; README metric semantics.
-**Deps**: F6 (documents), F7, F9 (both landed).
 
 ---
 
