@@ -8,6 +8,15 @@ import { TestI18nProvider } from '@/test/i18n-test-provider'
 import { createImportJob } from '@/services/import-jobs'
 import { fetchUsageLimits } from '@/services/api'
 import type { StandardizedMedicalRecord, EntriesByDateResponse } from '@/lib/types'
+import { toast } from 'sonner'
+
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), {
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+  }),
+}))
 
 const { mockExtract, mockSave } = vi.hoisted(() => ({
   mockExtract: vi.fn(),
@@ -217,6 +226,31 @@ describe('AddEntry', () => {
       expect(onTrackImports).toHaveBeenCalledWith(['job-mock', 'job-mock']),
     )
     expect(createImportJob).toHaveBeenCalledTimes(2)
+  })
+
+  it('warns instead of silently doing nothing when the quota is already exhausted', async () => {
+    const onTrackImports = vi.fn()
+    // Remaining quota: 0 — every dropped file is skipped, nothing is submitted.
+    vi.mocked(fetchUsageLimits).mockResolvedValueOnce({
+      is_anonymous: false,
+      ai_extraction_count: 5,
+      ai_extraction_limit: 5,
+      total_upload_size_bytes: 0,
+      total_upload_limit_bytes: 200 * 1024 * 1024,
+    })
+
+    const { container } = renderWithProviders(
+      <AddEntry onSave={vi.fn()} onTrackImports={onTrackImports} />,
+    )
+    const zone = container.querySelector('button[type="button"]') as HTMLButtonElement
+    dropFiles(zone, [createFile('a.pdf'), createFile('b.pdf')])
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1))
+    expect(toast.warning).toHaveBeenCalledWith(
+      expect.stringContaining('extraction limit reached'),
+    )
+    expect(createImportJob).not.toHaveBeenCalled()
+    expect(onTrackImports).not.toHaveBeenCalled()
   })
 
   it('stays on the dropzone with an error when the first submission fails', async () => {

@@ -282,12 +282,12 @@ export function AddEntry({
     // the loop (and with nothing accepted, the user stays here to retry).
     const outcome = await submitBatch(list)
     if (outcome.cancelled) return
+    if (outcome.skippedCount > 0) {
+      toast.warning(tImport('batchSkippedOverQuota', { count: outcome.skippedCount }))
+    }
     if (outcome.submittedIds.length > 0) {
       // The tracker badges these as new until each is opened.
       addNewImportJobIds(outcome.submittedIds)
-      if (outcome.skippedCount > 0) {
-        toast.warning(tImport('batchSkippedOverQuota', { count: outcome.skippedCount }))
-      }
       queryClient.invalidateQueries({ queryKey: ['import-jobs'] })
       onTrackImports?.(outcome.submittedIds)
       return
