@@ -18,6 +18,7 @@ def _report(primary=0.9, mode="full", runs=3, metric_version=METRIC_VERSION, **c
         "runs": runs,
         "cases": ["a", "b"],
         "git_head": "abc123",
+        "git_dirty": False,
         "chat_provider": "mistral",
         "chat_model": "mistral-medium-latest",
         "openrouter_model": None,
@@ -29,6 +30,8 @@ def _report(primary=0.9, mode="full", runs=3, metric_version=METRIC_VERSION, **c
         "corpus_hash": "corpus",
         "golden_hash": "golden",
         "snapshot_fingerprint": "snap",
+        "snapshot_code_fingerprint": "snap-code",
+        "snapshot_data_fingerprint": "snap-data",
     }
     config.update(cfg_over)
     return {
@@ -66,13 +69,25 @@ def test_pollution_beats_all_decisions():
 
 
 def test_fingerprint_mismatch_is_broken_unless_allowed():
-    new = _report(0.99, git_head="different")
+    new = _report(0.99, snapshot_data_fingerprint="different")
     result = compare_reports(_report(0.90), new)
     assert result["verdict"] == "BROKEN"
-    assert result["fingerprint_mismatches"][0]["field"] == "git_head"
+    assert result["fingerprint_mismatches"][0]["field"] == "snapshot_data_fingerprint"
 
     allowed = compare_reports(_report(0.90), new, allow_env_drift=True)
     assert allowed["verdict"] == "KEEP"
+
+
+def test_code_drift_is_recorded_not_vetoed():
+    new = _report(0.93, git_head="different", git_dirty=True,
+                  snapshot_code_fingerprint="different",
+                  snapshot_fingerprint="different")
+    result = compare_reports(_report(0.90), new)
+    assert result["verdict"] == "KEEP"
+    assert {d["field"] for d in result["code_drift"]} == {
+        "git_head", "git_dirty", "snapshot_code_fingerprint",
+        "snapshot_fingerprint"}
+    assert any("code drift recorded" in r for r in result["reasons"])
 
 
 def test_foreign_metric_version_is_broken():
@@ -229,19 +244,32 @@ def test_malformed_corpus_case_is_a_hard_error(tmp_path, monkeypatch):
         rb.load_corpus()
 
 
-def test_snapshot_fingerprint_tracks_content(tmp_path, monkeypatch):
+def test_snapshot_fingerprint_tracks_content_and_splits_code_data(tmp_path, monkeypatch):
     import benchmark.run_benchmark as rb
 
-    src = tmp_path / "matcher.py"
-    src.write_text("x = 1", encoding="utf-8")
-    monkeypatch.setattr(rb, "SNAPSHOT_INPUTS", [str(src)])
-    monkeypatch.setattr(rb, "SNAPSHOT_INPUT_GLOBS", [])
+    code = tmp_path / "matcher.py"
+    data = tmp_path / "Loinc.csv"
+    code.write_text("x = 1", encoding="utf-8")
+    data.write_text("d = 1", encoding="utf-8")
+    monkeypatch.setattr(rb, "SNAPSHOT_CODE_INPUTS", [str(code)])
+    monkeypatch.setattr(rb, "SNAPSHOT_CODE_GLOBS", [])
+    monkeypatch.setattr(rb, "SNAPSHOT_DATA_INPUTS", [str(data)])
+    monkeypatch.setattr(rb, "SNAPSHOT_DATA_GLOBS", [])
     monkeypatch.setattr(rb, "_sha256_cache", {})
 
-    first = rb.snapshot_inputs_fingerprint()["fingerprint"]
-    src.write_text("x = 2", encoding="utf-8")
+    first = rb.snapshot_inputs_fingerprint()
+    assert first["code_fingerprint"] != first["data_fingerprint"]
+    assert first["fingerprint"] != first["code_fingerprint"]
+
+    code.write_text("x = 2", encoding="utf-8")
     rb._sha256_cache.clear()
-    second = rb.snapshot_inputs_fingerprint()["fingerprint"]
-    assert first != second
-    components = rb.snapshot_inputs_fingerprint()["components"]
-    assert any(key.endswith("matcher.py") for key in components)
+    second = rb.snapshot_inputs_fingerprint()
+    assert second["fingerprint"] != first["fingerprint"]
+    assert second["code_fingerprint"] != first["code_fingerprint"]
+    assert second["data_fingerprint"] == first["data_fingerprint"]
+
+    data.write_text("d = 2", encoding="utf-8")
+    rb._sha256_cache.clear()
+    third = rb.snapshot_inputs_fingerprint()
+    assert third["data_fingerprint"] != second["data_fingerprint"]
+    assert any(key.endswith("matcher.py") for key in third["components"])

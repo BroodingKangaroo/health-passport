@@ -249,12 +249,19 @@ pinned seed.
 Every `--report` carries `config.metric_version` and a reproducibility
 fingerprint: `git_head`/`git_dirty`, chat provider + `MISTRAL_CHAT_MODEL` /
 OpenRouter knobs, OCR model + `OCR_MARKDOWN_CLEAN`, `text_threshold`, combined
-`corpus_hash` / `golden_hash`, and `snapshot_fingerprint`. `config.mode`
-records `full`|`screen`, and `config.allow_unclassified` records the override.
+`corpus_hash` / `golden_hash`, and `snapshot_fingerprint` (plus its split
+`snapshot_code_fingerprint` / `snapshot_data_fingerprint` halves).
+`config.mode` records `full`|`screen`, and `config.allow_unclassified` records
+the override.
 
 `benchmark/compare_reports.py` (F9) refuses to compare reports whose
-fingerprints differ unless `--allow-env-drift` is passed — cross-environment
-comparisons were previously unsafe and invalidated baselines by hand.
+environment/data-world fingerprints differ unless `--allow-env-drift` is
+passed — cross-environment comparisons were previously unsafe and invalidated
+baselines by hand. Code drift (git HEAD/dirty and the pipeline half of the
+snapshot fingerprint: `matcher/**`, `extractor.py`) is the loop's intended
+A/B variable, so it is recorded as informational `code_drift` and never
+vetoes a verdict; the data half (seed inputs, corpus/e2e goldens) stays a
+hard gate.
 
 ### Why cold snapshots + warm-up
 

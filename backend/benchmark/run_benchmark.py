@@ -127,9 +127,16 @@ PRISTINE_DB = os.path.join(HERE, "benchmark_pristine.db")
 BENCHMARK_USER_ID = "default"
 CORPUS_MANIFEST = os.path.join(CORPUS_DIR, "manifest.json")
 # Inputs whose content determines the seed/pristine snapshot (ISSUES.md F10).
-# A change in any of them invalidates the seed DB automatically.
-SNAPSHOT_INPUTS = [
+# Both groups are fingerprinted together; the CODE half is the loop's A/B
+# variable (recorded, non-gating) and the DATA half must match for two reports
+# to be comparable. A change in any of them invalidates the seed DB automatically.
+SNAPSHOT_CODE_INPUTS = [
     os.path.join(BACKEND, "app", "services", "extractor.py"),
+]
+SNAPSHOT_CODE_GLOBS = [
+    os.path.join(BACKEND, "app", "services", "matcher", "**", "*.py"),
+]
+SNAPSHOT_DATA_INPUTS = [
     os.path.join(BACKEND, "app", "db", "seed_loinc.py"),
     os.path.join(BACKEND, "app", "db", "import_ranges.py"),
     # The warm-up/pinning unit mapping lives here and changes pinned units.
@@ -139,8 +146,7 @@ SNAPSHOT_INPUTS = [
     os.path.join(BACKEND, "data", "loinc_name_overrides.json"),
     os.path.join(BACKEND, "data", "multilingual_synonyms.json"),
 ]
-SNAPSHOT_INPUT_GLOBS = [
-    os.path.join(BACKEND, "app", "services", "matcher", "**", "*.py"),
+SNAPSHOT_DATA_GLOBS = [
     os.path.join(CORPUS_DIR, "*", "standardized.json"),
     # e2e goldens feed the offline guard's warm-up replay directly.
     os.path.join(E2E_GOLDEN, "*", "standardized.json"),
@@ -440,24 +446,43 @@ def load_corpus(subset=None, split=None, allow_drift=False):
     return cases
 
 
+def _combined_fingerprint(components: dict[str, str]) -> str:
+    return hashlib.sha256(
+        "\n".join(f"{rel}:{digest}" for rel, digest in sorted(components.items()))
+        .encode("utf-8")
+    ).hexdigest()
+
+
 def snapshot_inputs_fingerprint() -> dict:
     """Content fingerprint over everything that determines the seeded DB.
 
     Covers corpus goldens + matcher package + extractor + seed inputs
     (ISSUES.md F10). Stored beside the DB; a mismatch means the live DB still
     carries definitions from an older world and MUST be re-seeded.
+
+    Split into a code half (the loop's A/B variable: matcher/extractor) and a
+    data half (seed inputs + goldens) so compare_reports can gate the data
+    world while merely recording code drift.
     """
-    files = [p for p in SNAPSHOT_INPUTS if os.path.isfile(p)]
-    for pattern in SNAPSHOT_INPUT_GLOBS:
-        files.extend(glob.glob(pattern, recursive=True))
-    components: dict[str, str] = {}
-    for path in sorted(set(files)):
-        rel = os.path.relpath(path, BACKEND)
-        components[rel] = _sha256_file(path)
-    combined = hashlib.sha256(
-        "\n".join(f"{rel}:{digest}" for rel, digest in components.items()).encode("utf-8")
-    ).hexdigest()
-    return {"schema": 1, "fingerprint": combined, "components": components}
+    def _components(inputs, globs):
+        files = [p for p in inputs if os.path.isfile(p)]
+        for pattern in globs:
+            files.extend(glob.glob(pattern, recursive=True))
+        return {
+            os.path.relpath(path, BACKEND): _sha256_file(path)
+            for path in sorted(set(files))
+        }
+
+    code = _components(SNAPSHOT_CODE_INPUTS, SNAPSHOT_CODE_GLOBS)
+    data = _components(SNAPSHOT_DATA_INPUTS, SNAPSHOT_DATA_GLOBS)
+    combined_components = {**code, **data}
+    return {
+        "schema": 1,
+        "fingerprint": _combined_fingerprint(combined_components),
+        "code_fingerprint": _combined_fingerprint(code),
+        "data_fingerprint": _combined_fingerprint(data),
+        "components": combined_components,
+    }
 
 
 def _fingerprint_path(db_path: str) -> str:
@@ -893,6 +918,7 @@ def _report_config(args, cases) -> dict:
     without --allow-env-drift."""
     git_head, git_dirty = _git_state()
     corpus_hash, golden_hash = _corpus_hashes()
+    snapshot = snapshot_inputs_fingerprint()
     chat_model = None
     ocr_model = None
     with contextlib.suppress(Exception):
@@ -922,7 +948,9 @@ def _report_config(args, cases) -> dict:
         "ocr_markdown_clean": os.getenv("OCR_MARKDOWN_CLEAN", "1"),
         "corpus_hash": corpus_hash,
         "golden_hash": golden_hash,
-        "snapshot_fingerprint": snapshot_inputs_fingerprint().get("fingerprint"),
+        "snapshot_fingerprint": snapshot.get("fingerprint"),
+        "snapshot_code_fingerprint": snapshot.get("code_fingerprint"),
+        "snapshot_data_fingerprint": snapshot.get("data_fingerprint"),
     }
 
 

@@ -10,11 +10,10 @@ fields identify a reproducible run.
 METRIC_VERSION = 2
 
 # config fields that must match for two reports to be mechanically comparable.
-# Any difference means a different code/env/corpus world (ISSUES.md F8).
+# These describe the metric's environment + data world. Any difference means a
+# different env/corpus world (ISSUES.md F8).
 FINGERPRINT_FIELDS = (
     "metric_version",
-    "git_head",
-    "git_dirty",
     "chat_provider",
     "chat_model",
     "openrouter_model",
@@ -25,6 +24,18 @@ FINGERPRINT_FIELDS = (
     "text_threshold",
     "corpus_hash",
     "golden_hash",
+    "snapshot_data_fingerprint",
+)
+
+# Recorded code/world drift — informational, never a verdict veto. The loop's
+# A/B variable IS code (git HEAD/dirty + the pipeline half of the snapshot
+# fingerprint), so gating these would make every iteration BROKEN by
+# construction. The data half of the snapshot fingerprint stays in
+# FINGERPRINT_FIELDS above.
+CODE_DRIFT_FIELDS = (
+    "git_head",
+    "git_dirty",
+    "snapshot_code_fingerprint",
     "snapshot_fingerprint",
 )
 

@@ -7,9 +7,12 @@ Verdict rules implement the quality keep rule of
 `.opencode/skills/autoresearch/SKILL.md`:
 
 - **BROKEN**  — missing/foreign metric version or a required block; a
-  cross-fingerprint comparison (different git/env/corpus world, ISSUES.md F8)
+  cross-fingerprint comparison (different env/corpus world, ISSUES.md F8)
   without ``--allow-env-drift``; unclassified diffs in a run that did not allow
-  them. No keep/discard decision may be based on it.
+  them. No keep/discard decision may be based on it. Code drift (git
+  HEAD/dirty + the pipeline half of the snapshot fingerprint) is the loop's
+  A/B variable: it is recorded as informational ``code_drift`` and never
+  vetoes a verdict.
 - **POLLUTED** — either report has ``fallback_extractions`` /
   ``provider_error_calls`` / ``chat_failovers`` > 0: environment-suspect, the
   loop re-runs once and never keeps/discards on it.
@@ -39,6 +42,7 @@ if BACKEND not in sys.path:
     sys.path.insert(0, BACKEND)
 
 from benchmark.report_schema import (  # noqa: E402
+    CODE_DRIFT_FIELDS,
     FINGERPRINT_FIELDS,
     METRIC_VERSION,
     VERDICT_EXIT_CODES,
@@ -77,13 +81,17 @@ def _pollution(report: dict) -> dict:
     }
 
 
-def _fingerprint_mismatches(base: dict, new: dict) -> list[dict]:
+def _field_mismatches(base: dict, new: dict, fields) -> list[dict]:
     bc = base.get("config") or {}
     nc = new.get("config") or {}
     return [
         {"field": f, "baseline": bc.get(f), "new": nc.get(f)}
-        for f in FINGERPRINT_FIELDS if bc.get(f) != nc.get(f)
+        for f in fields if bc.get(f) != nc.get(f)
     ]
+
+
+def _fingerprint_mismatches(base: dict, new: dict) -> list[dict]:
+    return _field_mismatches(base, new, FINGERPRINT_FIELDS)
 
 
 def _ratio(new_value, base_value):
@@ -146,6 +154,7 @@ def compare_reports(baseline: dict, new: dict, epsilon: float = EPSILON,
 
     mismatches = _fingerprint_mismatches(baseline, new)
     result["fingerprint_mismatches"] = mismatches
+    result["code_drift"] = _field_mismatches(baseline, new, CODE_DRIFT_FIELDS)
     result["env_drift_allowed"] = allow_env_drift
 
     pollution = {"baseline": _pollution(baseline), "new": _pollution(new)}
@@ -208,10 +217,15 @@ def compare_reports(baseline: dict, new: dict, epsilon: float = EPSILON,
 
     if mismatches and not allow_env_drift:
         result["reasons"].append(
-            "fingerprint mismatch (different code/env/corpus world) — "
+            "fingerprint mismatch (different env/corpus world) — "
             "rerun on the same world or pass --allow-env-drift"
         )
         return result
+    if result["code_drift"]:
+        fields = ", ".join(d["field"] for d in result["code_drift"])
+        result["reasons"].append(
+            f"code drift recorded (informational, not a veto): {fields}"
+        )
     if unclassified and not unclassified_allowed:
         result["reasons"].append(
             f"{unclassified} unclassified diff(s) — scoring parser cannot attribute them"
