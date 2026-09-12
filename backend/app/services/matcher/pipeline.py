@@ -322,11 +322,12 @@ def _match_and_convert_impl(
             else:
                 std_biomarkers.append(_build_standardized_local(b, resolved, client, eff_specimen))
 
-    # Step 5: Visit data translation. Blood test reports never carry visit
-    # sections — a per-analyte "Комментарий" column extracted into
-    # visit_data.recommendations is a prompt artifact, not document truth.
+    # Step 5: Visit data translation. Blood test and instrumental reports
+    # never carry visit sections — a per-analyte "Комментарий" column or a
+    # printed «Рекомендации:» line extracted into visit_data is a prompt
+    # artifact, not document truth.
     visit_data = None
-    if raw.visit_data and raw.entry_type != "blood_test":
+    if raw.visit_data and raw.entry_type not in ("blood_test", "instrumental_test"):
         visit_data = _llm_translate_visit_data(raw.visit_data, client)
 
     result = StandardizedMedicalRecord(

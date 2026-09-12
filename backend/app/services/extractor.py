@@ -271,7 +271,16 @@ RAW_EXTRACTION_PROMPT = (
     "- Extract the modality — choose exactly ONE from this fixed list: "
     "MRI, CT, X-Ray, Ultrasound, Elastography, Mammography, PET Scan, ECG, Endoscopy, Other\n"
     "- Put the report content in findings and the conclusion in conclusion\n"
-    "- Leave notes empty for instrumental test reports (the content belongs in findings/conclusion)\n\n"
+    "- findings must contain ONLY the clinical report body (the organ/measurement "
+    "lines): never the patient demographics (Ф.И.О name, age, sex), the examination "
+    "date, the equipment/scanner name, the document title, or the clinic header/footer "
+    "boilerplate\n"
+    "- Put only the conclusion text in conclusion, without the printed section label "
+    "(no leading «Заключение:»)\n"
+    "- Leave notes empty for instrumental test reports (the content belongs in findings/conclusion)\n"
+    "- Leave visit_data empty for instrumental test reports: a diagnostic report has no "
+    "diagnosis / chief complaint / prescriptions / recommendations sections. A printed "
+    "«Рекомендации:» line is not visit data either — omit it.\n\n"
     "Return ONLY valid JSON matching the provided schema. Do not include any text outside the JSON."
 )
 
