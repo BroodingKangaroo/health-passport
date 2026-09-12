@@ -31,8 +31,11 @@ TRANSLATE_PROMPT = """You are a professional medical translator. Given the follo
 
 Translation rules:
 - Provide highly accurate English medical translation using proper medical terminology
+- Translate literally and conservatively: do NOT paraphrase, simplify, embellish, or swap in near-synonyms; stay as close to the source wording and sentence structure as English grammar allows, so the translation can be mapped back to the original
+- Keep named entities faithful: a person's name is transliterated, an institution/address/phone/email is copied exactly as printed (never substitute a different institution or region name)
 - Preserve all clinical nuance, qualifiers, severity descriptors, and numerical values
 - Recommendations: keep the EXACT same number of list items — never merge or split them; translate each item independently and in full (never truncate)
+- Preserve the original text EXACTLY in the "original" field — do not add, duplicate, or drop words
 - For medication names: keep the international generic name if identifiable in English; if only a localized brand name exists, transliterate and annotate
 - For dosage units: convert localized abbreviations to standard English medical abbreviations
 - ALWAYS carry over the original text untouched into the "original" field
