@@ -1,6 +1,16 @@
 {
   "schema": 1,
   "cases": {
+    "2024_вирусы": {
+      "document": "2026-02-26 08.34.08.jpg",
+      "document_sha256": "12ce5b8ac69469be64b680ae9a1258d45f84ef06671bb7e7eb9d294bb9b68e5f",
+      "golden_sha256": "081c8fa15ffea9ed8cf536eb816d20922cb154126c75159c71c865105262aad2",
+      "source": "user-supplied document 2026-09-12",
+      "reviewer": "golden-review agent + specimen-aware matcher fixes 2026-09-12",
+      "date": "2026-09-12",
+      "split": "tuning",
+      "notes": "Added 2026-09-12 (F6 corpus growth); target truth accepted after review."
+    },
     "helix_2023": {
       "document": "helix_2023.pdf",
       "document_sha256": "6c2544ed201541dbc109067d0862e92232e7e96d515043da2f9398c1cae54251",
@@ -9,12 +19,32 @@
       "reviewer": "independent golden-review + user acceptance 2026-09-12",
       "date": "2026-09-12",
       "split": "tuning",
-      "notes": "Target truth; live pipeline not yet matching (KNOWN_ISSUES: Pending system work - helix_2023). Added to benchmark corpus per user direction 2026-09-12; validation hold-out still empty."
+      "notes": "Target truth; live pipeline partially matching (KNOWN_ISSUES: Pending system work - helix_2023). Added to benchmark corpus per user direction 2026-09-12. The validation hold-out is now анализ_мочи_30.07 (2026-09-12)."
+    },
+    "helix_2023_2": {
+      "document": "8119306351.pdf",
+      "document_sha256": "6d199fdeb558a489f625e27e41059480928f7c7ffb2d9ae0db045402eb0efd7e",
+      "golden_sha256": "00a82418e6cc57f94a13e69cb05ed0c6e001b348157d771ac1eadab3e24b69cf",
+      "source": "user-supplied document 2026-09-12",
+      "reviewer": "golden-review agent + specimen-aware matcher fixes 2026-09-12",
+      "date": "2026-09-12",
+      "split": "tuning",
+      "notes": "Added 2026-09-12 (F6 corpus growth); target truth accepted after review."
+    },
+    "анализ_мочи_30.07": {
+      "document": "анализ_мочи_30.07.pdf",
+      "document_sha256": "65e848541a3240318121f3ed543df9b3d383ca021e4f159dbead683720cf57b3",
+      "golden_sha256": "45b07724c6972ffead093d85b07aaa2d598cb170f6550c9b54b8abdf7477693a",
+      "source": "user-supplied document 2026-09-12",
+      "reviewer": "golden-review agent + specimen-aware matcher fixes 2026-09-12",
+      "date": "2026-09-12",
+      "split": "validation",
+      "notes": "Added 2026-09-12 (F6 corpus growth); target truth accepted after review."
     },
     "биохимия_26.05": {
       "document": "биохимия_26.05.pdf",
       "document_sha256": "ac075244c44dcdae413d151e1270472b106f5261786ec7a56674387aa393e8df",
-      "golden_sha256": "bb2b9949e358909a3838bcc4d3ba9d4e1784bcb1d5b810567ee8627b01a015a7",
+      "golden_sha256": "c6fa58034e06e1e27ce7b7dbd15880f97a5aa4191d4d88726890080667b56ace",
       "source": "unknown",
       "reviewer": "unknown",
       "date": "2026-09-12",
@@ -54,7 +84,7 @@
     "оак_26.05": {
       "document": "оак_26.05.pdf",
       "document_sha256": "d5fb45b110c590f70b6de3e6d1947a000e9d0e883f080eb2d02312e38ab65acb",
-      "golden_sha256": "75b0f9335e62eae01187b865056b46b469a08ff8ecd62de6ef321b0e1d0a90cb",
+      "golden_sha256": "1dc688b5309f6426c8f20de77fb442c2cae7c026a74aae63fd99bee89d40ffa6",
       "source": "unknown",
       "reviewer": "unknown",
       "date": "2026-09-12",
@@ -84,7 +114,7 @@
     "рнпц_омр_генетика": {
       "document": "рнпц_омр_генетика.jpeg",
       "document_sha256": "695142924e97e527ae31aead0819806fb18d3e531917097728f191b426b60383",
-      "golden_sha256": "489effd6943e9e4ec5b56bfcbd0f7884fc7520512ff30c5028672d40d1706f52",
+      "golden_sha256": "9614e2facd685dd99ee229dc30a160f7b4e67a1371a381f86a5682ad987c74aa",
       "source": "unknown",
       "reviewer": "unknown",
       "date": "2026-09-12",

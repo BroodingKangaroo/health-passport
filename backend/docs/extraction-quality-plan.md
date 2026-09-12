@@ -122,3 +122,31 @@ Value: every real lab document with age/sex-banded ranges, not just helix.
   baseline before measuring iterations.
 - `main` is 10 commits ahead of `origin/main` (including this hand-off) and has
   NOT been pushed.
+
+---
+
+## Status — implemented 2026-09-12 (follow-up session)
+
+- **§1 data curation** — done: RU synonyms + overrides for 2085-9/2089-1/
+  32623-1/21000-5/22664-7; the seeder now always keeps curated codes (rank-0
+  and non-common CLASS) and curated overrides anchor dedupe. Probe: helix_2023
+  recognition 0.872 (iter5 0.823); v10 full baseline below.
+- **§2 corpus growth** — 3 hand-reviewed cases added (`анализ_мочи_30.07` =
+  validation split, `helix_2023_2`, `2024_вирусы`); goldens accepted as
+  target truth after `golden-review`; tracked gaps in `e2e/KNOWN_ISSUES.md`.
+  The user supplied 3 documents, so the hold-out is 1/13 (~8%) — more cases
+  still needed for the plan's 30% target.
+- **§3 F15 objective redesign** — done: relative ε (25% of headroom, floor
+  0.002), bootstrap recognition CI, cost keep path (≥25% token/wall win),
+  majority-run per-case non-regression gate (`benchmark/compare_reports.py`,
+  SKILL.md, benchmark README).
+- **Out of plan but required by the case review** — specimen-aware matching
+  (record/row `specimen`, `data/specimen_synonyms.json`, LOINC-SYSTEM guard,
+  urine/feces local qualifiers) plus the review-driven fixes: no fabricated
+  dates, `<0,5` comma bounds, plural `не обнаружены`, balanced parens, blood
+  `visit_data` clearing, IgG carrier guard, mutation-name canonicalization,
+  `в п/зр.` → `/[HPF]`.
+- **v10 baseline** (13 cases, `--runs 3`, clean): primary **0.8655**,
+  recognition 0.9294, stability 0.9313, doc_fidelity 0.8199; offline guard
+  148 diffs / 7 cases (see KNOWN_ISSUES for the offline specimen limitation).
+

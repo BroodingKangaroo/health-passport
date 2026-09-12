@@ -105,6 +105,79 @@ the system catches up. Changes required to match the target:
     reference-derived per the model, so WBC / MPV / NEUT% / … legitimately
     read `high`/`low` against the printed intervals.
 
+## New cases — 2026-09-12 (`анализ_мочи_30.07`, `helix_2023_2`, `2024_вирусы`)
+
+Three hand-reviewed cases added with the **specimen-aware matcher**
+(document/row `specimen` + specimen-scoped curated table +
+LOINC-SYSTEM compatibility guard, see `backend/docs/architecture.md`).
+Goldens are accepted target truth; the live/offline gaps below are tracked.
+
+**Resolved by this batch (kept for traceability):**
+
+- Urine analytes no longer fold onto their serum namesakes:
+  `Глюкоза`→15076-3, `Белок`→2888-6, `pH`→2756-5, `Билирубин`→5770-3,
+  `Гемоглобин`→5794-3, `Лейкоциты (микроскопия)`→5821-4,
+  `Эритроциты (микроскопия)`→13945-1, `Кетоновые тела`→59158-6,
+  `Уробилиноген`→13658-0, `Нитриты`→5802-4, `Плотность`→2965-2,
+  `Цвет`→5778-6, `Прозрачность`→32167-9, `Слизь`→8247-9,
+  `Бактерии`→87829-8, `Соли`→87828-0, `Дрожжевые грибки`→87831-4,
+  `Цилиндры`→87827-2, `Эпителий плоский`→104650-7,
+  `Эпителий почечный`→12248-1; the stool screen →10704-5.
+- `<0,5` / `>N` with a Russian decimal comma keeps its fraction
+  (`_LT_RE`/`_GT_RE` in `reference.py` used `[\d.]+` and lost the decimal).
+- Plural `не обнаружены` / `не выявлены` canonicalize to `Not detected`.
+- Display names keep a balanced closing parenthesis
+  ("HIV 1/2 (Antibodies and p24 Antigen)").
+- Missing document date stays empty (`_normalize_date` no longer fabricates
+  `today`).
+- Blood-test per-analyte «Комментарий» no longer leaks into
+  `visit_data.recommendations` (prompt + blood-test guard).
+- Compound `anti-<target> IgG` screens no longer fold onto bare `IgG`
+  (`2465-3`): the carrier guard now also runs on the LLM-guess path, and
+  `Entamoeba`/`Trichinella` are curated to `22285-1`/`26661-9`.
+- ECP (25638-8), vitamin D (35365-6), HBsAg (5196-1), anti-HCV (13955-0),
+  HIV Ag+Ab (56888-1), T. pallidum IgG+IgM (47236-5), total IgE
+  ImmunoCAP (19113-0) are curated and resolve globally.
+- `в п/зр.` now translates to the UCUM `/[HPF]` (deterministic map + LLM
+  prompt example); `кл/100 лейк.` → `cells/100 leukocytes`.
+- «СМ.КОММ» avidity rows keep an empty canonical unit instead of an
+  LLM-invented `U/mL`.
+
+**Still pending (tracked failures):**
+
+1. **`анализ_мочи_30.07` provider/title.** Live extraction takes the patient
+   header (`ГОЛОВАТЫЙ МАКСИМ АЛЕКСАНДРОВИЧ`) as `provider` (same
+   patient-header class as the 2026-09-12 reverification above) and leaves
+   `title` empty; the golden carries the signer `Выдрицкий А.В` and the
+   printed heading `Общий анализ мочи`. Prompt work.
+2. **Comment-column results (`см.комм.`).** `Цвет`, `Прозрачность` and
+   `Слизь` print `см.комм.` with the finding in the document's `Комментарий`
+   column («СВЕТЛО-ЖЕЛТЫЙ», «ПОЛНАЯ», «В НЕЗНАЧИТЕЛЬНОМ КОЛИЧЕСТВЕ»); the
+   schema has no per-row comment field, so `Слизь` reads `abnormal` against
+   `отсут./незн.кол.` where the truth is `normal`. Schema/product decision.
+3. **`helix_2023_2` H. pylori reference.** The document re-prints the
+   expected qualitative result in the «Референтный интервал» cell
+   (`отрицательный`); live extraction drops the duplicate cell, so the
+   matcher emits `expected: null` (a future positive would silently read
+   `normal` via the falsy-expected rule). Golden = `Negative`.
+4. **`helix_2023_2` H. pylori local.** No CagA-combined LOINC exists
+   (0 matches in the shipped CSV), so the per-user local def is the target.
+5. **`2024_вирусы` avidity row.** Raw name is paraphrased
+   (`gondii` vs the printed `gon.`); the `СМ.КОММ` result with a `>60`
+   cutoff is modelled as an interval reference + textual value — needs a
+   product decision on "see comment" results. Minor: the lab's `*`
+   out-of-range markers and the filename are not part of the document.
+6. **`2024_вирусы` / `helix_2023_2` local serology display.** The remaining
+   local rows (`Avidity …`, `anti-Giardia …`, `anti-Opisthorchis IgG`,
+   `H. pylori CagA`) keep their extraction English names; they are
+   intentionally per-user.
+
+Offline baseline after this batch: **148 diffs / 7 cases**
+(`анализ_мочи_30.07` 66 — the offline validator rebuilds `RawBiomarker`
+without the `specimen` field, so urine rows cannot exercise the
+specimen-aware path; tracked until the standardized output exposes
+`specimen`). Run `venv/bin/python -m e2e.validate_offline`.
+
 ## Local vs global scope
 
 - **`Активированные лимфоциты`** is intentionally `scope=local` (per-user). There

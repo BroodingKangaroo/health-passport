@@ -1,0 +1,296 @@
+{
+  "entry_type": "blood_test",
+  "date": "",
+  "time": "",
+  "clinic": "",
+  "provider": "",
+  "title": "",
+  "notes": "",
+  "source_language": "ru",
+  "biomarkers": [
+    {
+      "raw_name": "ВИЧ 1/2 (антитела и антиген р24)",
+      "raw_value": "ОТРИЦАТ.",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "HIV 1+2 Ab+HIV1 p24 Ag",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": null
+      },
+      "status": "normal",
+      "category": "Microbiology",
+      "definition_id": "56888-1",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Сифилис (anti-Tr.pallidum IgG+IgM)",
+      "raw_value": "ОТРИЦАТ.",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "Treponema pallidum Ab",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": null
+      },
+      "status": "normal",
+      "category": "Microbiology",
+      "definition_id": "47236-5",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "HBsAg (кач.)",
+      "raw_value": "ОТРИЦАТ.",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "Hepatitis B virus surface Ag",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": null
+      },
+      "status": "normal",
+      "category": "Microbiology",
+      "definition_id": "5196-1",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "anti - HCV total",
+      "raw_value": "ОТРИЦАТ.",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "Hepatitis C virus Ab",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": null
+      },
+      "status": "normal",
+      "category": "Microbiology",
+      "definition_id": "13955-0",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Эозинофильный катионный белок",
+      "raw_value": "120 нг/мл *",
+      "raw_unit": "нг/мл",
+      "raw_range_string": "<24",
+      "standard_name_en": "Eosinophil cationic protein",
+      "standard_value": 120.0,
+      "standard_unit": "ng/mL",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 24.0
+      },
+      "status": "high",
+      "category": "Allergy",
+      "definition_id": "25638-8",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Общий Ig E ImmunoCAP",
+      "raw_value": "119.0 кЕд/Л *",
+      "raw_unit": "кЕд/Л",
+      "raw_range_string": "< 114",
+      "standard_name_en": "IgE",
+      "standard_value": 119.0,
+      "standard_unit": "kU/L",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 114.0
+      },
+      "status": "high",
+      "category": "Immunology",
+      "definition_id": "19113-0",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "anti-Entamoeba histolytica IgG",
+      "raw_value": "ОТРИЦАТ.",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "Entamoeba histolytica Ab",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": null
+      },
+      "status": "normal",
+      "category": "Microbiology",
+      "definition_id": "22285-1",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "anti-Trichinella IgG",
+      "raw_value": "ОТРИЦАТ.",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "Trichinella sp Ab",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": null
+      },
+      "status": "normal",
+      "category": "Microbiology",
+      "definition_id": "26661-9",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "anti-Toxocara IgG",
+      "raw_value": "ОТРИЦАТ.",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "Toxocara sp Ab",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": null
+      },
+      "status": "normal",
+      "category": "Microbiology",
+      "definition_id": "96568-1",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "anti-Ascaris IgG",
+      "raw_value": "ОТРИЦАТ.",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "Ascaris sp Ab",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": null
+      },
+      "status": "normal",
+      "category": "Microbiology",
+      "definition_id": "74815-2",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Авидность anti-Toxoplasma gon. IgG",
+      "raw_value": "СМ.КОММ",
+      "raw_unit": "",
+      "raw_range_string": ">60",
+      "standard_name_en": "Avidity Anti-Toxoplasma gondii IgG",
+      "standard_value": "СМ.КОММ",
+      "standard_unit": "",
+      "reference": {
+        "kind": "interval",
+        "low": 60.0,
+        "high": null
+      },
+      "status": "normal",
+      "category": "Parasitic Infections",
+      "definition_id": "local-319411ad0a2e4b5992e2018241a1c5fc-c2119963b5ac",
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "anti-Lamblia IgA+IgM+IgG",
+      "raw_value": "ОТРИЦАТ.",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "anti-Giardia IgA+IgM+IgG",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": null
+      },
+      "status": "normal",
+      "category": "Microbiology",
+      "definition_id": "local-319411ad0a2e4b5992e2018241a1c5fc-94eec63e5dc6",
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "anti-Opisthorchis IgG",
+      "raw_value": "ОТРИЦАТ.",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "anti-Opisthorchis IgG",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": null
+      },
+      "status": "normal",
+      "category": "Microbiology",
+      "definition_id": "local-319411ad0a2e4b5992e2018241a1c5fc-8ab31083a67d",
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    }
+  ],
+  "visit_data": {
+    "diagnosis": {
+      "original": "",
+      "translated_en": ""
+    },
+    "chief_complaint": {
+      "original": "",
+      "translated_en": ""
+    },
+    "objective_findings": {
+      "original": "",
+      "translated_en": ""
+    },
+    "prescriptions": [],
+    "recommendations": []
+  },
+  "instrumental_data": {
+    "modality": "",
+    "findings": "",
+    "conclusion": ""
+  }
+}

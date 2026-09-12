@@ -1,0 +1,157 @@
+{
+  "entry_type": "blood_test",
+  "date": "2023-06-08",
+  "time": "07:25",
+  "clinic": "ООО «Международная лаборатория Хеликс»",
+  "provider": "Гончарук В.И.",
+  "title": "",
+  "notes": "",
+  "source_language": "ru",
+  "biomarkers": [
+    {
+      "raw_name": "Лактатдегидрогеназа (ЛДГ)",
+      "raw_value": "142",
+      "raw_unit": "Ед/л",
+      "raw_range_string": "< 250",
+      "standard_name_en": "Lactate dehydrogenase",
+      "standard_value": 142.0,
+      "standard_unit": "U/L",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 250.0
+      },
+      "status": "normal",
+      "category": "Chemistry",
+      "definition_id": "14805-6",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Аланинаминотрансфераза (АЛТ)",
+      "raw_value": "38.7",
+      "raw_unit": "Ед/л",
+      "raw_range_string": "1 - 41",
+      "standard_name_en": "Alanine aminotransferase",
+      "standard_value": 38.7,
+      "standard_unit": "U/L",
+      "reference": {
+        "kind": "interval",
+        "low": 1.0,
+        "high": 41.0
+      },
+      "status": "normal",
+      "category": "Liver Function",
+      "definition_id": "1742-6",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Общий витамин D (25-ОН витамин D)",
+      "raw_value": "42.03",
+      "raw_unit": "нг/мл",
+      "raw_range_string": "30 - 100",
+      "standard_name_en": "Vitamin D+Metabolites",
+      "standard_value": 42.03,
+      "standard_unit": "ng/mL",
+      "reference": {
+        "kind": "interval",
+        "low": 30.0,
+        "high": 100.0
+      },
+      "status": "normal",
+      "category": "Chemistry",
+      "definition_id": "35365-6",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Анализ кала на яйца и личинки гельминтов, простейшие и их цисты",
+      "raw_value": "не обнаружены",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "Ova & parasites (feces)",
+      "standard_value": "Not detected",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": null
+      },
+      "status": "normal",
+      "category": "Microbiology",
+      "definition_id": "10704-5",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Эозинофильный катионный белок (ECP)",
+      "raw_value": "91.4",
+      "raw_unit": "нг/мл",
+      "raw_range_string": "< 13.3",
+      "standard_name_en": "Eosinophil cationic protein",
+      "standard_value": 91.4,
+      "standard_unit": "ng/mL",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 13.3
+      },
+      "status": "high",
+      "category": "Allergy",
+      "definition_id": "25638-8",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Хеликобактер Пилори (Helicobacter pylori), сум. антитела (IgA, IgG, IgM) к антигену CagA",
+      "raw_value": "отрицательный",
+      "raw_unit": "",
+      "raw_range_string": "отрицательный",
+      "standard_name_en": "Helicobacter pylori antibodies (IgA, IgG, IgM) to CagA antigen",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": "Negative"
+      },
+      "status": "normal",
+      "category": "Иммунология-ELISA",
+      "definition_id": "local-319411ad0a2e4b5992e2018241a1c5fc-f3b8350c4105",
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    }
+  ],
+  "visit_data": {
+    "diagnosis": {
+      "original": "",
+      "translated_en": ""
+    },
+    "chief_complaint": {
+      "original": "",
+      "translated_en": ""
+    },
+    "objective_findings": {
+      "original": "",
+      "translated_en": ""
+    },
+    "prescriptions": [],
+    "recommendations": []
+  },
+  "instrumental_data": {
+    "modality": "",
+    "findings": "",
+    "conclusion": ""
+  }
+}

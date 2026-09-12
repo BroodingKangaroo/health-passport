@@ -1,0 +1,462 @@
+{
+  "entry_type": "blood_test",
+  "date": "2026-07-30",
+  "time": "",
+  "clinic": "ИООО \"Независимая лаборатория ИНВИТРО\"",
+  "provider": "Выдрицкий А.В",
+  "title": "Общий анализ мочи",
+  "notes": "",
+  "source_language": "ru",
+  "biomarkers": [
+    {
+      "raw_name": "Цвет",
+      "raw_value": "см.комм.",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "Color (urine)",
+      "standard_value": "см.комм.",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": null
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "5778-6",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Прозрачность",
+      "raw_value": "см.комм.",
+      "raw_unit": "",
+      "raw_range_string": "",
+      "standard_name_en": "Clarity (urine)",
+      "standard_value": "см.комм.",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": null
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "32167-9",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Относительная плотность",
+      "raw_value": "1024",
+      "raw_unit": "г/л",
+      "raw_range_string": "1003 - 1035",
+      "standard_name_en": "Specific gravity (urine)",
+      "standard_value": 1024.0,
+      "standard_unit": "g/L",
+      "reference": {
+        "kind": "interval",
+        "low": 1003.0,
+        "high": 1035.0
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "2965-2",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "pH",
+      "raw_value": "6.0",
+      "raw_unit": "",
+      "raw_range_string": "5 - 8",
+      "standard_name_en": "pH (urine)",
+      "standard_value": 6.0,
+      "standard_unit": "[pH]",
+      "reference": {
+        "kind": "interval",
+        "low": 5.0,
+        "high": 8.0
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "2756-5",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Белок",
+      "raw_value": "<0.100",
+      "raw_unit": "г/л",
+      "raw_range_string": "< 0.140",
+      "standard_name_en": "Protein (urine)",
+      "standard_value": 0.1,
+      "standard_unit": "g/L",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 0.14
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "2888-6",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Глюкоза (сахар)",
+      "raw_value": "< 5.6",
+      "raw_unit": "ммоль/л",
+      "raw_range_string": "<5.6",
+      "standard_name_en": "Glucose (urine)",
+      "standard_value": 5.6,
+      "standard_unit": "mmol/L",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 5.6
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "15076-3",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Кетоновые тела",
+      "raw_value": "< 0.5",
+      "raw_unit": "ммоль/л",
+      "raw_range_string": "<0,5",
+      "standard_name_en": "Ketones (urine)",
+      "standard_value": 0.5,
+      "standard_unit": "mmol/L",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 0.5
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "59158-6",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Уробилиноген",
+      "raw_value": "отрицат.",
+      "raw_unit": "мкмоль/л",
+      "raw_range_string": "отрицательно",
+      "standard_name_en": "Urobilinogen (urine)",
+      "standard_value": "Negative",
+      "standard_unit": "µmol/L",
+      "reference": {
+        "kind": "qualitative",
+        "expected": "Negative"
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "13658-0",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Билирубин",
+      "raw_value": "отрицат.",
+      "raw_unit": "",
+      "raw_range_string": "отрицательно",
+      "standard_name_en": "Bilirubin (urine)",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": "Negative"
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "5770-3",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Гемоглобин",
+      "raw_value": "отрицат.",
+      "raw_unit": "",
+      "raw_range_string": "отрицательно",
+      "standard_name_en": "Hemoglobin (urine)",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": "Negative"
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "5794-3",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Нитриты",
+      "raw_value": "отрицат.",
+      "raw_unit": "",
+      "raw_range_string": "отрицательно",
+      "standard_name_en": "Nitrite (urine)",
+      "standard_value": "Negative",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": "Negative"
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "5802-4",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Эпителий плоский",
+      "raw_value": "1",
+      "raw_unit": "в п/зр.",
+      "raw_range_string": "< 3",
+      "standard_name_en": "Squamous epithelial cells (urine)",
+      "standard_value": 1.0,
+      "standard_unit": "/[HPF]",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 3.0
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "104650-7",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Эпителий переходный",
+      "raw_value": "не обнаруж",
+      "raw_unit": "в п/зр.",
+      "raw_range_string": "< 1",
+      "standard_name_en": "Transitional Epithelium (urine)",
+      "standard_value": 0.0,
+      "standard_unit": "/[HPF]",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 1.0
+      },
+      "status": "normal",
+      "category": "Microscopic Examination",
+      "definition_id": "local-319411ad0a2e4b5992e2018241a1c5fc-64b7c30b613d",
+      "scope": "local",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Эпителий почечный",
+      "raw_value": "не обнаруж",
+      "raw_unit": "в п/зр.",
+      "raw_range_string": "не обнаружено",
+      "standard_name_en": "Renal epithelial cells (urine)",
+      "standard_value": "Not detected",
+      "standard_unit": "/[HPF]",
+      "reference": {
+        "kind": "qualitative",
+        "expected": "Not detected"
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "12248-1",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Лейкоциты (микроскопия)",
+      "raw_value": "<1",
+      "raw_unit": "в п/зр.",
+      "raw_range_string": "< 3",
+      "standard_name_en": "Leukocytes (urine)",
+      "standard_value": 1.0,
+      "standard_unit": "/[HPF]",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 3.0
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "5821-4",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Эритроциты (микроскопия)",
+      "raw_value": "1",
+      "raw_unit": "в п/зр.",
+      "raw_range_string": "< 2",
+      "standard_name_en": "Erythrocytes (urine)",
+      "standard_value": 1.0,
+      "standard_unit": "/[HPF]",
+      "reference": {
+        "kind": "interval",
+        "low": null,
+        "high": 2.0
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "13945-1",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Цилиндры",
+      "raw_value": "не обнаруж",
+      "raw_unit": "в п/зр.",
+      "raw_range_string": "не обнаружено",
+      "standard_name_en": "Casts (urine)",
+      "standard_value": "Not detected",
+      "standard_unit": "/[HPF]",
+      "reference": {
+        "kind": "qualitative",
+        "expected": "Not detected"
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "87827-2",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Соли",
+      "raw_value": "не обнаруж",
+      "raw_unit": "",
+      "raw_range_string": "не обнаружено",
+      "standard_name_en": "Crystals (urine)",
+      "standard_value": "Not detected",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": "Not detected"
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "87828-0",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Слизь",
+      "raw_value": "см.комм.",
+      "raw_unit": "",
+      "raw_range_string": "отсут./незн.кол.",
+      "standard_name_en": "Mucus (urine)",
+      "standard_value": "см.комм.",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": "отсут./незн.кол."
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "8247-9",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Бактерии",
+      "raw_value": "не обнаруж",
+      "raw_unit": "",
+      "raw_range_string": "не обнаружено",
+      "standard_name_en": "Bacteria (urine)",
+      "standard_value": "Not detected",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": "Not detected"
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "87829-8",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    },
+    {
+      "raw_name": "Дрожжевые грибки",
+      "raw_value": "не обнаруж",
+      "raw_unit": "",
+      "raw_range_string": "не обнаружено",
+      "standard_name_en": "Yeast (urine)",
+      "standard_value": "Not detected",
+      "standard_unit": "",
+      "reference": {
+        "kind": "qualitative",
+        "expected": "Not detected"
+      },
+      "status": "normal",
+      "category": "Urinalysis",
+      "definition_id": "87831-4",
+      "scope": "global",
+      "scale_function": null,
+      "needs_review": false,
+      "canonical_unit_inferred": false
+    }
+  ],
+  "visit_data": {
+    "diagnosis": {
+      "original": "",
+      "translated_en": ""
+    },
+    "chief_complaint": {
+      "original": "",
+      "translated_en": ""
+    },
+    "objective_findings": {
+      "original": "",
+      "translated_en": ""
+    },
+    "prescriptions": [],
+    "recommendations": []
+  },
+  "instrumental_data": {
+    "modality": "",
+    "findings": "",
+    "conclusion": ""
+  }
+}
