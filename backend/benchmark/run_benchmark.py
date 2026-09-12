@@ -184,6 +184,9 @@ def parse_args(argv=None):
     ap.add_argument("--text-threshold", type=float, default=0.9,
                     help="similarity cutoff passed to the comparator (default 0.9)")
     ap.add_argument("--report", help="write a JSON report to this path")
+    ap.add_argument("--dump-observed", metavar="DIR",
+                    help="write each case's observed JSON into DIR (requires --jobs 1; "
+                         "diagnostics only, not part of the report)")
     ap.add_argument("--seed-corpus", action="store_true",
                     help="copy current e2e inputs/goldens into benchmark/corpus/ and exit")
     ap.add_argument("--manifest", action="store_true",
@@ -218,6 +221,9 @@ def parse_args(argv=None):
         ap.error("--runs must be >= 1")
     if args.jobs < 1:
         ap.error("--jobs must be >= 1")
+    if args.dump_observed and args.jobs != 1:
+        ap.error("--dump-observed requires --jobs 1 (parallel children are "
+                 "isolated subprocesses)")
     if not 1 <= args.stage_concurrency <= MAX_STAGE_CONCURRENCY:
         ap.error(f"--stage-concurrency must be 1..{MAX_STAGE_CONCURRENCY} (watchdog pool size)")
     if args.child and (args.seed_corpus or args.fresh_db or args.manifest or args.split):
@@ -1157,6 +1163,16 @@ def _run_inprocess(args, cases, pristine: str) -> int:
             )
             entry["runs_diffs"].append(item["runs_diffs"][0])
             entry["runs_doc"].append(item["runs_doc"][0])
+            entry.setdefault("observed", []).append(item["observed"][0])
+
+    if args.dump_observed:
+        os.makedirs(args.dump_observed, exist_ok=True)
+        for name, entry in results.items():
+            for i, obs in enumerate(entry.get("observed", []), start=1):
+                dest = os.path.join(args.dump_observed, f"{name}.run{i}.json")
+                with open(dest, "w", encoding="utf-8") as fh:
+                    json.dump(obs, fh, indent=2, ensure_ascii=False)
+        print(f"[dump] observed JSON -> {args.dump_observed}")
 
     runs_diffs = {name: entry["runs_diffs"] for name, entry in results.items()}
     runs_doc = {name: entry["runs_doc"] for name, entry in results.items()}
