@@ -14,6 +14,7 @@ from app.schemas.ai import (
     RawMedicalRecord,
     StandardizedBiomarker,
     StandardizedMedicalRecord,
+    StandardizedVisitData,
 )
 from app.services.matcher._cache import (
     _factor_cache,
@@ -31,6 +32,7 @@ from app.services.matcher.loinc_store import (
     _load_multilingual_lookup,
     _multilingual_code,
     _promote_loinc_from_csv,
+    _specimen_compatible,
 )
 from app.services.matcher.name_matching import (
     _fraction_variant,
@@ -42,6 +44,7 @@ from app.services.matcher.name_matching import (
     is_grounded,
     match_local_def,
 )
+from app.services.matcher.specimen import normalize_specimen, specimen_for_reading
 from app.services.matcher.standardize import (
     _apply_status,
     _build_standardized_from_def,
@@ -57,6 +60,14 @@ from app.services.matcher.translation import (
 from app.services.matcher.units_guess import _translate_units_batch
 
 logger = logging.getLogger(__name__)
+
+
+def _specimen_conflict(match, specimen: str) -> bool:
+    """True when a matched definition's biomaterial conflicts with the
+    reading's (e.g. serum glucose for a urine row)."""
+    if match is None or not specimen:
+        return False
+    return _specimen_compatible(match.loinc_code or match.id or "", specimen) is False
 
 
 def match_and_convert(
@@ -135,13 +146,17 @@ def _match_and_convert_impl(
     # most reliable, so they must win BEFORE any LLM-translation-based match — a
     # loose translation must never hijack a known localized name (e.g.
     # "Эритроциты" -> Erythrocytes, not a mistranslation that hits Potassium).
+    doc_specimen = normalize_specimen(raw.specimen)
     for b in biomarkers:
         search_name = (b.standard_name_en or "").strip() or b.name
         extra = (b.name,) if b.name != search_name else ()
+        eff_specimen = specimen_for_reading(doc_specimen, b.specimen)
 
-        # 1a. Curated multilingual table on the raw localized name.
+        # 1a. Curated multilingual table on the raw localized name. The
+        # specimen-specific table is checked first, so a urine document's
+        # "Глюкоза" resolves to the urine code, not the serum synonym.
         match = None
-        code = _multilingual_code(b.name, multilang)
+        code = _multilingual_code(b.name, multilang, eff_specimen)
         if code:
             # A curated "local-" code marks an analyte that has NO standard
             # LOINC (e.g. "Activated lymphocytes") and is intentionally kept as
@@ -172,20 +187,30 @@ def _match_and_convert_impl(
             # as "Unrecognized" instead of the canonical global one.
             if match is None:
                 match = _promote_loinc_from_csv(db, code)
+            # Curated mappings stay authoritative even when the target's
+            # SYSTEM looks different (e.g. 17803-8 plasma cells in body fluid
+            # for a blood morphology row — the curator picked the code); the
+            # specimen table already wins over the generic table first.
             if match is not None:
                 curated_ids.add(id(b))
 
         # 1b. Exact match on the raw name (hits its attached synonyms).
         if match is None:
             match = deterministic_match(b.name, index)
+            if _specimen_conflict(match, eff_specimen):
+                match = None
 
         # 1c. Exact match on the LLM-translated English name.
         if match is None and search_name != b.name:
             match = deterministic_match(search_name, index)
+            if _specimen_conflict(match, eff_specimen):
+                match = None
 
         # 1d. Fuzzy match (guarded) as a last non-LLM resort.
         if match is None:
             match = fuzzy_match(search_name, index, extra)
+            if _specimen_conflict(match, eff_specimen):
+                match = None
 
         # 1d2. Cross-document local unification: the same locally-defined
         # analyte worded differently by another lab («Соотношение X/Y» vs
@@ -211,7 +236,9 @@ def _match_and_convert_impl(
         if match and _is_percent_unit(b.unit):
             frac = _fraction_variant(match, definitions)
             if frac is not None:
-                match = frac
+                # The re-route can reintroduce a specimen-incompatible sibling
+                # (e.g. "%"-variant in body fluid for a blood row) — drop it.
+                match = None if _specimen_conflict(frac, eff_specimen) else frac
 
         if match:
             matched_pairs.append((b, match))
@@ -245,7 +272,7 @@ def _match_and_convert_impl(
     # Step 2: LLM candidate-based guess for unmatched biomarkers
     if unmatched and client:
         common_map = _common_biomarker_guide(definitions)
-        guesses = _llm_zero_shot_batch(unmatched, index, client, common_map)
+        guesses = _llm_zero_shot_batch(unmatched, index, client, common_map, doc_specimen)
 
         raw_to_guess: dict[str, LoincGuess] = {}
         for g in guesses:
@@ -254,6 +281,7 @@ def _match_and_convert_impl(
         for b in unmatched:
             guess = raw_to_guess.get(b.name)
             guessed_loinc = guess.guessed_loinc if guess else None
+            eff_specimen = specimen_for_reading(doc_specimen, b.specimen)
 
             # A curated local-only analyte (e.g. "Activated lymphocytes") must
             # never be promoted to a global LOINC the LLM happens to guess, even
@@ -272,22 +300,33 @@ def _match_and_convert_impl(
                 db, b.name, guessed_loinc, user_id, raw_biomarker=b, grounded=grounded,
                 force_local=id(b) in curated_local_ids,
                 local_code=curated_local_codes.get(id(b)),
+                specimen=eff_specimen,
             )
 
             if resolved.scope == "global":
                 std_biomarkers.append(_build_standardized_from_def(b, resolved, db, user_id, client))
             else:
-                std_biomarkers.append(_build_standardized_local(b, resolved, client))
+                std_biomarkers.append(_build_standardized_local(b, resolved, client, eff_specimen))
     elif unmatched:
         for b in unmatched:
+            eff_specimen = specimen_for_reading(doc_specimen, b.specimen)
             resolved = verify_or_create(db, b.name, None, user_id, raw_biomarker=b, grounded=False,
                                         force_local=id(b) in curated_local_ids,
-                                        local_code=curated_local_codes.get(id(b)))
-            std_biomarkers.append(_build_standardized_local(b, resolved, client))
+                                        local_code=curated_local_codes.get(id(b)),
+                                        specimen=eff_specimen)
+            if resolved.scope == "global":
+                # verify_or_create's name/synonym scan can still return a global
+                # (it only skips specimen-incompatible ones) — build it as a
+                # global so the specimen qualifier is not applied to it.
+                std_biomarkers.append(_build_standardized_from_def(b, resolved, db, user_id, client))
+            else:
+                std_biomarkers.append(_build_standardized_local(b, resolved, client, eff_specimen))
 
-    # Step 5: Visit data translation
+    # Step 5: Visit data translation. Blood test reports never carry visit
+    # sections — a per-analyte "Комментарий" column extracted into
+    # visit_data.recommendations is a prompt artifact, not document truth.
     visit_data = None
-    if raw.visit_data:
+    if raw.visit_data and raw.entry_type != "blood_test":
         visit_data = _llm_translate_visit_data(raw.visit_data, client)
 
     result = StandardizedMedicalRecord(
@@ -299,7 +338,7 @@ def _match_and_convert_impl(
         title=raw.title,
         notes=raw.notes,
         biomarkers=std_biomarkers,
-        visit_data=visit_data,
+        visit_data=visit_data if visit_data is not None else StandardizedVisitData(),
         instrumental_data=raw.instrumental_data,
     )
 

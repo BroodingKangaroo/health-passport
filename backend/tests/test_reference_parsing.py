@@ -40,6 +40,29 @@ def test_parse_value_rejects_numeric_overflow():
     assert parse_value("9" * 400) is None
 
 
+@pytest.mark.parametrize(
+    "raw, low, high",
+    [
+        ("<0,5", None, 0.5),
+        (">8,5", 8.5, None),
+        ("< 0.5", None, 0.5),
+        ("> 100", 100.0, None),
+    ],
+)
+def test_parse_reference_bounded_russian_comma(raw, low, high):
+    # A Russian decimal comma inside a bounded value must keep its fraction
+    # ("<0,5" is 0.5, not 0 — helix/analiz_mochi review 2026-09-12).
+    assert parse_reference(raw) == {"kind": "interval", "low": low, "high": high}
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["не обнаружены", "не выявлены", "Не обнаружены"],
+)
+def test_parse_reference_plural_absent_variants(raw):
+    assert parse_reference(raw) == {"kind": "qualitative", "expected": "Not detected"}
+
+
 # --- #44: glued-unit ranges / unknown references ---------------------------
 
 @pytest.mark.parametrize(

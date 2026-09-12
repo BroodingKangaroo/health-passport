@@ -33,7 +33,7 @@ LLM_CANDIDATE_COUNT = 8
 
 ZERO_SHOT_PROMPT = """You are a medical terminology assistant. For each raw biomarker extracted from a medical document, choose the single best matching LOINC code.
 
-Each item lists the raw name and a set of candidate LOINC codes (code: English name) retrieved for it. Pick the candidate that best matches the analyte. If NONE of the candidates fit, set guessed_loinc to null.
+{specimen_clause}Each item lists the raw name and a set of candidate LOINC codes (code: English name) retrieved for it. Pick the candidate that best matches the analyte. If NONE of the candidates fit, set guessed_loinc to null.
 
 Items:
 {items}
@@ -207,6 +207,7 @@ def _llm_zero_shot_batch(
     index: dict[str, BiomarkerDefinitionModel],
     client: Mistral,
     common_map: Optional[list[str]] = None,
+    specimen: str = "",
 ) -> list[LoincGuess]:
     # Build a compact per-biomarker candidate list instead of dumping the
     # entire (5000+ entry) LOINC dictionary into the prompt.
@@ -227,7 +228,16 @@ def _llm_zero_shot_batch(
         item_lines.append(f'- raw_name: "{b.name}" | candidates: {cand_str}')
 
     items = "\n".join(item_lines)
-    system_prompt = ZERO_SHOT_PROMPT.format(items=items)
+    specimen_clause = (
+        f"The document's specimen is {specimen}: pick a LOINC code whose "
+        f"system/material is {specimen}, never an analyte from a different "
+        "biomaterial (e.g. no serum glucose for a urine glucose). "
+        if specimen
+        else ""
+    )
+    system_prompt = ZERO_SHOT_PROMPT.format(
+        items=items, specimen_clause=specimen_clause
+    )
 
     try:
         chat_response = client.chat.parse(

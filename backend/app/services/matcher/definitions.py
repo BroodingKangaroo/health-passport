@@ -13,8 +13,9 @@ from app.schemas.ai import RawBiomarker
 from app.services.category_normalize import normalize_category
 from app.services.matcher._text import _is_ascii
 from app.services.matcher.llm_matching import _guess_is_consistent
-from app.services.matcher.loinc_store import _promote_loinc_from_csv
+from app.services.matcher.loinc_store import _promote_loinc_from_csv, _specimen_compatible
 from app.services.matcher.name_matching import (
+    _is_carrier_subset_collision,
     _is_fraction_def,
     _is_percent_unit,
     _normalize_name,
@@ -22,6 +23,7 @@ from app.services.matcher.name_matching import (
     canonicalize_gene_mutation_en,
 )
 from app.services.matcher.reference_bands import parse_reference_for_value
+from app.services.matcher.specimen import qualify_specimen_name
 from app.services.matcher.units_conversion import _apply_scale_function
 from app.services.matcher.units_guess import (
     _cyrillic_magnitude_en,
@@ -127,15 +129,26 @@ def _rescale_value(value: Union[float, str, None], scale_function: str):
     return value
 
 
+_SEE_COMMENT_RE = re.compile(r"^\s*(?:см[.,]?\s*комм|see\s+comment)", re.IGNORECASE)
+
+
 def _is_qualitative_result(raw_biomarker: Optional[RawBiomarker]) -> bool:
     """True when the reading's value/range carry no numeric content at all
     (e.g. ``отрицат.``, ``не выявлена``): the test is a qualitative screen and
     has no meaningful canonical concentration unit, so first-seen anchoring
-    must NOT invent one."""
+    must NOT invent one.
+
+    A "see comment" result (``см.комм.``) is qualitative even when the
+    reference prints a numeric cutoff — the comment, not the number, carries
+    the finding."""
     if raw_biomarker is None:
         return False
     text = f"{raw_biomarker.value or ''} {raw_biomarker.raw_range_string or ''}"
-    return bool(text.strip()) and not any(ch.isdigit() for ch in text)
+    if not text.strip():
+        return False
+    if any(ch.isdigit() for ch in text):
+        return bool(_SEE_COMMENT_RE.match((raw_biomarker.value or "").strip()))
+    return True
 
 
 def verify_or_create(
@@ -147,6 +160,7 @@ def verify_or_create(
     grounded: bool = True,
     force_local: bool = False,
     local_code: Optional[str] = None,
+    specimen: str = "",
 ) -> BiomarkerDefinitionModel:
     # Only trust an LLM LOINC guess when it was grounded in real candidates AND
     # is consistent with the analyte's English name. Ungrounded / inconsistent
@@ -159,18 +173,33 @@ def verify_or_create(
         ).first()
         if existing is None:
             existing = _promote_loinc_from_csv(db, guessed_loinc)
+        if existing is not None and _specimen_compatible(
+            existing.loinc_code or existing.id or "", specimen
+        ) is False:
+            # A serum code guessed for a urine/feces reading — never promote it.
+            existing = None
         if existing is not None and _guess_is_consistent(existing, raw_biomarker):
-            # Never fold a raw name onto a percent/fraction definition as a
-            # synonym — that is how absolute ("… абс.") readings got merged into
-            # the "%" analyte. Other (non-fraction) definitions keep learning
-            # synonyms for matching recall.
-            if not _is_fraction_def(existing):
+            # Never fold a compound anti-<target> screen onto a bare
+            # immunoglobulin-class def ("anti-Entamoeba histolytica IgG" ->
+            # "IgG"): the LLM guess path must honor the same carrier guard as
+            # fuzzy matching, or a one-token candidate swallows the screen.
+            if _is_carrier_subset_collision(
+                _normalize_name(raw_name),
+                _normalize_name((existing.names or {}).get("en", "")),
+            ):
+                existing = None
+            elif not _is_fraction_def(existing):
+                # Never fold a raw name onto a percent/fraction definition as a
+                # synonym — that is how absolute ("… абс.") readings got merged
+                # into the "%" analyte. Other (non-fraction) definitions keep
+                # learning synonyms for matching recall.
                 syns = list(existing.synonyms or [])
                 raw_lower = raw_name.lower()
                 if raw_lower not in (s.lower() for s in syns):
                     syns.append(raw_name)
                     existing.synonyms = syns
                     db.flush()
+        if existing is not None:
             return existing
         # Not consistent or couldn't resolve — fall through to local.
 
@@ -178,11 +207,16 @@ def verify_or_create(
     # forced-local analytes skip this scan: a previously LEARNED global synonym
     # (e.g. 'anti-Opisthorchis IgG' once attached to the bare IgG def) must
     # never resurrect a mapping that curation deliberately sends to a local def.
+    # Specimen-incompatible globals are skipped too: a urine "pH" must not
+    # resolve back to the venous-blood pH def the pipeline just rejected.
     if not force_local:
         raw_norm = _normalize_name(raw_name)
         for defn in db.query(BiomarkerDefinitionModel).filter(
             BiomarkerDefinitionModel.scope == "global"
         ).all():
+            defn_code = defn.loinc_code or defn.id or ""
+            if _specimen_compatible(defn_code, specimen) is False:
+                continue
             for n in defn.names.values():
                 if n and _normalize_name(n) == raw_norm:
                     if not _is_fraction_def(defn):
@@ -207,8 +241,9 @@ def verify_or_create(
     # "Bifidobacterium spp." (period present or missing in the OCR) collapse to
     # the same local definition instead of creating duplicates. The original
     # raw name is still stored as a synonym so future exact-match by the raw
-    # form still works.
-    canonical_name = _normalize_name(raw_name)
+    # form still works. Non-blood specimens add a qualifier so a urine local
+    # never unifies with its blood namesake.
+    canonical_name = qualify_specimen_name(_normalize_name(raw_name), specimen)
     # Per-user id (same scheme as the manual-entry path in entries.py): two
     # users extracting the same novel analyte must get isolated definitions,
     # never collide on a shared primary key.
@@ -229,7 +264,8 @@ def verify_or_create(
 
     # Use the translated English name as the canonical "en" name when
     # available; only strip OCR-attached trailing punctuation so the
-    # human-readable casing is preserved.
+    # human-readable casing is preserved. Non-blood specimens get the same
+    # qualifier as the id so the timeline shows them as separate analytes.
     en_name = raw_name
     if raw_biomarker and raw_biomarker.standard_name_en and _is_ascii(
         raw_biomarker.standard_name_en
@@ -237,6 +273,7 @@ def verify_or_create(
         en_name = canonicalize_gene_mutation_en(
             _strip_trailing_punct(raw_biomarker.standard_name_en.strip())
         )
+    en_name = qualify_specimen_name(en_name, specimen)
     syns = [raw_name]
     if en_name and en_name != raw_name and en_name not in syns:
         syns.append(en_name)

@@ -63,6 +63,41 @@ def _is_query_subset_of_candidate(query_key: str, candidate_key: str) -> bool:
     q, c = _token_set(query_key), _token_set(candidate_key)
     return bool(q) and q < c
 
+
+# Qualifier tokens that do not change a candidate's analyte identity, so a
+# query carrying ONLY these beyond the candidate still matches it
+# ("Total bilirubin" -> "Bilirubin", "Glucose fasting" -> "Glucose").
+_IDENTITY_QUALIFIER_TOKENS = frozenset({
+    "total", "fasting", "random", "quantitative", "qualitative", "level",
+})
+# Two tokens count as the same word below this spelling distance (handles
+# morphology: "bacteria" ~ "bacterial", "cells" ~ "cell").
+_TOKEN_IDENTITY_MIN = 85
+
+
+def _tokens_match(a: str, b: str) -> bool:
+    return a == b or fuzz.ratio(a, b) >= _TOKEN_IDENTITY_MIN
+
+
+def _is_generic_candidate(query_key: str, candidate_key: str) -> bool:
+    """True when the candidate is a GENERIC shorter version of the query and
+    the query carries identity-bearing tokens the candidate lacks — fuzzy
+    scoring must not fold "Total bacterial mass" onto "Bacteria" (WRatio
+    scores the shared "bacteri*" token 90). Benign qualifiers ("Total
+    bilirubin" -> "Bilirubin") still pass."""
+    q, c = _token_set(query_key), _token_set(candidate_key)
+    if not c or not q or len(c) >= len(q):
+        return False
+    # Every candidate token must be covered by some query token; otherwise the
+    # candidate names something else (partial overlap is not a generic fold).
+    if not all(any(_tokens_match(ct, qt) for qt in q) for ct in c):
+        return False
+    extra = [t for t in q if not any(_tokens_match(t, ct) for ct in c)]
+    return any(
+        len(t) >= 4 and not t.isdigit() and t not in _IDENTITY_QUALIFIER_TOKENS
+        for t in extra
+    )
+
 # Unit tokens that denote a percentage / fraction-of-100 measurement, as opposed
 # to an absolute count. Used to route percent results to the fraction ("… %")
 # LOINC variant rather than the absolute-count variant.
@@ -118,7 +153,13 @@ _PUNCT_RE = re.compile(r'[,:;.()\[\]{}"\'\-–—/\\|#@!?“”„‟‘’«»]
 def _strip_trailing_punct(name: str) -> str:
     """Strip OCR-attached trailing punctuation and normalise unicode. Case is preserved."""
     name = unicodedata.normalize('NFKC', name)
-    return _PUNCT_RE.sub('', name.strip())
+    stripped = _PUNCT_RE.sub('', name.strip())
+    if stripped.count("(") > stripped.count(")"):
+        # Stripping removed a closing parenthesis that balanced an opening one
+        # ("... (Antibodies and p24 Antigen)") — keep the original instead of
+        # leaving a dangling "(" in the display name.
+        return name.strip()
+    return stripped
 
 
 def _normalize_name(name: str) -> str:
@@ -130,19 +171,33 @@ def _normalize_name(name: str) -> str:
 # The batch translator flips between two word orders for gene-mutation
 # parentheses across calls — "(9 exon" vs "(exon 9" (observed bimodally on
 # рнпц_омр_генетика, 5 consecutive runs one way then flipping back inside one
-# benchmark). Canonicalize deterministically so the stored/displayed English
-# definition name never flaps: always the "exon N" order.
+# benchmark) — and between "JAK2 (exon 12) mutation" / "JAK2 Gene Mutation
+# (exon 12)" / casing. Canonicalize deterministically so the stored/displayed
+# English definition name never flaps: always "<GENE> Gene Mutation (exon N)".
 _MUTATION_ORDER_RE = re.compile(r"\((\d+)\s+(exon)\b", re.IGNORECASE)
+_GENE_MUTATION_RE = re.compile(
+    r"^\s*(?P<gene>[A-Za-z][A-Za-z0-9]*)\s+"
+    r"(?:(?:gene\s+mutation)\s*\((?P<ex1>[^)]*)\)?|\((?P<ex2>[^)]*)\)\s*mutation)\s*$",
+    re.IGNORECASE,
+)
 
 
 def canonicalize_gene_mutation_en(name: str) -> str:
-    """Rewrite "(N exon" -> "(exon N" in an English mutation display name.
+    """Canonicalize gene-mutation display names to
+    ``<GENE> Gene Mutation (exon N[; ...])``.
 
     Idempotent; everything after the swapped token (e.g. "; V617F") is kept
     verbatim. Non-mutation names pass through untouched."""
     if not name:
         return name
-    return _MUTATION_ORDER_RE.sub(lambda m: f"(exon {m.group(1)}", name)
+    name = _MUTATION_ORDER_RE.sub(lambda m: f"(exon {m.group(1)}", name)
+    m = _GENE_MUTATION_RE.match(name)
+    if not m:
+        return name
+    exon = (m.group("ex1") or m.group("ex2") or "").strip()
+    if not exon:
+        return name
+    return f"{m.group('gene').upper()} Gene Mutation ({exon})"
 
 
 def _definition_rank(defn: BiomarkerDefinitionModel) -> int:
@@ -300,6 +355,11 @@ def fuzzy_match(
             if _is_carrier_subset_collision(key, matched_key):
                 # "anti-Toxocara IgG" must not collapse onto the bare "IgG"
                 # def — leave unmatched so it resolves to a local definition.
+                continue
+            if _is_generic_candidate(key, matched_key):
+                # A generic short synonym ("bacteria", "tot") must not absorb a
+                # more specific query ("total bacterial mass") on WRatio's
+                # deceptive token overlap.
                 continue
             r = fuzz.ratio(key, matched_key)
             if r < FUZZY_RATIO_MIN:

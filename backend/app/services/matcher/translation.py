@@ -46,7 +46,9 @@ Return ONLY valid JSON matching the provided schema. Do not include any text out
 
 def _normalize_date(raw_date: str) -> str:
     if not raw_date:
-        return datetime.now().strftime("%Y-%m-%d")
+        # Never fabricate a date: a document that prints none must stay empty
+        # (the UI/save layer may supply its own fallback, not the matcher).
+        return ""
     try:
         dt = datetime.fromisoformat(raw_date)
         return dt.strftime("%Y-%m-%d")

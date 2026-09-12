@@ -21,6 +21,7 @@ from app.services.matcher._text import _is_ascii
 from app.services.matcher.definitions import _LOG_PREFIX_RE
 from app.services.matcher.name_matching import canonicalize_gene_mutation_en
 from app.services.matcher.reference_bands import parse_reference_for_value
+from app.services.matcher.specimen import qualify_specimen_name
 from app.services.matcher.translation import (
     _fallback_translate,
     _normalize_date,
@@ -255,6 +256,7 @@ def _build_standardized_local(
     raw_bm: RawBiomarker,
     defn: BiomarkerDefinitionModel,
     client: Optional[Mistral] = None,
+    specimen: str = "",
 ) -> StandardizedBiomarker:
     parsed_value = parse_value(raw_bm.value)
     parsed_ref = parse_reference_for_value(raw_bm.raw_range_string, parsed_value)
@@ -309,10 +311,12 @@ def _build_standardized_local(
     # Prefer the translated English name; fall back to the original raw name if
     # the stored definition name is somehow still non-English (defense against
     # an untranslated local definition leaking the source language to the UI).
+    # The specimen qualifier survives the fallback so a urine local stays
+    # distinguishable from its blood namesake on the timeline.
     en = defn.names.get("en") or raw_bm.standard_name_en or raw_bm.name
     if not _is_ascii(en):
         en = raw_bm.standard_name_en or raw_bm.name
-    en = canonicalize_gene_mutation_en(en)
+    en = qualify_specimen_name(canonicalize_gene_mutation_en(en), specimen)
 
     ref = merge_reference(parsed_ref, defn.reference, std_value)
     # A qualitative screen with neither a printed unit nor a canonical one has

@@ -80,6 +80,11 @@ def _promote_loinc_from_csv(db: Session, code: str) -> Optional[BiomarkerDefinit
 # Cache of multilingual synonym lookups (name -> loinc_code) for the request.
 _loinc_alias_cache: Optional[dict[str, str]] = None
 _multilingual_lookup_cache: Optional[dict[str, str]] = None
+_specimen_lookup_cache: Optional[dict[str, dict[str, str]]] = None
+
+SPECIMEN_SYNONYMS_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "..", "data", "specimen_synonyms.json"
+)
 
 
 def _load_loinc_aliases() -> dict[str, str]:
@@ -149,8 +154,75 @@ def _load_multilingual_lookup() -> dict[str, str]:
 _QUALIFIER_RE = re.compile(r"[\(,].*$")
 
 
-def _multilingual_code(name: str, multilang: dict[str, str]) -> Optional[str]:
-    """Look up a localized name in the curated table, tolerating OCR noise."""
+def _load_specimen_lookup() -> dict[str, dict[str, str]]:
+    """Specimen -> {localized name -> LOINC code} curated map.
+
+    A generic spelling like "Глюкоза" resolves to a different target in urine
+    than in serum, so specimen-specific entries are checked before the generic
+    multilingual table. Parsed once and memoized (the JSON never changes at
+    runtime).
+    """
+    global _specimen_lookup_cache
+    if _specimen_lookup_cache is not None:
+        return _specimen_lookup_cache
+    path = os.path.abspath(SPECIMEN_SYNONYMS_PATH)
+    if not os.path.isfile(path):
+        _specimen_lookup_cache = {}
+        return _specimen_lookup_cache
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        _specimen_lookup_cache = {}
+        return _specimen_lookup_cache
+    out: dict[str, dict[str, str]] = {}
+    for specimen, mapping in data.items():
+        if specimen.startswith("_") or not isinstance(mapping, dict):
+            continue
+        table: dict[str, str] = {}
+        for name, code in mapping.items():
+            if not name:
+                continue
+            table[name.strip().lower()] = code
+            table.setdefault(_normalize_name(name), code)
+        out[specimen.strip().lower()] = table
+    _specimen_lookup_cache = out
+    return out
+
+
+# SYSTEM prefixes (LOINC) that identify the biomaterial of a definition.
+_SPECIMEN_SYSTEM_PREFIXES = {
+    "blood": ("SER", "PLAS", "BLD", "BLOOD", "PPP", "RBC", "WBC", "PLT"),
+    "urine": ("URINE", "UR"),
+    "feces": ("STOOL", "FECES", "FECAL"),
+}
+
+
+def _specimen_compatible(code: str, specimen: str) -> Optional[bool]:
+    """Whether a LOINC code's SYSTEM axis fits ``specimen``.
+
+    Returns None when the code/system/specimen is unknown (no filtering), so
+    only a *known conflict* rejects a match (e.g. serum glucose for a urine
+    reading)."""
+    if not code or not specimen:
+        return None
+    row = _load_loinc_rows().get(code)
+    if not row:
+        return None
+    system = (row.get("SYSTEM") or "").strip().upper()
+    prefixes = _SPECIMEN_SYSTEM_PREFIXES.get(specimen)
+    if not system or not prefixes:
+        return None
+    return any(system.startswith(p) for p in prefixes)
+
+
+def _multilingual_code(
+    name: str, multilang: dict[str, str], specimen: str = ""
+) -> Optional[str]:
+    """Look up a localized name in the curated tables, tolerating OCR noise.
+
+    Specimen-specific entries win over the generic table, so a urine document's
+    "Глюкоза" resolves to the urine code instead of the serum synonym."""
     if not name:
         return None
     candidates = [
@@ -158,6 +230,11 @@ def _multilingual_code(name: str, multilang: dict[str, str]) -> Optional[str]:
         _normalize_name(name),
         _normalize_name(_QUALIFIER_RE.sub("", name)),
     ]
+    if specimen:
+        table = _load_specimen_lookup().get(specimen) or {}
+        for key in candidates:
+            if key and key in table:
+                return table[key]
     for key in candidates:
         if key and key in multilang:
             return multilang[key]

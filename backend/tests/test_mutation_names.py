@@ -14,20 +14,27 @@ from app.services.matcher.name_matching import canonicalize_gene_mutation_en
     ("raw", "expected"),
     [
         # translator order A -> canonical
-        ("CALR gene mutation (9 exon", "CALR gene mutation (exon 9"),
+        ("CALR gene mutation (9 exon", "CALR Gene Mutation (exon 9)"),
         # translator order B already canonical
-        ("CALR gene mutation (exon 9", "CALR gene mutation (exon 9"),
+        ("CALR gene mutation (exon 9", "CALR Gene Mutation (exon 9)"),
+        # translator alternative phrase order (observed live 2026-09-12)
+        ("CALR (exon 9) mutation", "CALR Gene Mutation (exon 9)"),
+        ("CALR Gene Mutation (exon 9)", "CALR Gene Mutation (exon 9)"),
         # multi-part mutation suffix preserved
         (
             "JAK2 gene mutation (exon 14; V617F",
-            "JAK2 gene mutation (exon 14; V617F",
+            "JAK2 Gene Mutation (exon 14; V617F)",
         ),
         (
             "JAK2 gene mutation (14 exon; V617F",
-            "JAK2 gene mutation (exon 14; V617F",
+            "JAK2 Gene Mutation (exon 14; V617F)",
+        ),
+        (
+            "JAK2 (exon 14; V617F) mutation",
+            "JAK2 Gene Mutation (exon 14; V617F)",
         ),
         # idempotent
-        ("MPL gene mutation (exon 10", "MPL gene mutation (exon 10"),
+        ("MPL gene mutation (exon 10", "MPL Gene Mutation (exon 10)"),
         # non-mutation names untouched
         ("CD3+ T-lymphocytes, %", "CD3+ T-lymphocytes, %"),
         ("Lymphocytes", "Lymphocytes"),

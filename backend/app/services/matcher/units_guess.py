@@ -18,7 +18,7 @@ _UNIT_TRANSLATE_PROMPT = """You are a clinical-laboratory unit normaliser. For e
 
 Rules:
 - Items: one per line as `english analyte name | category | raw unit string`.
-- Translate Russian / Belarusian / non-ASCII units into conventional English (e.g. "копий/мл" -> "copies/mL", "мг/дл" -> "mg/dL", "ммоль/л" -> "mmol/L", "г/л" -> "g/L").
+- Translate Russian / Belarusian / non-ASCII units into conventional English (e.g. "копий/мл" -> "copies/mL", "мг/дл" -> "mg/dL", "ммоль/л" -> "mmol/L", "г/л" -> "g/L", "в п/зр." -> "/[HPF]", "кл/100 лейк." -> "cells/100 leukocytes").
 - Preserve log-scale prefixes ("lg", "log", "ln") and translate only the magnitude part (e.g. "lg копий/мл" -> "lg copies/mL", "ln копий/мл" -> "ln copies/mL", "log10 копий/мл" -> "lg copies/mL").
 - For an EMPTY raw unit string, invent a sensible unit based on the analyte name and category (e.g. stool microbiome panels without a unit cell usually mean "copies/mL" or "copies/g"). You MUST always return a non-empty `unit` for every item — never leave it blank.
 - For already-English units, return them verbatim and set `inferred: false`.
@@ -119,6 +119,10 @@ _CYRILLIC_MAGNITUDE_EN = {
     "ммоль/л": "mmol/L",
     "г/л": "g/L",
     "кл/мкл": "/uL",
+    "в п/зр.": "/[HPF]",
+    "в п/зр": "/[HPF]",
+    "кл/100 лейк.": "cells/100 leukocytes",
+    "кл/100 лейк": "cells/100 leukocytes",
 }
 
 

@@ -45,6 +45,28 @@ PANEL_BY_LOINC: dict[str, str] = {
     "718-7": "Complete Blood Count",
     "4544-3": "Complete Blood Count",
     "777-3": "Complete Blood Count",
+    # Urinalysis (specimen-specific codes pinned so they never land in the
+    # blood panel their generic CLASS would suggest)
+    "2965-2": "Urinalysis",
+    "2756-5": "Urinalysis",
+    "5778-6": "Urinalysis",
+    "32167-9": "Urinalysis",
+    "2888-6": "Urinalysis",
+    "15076-3": "Urinalysis",
+    "59158-6": "Urinalysis",
+    "13658-0": "Urinalysis",
+    "5802-4": "Urinalysis",
+    "5770-3": "Urinalysis",
+    "5794-3": "Urinalysis",
+    "5821-4": "Urinalysis",
+    "13945-1": "Urinalysis",
+    "12248-1": "Urinalysis",
+    "104650-7": "Urinalysis",
+    "8247-9": "Urinalysis",
+    "87829-8": "Urinalysis",
+    "87828-0": "Urinalysis",
+    "87831-4": "Urinalysis",
+    "9439-1": "Urinalysis",
     # Comprehensive Metabolic Panel
     "2345-7": "Comprehensive Metabolic Panel",
     "3094-0": "Comprehensive Metabolic Panel",
@@ -101,6 +123,8 @@ LOINC_CLASS_TO_PANEL: dict[str, str] = {
     "NUTR": "Nutrition",
     "DRG": "Therapeutic Drug Monitoring",
     "CELLMARK": "Immunology",
+    "ALLERGY": "Allergy",
+    "UA": "Urinalysis",
 }
 
 # Common source-document panel headings (lowercased; any language) -> stable
@@ -114,6 +138,8 @@ SOURCE_HEADING_TO_PANEL: dict[str, str] = {
     "исследование состава микробиоты толстого кишечника": "Microbiome",
     "микробиом": "Microbiome",
     "секвенирование": "Genetics",
+    "общий анализ мочи": "Urinalysis",
+    "анализ мочи": "Urinalysis",
 }
 
 # A raw CLASS code is short, all-caps Latin, optionally slash-separated.

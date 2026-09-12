@@ -100,15 +100,23 @@ def parse_loinc_csv(path: str) -> list[dict]:
             # Only keep ACTIVE status
             if row.get("STATUS", "").strip().upper() != "ACTIVE":
                 continue
+            # Hand-curated codes (name overrides, multilingual/specimen
+            # synonyms) are always kept, whatever their CLASS or rank — their
+            # classes are often outside the common lab set (e.g. UA/SPEC for
+            # urinalysis) and they are frequently rank-0.
+            code = (row.get("LOINC_NUM") or "").strip()
+            curated = code in CURATED_DEFINITION_CODES
             # Filter by class
-            if not is_lab_class(row.get("CLASS", "")):
+            if not curated and not is_lab_class(row.get("CLASS", "")):
                 continue
-            # Only keep codes with COMMON_TEST_RANK > 0 (commonly ordered tests)
+            # Keep common-ranked tests, plus any code curated by hand even when
+            # unranked (COMMON_TEST_RANK 0): curated synonyms/display-name
+            # overrides must always resolve to a seeded definition.
             try:
                 rank = int(row.get("COMMON_TEST_RANK", "0") or 0)
             except (ValueError, TypeError):
                 rank = 0
-            if rank <= 0:
+            if rank <= 0 and not curated:
                 continue
             rows.append(row)
         return rows
@@ -258,14 +266,20 @@ def dedupe_definitions(definitions: list[dict]) -> tuple[list[dict], dict[str, s
     reference a folded code can still resolve to the canonical definition.
     """
     from app.db.import_ranges import COMMON_RANGES
-    curated_codes = set(COMMON_RANGES)
+    range_codes = set(COMMON_RANGES)
+    override_codes = CURATED_ANCHOR_CODES
 
     def _sort_key(d: dict) -> tuple[int, int]:
         # Prefer variants that have a curated reference range so those ranges
-        # land on the surviving canonical definition; then lowest COMMON_TEST_RANK.
-        has_curated = 0 if (d.get("loinc_code") in curated_codes) else 1
+        # land on the surviving canonical definition; then codes with a curated
+        # name override / specimen target, so a curated code always anchors the
+        # survivor when several LOINC variants share one display name (e.g.
+        # urea 22664-7 vs 3091-6, urine glucose vs serum glucose); then lowest
+        # COMMON_TEST_RANK.
+        code = d.get("loinc_code")
+        tier = 0 if code in range_codes else (1 if code in override_codes else 2)
         r = d.get("common_rank")
-        return (has_curated, r if r is not None else 10**9)
+        return (tier, r if r is not None else 10**9)
 
     survivors: dict[str, dict] = {}
     for d in definitions:
@@ -315,6 +329,7 @@ def dedupe_definitions(definitions: list[dict]) -> tuple[list[dict], dict[str, s
 
 
 MULTILINGUAL_SYNONYMS = os.path.join(os.path.dirname(__file__), "..", "..", "data", "multilingual_synonyms.json")
+SPECIMEN_SYNONYMS = os.path.join(os.path.dirname(__file__), "..", "..", "data", "specimen_synonyms.json")
 LOINC_ALIASES_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "loinc_aliases.json")
 
 
@@ -334,6 +349,50 @@ def load_multilingual_synonyms() -> dict[str, list[str]]:
         for name, code in mapping.items():
             by_code.setdefault(code, []).append(name)
     return by_code
+
+
+LOINC_CODE_RE = re.compile(r"^\d+-\d+$")
+
+
+def load_specimen_synonyms() -> dict[str, list[str]]:
+    """Map specimen-specific LOINC code -> list of localized names.
+
+    Source: curated data/specimen_synonyms.json keyed by specimen (urine,
+    feces, …). These names are matched by the specimen-aware matcher table,
+    NOT attached as definition synonyms (a generic spelling like «Белок» must
+    stay ambiguous between blood and urine).
+    """
+    path = os.path.abspath(SPECIMEN_SYNONYMS)
+    if not os.path.isfile(path):
+        logger.warning("Specimen synonyms file not found: %s", path)
+        return {}
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    by_code: dict[str, list[str]] = {}
+    for mapping in data.values():
+        if not isinstance(mapping, dict):
+            continue
+        for name, code in mapping.items():
+            by_code.setdefault(code, []).append(name)
+    return by_code
+
+
+def _curated_definition_codes() -> set[str]:
+    """LOINC codes referenced by curated data (name overrides + multilingual
+    and specimen-scoped synonyms)."""
+    codes = set(LOINC_NAME_OVERRIDES)
+    for by_code in (load_multilingual_synonyms(), load_specimen_synonyms()):
+        codes.update(c for c in by_code if LOINC_CODE_RE.match(c))
+    return codes
+
+
+CURATED_DEFINITION_CODES = _curated_definition_codes()
+# Codes that anchor the dedupe survivor when variants share a display name:
+# explicit name overrides plus every specimen-scoped target (their overrides
+# qualify the display name, so a urine code never folds into its blood sibling).
+CURATED_ANCHOR_CODES = set(LOINC_NAME_OVERRIDES) | {
+    c for c in load_specimen_synonyms() if LOINC_CODE_RE.match(c)
+}
 
 
 def apply_multilingual_synonyms(
@@ -397,7 +456,7 @@ def main():
 
     logger.info("Parsing %s ...", csv_path)
     loinc_rows = parse_loinc_csv(csv_path)
-    logger.info("Found %d LOINC entries with lab-relevant classes and rank > 0", len(loinc_rows))
+    logger.info("Found %d LOINC entries with lab-relevant classes and rank > 0 (plus curated unranked codes)", len(loinc_rows))
 
     if not loinc_rows:
         logger.warning("No rows matched — seeding aborted.")

@@ -145,6 +145,7 @@ SNAPSHOT_DATA_INPUTS = [
     os.path.join(BACKEND, "data", "loinc_aliases.json"),
     os.path.join(BACKEND, "data", "loinc_name_overrides.json"),
     os.path.join(BACKEND, "data", "multilingual_synonyms.json"),
+    os.path.join(BACKEND, "data", "specimen_synonyms.json"),
 ]
 SNAPSHOT_DATA_GLOBS = [
     os.path.join(CORPUS_DIR, "*", "standardized.json"),

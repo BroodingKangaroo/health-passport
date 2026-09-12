@@ -18,6 +18,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db.models import BiomarkerDefinition, BiomarkerReading, MedicalEntry
 from app.db.session import Base, migrate_local_definition_ids
+from app.schemas.ai import RawBiomarker
 from app.services.matcher.definitions import verify_or_create
 from app.services.matcher.name_matching import _normalize_name
 
@@ -203,3 +204,22 @@ class TestLegacyIdMigration:
             BiomarkerReading.entry_id == "entry-sentinel"
         ).one()
         assert reading.biomarker_id == "local-opisthorchis-igg"
+
+
+class TestCarrierGuard:
+    def test_antibody_screen_never_folds_onto_bare_igg_guess(self, ids_db_session):
+        """An LLM guess of bare IgG (2465-3) for a compound anti-<target>
+        screen must fall through to a local def, not pollute/absorb it."""
+        db = ids_db_session
+        raw = RawBiomarker(
+            name="anti-Entamoeba histolytica IgG",
+            value="отрицат.",
+            unit="",
+            standard_name_en="anti-Entamoeba histolytica IgG",
+        )
+        defn = verify_or_create(
+            db, raw.name, "2465-3", "user-carrier", raw_biomarker=raw, grounded=True
+        )
+        assert defn.scope == "local", defn.scope
+        assert defn.id.startswith("local-user-carrier-"), defn.id
+        assert defn.names["en"] == "anti-Entamoeba histolytica IgG"

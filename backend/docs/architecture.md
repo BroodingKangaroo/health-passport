@@ -36,7 +36,10 @@ code, `/api/extract`, entry persistence, merge/delete, or DB migrations.
 
 - **One seeder**: `python -m app.db.seed_loinc` **drops and recreates the DB**,
   then seeds `biomarker_definitions` from `data/Loinc.csv` (lab-relevant
-  classes, common-ranked) and applies curated reference ranges.
+  classes, common-ranked — plus any code referenced by curated name overrides
+  or multilingual/specimen synonyms even when `COMMON_TEST_RANK` is 0 or the
+  CLASS is outside the common lab set, e.g. UA urinalysis codes) and applies
+  curated reference ranges.
 - The LOINC dictionary is the **single source of truth** for biomarker
   definitions — no separate baseline/seed module. `init_db` only creates
   tables.
@@ -51,6 +54,10 @@ code, `/api/extract`, entry persistence, merge/delete, or DB migrations.
   matcher's curated-code redirect (`matcher/loinc_store.py`) silently degrades
   without it (folded codes get promoted as duplicate globals). The file is
   deterministic from the tracked inputs — recomputed aliases always match.
+  Within one display name, the survivor is chosen by curated reference range
+  first, then a `loinc_name_overrides.json` entry (so curated codes anchor the
+  fold, e.g. `22664-7` urea mmol/L over `3091-6` mg/dL), then lowest
+  `COMMON_TEST_RANK`.
 - Run `seed_loinc` once (required for realistic `/api/extract` and e2e). Keep
   the dictionary stable while a golden is in use or mappings drift.
 
@@ -113,11 +120,39 @@ working.
 |---|---|
 | `_cache.py` | Per-thread, extraction-scoped LLM caches (`_RequestBucket` + factor/unit/scale-function caches as shared singletons) |
 | `_text.py` | Tiny shared text helpers (`_is_ascii`) |
-| `loinc_store.py` | LOINC CSV loading, `_promote_loinc_from_csv`, alias + multilingual lookup tables |
-| `name_matching.py` | Name index build, deterministic/fuzzy matching, grounding check, percent→fraction routing |
+| `loinc_store.py` | LOINC CSV loading, `_promote_loinc_from_csv`, alias + multilingual/specimen lookup tables, `_specimen_compatible` SYSTEM guard |
+| `name_matching.py` | Name index build, deterministic/fuzzy matching, grounding check, percent→fraction routing, carrier/generic-candidate guards |
+| `specimen.py` | Specimen vocabulary (`blood|urine|feces|other|""`), alias normalization, local-name qualification |
 | `llm_matching.py` | Candidate retrieval, zero-shot LOINC guess batch, verification backstop |
 | `units_guess.py` | Unit translation to English + `_guess_unit()` empty-unit heuristics |
 | `units_conversion.py` | Conversion factors (`convert_units`), cross-scale functions, canonical-unit landing |
+
+### Specimen-aware matching (blood vs urine vs feces)
+
+A generic spelling («Глюкоза», «Белок», «Гемоглобин») exists in several
+biomaterials with different LOINC codes; without specimen awareness a urine
+glucose folds onto the serum definition and both share one timeline series.
+
+- **Extraction**: `RawMedicalRecord.specimen` carries the document's MAIN
+  material (`blood|urine|feces|other|""`); `RawBiomarker.specimen` is a
+  per-row override for mixed reports (an «Анализ кала» row inside a blood
+  panel). Values are normalized by `matcher/specimen.normalize_specimen`.
+- **Curated table precedence**: `data/specimen_synonyms.json` maps
+  specimen-scoped names (checked first) to specimen-specific codes; its codes
+  are always seeded (rank 0 included) and carry qualified display names from
+  `loinc_name_overrides.json` (e.g. `15076-3 → "Glucose (urine)"`). Curated
+  matches are authoritative and are NOT filtered by SYSTEM.
+- **SYSTEM guard**: recall-driven matches (exact/fuzzy/LLM) are rejected when
+  the candidate definition's LOINC `SYSTEM` conflicts with the reading's
+  specimen (`_specimen_compatible`); the percent→fraction re-route is checked
+  too. A rejected row falls to a local definition instead of a wrong global.
+- **Local identity**: for `urine`/`feces` the specimen qualifier is part of
+  the local definition's name AND id hash (`"Protein (urine)"`), so the same
+  analyte in two specimens never unifies or compares across them. Blood is
+  the unqualified default; `other` is a low-confidence catch-all and never
+  changes identity.
+- **Category**: urine codes are pinned to `Urinalysis` (`PANEL_BY_LOINC`,
+  `LOINC_CLASS_TO_PANEL["UA"]`, `SOURCE_HEADING_TO_PANEL`).
 | `translation.py` | Biomarker-name + visit-data LLM translation with fallbacks, date/time normalize |
 | `definitions.py` | `verify_or_create` — definition resolution & persistence (first-seen canonical units anchor here) |
 | `standardize.py` | `StandardizedBiomarker` builders, status apply, LLM-free fallback path |
@@ -506,6 +541,11 @@ saves it. Nothing is persisted without user review.
 - Blood-test `date` prefers the biomaterial **collection date** when shown;
   only falls back to the report/results date otherwise. `time` is emitted only
   when a time appears next to that same date.
+- `specimen` (record-level main material + optional per-row override) drives
+  specimen-aware matching; see the matcher section above. A missing document
+  date stays empty — the matcher never fabricates one.
+- Blood-test reports never carry `visit_data`: a per-analyte «Комментарий»
+  column is not a recommendation (the pipeline clears it for `blood_test`).
 - Instrumental reports: `modality` must be exactly one of the fixed list
   `MRI, CT, X-Ray, Ultrasound, Elastography, Mammography, PET Scan, ECG,
   Endoscopy, Other` (mirrors the frontend `MODALITIES`); content goes to

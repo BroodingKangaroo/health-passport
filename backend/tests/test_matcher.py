@@ -468,3 +468,102 @@ def test_stale_unit_translation_does_not_leak_into_next_extraction():
     finally:
         db.rollback()
         db.close()
+
+
+# ------------------------------------------------ specimen-aware matching ---
+
+def test_urine_specimen_resolves_urine_glucose():
+    """A urinalysis document must never resolve «Глюкоза» to the serum
+    glucose definition (2345-7) — the specimen-specific table wins."""
+    db = SessionLocal()
+    try:
+        defs = _global_defs(db)
+        raw = RawMedicalRecord(
+            entry_type="blood_test",
+            specimen="urine",
+            biomarkers=[RawBiomarker(name="Глюкоза", value="< 5.6", unit="ммоль/л",
+                                     raw_range_string="<5.6")],
+        )
+        res = matcher.match_and_convert(raw, defs, db, "u_urine", client=None)
+        b = res.biomarkers[0]
+        assert b.definition_id == "15076-3", b.definition_id
+        assert b.standard_name_en == "Glucose (urine)"
+        assert "Urinalysis" in (b.category or "")
+    finally:
+        db.close()
+
+
+def test_blood_specimen_keeps_serum_glucose():
+    db = SessionLocal()
+    try:
+        defs = _global_defs(db)
+        raw = RawMedicalRecord(
+            entry_type="blood_test",
+            specimen="blood",
+            biomarkers=[RawBiomarker(name="Глюкоза", value="5.5", unit="ммоль/л")],
+        )
+        res = matcher.match_and_convert(raw, defs, db, "u_blood", client=None)
+        assert res.biomarkers[0].definition_id == "2345-7"
+    finally:
+        db.close()
+
+
+def test_row_specimen_overrides_document_specimen():
+    """A stool row inside a blood panel gets the fecal target, not blood."""
+    db = SessionLocal()
+    try:
+        defs = _global_defs(db)
+        raw = RawMedicalRecord(
+            entry_type="blood_test",
+            specimen="blood",
+            biomarkers=[RawBiomarker(
+                name="Яйца и личинки гельминтов",
+                value="не обнаружены",
+                unit="",
+                specimen="feces",
+            )],
+        )
+        res = matcher.match_and_convert(raw, defs, db, "u_feces", client=None)
+        b = res.biomarkers[0]
+        assert b.definition_id == "10704-5", b.definition_id
+        assert b.standard_name_en == "Ova & parasites (feces)"
+    finally:
+        db.close()
+
+
+def test_urine_local_def_is_specimen_qualified_and_distinct():
+    """An unmatched urine analyte gets a local def qualified «(urine)» with a
+    different id than its blood namesake, so the timeline keeps them apart."""
+    db = SessionLocal()
+    try:
+        defs = _global_defs(db)
+        name = "Специфический мочевой аналит zq"
+        urine = RawMedicalRecord(
+            entry_type="blood_test", specimen="urine",
+            biomarkers=[RawBiomarker(name=name, value="1", unit="")],
+        )
+        blood = RawMedicalRecord(
+            entry_type="blood_test", specimen="blood",
+            biomarkers=[RawBiomarker(name=name, value="1", unit="")],
+        )
+        u = matcher.match_and_convert(urine, defs, db, "u_spec", client=None).biomarkers[0]
+        b = matcher.match_and_convert(blood, defs, db, "u_spec", client=None).biomarkers[0]
+        assert u.scope == "local" and b.scope == "local"
+        assert u.standard_name_en.endswith("(urine)"), u.standard_name_en
+        assert not b.standard_name_en.endswith("(urine)")
+        assert u.definition_id != b.definition_id
+    finally:
+        db.rollback()
+        db.close()
+
+
+def test_normalize_date_empty_stays_empty():
+    from app.services.matcher.translation import _normalize_date
+    assert _normalize_date("") == ""
+
+
+def test_strip_trailing_punct_keeps_balanced_closing_paren():
+    from app.services.matcher.name_matching import _strip_trailing_punct
+    assert _strip_trailing_punct("HIV 1/2 (Antibodies and p24 Antigen)") == \
+        "HIV 1/2 (Antibodies and p24 Antigen)"
+    assert _strip_trailing_punct("Bifidobacterium spp.)") == "Bifidobacterium spp"

@@ -16,8 +16,8 @@ from typing import Any, Optional, Union
 Number = Union[int, float]
 
 _NUM_RE = re.compile(r"-?\d+(?:[.,]\d+)?")
-_LT_RE = re.compile(r"<\s*([\d.]+)")
-_GT_RE = re.compile(r">\s*([\d.]+)")
+_LT_RE = re.compile(r"<\s*(\d+(?:[.,]\d+)?)")
+_GT_RE = re.compile(r">\s*(\d+(?:[.,]\d+)?)")
 # A single numeric token may be:
 #   - ``N*10^K``  (e.g. ``9*10^7`` → 9e7)   — scientific notation
 #   - ``N×10^K`` / ``N·10^K`` / ``Nx10^K``   — same, with different multipliers
@@ -85,6 +85,8 @@ _QUAL_MAP: dict[str, str] = {t.lower().strip(): c for t, c in (
     ("не выявл",           "Not detected"),
     ("не обнаружена",      "Not detected"),
     ("не обнаружено",      "Not detected"),
+    ("не обнаружены",      "Not detected"),
+    ("не выявлены",        "Not detected"),
     ("не обнар",           "Not detected"),
     ("не обнаруж",         "Not detected"),
     ("отрицательно",       "Negative"),
@@ -246,16 +248,14 @@ def parse_reference(text: Optional[str]) -> Optional[dict]:
 
     lt = _LT_RE.match(s)
     if lt:
-        try:
-            return {"kind": "interval", "low": None, "high": float(lt.group(1))}
-        except ValueError:
-            pass
+        val = _parse_numeric_token(lt.group(1))
+        if val is not None:
+            return {"kind": "interval", "low": None, "high": val}
     gt = _GT_RE.match(s)
     if gt:
-        try:
-            return {"kind": "interval", "low": float(gt.group(1)), "high": None}
-        except ValueError:
-            pass
+        val = _parse_numeric_token(gt.group(1))
+        if val is not None:
+            return {"kind": "interval", "low": val, "high": None}
 
     # Russian "не более N" / "не менее N" / "менее N" / "более N" → interval.
     pm = _PREFIX_NUM_RE.match(s)

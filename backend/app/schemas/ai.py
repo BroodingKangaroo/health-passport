@@ -30,6 +30,11 @@ class RawBiomarker(BaseModel):
     # Best-effort standard English name for the analyte, used to improve
     # matching of localized (non-English) documents. May be empty.
     standard_name_en: str = ""
+    # Per-row biomaterial, only when it differs from the document-level
+    # specimen (e.g. an «Анализ кала» row inside a blood report). Values are
+    # normalized by ``matcher.specimen.normalize_specimen``; empty falls back
+    # to the record-level specimen.
+    specimen: str = ""
 
 
 class RawPrescription(BaseModel):
@@ -54,6 +59,11 @@ class RawInstrumentalData(BaseModel):
 
 class RawMedicalRecord(BaseModel):
     entry_type: Literal["blood_test", "doctor_visit", "instrumental_test", "unknown"]
+    # Document-level biomaterial: blood | urine | feces | other | "" (unknown).
+    # Drives specimen-aware LOINC resolution (a urine glucose must not resolve
+    # to the serum glucose definition). Normalized by
+    # ``matcher.specimen.normalize_specimen``.
+    specimen: str = ""
     date: str = ""
     time: str = ""
     clinic: str = ""
