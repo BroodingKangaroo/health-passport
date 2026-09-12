@@ -18,11 +18,14 @@ plus `validate_offline.py`: **live 4 pass / 6 fail; offline 106 diffs /
 against the source documents verdict:
 
 - `helix_2023` — expected target failure (items 1–8), unchanged.
-- **Patient-header-as-provider is a reproducible extraction failure, not
-  transient noise**: both runs take the patient field
-  (`Головатый Максим Александрович`) as `provider` in `биохимия_26.05`,
-  `колонофлор_16_25.06` and `оак_26.05` — same class as the helix item-6
-  target. Extraction/prompt work, not a golden defect.
+- **Patient-header-as-provider — FIXED 2026-09-12 (`6deb805`).** Live runs
+  used to take the patient field (`Головатый Максим Александрович`) as
+  `provider` in `биохимия_26.05`, `колонофлор_16_25.06` and `оак_26.05`
+  (same class as the helix item-6 target). The extraction prompt now prefers
+  the signing/certifying clinician over «Исполнитель», forbids the patient
+  header, and leaves `provider` empty when no clinician is printed; verified
+  on the isolated harness (`анализ_мочи_30.07`, `оак_26.05`,
+  `биохимия_26.05`).
 - `биохимия_26.05` — golden `provider` carried the `Исполнитель`
   (`Пилипчик Л.А.`); **corrected to the signer `Выдрицкий А.В`**
   (user-approved 2026-09-12), matching the INVITRO siblings `оак_26.05` /
@@ -145,21 +148,20 @@ Goldens are accepted target truth; the live/offline gaps below are tracked.
 
 **Still pending (tracked failures):**
 
-1. **`анализ_мочи_30.07` provider/title.** Live extraction takes the patient
-   header (`ГОЛОВАТЫЙ МАКСИМ АЛЕКСАНДРОВИЧ`) as `provider` (same
-   patient-header class as the 2026-09-12 reverification above) and leaves
-   `title` empty; the golden carries the signer `Выдрицкий А.В` and the
-   printed heading `Общий анализ мочи`. Prompt work.
+1. **`анализ_мочи_30.07` title.** Provider FIXED (`6deb805`: signer
+   `Выдрицкий А.В`, no patient header); live extraction still leaves `title`
+   empty while the golden carries the printed heading `Общий анализ мочи`.
+   Prompt work.
 2. **Comment-column results (`см.комм.`).** `Цвет`, `Прозрачность` and
    `Слизь` print `см.комм.` with the finding in the document's `Комментарий`
    column («СВЕТЛО-ЖЕЛТЫЙ», «ПОЛНАЯ», «В НЕЗНАЧИТЕЛЬНОМ КОЛИЧЕСТВЕ»); the
    schema has no per-row comment field, so `Слизь` reads `abnormal` against
    `отсут./незн.кол.` where the truth is `normal`. Schema/product decision.
-3. **`helix_2023_2` H. pylori reference.** The document re-prints the
-   expected qualitative result in the «Референтный интервал» cell
-   (`отрицательный`); live extraction drops the duplicate cell, so the
-   matcher emits `expected: null` (a future positive would silently read
-   `normal` via the falsy-expected rule). Golden = `Negative`.
+3. **`helix_2023_2` H. pylori reference (improved `3b9d096`).** The document
+   re-prints the expected qualitative result in the «Референтный интервал»
+   cell (`отрицательный`); the prompt now keeps the reference cell even when
+   it duplicates the result, so screens capture it (`expected: Negative`) —
+   full runs still flap occasionally on LLM obedience. Golden = `Negative`.
 4. **`helix_2023_2` H. pylori local.** No CagA-combined LOINC exists
    (0 matches in the shipped CSV), so the per-user local def is the target.
 5. **`2024_вирусы` avidity row.** Raw name is paraphrased
@@ -177,6 +179,29 @@ Offline baseline after this batch: **148 diffs / 7 cases**
 without the `specimen` field, so urine rows cannot exercise the
 specimen-aware path; tracked until the standardized output exposes
 `specimen`). Run `venv/bin/python -m e2e.validate_offline`.
+
+## Fixes — 2026-09-12 evening (autoresearch session)
+
+- **Provider is now a clinician, never the patient (`6deb805`).** See the
+  reverification note above; `title` for `анализ_мочи_30.07` is the
+  remaining metadata gap.
+- **Instrumental reports carry no visit data (`4491be6`).** The blood-test
+  `visit_data` drop now also covers `instrumental_test` (a printed
+  «Рекомендации:» line is not visit data), and the prompt restricts
+  `findings` to the clinical body (no patient/equipment/date header) and
+  strips the printed «Заключение:» label. `эластометрия_печени` hits
+  1.0/1.0, 0 diffs.
+- **Qualitative reference cells survive duplication (`3b9d096`).** See
+  pending item 3 above.
+- **RDW-CV curation.** `"Ширина распределения эритроцитов (RDW-CV)" ->
+  "788-0"` added to `data/multilingual_synonyms.json`; without it the row
+  fuzzy-folded onto the RDW-SD def `21000-5` (the bare
+  «Ширина распределения эритроцитов» still maps to the phantom `30366-4`,
+  see "Local vs global scope"). Verified: `RDW-CV -> 788-0`,
+  `RDW-SD -> 21000-5`.
+- **Still flaky (not yet curated):** `Тромбокрит (PCT)` occasionally folds
+  onto `777-3 (Platelets)` instead of `51637-7 (Plateletcrit)`; needs a
+  curated `"Тромбокрит (PCT)": "51637-7"` entry (same class as RDW-CV).
 
 ## Local vs global scope
 

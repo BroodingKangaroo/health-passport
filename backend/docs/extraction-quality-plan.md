@@ -107,9 +107,10 @@ Value: every real lab document with age/sex-banded ranges, not just helix.
   bands (оптимальный/отрицательный), titer/grey-zone cutoffs, bounded-value
   operator semantics (KNOWN_ISSUES item 10 — schema work needed for the
   operator).
-- **Extraction metadata prompt** (`extractor.py`): provider must be the signer
-  (not the patient header), test profile → notes, full СОЭ raw name. Primary-
-  neutral today; keepable only under F15.
+- **Extraction metadata prompt** (`extractor.py`): provider is DONE
+  (`6deb805`: signing clinician, never the patient header) — remaining:
+  test profile → notes, document title on INVITRO labs, full СОЭ raw name.
+  Primary-neutral today; keepable only under F15.
 - **OCR variance experiments**: A/B `OCR_MARKDOWN_CLEAN=0/1`, table
   normalization; document-level self-consistency retry for the bimodal
   рнпц/оак translator/OCR flapping.
@@ -149,4 +150,11 @@ Value: every real lab document with age/sex-banded ranges, not just helix.
 - **v10 baseline** (13 cases, `--runs 3`, clean): primary **0.8655**,
   recognition 0.9294, stability 0.9313, doc_fidelity 0.8199; offline guard
   148 diffs / 7 cases (see KNOWN_ISSUES for the offline specimen limitation).
+- **Evening session (2026-09-12, branch `autoresearch/extraction`)**: provider
+  fix `6deb805`; iter1 `4491be6` (instrumental visit_data/findings hygiene)
+  and iter2 `3b9d096` (qualitative reference duplication) both KEPT under F15;
+  clean baseline_v11 **0.7837** -> **0.8546** after iter2 on the 13-case
+  corpus. RDW-CV curated (`788-0`). Loop then hit the documented plateau:
+  remaining helix rows are data/demographics/product-gated, in-scope safe
+  hypotheses exhausted (see `.autoresearch/autoresearch.md`).
 
