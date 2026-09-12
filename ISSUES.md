@@ -19,6 +19,91 @@ files as they stand now.
 
 ---
 
+## Autoresearch improvements (landed 2026-09-12; F6 documents + F15 outstanding)
+
+Deep structural review of the extraction autoresearch loop. Core diagnosis
+stands: the loop is **metric-saturated** — baseline_v5 primary 0.9940 leaves
+~0.006 headroom, below the fixed ε=0.02 — so the corpus must grow into hard
+territory before the objective can be re-decided with data.
+
+**Implemented 2026-09-12 and deleted from this log per the convention above
+(git history keeps the detail):**
+
+- **F7 metric v2** — `doc_fidelity` + `extras_stable` co-metrics, `METRIC
+  runs=`, non-zero `unclassified` diffs exit 2 unless `--allow-unclassified`
+  (`benchmark/scoring.py`, benchmark README).
+- **F8 report fingerprint** — git HEAD/dirty, resolved chat provider/model,
+  OCR model/cleaner, corpus/golden hashes, `snapshot_fingerprint`,
+  `metric_version` (`benchmark/report_schema.py`).
+- **F9 `benchmark/compare_reports.py`** — mechanical
+  KEEP|DISCARD|BROKEN|POLLUTED with fingerprint refusal, per-case/cost-
+  regression flags and informational `cost_tie_break`; `--screen` formalized.
+- **F10 auto-invalidating snapshot** — pinned `benchmark_seed.db` (input
+  fingerprint) plus live-DB reset on every invocation, which also closes the
+  cross-run definition-residue class the stale `benchmark_run.db` exhibited.
+- **F11 exit-code taxonomy** — chat auth/quota raises `LLMProcessingError`
+  (benchmark maps it to `BenchmarkBroken`, exit 2); the live pipeline keeps
+  its fallback behavior.
+- **F12 parallel runner** — child stdout/stderr via temp files (no PIPE
+  backpressure) and artifact cleanup on success and fail-fast paths.
+- **F13 deterministic offline guard** — own pinned seed + throwaway work DBs,
+  full golden warm-up, threshold unified at 0.9; absolute baseline is 5 diffs
+  / 2 failing cases (`гастроэнтеролог` visit-replay trio plus the
+  `колонофлор_16_25.06` ratio row), identical across runs.
+- **F14 resume protocol + state schema v2** — merged-branch/`main` drift
+  detection, forced re-baseline on scope drift, append-only `history`, guard
+  counts, archive rotation (`.autoresearch/archive-2026-09-12/`).
+
+---
+
+## Autoresearch not implemented (highlighted)
+
+### F6 (remaining). Corpus expansion: hard-case documents + validation split
+
+**Already landed (infrastructure only — the corpus itself did NOT grow):**
+`corpus/manifest.json` hashing/provenance, `--manifest` / `--split` /
+`--allow-corpus-drift`, drift hard-fail, malformed-case hard error, corpus
+mode in `.opencode/command/autoresearch.md` + the SKILL.md governance section,
+and seed/snapshot auto-invalidation. The 9 seeded cases are all
+`split: tuning` (every one was targeted before 2026-09-12).
+
+**Outstanding — human-reviewed activity, NOT a loop iteration:**
+- Add 8–12 hand-verified cases targeting known weaknesses: time-of-collection
+  documents (the documented time-drop), handwritten/photographed reports,
+  multi-page PDFs with split tables, instrumental free-text findings, rare/
+  ratio/qualitative analytes, mixed RU/EN documents, reference ranges in
+  footnotes.
+- Populate the **validation hold-out** (~30% of the grown corpus): assign
+  `split: validation` in the manifest BEFORE those cases are ever screened.
+- Per-case acceptance: `--runs 1 --cases <new>` clean (pollution 0),
+  matcher-only deterministic on the guard DB, golden hand-verified via the
+  `e2e-golden` workflow, expected metric range recorded in the manifest entry.
+
+**Deps**: none — F7 (metric v2) has landed and measures the time/clinic-heavy
+cases once they exist.
+
+### F15. Objective redesign (NOT IMPLEMENTED — deferred until F6 restores headroom)
+
+**Status**: deferred by design; do not start until the grown corpus restores
+headroom above ε.
+
+**Why**: with ~0.006 headroom, ε=0.02 is unreachable; cost wins are discarded
+by the tie rule even though cost is where the real gains came from (v5: −19%/−15%
+tokens, wall 320→174 s at flat primary).
+
+**Change (decide with baseline_v6 data)**:
+- Noise-aware keep rule: bootstrap/CI from per-run recognition, and/or relative
+  ε scaled to remaining headroom.
+- Cost-aware keep path: quality non-inferior within CI + token/wall improvement
+  ≥ X% ⇒ keep.
+- Per-case non-regression gate so a single improved case cannot mask a
+  regression elsewhere.
+
+**Docs**: SKILL.md keep rule; README metric semantics.
+**Deps**: F6 (documents), F7, F9 (both landed).
+
+---
+
 ## Feature batch "Account & Data" (shipped 2026-08-31)
 
 The 2026-08-31 product analysis identified four user-facing gaps: no

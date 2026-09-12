@@ -306,6 +306,10 @@ weakening value gates), mirroring the translated_en_alt precedent:
   (≥0.85) UNEXPECTED observed raw_name (OCR variants: «MCH (ср. содерж. …)»
   vs «MCH (ср. содер. …)»); every other field still must match, so a truly
   mis-routed analyte fails.
+- Local `definition_id`s from the pre-#37 goldens (`local-<md5>`) are
+  equivalent to the per-user scheme (`local-<user>-<md5>`, #37) when the
+  12-hex normalized-name hash suffix matches; the other id fields still
+  compare exactly.
 - An absent result's two encodings are equivalent: `0.0` + unbounded
   interval ≡ `"Not detected"` + qualitative (the колонофлор
   `B. thetaiotaomicron` OCR cell flake is now encoding-independent — this
@@ -322,20 +326,18 @@ weakening value gates), mirroring the translated_en_alt precedent:
 
 ## Notes
 
-- **Offline validator environment (fresh seeds)**: `validate_offline.py` never
-  commits, so on a freshly seeded DB it cannot rebuild the per-user local
-  anchors (English display names, canonical `copies/mL` units) that
-  historical live extractions had committed — its diff counts
-  then drift for environment reasons, not matcher reasons. After any
-  reseed, run once:
-  `PYTHONPATH=. venv/bin/python -m e2e.warmup_db`
-  (from `backend/`; deterministic golden replay with commit, колонофлор_16_25.06
-  anchored first per the convention below, plus golden-truth unit/name
-  pinning of the user-default locals). The post-reseed + warm-up offline
-  profile is 6 documented diffs (`гастроэнтеролог` visit-translation 3,
-  `эластометрия_печени` instrumental pass-through 3); `паразиты_1`,
-  `колонофлор_*`, `рнпц_омр_генетика`, `популяции_лимфоцитов_анализ`,
-  `оак_26.05`, `биохимия_26.05` all PASS.
+- **Offline validator environment (ISSUES.md F13, 2026-09-12)**: the guard now
+  owns its deterministic world — a fingerprint-cached LOINC-seeded
+  `validate_offline_seed.db` and a throwaway work DB rebuilt from it each run,
+  with the `e2e/warmup_db` golden replay + golden-truth unit/name pinning
+  applied automatically (no manual ritual, no dev DB). `warmup_db` pins each
+  case's defs immediately after replaying it (not only at the end) so later
+  cross-document unification sees real canonical kinds. The deterministic
+  baseline is **5 diffs / 2 failing cases**: `гастроэнтеролог` visit-replay
+  trio (raw visit data is not replayed offline) plus the
+  `колонофлор_16_25.06` ratio row's local id/name (offline replay creates its
+  own def instead of unifying onto 13.05's). Identical across runs; compare
+  against the recorded baseline in `.autoresearch/state.json`.
 - Live extraction depends on the Mistral LLM; free-text (`title` / `provider` /
   `notes` / `recommendations`) can vary run-to-run (similarity-thresholded).
   The `колонофлор_16_*` `title` field is particularly noisy — the LLM

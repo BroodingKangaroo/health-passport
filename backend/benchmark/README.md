@@ -11,9 +11,9 @@ See ISSUES.md #24 in git history for the original proposal.
   `--runs` defaults to 3 — probe with `--runs 1 --cases <name>` first.
 - **Pure library runner**: no server, no port, no HTTP. Never boots uvicorn,
   never touches port 8000 (the same no-pkill/no-port-8000 rules as `e2e/`).
-- Own DB (`benchmark_run.db` / pristine snapshot copies); never touches
-  `health_passport.db`. `seed_loinc` inside this flow drops/recreates ONLY the
-  benchmark DB.
+- Own DBs (`benchmark_seed.db` pinned + `benchmark_run.db` live + pristine
+  snapshot copies); never touches `health_passport.db`. `seed_loinc` inside
+  this flow drops/recreates ONLY the benchmark seed DB.
 - Off-limits to the loop that consumes these metrics: `app/db/seed_loinc*`,
   `data/Loinc.csv`, e2e goldens, goldens in `corpus/`, all DB files.
 
@@ -23,12 +23,20 @@ See ISSUES.md #24 in git history for the original proposal.
 backend/benchmark/
   corpus/<case>/            # source document(s) + standardized.json golden
                             #   (same JSON format as backend/e2e/goldens)
+  corpus/manifest.json      # tracked: hashes + provenance + tuning|validation
+                            #   split (F6); documents themselves stay gitignored
   metrics.py                # instrumented Mistral wrapper: calls/tokens/bytes/stages
-  scoring.py                # diff-grouping → recognition / stability aggregates
-  run_benchmark.py          # THE verify command
-  benchmark_run.db          # live working DB (gitignored artifact)
-  benchmark_pristine.db     # snapshot template (gitignored artifact)
+  scoring.py                # diff-grouping → recognition / stability / doc_fidelity
+  report_schema.py          # metric version + fingerprint fields + verdict codes
+  run_benchmark.py          # THE verify command (also --manifest/--split/--screen)
+  compare_reports.py        # mechanical KEEP|DISCARD|BROKEN|POLLUTED verdict (F9)
+  benchmark_seed.db         # pinned LOINC-seeded base DB (gitignored artifact)
+  benchmark_seed.db.fingerprint.json # seed-input fingerprint (F10, gitignored)
+  benchmark_run.db          # live working DB, reset from the seed each run
+  benchmark_pristine.db     # per-invocation snapshot template (gitignored)
   reports/                  # optional --report JSON output dir (gitignored)
+backend/e2e/validate_offline.db      # guard work DB, rebuilt every run (F13)
+backend/e2e/validate_offline_seed.db # guard pinned seed DB (F13)
 ```
 
 ## Seeding the corpus
@@ -46,15 +54,60 @@ Grow it by dropping more real documents plus hand-verified goldens into
 scoring against them — custom additions beyond e2e live only on your machine,
 so keep a private backup if you curate them).
 
+### Corpus governance (ISSUES.md F6)
+
+Corpus growth is a **human-reviewed activity**, never a loop iteration.
+
+- `venv/bin/python benchmark/run_benchmark.py --manifest` writes/refreshes
+  `corpus/manifest.json`: per-case document + golden sha256, `source`,
+  `reviewer`, `date`, and `split: tuning|validation`. Existing provenance
+  fields are preserved; a NEW case lands as `split: unassigned` until a human
+  assigns it.
+- Normal runs verify the manifest hashes and **hard-fail on drift** (a
+  hand-verified file changed): re-hash explicitly with `--manifest`, or pass
+  `--allow-corpus-drift` for a one-off (the parent forwards the override to
+  parallel children). Untracked documents mean the manifest is the portable
+  provenance record across machines.
+- A malformed case (document or golden missing) is a hard error, never a
+  silent skip: a shrunken corpus would still produce a clean-looking report.
+  A `--manifest` refresh preserves curator metadata (unknown per-case keys
+  included) and refuses to replace a non-empty manifest with an empty one
+  (fresh clone: restore the gitignored documents first).
+- `--split validation` runs only the held-out partition (~30%; never target
+  it in screens). `--split tuning` runs the rest. A split request fails when
+  the manifest has no such cases.
+- New-case acceptance: `--runs 1 --cases <new>` clean (pollution counters 0),
+  matcher-only deterministic on the guard DB, golden hand-verified via the
+  `e2e-golden` workflow, and an expected metric range recorded.
+
 ## Running
 
 ```bash
 cd backend
 venv/bin/python benchmark/run_benchmark.py                 # N=3 over the whole corpus
-venv/bin/python benchmark/run_benchmark.py --runs 1 \
-    --cases оак_26.05                                      # cheap single-case probe
+venv/bin/python benchmark/run_benchmark.py --screen \
+    --cases оак_26.05 --report reports/screen_01.json      # runs=1 probe + control
 venv/bin/python benchmark/run_benchmark.py --report reports/iter_01.json
+venv/bin/python benchmark/run_benchmark.py --split validation
+venv/bin/python benchmark/compare_reports.py \
+    reports/baseline_v6.json reports/iter_01.json          # KEEP|DISCARD|...
 ```
+
+`--screen` is the formal cheap probe (F9): forces `--runs 1`, requires
+`--cases` (the targeted set), appends a control case from
+`DEFAULT_CONTROL_CASES` when available, and marks the report `mode=screen`.
+Screen reports are never keep material — `compare_reports.py` caps a
+promising screen at DISCARD with "run the full verify".
+
+`compare_reports.py` applies the loop's keep rule mechanically (F9):
+fingerprint/version/unclassified integrity → BROKEN, pollution counters →
+POLLUTED, `Δprimary ≥ ε` on a full report → KEEP, everything else → DISCARD.
+Exit codes: 0 KEEP, 1 DISCARD, 2 BROKEN, 3 POLLUTED. It refuses
+cross-fingerprint comparisons unless `--allow-env-drift` (debugging only).
+
+`--allow-unclassified` downgrades the hard failure on unclassified diffs to a
+warning (reports still record `unclassified_total`; `compare_reports` treats
+an unallowed unclassified report as BROKEN).
 
 ### Parallelism flags
 
@@ -72,7 +125,11 @@ venv/bin/python benchmark/run_benchmark.py --report reports/iter_01.json
 - Fail-fast: the first failing child terminates its running siblings (its own
   subprocesses only) and the parent propagates the child's exit code; within
   a run, a hard OCR failure cancels not-yet-started sibling work. No spend
-  continues behind a doomed run.
+  continues behind a doomed run. Child stdout/stderr are redirected to temp
+  files (never PIPE) so a chatty child cannot backpressure into a deadlock;
+  both the success and fail-fast paths remove this invocation's child reports,
+  per-run DBs and temp logs (F12). A hard SIGKILL of the parent leaves those
+  as residue — nothing else cleans them.
 
 With defaults (`--jobs 3 --stage-concurrency 2`) a full 9-case × 3-runs
 verify drops from ~66 min to roughly 15–25 min (it is ~99% Mistral latency;
@@ -84,6 +141,9 @@ Output ends in a machine-readable block:
 METRIC recognition=0.94
 METRIC stability=0.88
 METRIC primary=0.83
+METRIC doc_fidelity=0.91
+METRIC extras_stable=0
+METRIC runs=3
 METRIC llm_calls=9
 METRIC input_tokens=18430
 METRIC output_tokens=5210
@@ -92,6 +152,7 @@ METRIC wall_s=92.4
 METRIC wall_clock_s=31.2
 METRIC fallback_extractions=0
 METRIC provider_error_calls=0
+METRIC chat_failovers=0
 METRIC stage_ocr_s=8.1
 METRIC stage_extract_s=11.3
 METRIC stage_match_s=30.0
@@ -99,7 +160,8 @@ METRIC stage_match_s=30.0
 
 Exit codes: **0** metrics computed (even if worse than baseline — deciding
 worse vs better is the *loop's* job reading `primary`), **2** hard failure
-(`MISTRAL_API_KEY` missing, OCR auth/quota), **1** unexpected crash.
+(`MISTRAL_API_KEY` missing, OCR **or chat** auth/quota, non-zero
+`unclassified` diffs unless `--allow-unclassified`), **1** unexpected crash.
 
 ## Metric semantics
 
@@ -118,7 +180,17 @@ snapshot. Diffs come from `e2e/compare.py` (`compare_standardized`) at
   Averaged over runs then cases.
 - **stability** (per case) = fraction of universe items recognized in ALL N
   runs (intersection). Averaged over cases.
-- **primary** = `recognition × stability` — the loop's keep/discard scalar.
+- **primary** = `recognition × stability` — the loop's keep/discard scalar
+  (semantics unchanged since metric v1).
+- **doc_fidelity** (metric v2, F7) = mean over runs then cases of the fraction
+  of golden-populated top-level fields (`entry_type/date/time/clinic/provider/
+  title/notes`) the run carried faithfully. Unlike recognition, an omitted
+  observed value is a MISS (that is exactly the documented time-drop this
+  co-metric exists to expose); free-text fields use comparator similarity +
+  `*_alt`. It is a co-metric, NOT part of `primary`.
+- **extras_stable** (metric v2, F7) = total number of UNEXPECTED biomarker
+  names seen in EVERY run of their case (`stable_extra_items` in the report),
+  so a consistently hallucinated row is visible in both axes.
 - **cost co-metrics**: `llm_calls`, `input_tokens` (SDK `usage.prompt_tokens`),
   `output_tokens` (`usage.completion_tokens`), `ocr_bytes` (Files upload size;
   OCR `usage_info.doc_size_bytes` fallback), `wall_s` (**sum of run walls** —
@@ -130,9 +202,12 @@ snapshot. Diffs come from `e2e/compare.py` (`compare_standardized`) at
   `fallback_extractions` counts extractions that ended in the silent
   "unknown + Raw OCR text" failure record; `provider_error_calls` counts
   calls that raised at the instrumentation boundary AFTER the SDK's own
-  retry/backoff gave up (5xx storms, timeouts, watchdog kills). ANY count > 0
-  marks the run environment-suspect: the loop re-runs once (bounded) and
-  never keeps/discards on polluted data.
+  retry/backoff gave up (5xx storms, timeouts, watchdog kills);
+  `chat_failovers` counts Mistral→OpenRouter failovers. ANY count > 0 marks
+  the run environment-suspect: the loop re-runs once (bounded) and never
+  keeps/discards on polluted data. Chat auth/quota is different: it is
+  classified (`LLMProcessingError.kind`, F11) and exits 2 as BROKEN rather
+  than degrading into the fallback record.
 
 ### Golden format: provider/OCR variance
 
@@ -153,6 +228,34 @@ nutrition"; the телефон in гастро rec[2] is printed WITHOUT the +37
 country code — GLM's verbatim copy is more faithful than the golden's own
 embellishment).
 
+### Seed-DB fingerprint (F10)
+
+`benchmark_seed.db` is the pinned, never-mutated LOINC seed; the live
+`benchmark_run.db` is reset from it at the start of every invocation, so
+definitions committed by a previous run can never leak into the next world.
+The seed is validated against a content fingerprint over the corpus goldens +
+e2e goldens + `app/services/matcher/**` + `app/services/extractor.py` +
+`e2e/warmup_db.py` (its unit map feeds the golden pinning) + the seed inputs
+(`seed_loinc.py`, `import_ranges.py`, `data/Loinc.csv` and the JSON
+alias/synonym files). The fingerprint is stored beside the seed
+(`*.fingerprint.json`). A missing or changed fingerprint triggers an automatic
+LOINC reseed before the run — the old "remember to pass `--fresh-db` after an
+anchoring/golden change" ritual silently produced a false 0.8307 baseline and
+is gone. `--fresh-db` remains the explicit override; `--seed-db` relocates the
+pinned seed.
+
+### Report fingerprint (F8)
+
+Every `--report` carries `config.metric_version` and a reproducibility
+fingerprint: `git_head`/`git_dirty`, chat provider + `MISTRAL_CHAT_MODEL` /
+OpenRouter knobs, OCR model + `OCR_MARKDOWN_CLEAN`, `text_threshold`, combined
+`corpus_hash` / `golden_hash`, and `snapshot_fingerprint`. `config.mode`
+records `full`|`screen`, and `config.allow_unclassified` records the override.
+
+`benchmark/compare_reports.py` (F9) refuses to compare reports whose
+fingerprints differ unless `--allow-env-drift` is passed — cross-environment
+comparisons were previously unsafe and invalidated baselines by hand.
+
 ### Why cold snapshots + warm-up
 
 - `verify_or_create` persists definitions/units on first sight (first-seen
@@ -171,9 +274,11 @@ embellishment).
 
 ## Loop contract (see .opencode/skills/autoresearch/SKILL.md)
 
-baseline → ONE focused change → run this verify command → keep iff primary
-improves ≥ ε (0.02; ties broken by lower cost) → guards (`pytest tests/`,
-`ruff check .`, `e2e/validate_offline.py`) → journal → repeat. Scope-locked
-to `app/services/extractor.py`, `app/services/matcher/`, and `benchmark/`;
+baseline → ONE focused change → `--screen` probe → full verify → mechanical
+verdict from `benchmark/compare_reports.py` (KEEP iff primary improves ≥ ε
+0.02; ties/within-ε are discards; screens can never keep) → guards
+(`pytest tests/`, `ruff check .`, `e2e/validate_offline.py` — deterministic,
+own cold DB, counts in `state.json`) → journal → repeat. Scope-locked to
+`app/services/extractor.py`, `app/services/matcher/`, and `benchmark/`;
 isolated on the `autoresearch/extraction` branch; never commits/pushes
 without human review.

@@ -3,6 +3,7 @@ scoring diff-grouping/aggregation, runner merge/fan-out helpers). No network,
 no app imports needed for scoring; metrics tests use a fake Mistral-shaped
 client."""
 
+import json
 import math
 import threading
 import time
@@ -11,7 +12,13 @@ from types import SimpleNamespace
 import pytest
 
 from benchmark.metrics import BenchmarkMetrics, InstrumentedMistral
-from benchmark.scoring import aggregate, case_scores, golden_items, group_diffs
+from benchmark.scoring import (
+    aggregate,
+    case_scores,
+    doc_fidelity_for_run,
+    golden_items,
+    group_diffs,
+)
 
 # ---------------------------------------------------------------- metrics ---
 
@@ -303,24 +310,31 @@ def test_run_db_path_is_per_run_and_sibling():
     assert _run_db_path(base, 1) != _run_db_path(base, 2)
 
 
-def test_child_command_shape():
+def test_child_command_propagates_resolved_cases_pristine_and_drift():
     from benchmark.run_benchmark import _child_command
 
     args = SimpleNamespace(
         pristine="/p/pristine.db", text_threshold=0.9, stage_concurrency=2,
-        cases=None, report="/r/rep.json",
+        report="/r/rep.json", allow_corpus_drift=False,
     )
-    cmd = _child_command(args, "/x/run_r1.db", "/r/rep.json.child1")
+    cmd = _child_command(args, "/x/run_r1.db", "/r/rep.json.child1",
+                         "/p/pristine.db", ["a", "b"])
     assert "--child" in cmd
     assert cmd[cmd.index("--pristine") + 1] == "/p/pristine.db"
     assert cmd[cmd.index("--db") + 1] == "/x/run_r1.db"
     assert cmd[cmd.index("--runs") + 1] == "1"
     assert cmd[cmd.index("--stage-concurrency") + 1] == "2"
-    assert "--cases" not in cmd
+    # Split/screen-resolved case list must be forwarded explicitly (a child
+    # without --cases would otherwise run the WHOLE corpus).
+    assert cmd[cmd.index("--cases") + 1] == "a,b"
+    assert "--allow-corpus-drift" not in cmd
 
-    args.cases = "оак_26.05"
-    cmd2 = _child_command(args, "/x/run_r1.db", "/r/rep.json.child1")
-    assert cmd2[cmd2.index("--cases") + 1] == "оак_26.05"
+    args.allow_corpus_drift = True
+    cmd2 = _child_command(args, "/x/run_r1.db", "/r/rep.json.child1",
+                          "/p/other_pristine.db", ["c"])
+    assert cmd2[cmd2.index("--pristine") + 1] == "/p/other_pristine.db"
+    assert cmd2[cmd2.index("--cases") + 1] == "c"
+    assert "--allow-corpus-drift" in cmd2
 
 
 def test_merge_child_reports_equals_direct_aggregation_and_sums_wall():
@@ -335,16 +349,21 @@ def test_merge_child_reports_equals_direct_aggregation_and_sums_wall():
                   "fallback_extractions": 0, "provider_error_calls": 1}
     reports = [
         {"runs_diffs": {"caseA": [run1], "caseB": [run2]},
+         "runs_doc": {"caseA": [0.9], "caseB": [1.0]},
          "metrics": metrics_r1, "wall_s": 100.0, "chat_failovers": 2},
         {"runs_diffs": {"caseA": [run2], "caseB": [run3]},
+         "runs_doc": {"caseA": [0.8], "caseB": [0.5]},
          "metrics": metrics_r2, "wall_s": 50.0, "chat_failovers": 1},
     ]
 
-    runs_diffs, tot, wall, failovers = _merge_child_reports(reports)
+    runs_diffs, runs_doc, tot, wall, failovers = _merge_child_reports(reports)
 
     # run order preserved, per-case diffs concatenated
     assert runs_diffs["caseA"] == [run1, run2]
     assert runs_diffs["caseB"] == [run2, run3]
+    # per-run doc_fidelity scores concatenate in run order too
+    assert runs_doc["caseA"] == [0.9, 0.8]
+    assert runs_doc["caseB"] == [1.0, 0.5]
     # wall_s keeps its documented sum-of-run-walls semantic
     assert wall == 150.0
     # failover events are summed across children (pollution visibility)
@@ -413,3 +432,232 @@ def test_extract_all_cancels_siblings_on_failure():
     # run never gathers to completion behind a doomed case.
     assert "a" in started
     assert len(started) <= 3
+
+
+def test_run_parallel_fail_fast_cleans_artifacts(tmp_path, monkeypatch):
+    """F12: a failed child's report, run DB and temp log are removed after the
+    child is reaped (never while it still holds the files)."""
+    import benchmark.run_benchmark as rb
+
+    args = SimpleNamespace(
+        runs=2, jobs=2, db=str(tmp_path / "bench.db"),
+        report=str(tmp_path / "rep.json"), pristine=str(tmp_path / "pristine.db"),
+        text_threshold=0.9, stage_concurrency=1, cases=None,
+    )
+
+    class FakePopen:
+        def __init__(self, cmd, **kwargs):
+            self.returncode = 1
+            # simulate children that wrote their reports + run DBs before dying
+            for r in (1, 2):
+                # exact paths mirror _run_db_path/_run_parallel naming
+                (tmp_path / f"bench_r{r}.db").write_bytes(b"db")
+                (tmp_path / f"rep.json.child{r}").write_text("{}", encoding="utf-8")
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            pass
+
+        def wait(self):
+            return self.returncode
+
+    monkeypatch.setattr(rb.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(rb, "_child_command", lambda *a, **k: ["fake-child"])
+
+    rc = rb._run_parallel(args, [("c", "/tmp/c.pdf", {})], "pristine")
+
+    assert rc == 1
+    assert not (tmp_path / "bench_r1.db").exists()
+    assert not (tmp_path / "bench_r2.db").exists()
+    assert not (tmp_path / "rep.json.child1").exists()
+    assert not (tmp_path / "rep.json.child2").exists()
+
+
+def test_run_parallel_success_cleans_artifacts(tmp_path, monkeypatch):
+    """F12: success path also removes per-run DBs/reports/logs."""
+    import benchmark.run_benchmark as rb
+
+    args = SimpleNamespace(
+        runs=2, jobs=2, db=str(tmp_path / "bench.db"),
+        report=None, pristine=str(tmp_path / "pristine.db"),
+        text_threshold=0.9, stage_concurrency=1, allow_corpus_drift=False,
+        child=False, allow_unclassified=False, screen=False,
+    )
+
+    class FakePopen:
+        def __init__(self, cmd, **kwargs):
+            self.returncode = 0
+            r = int(cmd[cmd.index("--db") + 1].rsplit("_r", 1)[1][0])
+            (tmp_path / f"bench_r{r}.db").write_bytes(b"db")
+            path = cmd[cmd.index("--report") + 1]
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump({
+                    "runs_diffs": {"caseA": [[]]},
+                    "runs_doc": {"caseA": [1.0]},
+                    "metrics": {}, "wall_s": 1.0, "chat_failovers": 0,
+                }, fh)
+
+        def poll(self):
+            return 0
+
+        def terminate(self):
+            pass
+
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(rb.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(
+        rb, "_child_command",
+        lambda args, db, rep, pristine, names: ["fake", "--db", db, "--report", rep,
+                                                "--cases", ",".join(names)])
+
+    rc = rb._run_parallel(args, [("caseA", "/tmp/a.pdf", {})],
+                          str(tmp_path / "pristine.db"))
+
+    assert rc == 0
+    assert not (tmp_path / "bench_r1.db").exists()
+    assert not (tmp_path / "bench_r2.db").exists()
+
+
+def test_run_child_restores_pristine_and_passes_doc_scores(monkeypatch):
+    import benchmark.run_benchmark as rb
+
+    calls = {}
+    monkeypatch.setattr(rb, "restore_snapshot",
+                        lambda pristine, db: calls.__setitem__("restore", (pristine, db)))
+    monkeypatch.setattr(rb, "run_once", lambda cases, thr, sc: (
+        {"caseA": {"input": "/tmp/a", "runs_diffs": [[]], "runs_doc": [0.75]}},
+        "metrics", 1.0,
+    ))
+
+    def fake_finalize(args, cases, runs_diffs, m, wall, clock,
+                      chat_failovers=None, runs_doc=None):
+        calls["runs_doc"] = runs_doc
+        return 0
+
+    monkeypatch.setattr(rb, "_finalize", fake_finalize)
+    args = SimpleNamespace(pristine="/p", db="/d", text_threshold=0.9, stage_concurrency=1)
+
+    rc = rb._run_child(args, [("caseA", "/tmp/a", {})])
+
+    assert rc == 0
+    assert calls["restore"] == ("/p", "/d")
+    assert calls["runs_doc"] == {"caseA": [0.75]}
+
+
+def test_finalize_unclassified_is_broken_unless_allowed():
+    from benchmark.metrics import BenchmarkMetrics
+    from benchmark.run_benchmark import _finalize
+
+    args = SimpleNamespace(
+        runs=1, child=False, report=None, allow_unclassified=False,
+        screen=False, jobs=1, stage_concurrency=1, text_threshold=0.9, db="x",
+    )
+    cases = [("caseA", "/tmp/a.pdf", {"biomarkers": [{"raw_name": "H"}]})]
+    runs = {"caseA": [["a diff shape the scoring parser cannot attribute"]]}
+
+    assert _finalize(args, cases, runs, BenchmarkMetrics(), 1.0, 1.0,
+                     chat_failovers=0, runs_doc={"caseA": [1.0]}) == 2
+
+    args.allow_unclassified = True
+    assert _finalize(args, cases, runs, BenchmarkMetrics(), 1.0, 1.0,
+                     chat_failovers=0, runs_doc={"caseA": [1.0]}) == 0
+
+
+def test_reset_working_db_discards_previous_run_residue(tmp_path):
+    from benchmark.run_benchmark import reset_working_db
+
+    seed = tmp_path / "seed.db"
+    seed.write_bytes(b"seed")
+    live = tmp_path / "live.db"
+    live.write_bytes(b"dirty-run-residue")
+    (tmp_path / "live.db-wal").write_bytes(b"wal")
+    (tmp_path / "live.db-shm").write_bytes(b"shm")
+
+    reset_working_db(str(seed), str(live))
+
+    assert live.read_bytes() == b"seed"
+    assert not (tmp_path / "live.db-wal").exists()
+    assert not (tmp_path / "live.db-shm").exists()
+
+
+def test_effective_chat_provider_mirrors_env_gating(monkeypatch):
+    from benchmark.run_benchmark import _effective_chat_provider
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("CHAT_PROVIDER", raising=False)
+    monkeypatch.delenv("CHAT_FAILOVER", raising=False)
+    assert _effective_chat_provider() == "mistral"
+
+    monkeypatch.setenv("CHAT_PROVIDER", "openrouter")
+    assert _effective_chat_provider() == "mistral"  # no key -> still Mistral
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    assert _effective_chat_provider() == "openrouter"
+
+    monkeypatch.delenv("CHAT_PROVIDER")
+    monkeypatch.setenv("CHAT_FAILOVER", "openrouter")
+    assert _effective_chat_provider() == "mistral+openrouter-failover"
+
+
+# --------------------------------------------------- metric v2: F7 ---
+
+DOC_GOLDEN = {
+    "entry_type": "blood_test",
+    "date": "2026-05-26",
+    "time": "08:30",
+    "clinic": "Invivo",
+    "provider": "",
+    "title": "CBC",
+    "notes": "",
+    "biomarkers": [],
+}
+
+
+def _observed(**over):
+    obs = {
+        "entry_type": "blood_test",
+        "date": "2026-05-26",
+        "time": "08:30",
+        "clinic": "Invivo",
+        "provider": "",
+        "title": "CBC",
+        "notes": "",
+    }
+    obs.update(over)
+    return obs
+
+
+def test_doc_fidelity_perfect_and_time_drop_counts_as_miss():
+    score, fields = doc_fidelity_for_run(DOC_GOLDEN, _observed())
+    assert score == 1.0
+    assert fields["time"] is True
+
+    score2, fields2 = doc_fidelity_for_run(DOC_GOLDEN, _observed(time=""))
+    assert fields2["time"] is False
+    # golden-empty fields (provider/notes) are not scored at all
+    assert set(fields2) == {"entry_type", "date", "time", "clinic", "title"}
+    assert math.isclose(score2, 4 / 5)
+
+
+def test_doc_fidelity_accepts_alt_renderings_and_similarity():
+    golden = dict(DOC_GOLDEN, clinic_alt=["Invitro"])
+    score, fields = doc_fidelity_for_run(golden, _observed(clinic="Invitro"))
+    assert score == 1.0 and fields["clinic"] is True
+
+
+def test_doc_fidelity_all_empty_golden_is_one():
+    score, fields = doc_fidelity_for_run({}, {})
+    assert score == 1.0 and fields == {}
+
+
+def test_extras_stable_counts_names_present_in_every_run():
+    every_run = "biomarker 'Mystery': UNEXPECTED in observed output (not in golden)"
+    once = "biomarker 'One-off': UNEXPECTED in observed output (not in golden)"
+    sc = case_scores(GOLDEN, [[every_run, once], [every_run]])
+    assert sc["extras_total"] == 3
+    assert sc["extras_stable"] == 1
+    assert sc["stable_extra_items"] == ["Mystery"]

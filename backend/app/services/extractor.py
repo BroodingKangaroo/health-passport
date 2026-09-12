@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 # fast and we retry rather than hanging the SSE stream indefinitely.
 OCR_CALL_TIMEOUT_MS = 90_000
 OCR_MAX_ATTEMPTS = 3
+# Reported in benchmark report fingerprints (ISSUES.md F8) and used for the
+# OCR request; keep as the single source of truth for the model id.
+OCR_MODEL = "mistral-ocr-latest"
 
 
 class OCRProcessingError(Exception):
@@ -126,6 +129,57 @@ def _classify_ocr_error(exc: Exception) -> OCRProcessingError:
         )
     return OCRProcessingError(
         "The uploaded document could not be processed by OCR. This file type may not be supported.",
+        kind="unknown",
+    )
+
+
+class LLMProcessingError(Exception):
+    """Raised when the extraction chat call fails in a way that must not be
+    swallowed by the silent fallback record.
+
+    ``kind`` mirrors ``OCRProcessingError.kind``: "auth" (401/403), "quota"
+    (429), "unknown" (anything else). The benchmark opts in via
+    ``llm_extract(..., raise_on_hard_error=True)`` so chat auth/quota exits 2
+    instead of polluting the run (ISSUES.md F11); the live pipeline keeps the
+    fallback behavior.
+    """
+
+    def __init__(self, message: str, kind: str = "unknown"):
+        super().__init__(message)
+        self.message = message
+        self.kind = kind
+
+
+def _classify_chat_error(exc: Exception) -> LLMProcessingError:
+    """Map a raw chat/extraction exception to a typed error.
+
+    Recognizes both the Mistral SDK shape (``status_code``/``status``) and the
+    OpenRouter wrapper's ``RuntimeError("OpenRouter HTTP <code>: ...")`` text.
+    """
+    status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
+    if status is None:
+        response = getattr(exc, "response", None)
+        status = getattr(response, "status_code", None)
+    if status is None:
+        m = re.search(r"(?:Status|HTTP)\s+(\d{3})", str(exc))
+        if m:
+            status = int(m.group(1))
+
+    if status in (401, 403):
+        err = LLMProcessingError(
+            f"AI extraction authentication failed (HTTP {status}). The MISTRAL_API_KEY "
+            "in backend/.env is invalid or expired. Please update it and restart the backend.",
+            kind="auth",
+        )
+        err.http_status = status
+        return err
+    if status == 429:
+        return LLMProcessingError(
+            "AI extraction quota exceeded (HTTP 429). Upgrade your plan or try again later.",
+            kind="quota",
+        )
+    return LLMProcessingError(
+        f"AI extraction failed: {exc}",
         kind="unknown",
     )
 
@@ -295,7 +349,7 @@ def ocr_document(bytes_data: bytes, ext: str, client: Mistral) -> str:
                     timeout_ms=OCR_CALL_TIMEOUT_MS,
                 )
                 ocr_response = client.ocr.process(
-                    model="mistral-ocr-latest",
+                    model=OCR_MODEL,
                     document=FileChunk(file_id=uploaded.id),
                     include_image_base64=False,
                     image_limit=0,
@@ -343,8 +397,16 @@ def _parse_llm_response(result: object, markdown: str) -> RawMedicalRecord:
     )
 
 
-def llm_extract(markdown: str, client: Mistral) -> RawMedicalRecord:
-    """Run LLM extraction on OCR markdown text, returning a RawMedicalRecord."""
+def llm_extract(markdown: str, client: Mistral, *,
+                raise_on_hard_error: bool = False) -> RawMedicalRecord:
+    """Run LLM extraction on OCR markdown text, returning a RawMedicalRecord.
+
+    ``raise_on_hard_error`` (benchmark) makes auth/quota chat failures raise
+    :class:`LLMProcessingError` instead of degrading into the silent
+    "unknown + Raw OCR text" fallback record, so the benchmark can map them to
+    its hard-failure exit (ISSUES.md F11). Other provider errors keep the
+    fallback behavior in both modes.
+    """
     try:
         chat_response = client.chat.parse(
             model=MISTRAL_CHAT_MODEL,
@@ -357,6 +419,9 @@ def llm_extract(markdown: str, client: Mistral) -> RawMedicalRecord:
             max_tokens=16000,
         )
     except Exception as e:
+        classified = _classify_chat_error(e)
+        if raise_on_hard_error and classified.kind in ("auth", "quota"):
+            raise classified from e
         logger.error("Mistral chat.parse failed: %s", e)
         return RawMedicalRecord(
             entry_type="unknown",

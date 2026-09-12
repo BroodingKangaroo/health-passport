@@ -51,10 +51,13 @@ Extraction is LLM/OCR-based, so results vary run-to-run. Also, a single failed
 image extraction can contaminate later requests *in the same process* (returns
 `unknown`/empty) until the server is restarted — this is a pre-existing bug,
 not a definition-seeding issue. The deterministic, LLM-free oracle is
-`python backend/e2e/validate_offline.py` (uses the LOINC-seeded DB; the
-`default` user); prefer it for matcher/data correctness. After any reseed,
-warm that DB's per-user anchors deterministically first:
-`PYTHONPATH=. backend/venv/bin/python -m e2e.warmup_db` (from `backend/`).
+`python backend/e2e/validate_offline.py` (the `default` user); prefer it for
+matcher/data correctness. Since ISSUES.md F13 it no longer touches the dev DB:
+it maintains its own LOINC-seeded `validate_offline_seed.db` (fingerprint-
+cached) and rebuilds a throwaway `validate_offline.db` from it on every run,
+replaying the golden warm-up (`e2e/warmup_db`) automatically. Absolute,
+idempotent counts; threshold unified with the benchmark at 0.9
+(`--text-threshold`).
 
 ## Delete endpoint e2e
 
@@ -130,7 +133,9 @@ Pending cases do not fail the run.
 ## Comparison rules (`compare.py`)
 
 * **biomarkers** — compared as a set keyed by `raw_name`. `standard_name_en`,
-  `definition_id`, `standard_unit`, `scope` must match **exactly**;
+  `standard_unit`, `scope` must match **exactly**; `definition_id` matches
+  exactly except that local ids compare by their normalized-name hash suffix
+  (`local-<user>-<md5>` ≡ legacy `local-<md5>`, the #37 id-scheme change);
   `standard_value` allows a `1e-6` float tolerance; `status` is recomputed by the
   server so it is **ignored**; ordering is ignored. OCR raw-name variance
   (high-similarity MISSING/UNEXPECTED pairs, e.g. abbreviated vs full

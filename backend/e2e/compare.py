@@ -26,6 +26,29 @@ def _norm(s):
     return " ".join((s or "").split())
 
 
+# Local definition ids embed the owning user since #37
+# (`local-<user>-<md5(normalized name)[:12]>`); goldens recorded the legacy
+# `local-<md5>` form. The 12-hex suffix is the same normalized-name identity
+# on both sides, so an id-scheme difference must not read as a match failure
+# (KNOWN_ISSUES.md "Comparator accommodations").
+_LOCAL_DEF_ID_RE = re.compile(r"^local-(?:[A-Za-z0-9._~-]+-)?([0-9a-f]{12})$")
+
+
+def _local_def_tail(def_id):
+    if not isinstance(def_id, str):
+        return None
+    m = _LOCAL_DEF_ID_RE.fullmatch(def_id)
+    return m.group(1) if m else None
+
+
+def _definition_ids_equal(observed, golden):
+    if observed == golden:
+        return True
+    obs_tail = _local_def_tail(observed)
+    gold_tail = _local_def_tail(golden)
+    return obs_tail is not None and obs_tail == gold_tail
+
+
 def _sim(a, b):
     return difflib.SequenceMatcher(None, _norm(a) or "", _norm(b) or "").ratio()
 
@@ -133,7 +156,11 @@ def _cmp_biomarkers(observed_list, golden_list, diffs, tol=VALUE_TOLERANCE, thr=
             gb = go[i][1]
             ob = oo[i][1]
             for f in ("standard_name_en", "definition_id", "standard_unit", "scope"):
-                if ob.get(f) != gb.get(f):
+                if f == "definition_id":
+                    same = _definition_ids_equal(ob.get(f), gb.get(f))
+                else:
+                    same = ob.get(f) == gb.get(f)
+                if not same:
                     diffs.append(
                         f"biomarker {name!r}[{i}] {f}: expected {gb.get(f)!r}, got {ob.get(f)!r}"
                     )

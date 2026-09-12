@@ -91,6 +91,61 @@ def _load_definitions(db):
     return defs
 
 
+def _pin_golden_truth(db, golden_by_raw: dict) -> int:
+    """Pin "default" local defs' canonical unit/display name from the verified
+    GOLDEN row that created them (matched by raw_name), exactly mirroring what
+    months of live LLM runs had committed historically. The matcher heuristic
+    alone cannot reproduce log10->linear decisions for "lg копий/мл" rows
+    offline.
+
+    Runs after EACH replayed case (2026-09-12): the live world anchors units
+    while the document is extracted, so a later case's cross-document local
+    unification sees the earlier def's real measurement KIND. Pinning only at
+    the end let «Отношение … / Faecalibacterium» spawn a second ratio def
+    before the first one learned its canonical `ratio` (the kind gate rejected
+    the merge), which the offline guard then reported as drift.
+    """
+    fixed = 0
+    for d in db.query(BM).filter(BM.scope == "local", BM.user_id == USER_ID).all():
+        syns = list(d.synonyms or [])
+        candidates = [d.names.get("en") or "", *syns]
+        growl = next((golden_by_raw[c.strip().lower()] for c in candidates
+                      if c and c.strip().lower() in golden_by_raw), None)
+        en = (growl.get("standard_name_en") or "").strip() if growl else ""
+        if en and all(ord(c) < 128 for c in en) and d.names.get("en") != en:
+            d.names = {"en": en}
+        su = ((growl.get("standard_unit") or "").strip()) if growl else ""
+        cu = (d.canonical_unit or "").strip()
+        new_unit, kind = _translate_unit(cu)
+        if su and all(ord(c) < 128 for c in su):
+            new_unit, kind = su, ("log10" if su.lower().startswith(("lg", "log")) else "linear")
+        elif su == "" and growl is not None:
+            # The golden row is deliberately unitless (a qualitative screen
+            # anchors canonical "") — pin the empty canonical so stale
+            # non-empty anchors (e.g. forensics-era "copies/mL") don't drift
+            # the offline validator.
+            new_unit, kind = "", "linear"
+        elif cu and not all(ord(c) < 128 for c in cu):
+            if not new_unit or new_unit == cu:
+                continue
+        elif not new_unit:
+            continue
+        if new_unit != cu:
+            d.canonical_unit = new_unit
+        if kind:
+            d.canonical_kind = kind
+        fixed += 1
+    return fixed
+
+
+def _load_goldens(cases: list[str]) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    for name in cases:
+        with open(os.path.join(GOLDEN_DIR, name, "standardized.json"), encoding="utf-8") as f:
+            out[name] = json.load(f)
+    return out
+
+
 def main() -> int:
     init_db()
     cases = sorted(
@@ -101,11 +156,18 @@ def main() -> int:
         if first in cases:
             cases.remove(first)
             cases.insert(0, first)
+    goldens = _load_goldens(cases)
+    golden_by_raw: dict[str, dict] = {}
+    for g in goldens.values():
+        for b in g.get("biomarkers", []):
+            key = (b.get("raw_name") or "").strip().lower()
+            if key:
+                golden_by_raw[key] = b
     db = SessionLocal()
+    fixed_total = 0
     try:
         for name in cases:
-            with open(os.path.join(GOLDEN_DIR, name, "standardized.json"), encoding="utf-8") as f:
-                golden = json.load(f)
+            golden = goldens[name]
             bm = [
                 RawBiomarker(
                     name=b.get("raw_name", ""),
@@ -126,52 +188,12 @@ def main() -> int:
             )
             match_and_convert(raw, _load_definitions(db), db, USER_ID, None)
             db.commit()
+            # Pin this case's golden truth before the NEXT case replays, so
+            # later cross-document unification sees real canonical kinds.
+            fixed_total += _pin_golden_truth(db, golden_by_raw)
+            db.commit()
             print(f"[warmed] {name}")
-        # Deterministic completion: pin each "default" local definition's
-        # canonical unit/display name from the verified GOLDEN row that created
-        # it (matched by raw_name), exactly mirroring what months of live LLM
-        # runs had committed historically. The matcher heuristic alone cannot
-        # reproduce log10->linear decisions for "lg копий/мл" rows offline.
-        golden_by_raw: dict[str, dict] = {}
-        for name in cases:
-            with open(os.path.join(GOLDEN_DIR, name, "standardized.json"), encoding="utf-8") as f:
-                g = json.load(f)
-            for b in g.get("biomarkers", []):
-                key = (b.get("raw_name") or "").strip().lower()
-                if key:
-                    golden_by_raw[key] = b
-        fixed = 0
-        for d in db.query(BM).filter(BM.scope == "local", BM.user_id == USER_ID).all():
-            syns = list(d.synonyms or [])
-            candidates = [d.names.get("en") or "", *syns]
-            growl = next((golden_by_raw[c.strip().lower()] for c in candidates
-                          if c and c.strip().lower() in golden_by_raw), None)
-            en = (growl.get("standard_name_en") or "").strip() if growl else ""
-            if en and all(ord(c) < 128 for c in en) and d.names.get("en") != en:
-                d.names = {"en": en}
-            su = ((growl.get("standard_unit") or "").strip()) if growl else ""
-            cu = (d.canonical_unit or "").strip()
-            new_unit, kind = _translate_unit(cu)
-            if su and all(ord(c) < 128 for c in su):
-                new_unit, kind = su, ("log10" if su.lower().startswith(("lg", "log")) else "linear")
-            elif su == "" and growl is not None:
-                # The golden row is deliberately unitless (a qualitative
-                # screen anchors canonical "") — pin the empty canonical so
-                # stale non-empty anchors (e.g. forensics-era "copies/mL")
-                # don't drift the offline validator.
-                new_unit, kind = "", "linear"
-            elif cu and not all(ord(c) < 128 for c in cu):
-                if not new_unit or new_unit == cu:
-                    continue
-            elif not new_unit:
-                continue
-            if new_unit != cu:
-                d.canonical_unit = new_unit
-            if kind:
-                d.canonical_kind = kind
-            fixed += 1
-        db.commit()
-        print(f"[units] pinned {fixed} local defs from golden truth")
+        print(f"[units] pinned {fixed_total} local defs from golden truth")
     finally:
         db.close()
     return 0

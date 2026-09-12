@@ -27,6 +27,7 @@ backend/health_passport.db-wal
 backend/health_passport.db.bak-*
 backend/e2e_test.db
 backend/e2e/e2e_run.db
+backend/e2e/e2e_run.db-*
 health_passport.db
 backend/static/uploads/*
 backend/app.log
@@ -40,8 +41,18 @@ backend/reports/
 .autoresearch/
 # corpus is a local artifact: regenerate from e2e with
 #   venv/bin/python benchmark/run_benchmark.py --seed-corpus
-# (avoids duplicating the same medical documents already tracked in e2e/)
-backend/benchmark/corpus/
+# (avoids duplicating the same medical documents already tracked in e2e/).
+# manifest.json is the ONE tracked file inside corpus/: hashes + provenance +
+# tuning|validation split, so corpus drift is portable across machines
+# (ISSUES.md F6).
+backend/benchmark/corpus/*
+!backend/benchmark/corpus/manifest.json
+# Guard/benchmark DB sidecars (fingerprint = auto-invalidation state, F10)
+backend/benchmark/*.fingerprint.json
+backend/e2e/validate_offline*.db
+backend/e2e/validate_offline*.db-wal
+backend/e2e/validate_offline*.db-shm
+backend/e2e/validate_offline*.fingerprint.json
 
 # TypeScript
 *.tsbuildinfo

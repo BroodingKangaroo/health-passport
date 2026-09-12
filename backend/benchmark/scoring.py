@@ -13,6 +13,14 @@ Semantics (documented in benchmark/README.md and derived from ISSUES.md #24):
   / |universe|, clamped to [0, 1]; extras are UNEXPECTED biomarkers plus any
   excess rows implied by count mismatches.
 - stability (per case) = |intersection over runs of recognized sets| / |universe|.
+- extras_stable (per case) = number of UNEXPECTED biomarker names that appeared
+  in EVERY run (a consistently hallucinated row must be visible in both axes;
+  it is reported alongside primary, which keeps its recognition x stability
+  semantics).
+- doc_fidelity (per case/run) = fraction of golden-populated top-level fields
+  (entry_type/date/time/clinic/provider/title/notes) the run carried faithfully.
+  This is the co-metric that lets the documented time-drop move a number even
+  though top-level fields are outside the golden universe.
 - Aggregates average recognition/stability across cases; primary = recognition
   x stability.
 
@@ -25,7 +33,12 @@ import ast
 import re
 from typing import Optional
 
+from e2e.compare import DEFAULT_TEXT_THRESHOLD, _sim, _strip_list_marker
+
 EXTRA_PENALTY = 0.5
+# Top-level fields doc_fidelity scores (ISSUES.md F7). All are outside the
+# recognition/stability universe by design.
+DOC_FIDELITY_FIELDS = ("entry_type", "date", "time", "clinic", "provider", "title", "notes")
 
 _BM_PREFIX = "biomarker "
 _MISS_SUFFIX = ": MISSING in observed output"
@@ -93,6 +106,9 @@ class _GroupedDiffs:
     def __init__(self):
         self.bad: set[str] = set()
         self.extras = 0
+        # Names behind the extras count (UNEXPECTED analytes / detail rows
+        # outside the universe) so case_scores can report extras_stable.
+        self.extra_items: list[str] = []
         self.top_diffs: list[str] = []
         self.unclassified: list[str] = []
 
@@ -117,6 +133,7 @@ def group_diffs(diffs: list[str], universe: set[str]) -> _GroupedDiffs:
                 if name is not None:
                     # an unexpected analyte costs roughly half an item
                     g.extras += 1
+                    g.extra_items.append(name)
                     handled = True
             else:
                 m = _BM_DETAIL_RE.match(d) or _BM_COUNT_RE.match(d)
@@ -131,6 +148,7 @@ def group_diffs(diffs: list[str], universe: set[str]) -> _GroupedDiffs:
                             # the golden universe still means some golden row
                             # didn't match cleanly; penalty via extras only.
                             g.extras += 1
+                            g.extra_items.append(name)
                         handled = True
             if handled:
                 continue
@@ -176,6 +194,39 @@ def group_diffs(diffs: list[str], universe: set[str]) -> _GroupedDiffs:
     return g
 
 
+def doc_fidelity_for_run(golden: dict, observed: dict,
+                         threshold: float = DEFAULT_TEXT_THRESHOLD) -> tuple[float, dict[str, bool]]:
+    """Top-level document fidelity of ONE run (ISSUES.md F7).
+
+    Scores every top-level field the golden populates: entry_type/date/time by
+    normalized equality (time is scored even when the extraction omits it —
+    that omission is exactly the documented time-drop this co-metric exists to
+    expose), clinic/provider/title/notes by comparator similarity with
+    ``<field>_alt`` alternatives. A field the golden leaves empty is not
+    scored, so fidelity is 1.0 for a document with no top-level metadata.
+    """
+    golden = golden or {}
+    observed = observed or {}
+    fields: dict[str, bool] = {}
+    for f in DOC_FIDELITY_FIELDS:
+        g = golden.get(f)
+        if not _norm(str(g or "")):
+            continue
+        o = observed.get(f)
+        if f in ("entry_type", "date", "time"):
+            # A dropped observed value is a miss: fidelity, unlike the
+            # comparator, does not tolerate omission.
+            fields[f] = bool(_norm(str(o or ""))) and _norm(str(o or "")) == _norm(str(g or ""))
+            continue
+        candidates = [str(g)] + [
+            a for a in (golden.get(f"{f}_alt") or []) if isinstance(a, str)
+        ]
+        oo = _strip_list_marker(str(o or ""))
+        fields[f] = bool(_norm(oo)) and max(_sim(oo, c) for c in candidates) >= threshold
+    score = sum(fields.values()) / len(fields) if fields else 1.0
+    return score, fields
+
+
 def recognition_for_run(universe: set[str], diffs: list[str]) -> tuple[float, _GroupedDiffs]:
     """Recognition fraction of ONE run's diffs against the universe."""
     g = group_diffs(diffs, universe)
@@ -203,11 +254,15 @@ def case_scores(golden: dict, runs_diffs: list[list[str]]) -> dict:
         stability = len(stable_items) / len(universe)
     else:
         stability = 1.0 if all(r >= 1.0 for r in recs) else 0.0
+    extra_sets = [set(g.extra_items) for g in grouped]
+    stable_extras = set.intersection(*extra_sets) if extra_sets else set()
     return {
         "universe_size": len(universe),
         "recognition": sum(recs) / len(recs) if recs else 0.0,
         "stability": max(0.0, min(1.0, stability)),
         "extras_total": sum(g.extras for g in grouped),
+        "extras_stable": len(stable_extras),
+        "stable_extra_items": sorted(stable_extras),
         "top_diffs": [t for g in grouped for t in g.top_diffs],
         "unclassified": [u for g in grouped for u in g.unclassified],
         "unstable_items": sorted(universe - stable_items),

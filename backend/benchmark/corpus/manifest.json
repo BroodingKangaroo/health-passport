@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "cases": {
+    "биохимия_26.05": {
+      "document": "биохимия_26.05.pdf",
+      "document_sha256": "ac075244c44dcdae413d151e1270472b106f5261786ec7a56674387aa393e8df",
+      "golden_sha256": "bb2b9949e358909a3838bcc4d3ba9d4e1784bcb1d5b810567ee8627b01a015a7",
+      "source": "unknown",
+      "reviewer": "unknown",
+      "date": "2026-09-12",
+      "split": "tuning",
+      "notes": ""
+    },
+    "гастроэнтеролог_ргц_29.06": {
+      "document": "гастроэнтеролог_ргц_29.06.jpg",
+      "document_sha256": "5da110b9998e006cc6835f7c8cc35c437d5f8403cc7ce89dbbddc26d8eea3e29",
+      "golden_sha256": "80c54a2760409dc54533ea41091103fdb7ebff2f13dea018e5cc35c4433d2770",
+      "source": "unknown",
+      "reviewer": "unknown",
+      "date": "2026-09-12",
+      "split": "tuning",
+      "notes": ""
+    },
+    "колонофлор_16_13.05": {
+      "document": "колонофлор_16_13.05.pdf",
+      "document_sha256": "ee2fa9dd24abff7141cbb57d6fb08a2f1a247397ef1c8d1b0a3f46b74d6007a9",
+      "golden_sha256": "138010421f7849d719a11bb7fb608a1e0da23e7d095e50b5ebfc9314c02644c7",
+      "source": "unknown",
+      "reviewer": "unknown",
+      "date": "2026-09-12",
+      "split": "tuning",
+      "notes": ""
+    },
+    "колонофлор_16_25.06": {
+      "document": "колонофлор_16_25.06.pdf",
+      "document_sha256": "c19a7b8406115066fcf7c7ef72fb048ca86d8a3eda8031707ec98fa04381ba36",
+      "golden_sha256": "0c4234557ea0a1c46902a9f1d0912d8d0cf12d0cd32e9a5c56fae174e568076b",
+      "source": "unknown",
+      "reviewer": "unknown",
+      "date": "2026-09-12",
+      "split": "tuning",
+      "notes": ""
+    },
+    "оак_26.05": {
+      "document": "оак_26.05.pdf",
+      "document_sha256": "d5fb45b110c590f70b6de3e6d1947a000e9d0e883f080eb2d02312e38ab65acb",
+      "golden_sha256": "75b0f9335e62eae01187b865056b46b469a08ff8ecd62de6ef321b0e1d0a90cb",
+      "source": "unknown",
+      "reviewer": "unknown",
+      "date": "2026-09-12",
+      "split": "tuning",
+      "notes": ""
+    },
+    "паразиты_1": {
+      "document": "паразиты_1.pdf",
+      "document_sha256": "1e77dd8b1aa362e8043028871d851e5baaf630960a26fd7555e7a2e559558253",
+      "golden_sha256": "e92d850329abd534ffbcabe2b827496b6b87eca3133178f359d2dba167a96228",
+      "source": "unknown",
+      "reviewer": "unknown",
+      "date": "2026-09-12",
+      "split": "tuning",
+      "notes": ""
+    },
+    "популяции_лимфоцитов_анализ": {
+      "document": "популяции_лимфоцитов_анализ.pdf",
+      "document_sha256": "b2286cdebac1d5b2db74361c6f0648969fc3237d21371acc6da33d7d7278d040",
+      "golden_sha256": "0edd4c6c250898e1ba0d716303a831f3dd84b57409ea8cd0d1b0ab1156951b26",
+      "source": "unknown",
+      "reviewer": "unknown",
+      "date": "2026-09-12",
+      "split": "tuning",
+      "notes": ""
+    },
+    "рнпц_омр_генетика": {
+      "document": "рнпц_омр_генетика.jpeg",
+      "document_sha256": "695142924e97e527ae31aead0819806fb18d3e531917097728f191b426b60383",
+      "golden_sha256": "489effd6943e9e4ec5b56bfcbd0f7884fc7520512ff30c5028672d40d1706f52",
+      "source": "unknown",
+      "reviewer": "unknown",
+      "date": "2026-09-12",
+      "split": "tuning",
+      "notes": ""
+    },
+    "эластометрия_печени": {
+      "document": "эластометрия_печени.jpeg",
+      "document_sha256": "5a9eb3b6c32566369396f6b2545cc1f15f1b9fd84ebed5cc93500a7b06f01fab",
+      "golden_sha256": "9574d329803131ffcd3faea3751f79928bcd75c9becb3e91d3d7843f345a649c",
+      "source": "unknown",
+      "reviewer": "unknown",
+      "date": "2026-09-12",
+      "split": "tuning",
+      "notes": ""
+    }
+  }
+}
