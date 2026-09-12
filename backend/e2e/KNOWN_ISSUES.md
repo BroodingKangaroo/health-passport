@@ -10,6 +10,34 @@ data layer, kept for traceability.
 `паразиты_1` (fix #9, offline only) are handled below; goldens verified &
 committed.
 
+## Live reverification — 2026-09-12
+
+Full suite on the isolated harness (all 10 cases; failures rerun per case)
+plus `validate_offline.py`: **live 4 pass / 6 fail; offline 106 diffs /
+4 cases (the tracked baseline, unchanged)**. Independent `golden-review`
+against the source documents verdict:
+
+- `helix_2023` — expected target failure (items 1–8), unchanged.
+- **Patient-header-as-provider is a reproducible extraction failure, not
+  transient noise**: both runs take the patient field
+  (`Головатый Максим Александрович`) as `provider` in `биохимия_26.05`,
+  `колонофлор_16_25.06` and `оак_26.05` — same class as the helix item-6
+  target. Extraction/prompt work, not a golden defect.
+- `биохимия_26.05` — golden `provider` carried the `Исполнитель`
+  (`Пилипчик Л.А.`); **corrected to the signer `Выдрицкий А.В`**
+  (user-approved 2026-09-12), matching the INVITRO siblings `оак_26.05` /
+  `колонофлор_16_13.05` and the item-6 signer-first policy.
+- `гастроэнтеролог_ргц_29.06` — recommendations block re-verified CORRECT
+  (4 items, faithful originals, split-out referral in order); live diffs
+  are `translated_en` paraphrase only. A transient count 4→3 with a
+  duplicated «стекла» appeared once, gone on rerun.
+- `рнпц_омр_генетика` — `notes` golden re-verified CORRECT: the document
+  prints «Клинико-лабораторное заключение:» as a run-in label, not a
+  heading. Live reproducibly drops the prefix (2/2).
+- `оак_26.05` — `Нормобласты` unit is the expected pending translator fix
+  (see the English/UCUM note below); a transient `Метамиелоциты`
+  `кл/100 лейк.` vs `%` mismatch appeared once, gone on rerun.
+
 ## Pending system work — `helix_2023` (2026-09-12)
 
 `golden/helix_2023/standardized.json` was regenerated live, independently
@@ -400,11 +428,13 @@ weakening value gates), mirroring the translated_en_alt precedent:
   applied automatically (no manual ritual, no dev DB). `warmup_db` pins each
   case's defs immediately after replaying it (not only at the end) so later
   cross-document unification sees real canonical kinds. The deterministic
-  baseline is **5 diffs / 2 failing cases**: `гастроэнтеролог` visit-replay
-  trio (raw visit data is not replayed offline) plus the
-  `колонофлор_16_25.06` ratio row's local id/name (offline replay creates its
-  own def instead of unifying onto 13.05's). Identical across runs; compare
-  against the recorded baseline in `.autoresearch/state.json`.
+  baseline is **106 diffs / 4 failing cases** (2026-09-12): `helix_2023`
+  100 (the accepted target is not produced by either path),
+  `гастроэнтеролог` visit-replay trio (raw visit data is not replayed
+  offline), the `колонофлор_16_25.06` ratio row's local id/name (offline
+  replay creates its own def instead of unifying onto 13.05's), and the
+  `оак_26.05` `Нормобласты` untranslated unit. Identical across runs;
+  compare against the recorded baseline in `.autoresearch/state.json`.
 - Live extraction depends on the Mistral LLM; free-text (`title` / `provider` /
   `notes` / `recommendations`) can vary run-to-run (similarity-thresholded).
   The `колонофлор_16_*` `title` field is particularly noisy — the LLM
@@ -449,6 +479,11 @@ weakening value gates), mirroring the translated_en_alt precedent:
   `provider_alt` accepting `Субоч Е.И.` and the both-doctors form — all
   variants are printed on the document, so no rerun is needed for provider
   variance anymore.
+- `рнпц_омр_генетика` `notes`: the golden's
+  «Клинико-лабораторное заключение: …» is verbatim — the document prints
+  that phrase as a run-in label of the same sentence, not a heading. Live
+  extraction reproducibly drops the prefix (2026-09-12, 2/2 runs): an
+  extraction/prompt issue to fix, not a golden defect.
 - `рнпц_омр_генетика`: the golden's four qualitative mutation biomarkers
   (`Мутация в гене JAK2 (12 exon)`, `JAK2 (14 exon; V617F)`, `CALR (9 exon)`,
   `MPL (10 exon)`) carried `standard_unit: "ratio"` — wrong: these are
@@ -467,17 +502,20 @@ weakening value gates), mirroring the translated_en_alt precedent:
   `warmup_db.ORDER_FIRST` is empty. (Historical: pre-task-1, 13.05-first
   anchored `lg copies/mL` and BOTH cases failed — the 25.06-first warm-up was
   that era's workaround.)
-- `гастроэнтеролог_ргц_29.06`: the LLM now splits the long
-  `Лабораторная и инструментальная диагностика…` recommendation block into
-  separate items and truncates the longest texts, so `recommendations` counts
-  (golden 4 vs observed 5) and long texts mismatch (similarity 0.02-0.39).
-  This repeated identically on two consecutive runs (temp-0 extraction, LLM
-  drift since the golden was verified); rerun to check, but the golden may
-  need re-verification of the recommendations block.
+- `гастроэнтеролог_ргц_29.06`: the recommendations block was re-verified
+  against the source document on 2026-09-12 (independent golden-review):
+  all 4 items are faithful and in document order, including the split-out
+  referral; the golden is correct target truth. Live runs still differ only
+  in `translated_en` paraphrase (similarity ~0.8, e.g. "Rational nutrition"
+  vs "Rational diet"). A full-suite run once produced a transient count
+  4→3 with a duplicated «стекла» in `[2].original`; a per-case rerun had
+  all 4 originals exact.
 - `оак_26.05`: `MCH` raw-name OCR variance (`MCH (ср. содер. Hb в эр.)` vs
   `MCH (ср. содерж. Hb в эр.)`) makes the row MISSING/UNEXPECTED on some
-  runs; the provider field can also swap to a different signature name
-  (e.g. `Гусар Т.В.` vs `Выдрицкий А.В`). Both are transient OCR/LLM noise.
+  runs; the `Метамиелоциты` unit once came out `кл/100 лейк.` instead of
+  `%`. Both are transient OCR/LLM noise (matched on rerun). The provider
+  failure is NOT transient anymore: live runs reproducibly take the patient
+  header instead of the signer — see the reverification section above.
 - The `колонофлор_16_13.05` `Bacteroides thetaiotaomicron` row is OCR-flaky
   on its `допустимо любое количество` reference cell: when the LLM recovers
   the cell the matcher emits `{kind: interval, low: null, high: null}` +
