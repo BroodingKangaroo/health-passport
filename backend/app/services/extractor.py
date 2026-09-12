@@ -238,7 +238,10 @@ RAW_EXTRACTION_PROMPT = (
     "KEEPING its section heading when printed (e.g. 'Лабораторная и "
     "инструментальная диагностика: Общий анализ крови; Биохимический анализ "
     "крови: ...') — short dash-bullet test enumerations under that heading stay "
-    "INLINE after it, separated by ';'. EXCEPTION: a dash-bullet that is a "
+    "INLINE after it, separated by ';'. Include EVERY numbered item exactly "
+    "once and in the printed order; never omit the last item — a missing "
+    "recommendation is unrecoverable data loss downstream. EXCEPTION: a "
+    "dash-bullet that is a "
     "substantive standalone referral/action — multiple sentences, its own "
     "instructions, addresses, phones or emails (e.g. 'Экспертный пересмотр "
     "гистологических препаратов в консультативном центре ...') — is emitted as "
@@ -428,18 +431,14 @@ def llm_extract(markdown: str, client: Mistral, *,
     "unknown + Raw OCR text" fallback record, so the benchmark can map them to
     its hard-failure exit (ISSUES.md F11). Other provider errors keep the
     fallback behavior in both modes.
+
+    A doctor_visit extraction that omits a numbered recommendation printed in
+    the source gets ONE bounded retry with a correction hint (small models
+    intermittently renumber the standalone referral as the next item and drop
+    the real one). The retry only wins when it is strictly more complete.
     """
     try:
-        chat_response = client.chat.parse(
-            model=MISTRAL_CHAT_MODEL,
-            temperature=0,
-            messages=[
-                {"role": "system", "content": RAW_EXTRACTION_PROMPT},
-                {"role": "user", "content": markdown},
-            ],
-            response_format=RawMedicalRecord,
-            max_tokens=16000,
-        )
+        record = _extraction_call(markdown, client)
     except Exception as e:
         classified = _classify_chat_error(e)
         if raise_on_hard_error and classified.kind in ("auth", "quota"):
@@ -450,6 +449,75 @@ def llm_extract(markdown: str, client: Mistral, *,
             notes=f"Raw OCR text:\n\n{markdown[:5000]}",
         )
 
+    missing = _missing_numbered_leads(markdown, record)
+    if missing:
+        correction = (
+            "Your previous extraction omitted numbered recommendation(s): "
+            + "; ".join(f'"{m}"' for m in missing[:5])
+            + ". Return the complete JSON again, including EVERY numbered item "
+            "verbatim and in the printed order."
+        )
+        try:
+            retry = _extraction_call(markdown, client, correction=correction)
+        except Exception as e:
+            logger.warning("Recommendation-completeness retry failed: %s", e)
+            retry = None
+        if retry is not None and len(_missing_numbered_leads(markdown, retry)) < len(missing):
+            logger.info(
+                "Recommendation-completeness retry recovered %d item(s)",
+                len(missing) - len(_missing_numbered_leads(markdown, retry)),
+            )
+            return retry
+        logger.info("Recommendation-completeness retry did not improve; keeping first result")
+    return record
+
+
+def _extraction_call(markdown: str, client: Mistral,
+                     correction: str = "") -> RawMedicalRecord:
+    """One chat.parse extraction call (optionally with a correction hint)."""
+    messages = [
+        {"role": "system", "content": RAW_EXTRACTION_PROMPT},
+        {"role": "user", "content": markdown},
+    ]
+    if correction:
+        messages.append({"role": "user", "content": correction})
+    chat_response = client.chat.parse(
+        model=MISTRAL_CHAT_MODEL,
+        temperature=0,
+        messages=messages,
+        response_format=RawMedicalRecord,
+        max_tokens=16000,
+    )
     result = chat_response.choices[0].message.content
     logger.info("LLM raw response: %s", result[:500] if isinstance(result, str) else type(result))
     return _preserve_antibody_prefix(_parse_llm_response(result, markdown))
+
+
+_NUMBERED_ITEM_RE = re.compile(r"^\s*\d{1,2}[.)]\s+(\S[^\n]*)", re.MULTILINE)
+
+
+def _normalize_lead(text: str) -> str:
+    return re.sub(r"[^0-9a-zа-яё]+", " ", text.casefold()).strip()
+
+
+def _missing_numbered_leads(markdown: str, record: RawMedicalRecord) -> list[str]:
+    """Numbered recommendation leads printed in the source but absent from a
+    doctor_visit extraction (tolerant lead-text comparison).
+
+    Only called for doctor_visit records that carry at least one
+    recommendation, so numbered lists in lab reports never trigger a retry.
+    """
+    if record.entry_type != "doctor_visit":
+        return []
+    recs = (record.visit_data.recommendations if record.visit_data else []) or []
+    if not recs:
+        return []
+    rec_norms = [_normalize_lead(r) for r in recs]
+    missing: list[str] = []
+    for match in _NUMBERED_ITEM_RE.finditer(markdown):
+        lead = _normalize_lead(match.group(1))[:40]
+        if not lead:
+            continue
+        if not any(lead in rn for rn in rec_norms):
+            missing.append(match.group(1).strip())
+    return missing

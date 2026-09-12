@@ -107,3 +107,56 @@ def test_llm_extract_preserves_antibody_prefix():
     assert by_name["anti-Lamblia IgA+IgM+IgG"] == "anti-Giardia IgA+IgM+IgG"
     assert by_name["anti-CCP"] == "Anti-CCP antibodies"
     assert by_name["Гемоглобин"] == "Hemoglobin"
+
+
+class _SeqClient:
+    def __init__(self, contents):
+        self.contents = list(contents)
+        self.calls = 0
+        self.chat = self
+
+    def parse(self, **kwargs):
+        self.calls += 1
+        return _Response(self.contents.pop(0))
+
+
+_MARKDOWN_WITH_NUMBERS = (
+    "Рекомендовано:\n"
+    "1. Рациональное питание\n"
+    "2. Лабораторная диагностика\n"
+    "3. Повторный осмотр с результатами дообследований\n"
+)
+
+
+def _visit_json(recs):
+    import json
+
+    return json.dumps({"entry_type": "doctor_visit",
+                       "visit_data": {"recommendations": recs}})
+
+
+def test_llm_extract_retries_when_numbered_recommendation_missing():
+    first = _visit_json(["1. Рациональное питание", "2. Лабораторная диагностика"])
+    complete = _visit_json(["1. Рациональное питание", "2. Лабораторная диагностика",
+                            "3. Повторный осмотр с результатами дообследований"])
+    client = _SeqClient([first, complete])
+    record = llm_extract(_MARKDOWN_WITH_NUMBERS, client)
+    assert client.calls == 2
+    assert len(record.visit_data.recommendations) == 3
+
+
+def test_llm_extract_no_retry_when_complete():
+    complete = _visit_json(["1. Рациональное питание", "2. Лабораторная диагностика",
+                            "3. Повторный осмотр с результатами дообследований"])
+    client = _SeqClient([complete])
+    record = llm_extract(_MARKDOWN_WITH_NUMBERS, client)
+    assert client.calls == 1
+    assert len(record.visit_data.recommendations) == 3
+
+
+def test_llm_extract_keeps_first_when_retry_not_better():
+    first = _visit_json(["1. Рациональное питание", "2. Лабораторная диагностика"])
+    client = _SeqClient([first, first])
+    record = llm_extract(_MARKDOWN_WITH_NUMBERS, client)
+    assert client.calls == 2
+    assert len(record.visit_data.recommendations) == 2
