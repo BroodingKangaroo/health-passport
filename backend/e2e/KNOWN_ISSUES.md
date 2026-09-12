@@ -14,9 +14,10 @@ committed.
 
 `golden/helix_2023/standardized.json` was regenerated live, independently
 reviewed (all 47 document rows present), then **hand-corrected to the target
-output**. The live pipeline does not produce this yet; the FOR-REVIEW
-`_status` marker stays so the case cannot fail CI until the system catches
-up. Changes required to match the target:
+output**. The live pipeline does not produce this yet. The case was
+**accepted as the target on 2026-09-12** (its FOR-REVIEW `_status` marker was
+removed), so it is now a tracked failing case in `validate_offline.py` until
+the system catches up. Changes required to match the target:
 
 1. **Lipid curation + display overrides.** Curate the exact spellings
    `ЛПВП-холестерин (HDL)` → `2085-9` and `ЛПНП-холестерин (LDL)` → `2089-1`
@@ -60,13 +61,14 @@ up. Changes required to match the target:
    Count`; `Индекс атерогенности` → `Lipid Panel` (genuinely dimensionless
    `ratio`); were `Кровь (общий анализ)` / `Биохимия` leaks.
 9. **Offline baseline after the English-unit targets.** `validate_offline.py`
-   auto-discovers `standardized.json`, so the corrected FOR-REVIEW case moves
+   auto-discovers `standardized.json`, so the corrected target case moves
    the deterministic baseline from 5 diffs / 2 cases to **106 diffs / 4
    cases** (`helix_2023` 100 — live-only rows fall back to `local-default-*`
    offline, `normalize_unit` leaves the Cyrillic raw units untranslated, and
    the stratified-band targets need patient sex/age; plus the existing 5 and
-   the new `оак_26.05` `Нормобласты` unit diff). Decide whether the guard
-   should skip `_status`-marked goldens or track a new baseline.
+   the new `оак_26.05` `Нормобласты` unit diff). Since the FOR-REVIEW marker
+   was removed (the case is accepted target truth), the guard **tracks the
+   106/4 baseline** rather than skipping `_status`-marked goldens.
 10. **Bounded values keep the operator only in `raw_value`.** `CRP < 0.6`
     stays numeric `0.6` (the schema has no relational field); showing
     "below detection limit" in the UI is a schema/product change, not a
