@@ -400,25 +400,27 @@ def _parse_llm_response(result: object, markdown: str) -> RawMedicalRecord:
     )
 
 
-_ANTI_PREFIX_RE = re.compile(r"^\s*anti\s*[-–]?\s*", re.IGNORECASE)
+_ANTI_PREFIX_RE = re.compile(r"^\s*anti\s*[-–]\s*", re.IGNORECASE)
 
 
 def _preserve_antibody_prefix(record: RawMedicalRecord) -> RawMedicalRecord:
     """Restore the ``anti-`` prefix the source analyte name carries.
 
-    The extraction LLM tends to drop it in ``standard_name_en``
-    ("anti-Opisthorchis IgG" -> "Opisthorchis IgG"). For locally-defined
-    serology rows that English string becomes the analyte's stored name, so
-    the loss surfaces as a name diff against hand-verified goldens even
-    though the row resolved correctly. Deterministic and idempotent; leaves
-    names the LLM already prefixed (any case) and non-antibody names alone.
+    The extraction LLM drops the prefix ("anti-Opisthorchis IgG" ->
+    "Opisthorchis IgG") and also varies its casing between runs
+    ("Anti-Giardia" vs "anti-Giardia"). For locally-defined serology rows that
+    English string becomes the stored analyte name, so both the loss and the
+    case flip surface as name diffs against hand-verified goldens (which use
+    the lowercase form for lowercase sources). Deterministic and idempotent;
+    leaves non-antibody names alone.
     """
     for b in record.biomarkers or []:
         if not _ANTI_PREFIX_RE.match(b.name or ""):
             continue
         en = (b.standard_name_en or "").strip()
-        if en and not _ANTI_PREFIX_RE.match(en):
-            b.standard_name_en = f"anti-{en}"
+        if not en:
+            continue
+        b.standard_name_en = "anti-" + _ANTI_PREFIX_RE.sub("", en, count=1).strip()
     return record
 
 

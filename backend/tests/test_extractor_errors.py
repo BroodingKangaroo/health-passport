@@ -94,7 +94,7 @@ def test_llm_extract_preserves_antibody_prefix():
             {"name": "anti-Opisthorchis IgG", "value": "отрицат.", "unit": "",
              "standard_name_en": "Opisthorchis IgG"},
             {"name": "anti-Lamblia IgA+IgM+IgG", "value": "отрицат.", "unit": "",
-             "standard_name_en": "anti-Giardia IgA+IgM+IgG"},
+             "standard_name_en": "Anti-Giardia IgA+IgM+IgG"},
             {"name": "anti-CCP", "value": "5", "unit": "",
              "standard_name_en": "Anti-CCP antibodies"},
             {"name": "Гемоглобин", "value": "130", "unit": "",
@@ -105,7 +105,7 @@ def test_llm_extract_preserves_antibody_prefix():
     by_name = {b.name: b.standard_name_en for b in record.biomarkers}
     assert by_name["anti-Opisthorchis IgG"] == "anti-Opisthorchis IgG"
     assert by_name["anti-Lamblia IgA+IgM+IgG"] == "anti-Giardia IgA+IgM+IgG"
-    assert by_name["anti-CCP"] == "Anti-CCP antibodies"
+    assert by_name["anti-CCP"] == "anti-CCP antibodies"
     assert by_name["Гемоглобин"] == "Hemoglobin"
 
 
