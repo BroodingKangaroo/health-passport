@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import Optional
 
 from mistralai import Mistral
@@ -42,6 +43,25 @@ def _scale_kind_of(unit: str) -> str:
     return "linear"
 
 
+# Some labs print haematology counts per litre ("10^9 клеток/л"); the seeded
+# defs' canonical is the per-microlitre UCUM form ("10*3/uL"). Mapping is
+# exact (10^9/L == 10^3/uL, 10^12/L == 10^6/uL), so it must never go through
+# the batch translator, where a weak model can echo the Cyrillic passthrough.
+_COUNT_PER_LITER_RE = re.compile(
+    r"^(?:10\s*\^\s*(\d+)|10\s*\*\s*10\s*\^\s*(\d+))\s*(?:клеток)?\s*/\s*л$",
+    re.IGNORECASE,
+)
+_COUNT_PER_LITER_UNITS = {"9": "10*3/uL", "12": "10*6/uL"}
+
+
+def _count_per_liter_unit(raw_unit: str) -> Optional[str]:
+    match = _COUNT_PER_LITER_RE.match(" ".join((raw_unit or "").lower().split()))
+    if not match:
+        return None
+    exponent = match.group(1) or match.group(2)
+    return _COUNT_PER_LITER_UNITS.get(exponent)
+
+
 def _heuristic_unit_translation(raw_unit: str) -> Optional[dict]:
     """Cheap deterministic translation for units the parser can already
     recognise. Returns a UnitTranslation-shaped dict or None when the unit
@@ -49,6 +69,9 @@ def _heuristic_unit_translation(raw_unit: str) -> Optional[dict]:
     u = (raw_unit or "").strip()
     if not u:
         return None  # needs LLM to invent from analyte/category
+    mapped = _count_per_liter_unit(u)
+    if mapped:
+        return {"unit": mapped, "kind": "linear", "inferred": False}
     # The Cyrillic lowercase letters mean the LLM has to translate; skip.
     if not _is_ascii(u):
         return None
@@ -69,6 +92,11 @@ def _translated_unit(raw_unit: str, analyte_name: str = "", category: str = "") 
     entry = cache.get(u)
     if entry is not None:
         return entry
+    # Deterministic canonicalization (count-per-litre forms) must work even
+    # when the batch translator never ran (offline / client=None).
+    heuristic = _heuristic_unit_translation(u)
+    if heuristic is not None:
+        return heuristic
     # Fall back when the batch translator never ran (e.g. LLM unavailable).
     if not u:
         return _guess_unit(analyte_name, category)

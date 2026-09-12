@@ -20,6 +20,7 @@ from app.services import converters
 from app.services.matcher._text import _is_ascii
 from app.services.matcher.definitions import _LOG_PREFIX_RE
 from app.services.matcher.name_matching import canonicalize_gene_mutation_en
+from app.services.matcher.reference_bands import parse_reference_for_value
 from app.services.matcher.translation import (
     _fallback_translate,
     _normalize_date,
@@ -31,12 +32,12 @@ from app.services.matcher.units_conversion import (
     _convert_to_canonical,
     convert_units,
 )
+from app.services.matcher.units_guess import _translated_unit
 from app.services.reference import (
     _ABSENT_CANONICAL,
     compute_status,
     merge_reference,
     normalize_qual,
-    parse_reference,
     parse_value,
 )
 
@@ -86,7 +87,17 @@ def _build_standardized_from_def(
 
     # Canonicalize the document's own unit (e.g. Cyrillic "ммоль/л" -> "mmol/L").
     doc_unit = converters.normalize_unit(raw_bm.unit)
-    doc_reference = parse_reference(raw_bm.raw_range_string)
+    if doc_unit and not _is_ascii(doc_unit):
+        # The localized-synonym table missed this Cyrillic form (e.g.
+        # "10^9 клеток/л"); the matcher's deterministic/LLM unit translator
+        # knows the canonical ("10*3/uL"). Only adopt it when it is English,
+        # never a raw passthrough.
+        translated_unit = _translated_unit(
+            raw_bm.unit, raw_bm.standard_name_en or raw_bm.name, raw_bm.category
+        ).get("unit", "")
+        if translated_unit and _is_ascii(translated_unit):
+            doc_unit = translated_unit
+    doc_reference = parse_reference_for_value(raw_bm.raw_range_string, parsed_value)
     # Same boundless-note guard as the local path: an absent-canonical result
     # against "допустимо любое количество" is a qualitative screen — the
     # definition's own reference must decide the kind, not the leaked note.
@@ -246,7 +257,7 @@ def _build_standardized_local(
     client: Optional[Mistral] = None,
 ) -> StandardizedBiomarker:
     parsed_value = parse_value(raw_bm.value)
-    parsed_ref = parse_reference(raw_bm.raw_range_string)
+    parsed_ref = parse_reference_for_value(raw_bm.raw_range_string, parsed_value)
     # A boundless document note ("допустимо любое количество" — often a leaked
     # comment column) against an absent-canonical result ("не обнаруж") is a
     # QUALITATIVE screen, not a 0.0 measurement: the note carries no numeric
@@ -339,7 +350,7 @@ def _fallback_standardize(raw: RawMedicalRecord) -> StandardizedMedicalRecord:
     if raw.biomarkers:
         for b in raw.biomarkers:
             parsed_value = parse_value(b.value)
-            parsed_ref = parse_reference(b.raw_range_string)
+            parsed_ref = parse_reference_for_value(b.raw_range_string, parsed_value)
             # Same Quantitative/Qualitative split as _build_standardized_local:
             # interval ref -> numeric value (canonical "absent" strings
             # collapse to 0.0 so value type matches the ref), qualitative ref

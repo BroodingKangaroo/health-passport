@@ -16,17 +16,19 @@ from app.services.matcher.llm_matching import _guess_is_consistent
 from app.services.matcher.loinc_store import _promote_loinc_from_csv
 from app.services.matcher.name_matching import (
     _is_fraction_def,
+    _is_percent_unit,
     _normalize_name,
     _strip_trailing_punct,
     canonicalize_gene_mutation_en,
 )
+from app.services.matcher.reference_bands import parse_reference_for_value
 from app.services.matcher.units_conversion import _apply_scale_function
 from app.services.matcher.units_guess import (
     _cyrillic_magnitude_en,
     _is_ratio_name,
     _translated_unit,
 )
-from app.services.reference import merge_reference, parse_reference, parse_value
+from app.services.reference import merge_reference, parse_value
 
 _LOG_PREFIX_RE = re.compile(r"^(log10|log|lg|ln)\s*", re.IGNORECASE)
 
@@ -86,12 +88,16 @@ def _anchor_translation(
     any unit translation, so a concentration unit leaking from the table
     (e.g. a 'мг/дл' column header on a ratio row) never becomes the
     canonical — the ``_convert_to_canonical`` ratio pass-through would never
-    fire for a concentration canonical (ISSUES.md #46). Otherwise translate
-    the raw unit and linearize log-scale anchors (see ``_linearized_anchor``).
+    fire for a concentration canonical (ISSUES.md #46). A printed percent
+    unit is NOT a leak: analytes whose name contains "ratio" (e.g. the
+    platelet "Large Cell Ratio") are genuinely measured in % and must anchor
+    it, so the force only applies when the document unit is not a percentage.
+    Otherwise translate the raw unit and linearize log-scale anchors (see
+    ``_linearized_anchor``).
 
     Returns ``(translation, scale_function)`` like ``_linearized_anchor``.
     """
-    if _is_ratio_name(en_name, raw_name):
+    if _is_ratio_name(en_name, raw_name) and not _is_percent_unit(raw_unit):
         return {"unit": "ratio", "kind": "linear", "inferred": True}, None
     return _linearized_anchor(
         _translated_unit(raw_unit, en_name, category), en_name, raw_name
@@ -251,8 +257,8 @@ def verify_or_create(
     canonical_kind = "linear"
     canonical_unit_inferred = False
     if raw_biomarker:
-        doc_ref = parse_reference(raw_biomarker.raw_range_string)
         parsed_val = parse_value(raw_biomarker.value)
+        doc_ref = parse_reference_for_value(raw_biomarker.raw_range_string, parsed_val)
         if _is_qualitative_result(raw_biomarker):
             # Qualitative screen (text-only result): no physical unit exists.
             # Force the canonical empty instead of letting _guess_unit / the

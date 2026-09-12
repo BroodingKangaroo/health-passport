@@ -194,10 +194,22 @@ Reference for agents so these aren't re-derived via grep each session:
   соотношение names) are dimensionless and anchor `ratio` BEFORE any unit
   translation — a log prefix OR a leaked concentration unit (e.g. a table-wide
   `мг/дл` column header) never becomes their canonical, and they never scale
-  (ISSUES.md #46).
+  (ISSUES.md #46). Exception: when the document prints a percent unit, the
+  printed `%` wins (e.g. P-LCR "Large Cell Ratio") — that is a real unit, not
+  a leak.
   Canonical absent strings (`Not detected`, …) against a foreign canonical
   unit don't set `needs_review` (no quantity to convert), and a unitless
   (qualitative) def never leaks a raw unit column onto its readings.
+- Deterministic unit mappings: haematology counts printed per litre
+  (`10^9 клеток/л`, `10^12 клеток/л`) canonicalize to the seeded UCUM forms
+  (`10*3/uL`, `10*6/uL`) without an LLM (`units_guess._count_per_liter_unit`),
+  and `standardize.py` falls back to that matcher translation when
+  `converters.normalize_unit` leaves a Cyrillic unit untranslated.
+- Segmented/banded printed references (`желательный … <5.17, пограничный …`,
+  `до 0.9 - отрицательный, …`) yield the first applicable band as an interval
+  for NUMERIC readings (`matcher/reference_bands.py`); age/sex-qualified texts
+  are deliberately left unparsed until patient demographics are available
+  (picking a band without them would encode a wrong cutoff).
 - Empty unit cells are handled per-biomarker by `_guess_unit()` (analyte/
   category heuristics, `inferred: True`), NEVER by the batch LLM translator —
   a shared empty-unit cache entry would let one extraction's guess poison

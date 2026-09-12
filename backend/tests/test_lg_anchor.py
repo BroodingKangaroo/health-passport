@@ -415,3 +415,46 @@ def test_batch_translator_dedupes_shared_unit_first_meta_wins():
     assert seen["system"].count("| 'ммоль/л'") == 1
     assert "Alpha" in seen["system"] and "Beta" not in seen["system"]
     _unit_translation_cache.clear()
+
+
+def test_count_per_liter_units_map_deterministically():
+    """Haematology count units printed per litre map to the seeded UCUM
+    canonical without an LLM (helix_2023)."""
+    from app.services.matcher.units_guess import _heuristic_unit_translation
+
+    assert _heuristic_unit_translation("10^9 клеток/л")["unit"] == "10*3/uL"
+    assert _heuristic_unit_translation("10^12 клеток/л")["unit"] == "10*6/uL"
+    assert _heuristic_unit_translation("10^9/л")["unit"] == "10*3/uL"
+    assert _heuristic_unit_translation("10^18 клеток/л") is None
+    assert _heuristic_unit_translation("клеток/л") is None
+
+
+def test_count_per_liter_doc_unit_is_canonicalized(db_session):
+    """A reading whose Cyrillic count-per-litre unit the localized-synonym
+    table misses still emits the seeded UCUM canonical (helix_2023)."""
+    from app.services.matcher.standardize import _build_standardized_from_def
+
+    raw = _raw("Лейкоциты (WBC)", "9.64", "10^9 клеток/л", "4 - 9",
+               en="White Blood Cells", category="Кровь")
+    defn = verify_or_create(db_session, raw.name, None, "user-a", raw)
+    assert defn.canonical_unit == "10*3/uL"
+    res = _build_standardized_from_def(raw, defn, None)
+    assert res.standard_unit == "10*3/uL"
+    assert res.standard_value == 9.64
+
+
+def test_ratio_named_percent_analyte_anchors_percent():
+    """A printed % is not a table-header leak: P-LCR ("Large Cell Ratio")
+    anchors %, while a truly dimensionless index still anchors ratio."""
+    from app.services.matcher.definitions import _anchor_translation
+
+    trans, sf = _anchor_translation(
+        "%", "Large Cell Ratio", "Коэффициент больших тромбоцитов (P-LCR)", "Кровь"
+    )
+    assert trans["unit"] == "%"
+    assert sf is None
+
+    trans2, _ = _anchor_translation(
+        "Ед", "Atherogenic Index", "Индекс атерогенности", "Биохимия"
+    )
+    assert trans2["unit"] == "ratio"
