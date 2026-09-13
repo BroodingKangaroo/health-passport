@@ -180,6 +180,15 @@ function _groupIntegerPart(s: string): string {
 }
 
 /**
+ * Epoch milliseconds for a reading's ISO `date`, with a finite fallback (0)
+ * for unparseable strings. The single parse source for sorting and the chart
+ * time axis, so array order and numeric x positions cannot diverge.
+ */
+export function readingEpoch(date: string): number {
+  return Date.parse(date) || 0
+}
+
+/**
  * Sort readings oldest → newest by their ISO `date`. Stable: equal or
  * unparseable timestamps keep their original relative order (unparseable sort
  * first). Returns a new array; the input is not mutated. Recharts plots chart
@@ -191,7 +200,7 @@ export function sortReadingsByDate<T extends { date: string }>(
   readings: readonly T[],
 ): T[] {
   return readings
-    .map((reading, index) => ({ reading, index, time: Date.parse(reading.date) || 0 }))
+    .map((reading, index) => ({ reading, index, time: readingEpoch(reading.date) }))
     .sort((a, b) => a.time - b.time || a.index - b.index)
     .map((entry) => entry.reading)
 }

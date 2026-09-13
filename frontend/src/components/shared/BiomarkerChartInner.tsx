@@ -15,8 +15,17 @@ import { useLocale, useTranslations } from 'next-intl'
 import type { BiomarkerResult, Reading } from '@/lib/types'
 import { sortReadingsByDate, splitDateLabel } from '@/lib/utils'
 import { isQualitative } from '@/lib/reference'
-import { coerceChartValue, chartReferenceBounds, dateTickRenderer } from '@/lib/chart-series'
+import {
+  buildTimeAxis,
+  chartReferenceBounds,
+  coerceChartValue,
+  dateTickFormatter,
+  dateTickRenderer,
+  gapAwareLineShape,
+} from '@/lib/chart-series'
 import { statusColor } from '@/lib/status-labels'
+import { useChartAxisMode } from '@/lib/hooks/useChartAxisMode'
+import { AxisModeToggle } from '@/components/shared/axis-mode-toggle'
 
 interface BiomarkerChartProps {
   biomarker: BiomarkerResult
@@ -32,18 +41,20 @@ export default function BiomarkerChartInner({
   compact = false,
 }: BiomarkerChartProps) {
   const t = useTranslations('timeline.biomarker')
+  const tCharts = useTranslations('charts')
   const locale = useLocale()
+  const [axisMode, setAxisMode] = useChartAxisMode()
   const rawData = dataProp ?? [
     ...(biomarker.history ?? []),
     { date: biomarker.date, value: biomarker.value, status: biomarker.status },
   ]
   const effRef = biomarker.reference ?? biomarker.definition.reference
   const qual = isQualitative(effRef)
-  // Recharts plots points in array order (categorical x-axis), so the series
-  // must be chronological. Callers may hand over a series whose "current"
-  // reading is a mid-series event promoted by biomarkersAtDate; sort here as
-  // the single choke point so the x-axis is always oldest → newest.
-  const data = sortReadingsByDate(
+  // Recharts plots points in array order, so the series must be chronological.
+  // Callers may hand over a series whose "current" reading is a mid-series
+  // event promoted by biomarkersAtDate; sort here as the single choke point so
+  // the x-axis is always oldest → newest.
+  const sorted = sortReadingsByDate(
     rawData
       .map((d) => {
         const v = coerceChartValue(d.value, qual)
@@ -51,6 +62,17 @@ export default function BiomarkerChartInner({
       })
       .filter((d) => d != null),
   ) as { date: string; value: number; status: string }[]
+  const axis = buildTimeAxis(sorted, { mode: axisMode })
+  const { rows: data, ticks, domain } = axis
+  const resolveTick = (value: number | string) => axis.tickDates.get(Number(value))
+  const lineShape =
+    axis.longGaps.length > 0
+      ? gapAwareLineShape({
+          gaps: axis.longGaps,
+          gapLabel: (months) => tCharts('gapMonths', { months }),
+          compact,
+        })
+      : undefined
   const numericValues = data.map((d) => d.value)
   const bounds = chartReferenceBounds(effRef)
   const rm = bounds?.high ?? null
@@ -80,85 +102,112 @@ export default function BiomarkerChartInner({
   }
 
   return (
-    <div className="w-full" style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart
-          data={data}
-          margin={compact ? { top: 4, right: 8, bottom: 0, left: -4 } : { top: 12, right: 16, bottom: 4, left: -8 }}
-        >
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="#d4d4d8"
-            vertical={false}
+    <div className="flex w-full flex-col" style={{ height }}>
+      {numericValues.length > 1 && (
+        <div className="flex justify-end pb-1">
+          <AxisModeToggle
+            mode={axisMode}
+            onChange={setAxisMode}
+            label={tCharts('axisMode.label', { name: biomarker.definition.names.en })}
           />
-          {hasBand && (
-            <ReferenceArea
-              y1={bandY1Final}
-              y2={bandY2Final}
-              fill="#22c55e"
-              fillOpacity={0.06}
+        </div>
+      )}
+      <div className="min-h-0 flex-1">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart
+            data={data}
+            margin={compact ? { top: 4, right: 8, bottom: 0, left: -4 } : { top: 12, right: 16, bottom: 4, left: -8 }}
+          >
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="#d4d4d8"
+              vertical={false}
             />
-          )}
-          <XAxis
-            dataKey="date"
-            tickLine={false}
-            axisLine={{ stroke: '#d4d4d8' }}
-            tick={dateTickRenderer(locale, { compact })}
-          />
-          <YAxis
-            domain={[0, Math.ceil(yMax)]}
-            tick={{ fontSize: compact ? 9 : 11, fill: '#71717a' }}
-            tickLine={false}
-            axisLine={false}
-            width={compact ? 28 : 40}
-          />
-          <Tooltip
-            cursor={{ stroke: '#d4d4d8', strokeWidth: 1 }}
-            contentStyle={{
-              borderRadius: 8,
-              border: '1px solid #d4d4d8',
-              fontSize: compact ? 11 : 12,
-              boxShadow: '0 4px 12px rgb(0 0 0 / 0.06)',
-            }}
-            labelStyle={{ color: '#71717a', fontWeight: 500 }}
-            labelFormatter={(label) => {
-              const { label: mainLabel, sub } = splitDateLabel(String(label), locale)
-              return sub ? (
-                <>
-                  <span>{mainLabel}</span>
-                  <span style={{ fontSize: '0.75em', color: '#a1a1aa' }}> — {sub}</span>
-                </>
-              ) : (
-                mainLabel
-              )
-            }}
-            formatter={(value) => [`${value ?? ''} ${biomarker.definition.unit}`, t('result')]}
-          />
-          <Line
-            type="monotone"
-            dataKey="value"
-            stroke="#3b82f6"
-            strokeWidth={compact ? 2 : 2.5}
-            dot={(props: { cx?: number; cy?: number; payload: { status?: string } }) => {
-              if (props.cx == null || props.cy == null) return null
-              const color = statusColor(props.payload.status)
-              const r = compact ? 3 : 4
-              return (
-                <circle key={`dot-${props.cx}-${props.cy}`} cx={props.cx} cy={props.cy} r={r}
-                  fill="#fff" stroke={color} strokeWidth={compact ? 1.5 : 2} />
-              )
-            }}
-            activeDot={(props: { cx?: number; cy?: number; payload: { status?: string } }) => {
-              if (props.cx == null || props.cy == null) return null
-              const color = statusColor(props.payload.status)
-              return (
-                <circle key={`active-${props.cx}-${props.cy}`} cx={props.cx} cy={props.cy}
-                  r={compact ? 5 : 6} fill={color} stroke="none" />
-              )
-            }}
-          />
-        </LineChart>
-      </ResponsiveContainer>
+            {hasBand && (
+              <ReferenceArea
+                y1={bandY1Final}
+                y2={bandY2Final}
+                fill="#22c55e"
+                fillOpacity={0.06}
+              />
+            )}
+            <XAxis
+              type="number"
+              dataKey="t"
+              domain={domain}
+              ticks={ticks}
+              interval="preserveStartEnd"
+              tickLine={false}
+              axisLine={{ stroke: '#d4d4d8' }}
+              padding={{ left: 20, right: 20 }}
+              tickFormatter={dateTickFormatter(locale, resolveTick)}
+              tick={dateTickRenderer(locale, { compact, resolve: resolveTick })}
+            />
+            <YAxis
+              domain={[0, Math.ceil(yMax)]}
+              tick={{ fontSize: compact ? 9 : 11, fill: '#71717a' }}
+              tickLine={false}
+              axisLine={false}
+              width={compact ? 28 : 40}
+            />
+            <Tooltip
+              cursor={{ stroke: '#d4d4d8', strokeWidth: 1 }}
+              contentStyle={{
+                borderRadius: 8,
+                border: '1px solid #d4d4d8',
+                fontSize: compact ? 11 : 12,
+                boxShadow: '0 4px 12px rgb(0 0 0 / 0.06)',
+              }}
+              labelStyle={{ color: '#71717a', fontWeight: 500 }}
+              labelFormatter={(_, payload) => {
+                const rowDate = (
+                  payload as unknown as { payload?: { date?: string } }[] | undefined
+                )?.[0]?.payload?.date
+                if (typeof rowDate !== 'string') return ''
+                const { label: mainLabel, sub } = splitDateLabel(rowDate, locale)
+                return sub ? (
+                  <>
+                    <span>{mainLabel}</span>
+                    <span style={{ fontSize: '0.75em', color: '#a1a1aa' }}> — {sub}</span>
+                  </>
+                ) : (
+                  mainLabel
+                )
+              }}
+              formatter={(value) => [`${value ?? ''} ${biomarker.definition.unit}`, t('result')]}
+            />
+            <Line
+              type="monotone"
+              dataKey="value"
+              shape={lineShape}
+              stroke="#3b82f6"
+              strokeWidth={compact ? 2 : 2.5}
+              dot={(props: { cx?: number; cy?: number; payload: { status?: string } }) => {
+                if (props.cx == null || props.cy == null) return null
+                const color = statusColor(props.payload.status)
+                const r = compact ? 3 : 4
+                return (
+                  <circle key={`dot-${props.cx}-${props.cy}`} cx={props.cx} cy={props.cy} r={r}
+                    fill="#fff" stroke={color} strokeWidth={compact ? 1.5 : 2} />
+                )
+              }}
+              activeDot={(props: { cx?: number; cy?: number; payload: { status?: string } }) => {
+                if (props.cx == null || props.cy == null) return null
+                const color = statusColor(props.payload.status)
+                return (
+                  <circle key={`active-${props.cx}-${props.cy}`} cx={props.cx} cy={props.cy}
+                    r={compact ? 5 : 6} fill={color} stroke="none" />
+                )
+              }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      {axisMode === 'time' && (
+        <p className="pt-1 text-center text-[10px] text-muted-foreground">
+          {tCharts('scaleNote')}
+        </p>
+      )}
     </div>
   )
 }

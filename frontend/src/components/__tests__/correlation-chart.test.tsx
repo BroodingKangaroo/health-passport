@@ -526,4 +526,30 @@ describe('CorrelationChart', () => {
       screen.getByText('Select at least one biomarker to display the correlation chart.'),
     ).toBeInTheDocument()
   })
+
+  it('dashes long gaps and offers the axis toggle', () => {
+    const dates = [
+      { date: '2022-01-01', value: 7 },
+      { date: '2024-01-01', value: 7 },
+      { date: '2024-01-11', value: 7 },
+    ]
+    const { container } = renderI18n(
+      <CorrelationChart
+        biomarkers={[
+          makeBiomarker('b1', 'Hemoglobin', { dates, value: 7 }),
+          makeBiomarker('b2', 'WBC', { dates, value: 6 }),
+        ]}
+      />,
+    )
+    // The first two chartable biomarkers are auto-selected on load.
+    expect(container.querySelector('path[stroke-dasharray="4 4"]')).not.toBeNull()
+    expect(screen.getAllByText('≈ 24 mo').length).toBeGreaterThan(0)
+
+    const even = screen.getByRole('button', { name: 'Even spacing' })
+    fireEvent.click(even)
+    expect(even).toHaveAttribute('aria-pressed', 'true')
+    expect(
+      screen.queryByText('Long gaps are compressed — order stays chronological'),
+    ).toBeNull()
+  })
 })

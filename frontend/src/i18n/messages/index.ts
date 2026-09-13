@@ -9,6 +9,7 @@ import { landingMessages } from './landing'
 import { demoMessages } from './demo'
 import { privacyMessages } from './privacy'
 import { importMessages } from './import'
+import { chartsMessages } from './charts'
 
 export const DEFAULT_LOCALE = 'en'
 export const SUPPORTED_LOCALES = ['en', 'ru'] as const
@@ -31,6 +32,7 @@ export const messages: Record<AppLocale, Record<string, unknown>> = {
     demoMessages.en,
     privacyMessages.en,
     importMessages.en,
+    chartsMessages.en,
   ),
   ru: merge(
     sharedMessages.ru,
@@ -44,7 +46,8 @@ export const messages: Record<AppLocale, Record<string, unknown>> = {
     demoMessages.ru,
     privacyMessages.ru,
     importMessages.ru,
+    chartsMessages.ru,
   ),
 }
 
-export { sharedMessages, authMessages, addEntryMessages, timelineMessages, correlationMessages, printMessages, settingsMessages, landingMessages, demoMessages, privacyMessages, importMessages }
+export { sharedMessages, authMessages, addEntryMessages, timelineMessages, correlationMessages, printMessages, settingsMessages, landingMessages, demoMessages, privacyMessages, importMessages, chartsMessages }

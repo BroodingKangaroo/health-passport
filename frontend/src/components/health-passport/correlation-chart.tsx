@@ -19,7 +19,15 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { intervalBounds, qualitativeToNumber } from '@/lib/reference'
 import { isQualitative } from '@/lib/reference'
-import { coerceChartValue, dateTickRenderer } from '@/lib/chart-series'
+import {
+  buildTimeAxis,
+  coerceChartValue,
+  dateTickFormatter,
+  dateTickRenderer,
+  gapAwareLineShape,
+} from '@/lib/chart-series'
+import { useChartAxisMode } from '@/lib/hooks/useChartAxisMode'
+import { AxisModeToggle } from '@/components/shared/axis-mode-toggle'
 import { pairwiseCorrelations, type PairStats } from '@/lib/stats'
 import type { BiomarkerResult } from '@/lib/types'
 
@@ -118,13 +126,15 @@ function buildAlignedSeries(biomarkers: BiomarkerResult[]) {
 function CustomTooltip({
   active,
   payload,
-  label,
   biomarkers,
 }: Partial<TooltipContentProps> & { biomarkers: BiomarkerResult[] }) {
   const locale = useLocale()
   if (active && payload && payload.length) {
-    const labelText = typeof label === 'string' ? label : String(label ?? '')
-    const { label: mainLabel, sub } = splitDateLabel(labelText, locale)
+    // The x axis is a mapped numeric scale; every entry in a tooltip shares
+    // the same row, so read the original date string from the row payload.
+    const rowDate = payload[0]?.payload?.date
+    const { label: mainLabel, sub } =
+      typeof rowDate === 'string' ? splitDateLabel(rowDate, locale) : { label: '' }
     const visible = payload.filter((entry) => {
       if (typeof entry.dataKey !== 'string') return false
       if (entry.dataKey.startsWith('dash_')) return false
@@ -364,7 +374,9 @@ function CorrelationLegend() {
 
 export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: BiomarkerResult[] }) {
   const t = useTranslations('correlation')
+  const tCharts = useTranslations('charts')
   const locale = useLocale()
+  const [axisMode, setAxisMode] = useChartAxisMode()
   const [query, setQuery] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [leftTab, setLeftTab] = useState<'pairs' | 'select'>('pairs')
@@ -456,12 +468,23 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
     [selectedIds, allBiomarkers],
   )
 
-  const chartData = useMemo(() => {
+  const { chartData, axis } = useMemo(() => {
     const selected = selectedBiomarkers
-    if (selected.length === 0) return []
+    if (selected.length === 0) {
+      return {
+        chartData: [] as Record<string, number | string | null>[],
+        axis: buildTimeAxis<{ date: string }>([]),
+      }
+    }
     const { dates, byId } = buildAlignedSeries(selected)
-    return dates.map((date) => {
-      const entry: Record<string, number | string | null> = { date }
+    // Union dates are shared deliberately by every series, so duplicates keep
+    // their single x (nudge: false).
+    const axis = buildTimeAxis(dates.map((date) => ({ date })), {
+      mode: axisMode,
+      nudge: false,
+    })
+    const chartData = axis.rows.map(({ date, t }) => {
+      const entry: Record<string, number | string | null> = { date, t }
       selected.forEach((b) => {
         const point = byId[b.id].get(date)
         if (point != null) {
@@ -480,7 +503,17 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
       })
       return entry
     })
-  }, [selectedBiomarkers])
+    return { chartData, axis }
+  }, [selectedBiomarkers, axisMode])
+
+  const resolveTick = (value: number | string) => axis.tickDates.get(Number(value))
+  const lineShape =
+    axis.longGaps.length > 0
+      ? gapAwareLineShape({
+          gaps: axis.longGaps,
+          gapLabel: (months) => tCharts('gapMonths', { months }),
+        })
+      : undefined
 
   const pairStats = useMemo(() => {
     const series: Record<string, Array<number | null>> = {}
@@ -620,66 +653,88 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
       </Card>
 
       <Card className="flex h-full min-h-0 flex-col border-border">
-        <div className="border-b border-border p-4">
-          <h2 className="text-base font-semibold text-foreground">
-            {t('heading')}
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            {t('subtitle')}
-          </p>
+        <div className="flex items-start justify-between gap-3 border-b border-border p-4">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">
+              {t('heading')}
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              {t('subtitle')}
+            </p>
+          </div>
+          {chartData.length > 1 && (
+            <AxisModeToggle
+              mode={axisMode}
+              onChange={setAxisMode}
+              label={tCharts('axisMode.label', { name: t('heading') })}
+            />
+          )}
         </div>
         <CorrelationStats
           pairStats={pairStats}
           selectedIds={selectedIds}
           biomarkers={allBiomarkers}
         />
-        <div className="min-h-0 flex-1 p-4">
-          {selectedIds.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              {t('empty.selectAtLeastOne')}
-            </div>
-          ) : chartData.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              {t('empty.noNumeric')}
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={chartData}
-                margin={{ top: 16, right: 16, bottom: 8, left: 8 }}
-              >
-                <XAxis
-                  dataKey="date"
-                  tickLine={false}
-                  axisLine={{ stroke: '#d4d4d8' }}
-                  padding={{ left: 20, right: 20 }}
-                  tick={dateTickRenderer(locale)}
-                />
-                <YAxis hide domain={yDomain} />
-                <ReferenceArea
-                  y1={0}
-                  y2={100}
-                  fill="#22c55e"
-                  fillOpacity={0.05}
-                />
-                <Tooltip content={<CustomTooltip biomarkers={allBiomarkers} />} />
-                {selectedBiomarkers.map((b) => (
-                  <Line
-                    key={b.id}
-                    type="monotone"
-                    dataKey={`norm_${b.id}`}
-                    stroke={colorMap[b.id]}
-                    strokeWidth={2}
-                    dot={
-                      (pointCounts[b.id] ?? 0) <= 1
-                        ? { r: 4, strokeWidth: 2, fill: '#fff', stroke: colorMap[b.id] }
-                        : false
-                    }
-                    activeDot={{ r: 5, fill: colorMap[b.id] }}
+        <div className="flex min-h-0 flex-1 flex-col p-4">
+          <div className="min-h-0 flex-1">
+            {selectedIds.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                {t('empty.selectAtLeastOne')}
+              </div>
+            ) : chartData.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                {t('empty.noNumeric')}
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={chartData}
+                  margin={{ top: 16, right: 16, bottom: 8, left: 8 }}
+                >
+                  <XAxis
+                    type="number"
+                    dataKey="t"
+                    domain={axis.domain}
+                    ticks={axis.ticks}
+                    interval="preserveStartEnd"
+                    tickLine={false}
+                    axisLine={{ stroke: '#d4d4d8' }}
+                    padding={{ left: 20, right: 20 }}
+                    tickFormatter={dateTickFormatter(locale, resolveTick)}
+                    tick={dateTickRenderer(locale, { resolve: resolveTick })}
                   />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
+                  <YAxis hide domain={yDomain} />
+                  <ReferenceArea
+                    y1={0}
+                    y2={100}
+                    fill="#22c55e"
+                    fillOpacity={0.05}
+                  />
+                  <Tooltip content={<CustomTooltip biomarkers={allBiomarkers} />} />
+                  {selectedBiomarkers.map((b) => (
+                    <Line
+                      key={b.id}
+                      type="monotone"
+                      dataKey={`norm_${b.id}`}
+                      shape={lineShape}
+                      stroke={colorMap[b.id]}
+                      strokeWidth={2}
+                      dot={
+                        (pointCounts[b.id] ?? 0) <= 1
+                          ? { r: 4, strokeWidth: 2, fill: '#fff', stroke: colorMap[b.id] }
+                          : false
+                      }
+                      activeDot={{ r: 5, fill: colorMap[b.id] }}
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+          {axisMode === 'time' && chartData.length > 1 && (
+            <p className="pt-1 text-center text-[10px] text-muted-foreground">
+              {tCharts('scaleNote')}
+            </p>
           )}
         </div>
         {allChartable.length > 1 && <CorrelationLegend />}
