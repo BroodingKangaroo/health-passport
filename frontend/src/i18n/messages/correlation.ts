@@ -48,6 +48,8 @@ export const correlationMessages = {
         noNumeric: 'No numeric readings to chart for the selected biomarkers.',
       },
       legend: {
+        scaleNote:
+          'Values are normalized to a common 0–100 scale; the shaded band marks that scale, not necessarily the normal range.',
         intro:
           'r (correlation) runs from −1 to +1: how closely two biomarkers move together.',
         rPlusOne: 'r = 1',
@@ -109,6 +111,8 @@ export const correlationMessages = {
           'Для выбранных биомаркеров нет числовых показаний для построения графика.',
       },
       legend: {
+        scaleNote:
+          'Значения нормализованы к единой шкале 0–100; закрашенная полоса обозначает эту шкалу, а не обязательно диапазон нормы.',
         intro:
           'r (корреляция) меняется от −1 до +1: насколько тесно два биомаркера движутся вместе.',
         rPlusOne: 'r = 1',

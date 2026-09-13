@@ -507,13 +507,12 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
   }, [selectedBiomarkers, axisMode])
 
   const resolveTick = (value: number | string) => axis.tickDates.get(Number(value))
-  const lineShape =
-    axis.longGaps.length > 0
-      ? gapAwareLineShape({
-          gaps: axis.longGaps,
-          gapLabel: (months) => tCharts('gapMonths', { months }),
-        })
-      : undefined
+  // Always shape the line ourselves: the shape connects readings across the
+  // union's null rows and dashes any >60-day absence, including gaps only one
+  // sparse series sees (which the union-row longGaps cannot know about).
+  const lineShape = gapAwareLineShape({
+    gapLabel: (months) => tCharts('gapMonths', { months }),
+  })
 
   const pairStats = useMemo(() => {
     const series: Record<string, Array<number | null>> = {}
@@ -717,10 +716,11 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
                       type="monotone"
                       dataKey={`norm_${b.id}`}
                       shape={lineShape}
+                      connectNulls
                       stroke={colorMap[b.id]}
                       strokeWidth={2}
                       dot={
-                        (pointCounts[b.id] ?? 0) <= 1
+                        (pointCounts[b.id] ?? 0) <= 12
                           ? { r: 4, strokeWidth: 2, fill: '#fff', stroke: colorMap[b.id] }
                           : false
                       }
@@ -737,6 +737,28 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
             </p>
           )}
         </div>
+        {chartData.length > 0 && (
+          <>
+            <div
+              data-testid="correlation-series-legend"
+              className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 pb-1 text-[10px] text-muted-foreground"
+            >
+              {selectedBiomarkers.map((b) => (
+                <span key={b.id} className="inline-flex items-center gap-1">
+                  <span
+                    className="inline-block h-2 w-2 rounded-full"
+                    style={{ backgroundColor: colorMap[b.id] }}
+                    aria-hidden
+                  />
+                  {b.definition.names.en}
+                </span>
+              ))}
+            </div>
+            <p className="px-4 pb-1 text-center text-[10px] text-muted-foreground">
+              {t('legend.scaleNote')}
+            </p>
+          </>
+        )}
         {allChartable.length > 1 && <CorrelationLegend />}
       </Card>
     </div>

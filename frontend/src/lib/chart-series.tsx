@@ -319,12 +319,13 @@ const SHAPE_STRIPPED_PROPS = new Set([
 
 /**
  * Line `shape` factory for a warped axis: draws the curve in solid runs split
- * at `longGaps`, with a dashed bridge plus an elapsed-months label across each
- * long gap so a multi-year leg is not read as a smooth trend. Only used when
- * `longGaps` is non-empty; otherwise the default recharts shape renders.
+ * wherever a series' consecutive readings are more than `LONG_GAP_DAYS` apart,
+ * with a dashed bridge plus an elapsed-months label across each such absence
+ * so a multi-year leg is not read as a smooth trend. The elapsed time is
+ * measured per series, not from the axis' `longGaps`: a sparse series can skip
+ * several union rows (other series' dates) and still span a long absence.
  */
 export function gapAwareLineShape(opts: {
-  gaps: readonly TimeGap[]
   gapLabel: (months: number) => string
   compact?: boolean
 }) {
@@ -350,11 +351,16 @@ export function gapAwareLineShape(opts: {
     for (let i = 1; i < points.length; i++) {
       const prev = points[i - 1]
       const next = points[i]
-      const gap = opts.gaps.find(
-        (g) => g.fromEpoch === pointEpoch(prev) && g.toEpoch === pointEpoch(next),
-      )
-      if (gap) {
-        bridges.push({ a: prev, b: next, months: gap.months })
+      // Dash whatever elapsed time the reader actually sees missing, not just
+      // the axis' own consecutive-row gaps: a sparse series can skip several
+      // union rows (other series' dates) and still span a long absence.
+      const elapsedDays = (pointEpoch(next) - pointEpoch(prev)) / DAY
+      if (Number.isFinite(elapsedDays) && elapsedDays > LONG_GAP_DAYS) {
+        bridges.push({
+          a: prev,
+          b: next,
+          months: Math.max(1, Math.round(elapsedDays / 30.44)),
+        })
         runs.push(current)
         current = [next]
       } else {

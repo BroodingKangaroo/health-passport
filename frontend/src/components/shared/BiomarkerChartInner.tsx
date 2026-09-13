@@ -68,7 +68,6 @@ export default function BiomarkerChartInner({
   const lineShape =
     axis.longGaps.length > 0
       ? gapAwareLineShape({
-          gaps: axis.longGaps,
           gapLabel: (months) => tCharts('gapMonths', { months }),
           compact,
         })

@@ -552,4 +552,100 @@ describe('CorrelationChart', () => {
       screen.queryByText('Long gaps are compressed — order stays chronological'),
     ).toBeNull()
   })
+
+  it('connects interleaved series when the union has no long gap', () => {
+    // Monthly readings offset by ~half a month: every reading of one series is
+    // a null row for the other, and no consecutive union gap exceeds 60 days.
+    const datesFor = (day: string) =>
+      Array.from({ length: 14 }, (_, i) => ({
+        date: `${2025 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}-${day}`,
+        value: 5 + (i % 4),
+      }))
+    const { container } = renderI18n(
+      <CorrelationChart
+        biomarkers={[
+          makeBiomarker('b1', 'Hemoglobin', { dates: datesFor('05'), value: 6 }),
+          makeBiomarker('b2', 'WBC', { dates: datesFor('20'), value: 7 }),
+        ]}
+      />,
+    )
+    const curves = container.querySelectorAll('.recharts-line-curve')
+    expect(curves.length).toBe(2)
+    curves.forEach((curve) => {
+      // A connected curve (line/curve segments), not disconnected single-point moves.
+      expect(curve.getAttribute('d')).toMatch(/[CL]/)
+    })
+  })
+
+  it('marks sparse multi-point series with dots', () => {
+    const sparseDates = [
+      { date: '2026-01-05', value: 5 },
+      { date: '2026-02-05', value: 6 },
+      { date: '2026-03-05', value: 7 },
+      { date: '2026-04-05', value: 8 },
+      { date: '2026-05-05', value: 9 },
+    ]
+    const denseDates = Array.from({ length: 14 }, (_, i) => ({
+      date: `${2025 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}-20`,
+      value: 5 + (i % 3),
+    }))
+    const { container } = renderI18n(
+      <CorrelationChart
+        biomarkers={[
+          makeBiomarker('b1', 'Hemoglobin', { dates: sparseDates, value: 9 }),
+          makeBiomarker('b2', 'WBC', { dates: denseDates, value: 7 }),
+        ]}
+      />,
+    )
+    // Only the five-reading series is sparse enough for markers.
+    expect(container.querySelectorAll('.recharts-line-dot').length).toBe(5)
+  })
+
+  it('shows a series legend and the normalized-scale caption in both axis modes', () => {
+    const dates = [
+      { date: '2026-01-05', value: 5 },
+      { date: '2026-02-05', value: 6 },
+      { date: '2026-03-05', value: 7 },
+    ]
+    renderI18n(
+      <CorrelationChart
+        biomarkers={[
+          makeBiomarker('b1', 'Hemoglobin', { dates, value: 7 }),
+          makeBiomarker('b2', 'WBC', { dates, value: 6 }),
+        ]}
+      />,
+    )
+    const legend = screen.getByTestId('correlation-series-legend')
+    expect(legend).toHaveTextContent('Hemoglobin')
+    expect(legend).toHaveTextContent('WBC')
+    const caption = /normalized to a common 0–100 scale/
+    expect(screen.getByText(caption)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Even spacing' }))
+    expect(screen.getByText(caption)).toBeInTheDocument()
+  })
+
+  it('dashes a sparse series across another series’ interior readings', () => {
+    const { container } = renderI18n(
+      <CorrelationChart
+        biomarkers={[
+          makeBiomarker('b1', 'Hemoglobin', {
+            dates: [
+              { date: '2022-01-01', value: 5 },
+              { date: '2024-01-01', value: 5 },
+            ],
+            value: 5,
+          }),
+          makeBiomarker('b2', 'WBC', {
+            dates: [{ date: '2023-01-01', value: 5 }],
+            value: 5,
+          }),
+        ]}
+      />,
+    )
+    // b1's absence spans two union gaps (2022→2023→2024); it must still be
+    // dashed and labeled even though neither union gap matches b1's own pair.
+    expect(container.querySelector('path[stroke-dasharray="4 4"]')).not.toBeNull()
+    expect(screen.getByText('≈ 24 mo')).toBeInTheDocument()
+  })
 })
