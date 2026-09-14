@@ -104,6 +104,7 @@ export function AddEntry({
   // Source-document language detected at extraction time, relayed to
   // POST /api/entry on save (null in manual mode / failed extractions).
   const [sourceLanguage, setSourceLanguage] = useState<string | null>(null)
+  const [matchingDegraded, setMatchingDegraded] = useState(false)
 
   const dateRef = useRef<HTMLInputElement>(null)
   const timeRef = useRef<HTMLInputElement>(null)
@@ -126,6 +127,7 @@ export function AddEntry({
     setEntryMode('ai')
     setDocumentType(result.entry_type)
     setSourceLanguage(result.source_language ?? null)
+    setMatchingDegraded(Boolean(result.matching_degraded))
 
     if (result.date) {
       setDateValue(result.date)
@@ -458,6 +460,9 @@ export function AddEntry({
         setSaveError(resp.message || t('saveFailed'))
         return
       }
+      if (resp.skipped_rows && resp.skipped_rows > 0) {
+        toast.warning(t('skippedRowsSaved', { count: resp.skipped_rows }))
+      }
       // Refresh cached server state so the new entry appears immediately.
       // The timeline is REFETCHED (not just invalidated): there is no active
       // observer on /add-entry, so an invalidate would only mark the cache
@@ -599,6 +604,13 @@ export function AddEntry({
                   )}{' '}
                   {t('reviewNote')}
                 </p>
+              </div>
+            )}
+
+            {!isManual && !aiError && matchingDegraded && (
+              <div className="mt-3 flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-500/40 dark:bg-amber-500/10">
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <p className="text-xs text-amber-700 dark:text-amber-400">{t('matchingDegraded')}</p>
               </div>
             )}
 

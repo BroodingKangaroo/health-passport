@@ -285,7 +285,7 @@ def _translate_units_batch(
             max_tokens=1000,
         )
     except Exception as e:
-        logger.error("Unit translation LLM call failed: %s", e)
+        logger.error("Unit translation LLM call failed: %s", e, exc_info=True)
         return {}
 
     content = chat_response.choices[0].message.content
@@ -295,7 +295,7 @@ def _translate_units_batch(
         else:
             parsed = content
     except (json.JSONDecodeError, Exception) as e:
-        logger.error("Failed to parse unit translation response: %s", e)
+        logger.error("Failed to parse unit translation response: %s", e, exc_info=True)
         return {}
 
     result: dict[str, dict] = {}

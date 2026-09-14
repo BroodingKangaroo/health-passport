@@ -87,9 +87,13 @@ def match_and_convert(
     try:
         return _match_and_convert_impl(raw, definitions, db, user_id, client)
     except Exception as e:
-        logger.error("match_and_convert failed: %s", e, exc_info=True)
+        logger.error(
+            "match_and_convert failed for user %s (title=%r): %s",
+            user_id, raw.title, e, exc_info=True,
+        )
         result = _fallback_standardize(raw)
         _apply_status(result)
+        result.matching_degraded = True
         return result
 
 

@@ -324,6 +324,25 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "The uploaded document could not be processed by OCR. This file type may not be supported.",
         "ru": "Не удалось распознать документ (OCR). Возможно, этот тип файла не поддерживается.",
     },
+    # LLM extraction error kinds (app/services/extractor.py LLMProcessingError)
+    # — localized from the typed error's `kind`: in ai.py for the SSE stream,
+    # at read time via error_key for batch-import jobs.
+    "ai.llm_auth": {
+        "en": "AI extraction authentication failed (HTTP {status}). The MISTRAL_API_KEY in backend/.env is invalid or expired. Please update it and restart the backend.",
+        "ru": "Ошибка аутентификации AI-распознавания (HTTP {status}). Ключ MISTRAL_API_KEY в backend/.env недействителен или его срок истёк. Обновите ключ и перезапустите сервер.",
+    },
+    "ai.llm_quota": {
+        "en": "AI extraction quota exceeded (HTTP 429). Upgrade your plan or try again later.",
+        "ru": "Исчерпана квота AI-распознавания (HTTP 429). Обновите тариф или попробуйте позже.",
+    },
+    "ai.llm_unknown": {
+        "en": "AI extraction failed. Please try again later.",
+        "ru": "Не удалось выполнить AI-распознавание. Попробуйте позже.",
+    },
+    "ai.extract_failed": {
+        "en": "Extraction failed. Please try again.",
+        "ru": "Не удалось обработать документ. Попробуйте ещё раз.",
+    },
     # ----- app/services/extract_jobs.py (batch import) -----
     # Stored as error_key on jobs the startup recovery fails; resolved via
     # i18n at read time (the recovery/worker has no request locale).

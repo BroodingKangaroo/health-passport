@@ -229,18 +229,26 @@ def _resolve_definition(db: Session, user_id: str, name: str, row_defn_id: Optio
     return defn
 
 
-def _parse_biomarker_rows(db: Session, user_id: str, categories_data: list) -> list[_ReadingSpec]:
+def _parse_biomarker_rows(db: Session, user_id: str, categories_data: list) -> tuple[list[_ReadingSpec], int]:
     """Parse the form's biomarker categories into resolved reading specs.
-    Rows without a name or an unparseable value are skipped."""
+
+    Returns ``(specs, skipped_rows)``: rows skipped because a name/value was
+    missing or the value was unparseable. Fully blank rows (untouched editor
+    placeholders) are not counted — only rows the user actually filled in.
+    """
     specs: list[_ReadingSpec] = []
+    skipped_rows = 0
     for cat in categories_data:
         for row in cat.get("rows", []):
             name = row.get("name", "").strip()
             raw_value = row.get("value", "").strip()
             if not name or not raw_value:
+                if name or raw_value:
+                    skipped_rows += 1
                 continue
             parsed = parse_value(raw_value)
             if parsed is None:
+                skipped_rows += 1
                 continue
             if isinstance(parsed, (int, float)) and not isinstance(parsed, bool):
                 value_col: Optional[float] = parsed
@@ -270,7 +278,7 @@ def _parse_biomarker_rows(db: Session, user_id: str, categories_data: list) -> l
                 status=derived_status,
                 row=row,
             ))
-    return specs
+    return specs, skipped_rows
 
 
 def _create_reading_rows(
@@ -756,6 +764,7 @@ async def save_entry(
     elif file and file.filename:
         att = await _save_attachment(db, entry_id, user_id, is_anonymous, file)
 
+    skipped_rows = 0
     try:
         # Biomarker readings belong on blood-test entries only. A doctor-visit or
         # instrumental-test save must never persist readings — even if the client
@@ -763,7 +772,7 @@ async def save_entry(
         # switch), they would be invisible everywhere (timeline/flowsheet read
         # blood tests only) yet still create definitions and pollute matching.
         if categories_data is not None:
-            specs = _parse_biomarker_rows(db, user_id, categories_data)
+            specs, skipped_rows = _parse_biomarker_rows(db, user_id, categories_data)
             _create_reading_rows(db, entry_id, specs, merged=False)
             db.flush()
 
@@ -789,7 +798,12 @@ async def save_entry(
         if att is not None and att.file_path and staged_job is None:
             unlink_upload_file(att.file_path, UPLOAD_DIR)
         raise
-    return SaveEntryResponse(success=True, message=i18n.tr("entries.message_entry_saved"), id=entry_id)
+    return SaveEntryResponse(
+        success=True,
+        message=i18n.tr("entries.message_entry_saved"),
+        id=entry_id,
+        skipped_rows=skipped_rows,
+    )
 
 
 @router.post("/api/entry/{entry_id}/merge", response_model=SaveEntryResponse)
@@ -855,12 +869,13 @@ async def merge_entry(
         if entry_day.date() != target_date.date():
             raise HTTPException(status_code=400, detail=i18n.tr("entries.merge_date_mismatch"))
 
+    skipped_rows = 0
     if biomarkers and biomarkers != "[]":
         try:
             categories_data = json.loads(biomarkers)
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail=i18n.tr("entries.invalid_biomarkers_json")) from None
-        specs = _parse_biomarker_rows(db, user_id, categories_data)
+        specs, skipped_rows = _parse_biomarker_rows(db, user_id, categories_data)
 
         # Conflict check: refuse when any resolved definition already has a
         # reading in the target entry (by definition id OR LOINC code).
@@ -888,7 +903,12 @@ async def merge_entry(
         await _save_attachment(db, entry_id, user_id, is_anonymous, file)
 
     db.commit()
-    return SaveEntryResponse(success=True, message=i18n.tr("entries.message_entry_merged"), id=entry_id)
+    return SaveEntryResponse(
+        success=True,
+        message=i18n.tr("entries.message_entry_merged"),
+        id=entry_id,
+        skipped_rows=skipped_rows,
+    )
 
 
 def _parse_size_to_bytes(size_str: str) -> int:

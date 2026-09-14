@@ -62,6 +62,7 @@ export const importMessages = {
         'This import is no longer available — it may have been saved, dismissed or expired.',
       reviewBack: 'Back to timeline',
       reviewLoadFailed: 'Couldn’t load the extracted document.',
+      reviewPreviewFailed: 'Couldn’t load the document preview. The extracted data is still reviewable.',
       reviewLoading: 'Loading…',
       mergeOverlapWarning:
         'Overlaps {count, plural, one {# existing biomarker} other {# existing biomarkers}} — merging will be blocked',
@@ -128,6 +129,7 @@ export const importMessages = {
         'Этот импорт больше недоступен — возможно, он сохранён, удалён или истёк.',
       reviewBack: 'К хронологии',
       reviewLoadFailed: 'Не удалось загрузить распознанный документ.',
+      reviewPreviewFailed: 'Не удалось загрузить предпросмотр документа. Данные всё ещё доступны для проверки.',
       reviewLoading: 'Загрузка…',
       mergeOverlapWarning:
         'Пересекается с существующей записью: {count, plural, one {# биомаркер} few {# биомаркера} many {# биомаркеров} other {# биомаркера}} — объединение будет недоступно',

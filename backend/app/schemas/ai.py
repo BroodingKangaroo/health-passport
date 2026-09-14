@@ -260,6 +260,10 @@ class StandardizedMedicalRecord(BaseModel):
     # an LLM field — prompt changes would risk e2e golden drift). None when
     # the document is too short or ambiguous to decide.
     source_language: Optional[str] = None
+    # True when the matcher crashed and the record fell back to unstandardized
+    # values (app/services/matcher/pipeline.py) — a success with a caveat the
+    # review UI surfaces inline. Never set on the normal matching path.
+    matching_degraded: bool = False
     biomarkers: list[StandardizedBiomarker] = []
     visit_data: StandardizedVisitData = StandardizedVisitData()
     instrumental_data: RawInstrumentalData = RawInstrumentalData()

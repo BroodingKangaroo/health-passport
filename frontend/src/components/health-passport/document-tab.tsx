@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { useLocale, useTranslations } from 'next-intl'
 import { FileText, Download, Printer } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { cn, fetchAuthedObjectUrl, printAuthedDocument } from '@/lib/utils'
 import type { EventAttachment } from '@/lib/types'
@@ -56,8 +57,18 @@ export function DocumentTab({ attachments }: { attachments: EventAttachment[] })
       setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
     } catch (e) {
       console.error('Download failed', e)
+      toast.error(t('downloadFailed'))
     }
-  }, [])
+  }, [t])
+
+  const handlePrint = useCallback(async (url: string) => {
+    try {
+      await printAuthedDocument(url)
+    } catch (e) {
+      console.error('Print failed', e)
+      toast.error(t('printFailed'))
+    }
+  }, [t])
 
   // Same nowrap + edge-fade affordance as the detail tab strip: the 36px-tall
   // row never wraps, so many attachments scroll horizontally.
@@ -95,7 +106,7 @@ export function DocumentTab({ attachments }: { attachments: EventAttachment[] })
       <>
         <button
           type="button"
-          onClick={() => printAuthedDocument(selectedUrl)}
+          onClick={() => void handlePrint(selectedUrl)}
           title={t('print')}
           aria-label={t('print')}
           className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"

@@ -135,7 +135,7 @@ def _verify_and_correct(
             max_tokens=4000,
         )
     except Exception as e:
-        logger.error("Match verification LLM call failed: %s", e)
+        logger.error("Match verification LLM call failed: %s", e, exc_info=True)
         return matched_pairs, []
 
     content = chat_response.choices[0].message.content
@@ -145,7 +145,7 @@ def _verify_and_correct(
         else:
             batch = content
     except (json.JSONDecodeError, Exception) as e:
-        logger.error("Failed to parse verification response: %s", e)
+        logger.error("Failed to parse verification response: %s", e, exc_info=True)
         return matched_pairs, []
 
     by_raw: dict[str, MatchVerification] = {v.raw_name: v for v in batch.verifications}
@@ -252,7 +252,7 @@ def _llm_zero_shot_batch(
             max_tokens=4000,
         )
     except Exception as e:
-        logger.error("Zero-shot LLM call failed: %s", e)
+        logger.error("Zero-shot LLM call failed: %s", e, exc_info=True)
         return []
 
     content = chat_response.choices[0].message.content
@@ -262,7 +262,7 @@ def _llm_zero_shot_batch(
             parsed = json.loads(content)
             batch = LoincGuessBatch(**parsed)
         except (json.JSONDecodeError, Exception) as e:
-            logger.error("Failed to parse zero-shot response: %s", e)
+            logger.error("Failed to parse zero-shot response: %s", e, exc_info=True)
             return []
     else:
         batch = content

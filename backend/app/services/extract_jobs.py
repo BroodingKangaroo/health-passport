@@ -40,6 +40,7 @@ from app.db.models import (
     Notification,
 )
 from app.db.session import DATABASE_URL
+from app.logging_setup import set_log_job, set_log_user
 from app.schemas.ai import (
     RawInstrumentalData,
     StandardizedMedicalRecord,
@@ -228,13 +229,16 @@ def recover_orphan_jobs() -> dict:
     # Refund after the status change is committed (refund_ai_extraction
     # commits its own UPDATE); exactly once per orphaned processing row.
     for user_id, is_anonymous in refunds:
+        refund_db = get_sessionmaker()()
         try:
-            refund_ai_extraction(get_sessionmaker()(), user_id, is_anonymous)
+            refund_ai_extraction(refund_db, user_id, is_anonymous)
         except Exception:
             logger.warning(
                 "Startup recovery: quota refund failed for user %s", user_id,
                 exc_info=True,
             )
+        finally:
+            refund_db.close()
     if summary["failed"] or summary["requeued"] or summary["restored"]:
         logger.info("Import-job startup recovery: %s", summary)
     return summary
@@ -330,12 +334,15 @@ def sweep_expired_jobs(db: Session | None = None) -> int:
     if not expired and not dismissed_expired:
         return 0
     for user_id, is_anonymous in refunds:
+        refund_db = get_sessionmaker()()
         try:
-            refund_ai_extraction(get_sessionmaker()(), user_id, is_anonymous)
+            refund_ai_extraction(refund_db, user_id, is_anonymous)
         except Exception:
             logger.warning(
                 "Expired-job quota refund failed for user %s", user_id, exc_info=True
             )
+        finally:
+            refund_db.close()
     logger.info(
         "Import-job GC: removed %d expired jobs (%d dismissed rows kept as "
         "history, file swept), freed %d bytes",
@@ -467,10 +474,30 @@ def _refund(db: Session, user_id: str, is_anonymous: bool) -> None:
         logger.warning("Import-job quota refund failed (user %s)", user_id, exc_info=True)
 
 
+def _write_job_side_effects(
+    db: Session, job: ExtractionJob, notification_type: str, funnel_event: str
+) -> None:
+    """Notification + funnel inserts inside a savepoint.
+
+    They ride the caller's terminal commit (same-commit semantics) but a
+    failure here must never roll that commit back — the status transition is
+    authoritative even if the bell/funnel bookkeeping is lost.
+    """
+    try:
+        with db.begin_nested():
+            emit_job_notification(db, job, notification_type)
+            record_funnel_event(db, funnel_event, job.user_id, bool(job.is_anonymous))
+    except Exception:
+        logger.warning(
+            "Job %s: %s notification/funnel write failed",
+            job.id, funnel_event, exc_info=True,
+        )
+
+
 def _finalize_done(db: Session, job: ExtractionJob, result_dump: dict) -> None:
     # The terminal write commits the match stage's definition writes too —
     # the documented commit-before-close invariant for the worker session.
-    db.execute(
+    result = db.execute(
         update(ExtractionJob)
         .where(ExtractionJob.id == job.id, ExtractionJob.status == "processing")
         .values(
@@ -481,13 +508,18 @@ def _finalize_done(db: Session, job: ExtractionJob, result_dump: dict) -> None:
             updated_at=_utcnow(),
         )
     )
-    emit_job_notification(db, job, "import_job_done")
-    record_funnel_event(db, "extracted", job.user_id, bool(job.is_anonymous))
+    if result.rowcount != 1:
+        # Lost the CAS to a concurrent transition: never resurrect the job,
+        # but still commit the matcher's staged definition writes.
+        logger.warning("Job %s: done transition lost (status changed concurrently)", job.id)
+        db.commit()
+        return
+    _write_job_side_effects(db, job, "import_job_done", "extracted")
     db.commit()
 
 
 def _finalize_failed(db: Session, job: ExtractionJob, error_key: str, error_params: dict | None) -> None:
-    db.execute(
+    result = db.execute(
         update(ExtractionJob)
         .where(ExtractionJob.id == job.id, ExtractionJob.status == "processing")
         .values(
@@ -499,14 +531,19 @@ def _finalize_failed(db: Session, job: ExtractionJob, error_key: str, error_para
             updated_at=_utcnow(),
         )
     )
-    emit_job_notification(db, job, "import_job_failed")
-    record_funnel_event(db, "failed", job.user_id, bool(job.is_anonymous))
+    if result.rowcount != 1:
+        # The winning transition (whatever it was) owns the refund/file —
+        # committing here keeps any matcher writes, without refunding twice.
+        logger.warning("Job %s: failed transition lost (status changed concurrently)", job.id)
+        db.commit()
+        return
+    _write_job_side_effects(db, job, "import_job_failed", "failed")
     db.commit()
     _refund(db, job.user_id, bool(job.is_anonymous))
 
 
 def _finalize_cancelled(db: Session, job: ExtractionJob) -> None:
-    db.execute(
+    result = db.execute(
         update(ExtractionJob)
         .where(ExtractionJob.id == job.id, ExtractionJob.status == "processing")
         .values(
@@ -517,6 +554,10 @@ def _finalize_cancelled(db: Session, job: ExtractionJob) -> None:
             updated_at=_utcnow(),
         )
     )
+    if result.rowcount != 1:
+        logger.warning("Job %s: cancel transition lost (status changed concurrently)", job.id)
+        db.commit()
+        return
     db.commit()  # cancelled emits no notification
     _refund(db, job.user_id, bool(job.is_anonymous))
     # The worker owns the staged file on cancel — nothing will claim it.
@@ -533,6 +574,10 @@ def process_job(job_id: str) -> None:
             # GC'd, already cancelled by the API, or vanished — nothing to do.
             return
         job = db.query(ExtractionJob).filter(ExtractionJob.id == job_id).first()
+        # ContextVars do not propagate into raw worker threads: set the log
+        # context explicitly so every line from this job is joinable.
+        set_log_job(job_id)
+        set_log_user(job.user_id if job else None)
         try:
             _run_pipeline(db, job)
         except _JobCancelled:
@@ -617,7 +662,20 @@ def _run_pipeline(db: Session, job: ExtractionJob) -> None:
         },
     )
     t0 = time.perf_counter()
-    raw = extractor.llm_extract(markdown, client)
+    try:
+        raw = extractor.llm_extract(markdown, client, raise_on_hard_error=True)
+    except extractor.LLMProcessingError as llm_err:
+        if llm_err.kind == "auth":
+            error_key, error_params = "ai.llm_auth", {
+                "status": getattr(llm_err, "http_status", "401/403")
+            }
+        else:
+            error_key, error_params = f"ai.llm_{llm_err.kind}", {}
+        logger.error(
+            "Job %s: LLM extraction failed (%s)", job_id, llm_err.kind, exc_info=True
+        )
+        _finalize_failed(db, job, error_key, error_params)
+        return
     elapsed = time.perf_counter() - t0
     bm_count = len(raw.biomarkers) if raw.biomarkers else 0
     logger.info(

@@ -110,6 +110,21 @@ data-export card, danger zone).
 - **One-click PDF download** of the passport document (the print flow
   currently ends in `window.print()`, `print-editor.tsx:615-623`).
 - **Backup restore/import** to complement `GET /api/export`.
+- **Error tracking (Sentry)** — deferred until there is real usage (event
+  volume and F6 extraction quality come first). If adopted: backend SDK
+  first, and PHI prerequisites are mandatory before any event leaves the
+  machine — `include_local_variables=False`, breadcrumb scrubbing (INFO+
+  logging breadcrumbs must never carry clinical text or filenames), plus a
+  decision on document-derived data in error events. Then, and only then,
+  the frontend SDK + source-map upload (needs `@sentry/nextjs>=10.13.0` for
+  Turbopack, `SENTRY_ORG`/`SENTRY_PROJECT`, and Docker build args/secrets
+  that the current build does not have).
+- **Metrics/dashboards (Prometheus + Grafana)** — the natural follow-on for
+  system/business metrics (import-queue depth, extraction success rate, DB
+  size, container health) that Sentry does not cover. Self-hosted in the
+  compose stack, or Grafana Cloud free tier; Grafana can render Sentry
+  alerts natively once Sentry exists. Keep traces OpenTelemetry-compatible
+  so data remains portable.
 
 ---
 

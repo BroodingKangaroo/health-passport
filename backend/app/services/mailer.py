@@ -7,6 +7,7 @@ remains testable end-to-end without a mail server.
 """
 
 import logging
+import os
 import smtplib
 from email.message import EmailMessage
 
@@ -23,14 +24,27 @@ from config import (
 logger = logging.getLogger(__name__)
 
 
+def _is_production() -> bool:
+    return os.getenv("ENVIRONMENT", "").strip().lower() in ("production", "prod")
+
+
 def send_reset_email(email: str, reset_url: str) -> None:
     """Email a password-reset link, or log it when SMTP is not configured."""
     if not SMTP_ENABLED:
-        logger.warning(
-            "SMTP not configured — password reset link for %s: %s",
-            email,
-            reset_url,
-        )
+        if _is_production():
+            # Never write a live one-time reset link to logs in production:
+            # anyone with log access could otherwise reset any account.
+            logger.warning(
+                "SMTP not configured — password reset email for %s was NOT sent",
+                email,
+            )
+        else:
+            # Local-dev convenience: the reset flow stays testable without SMTP.
+            logger.warning(
+                "SMTP not configured — password reset link for %s: %s",
+                email,
+                reset_url,
+            )
         return
 
     msg = EmailMessage()

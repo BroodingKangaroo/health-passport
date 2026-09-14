@@ -30,8 +30,8 @@ backend/e2e/e2e_run.db
 backend/e2e/e2e_run.db-*
 health_passport.db
 backend/static/uploads/*
-backend/app.log
-app.log
+backend/app.log*
+app.log*
 
 # Benchmark artifacts (ISSUES.md #24): own DB + loop session state
 backend/benchmark/*.db

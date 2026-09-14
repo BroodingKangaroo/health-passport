@@ -46,6 +46,7 @@ export function ReviewImport() {
   // The staged document for the preview pane (best-effort — a failed fetch
   // leaves the preview empty but never blocks the review).
   const [stagedFile, setStagedFile] = useState<File | null>(null)
+  const [previewFailed, setPreviewFailed] = useState(false)
   const [dismissing, setDismissing] = useState(false)
   // GATED on session readiness: on a hard reload/deep-link the mount fires
   // before next-auth resolves the bearer token — a tokenless fetch would 404
@@ -86,7 +87,11 @@ export function ReviewImport() {
           }),
         )
       })
-      .catch(() => {})
+      .catch((e) => {
+        if (cancelled) return
+        console.error('Staged file preview failed', e)
+        setPreviewFailed(true)
+      })
     return () => {
       cancelled = true
     }
@@ -182,6 +187,11 @@ export function ReviewImport() {
       ) : (
         <>
           <main className="p-5">
+            {previewFailed && (
+              <p className="mx-auto mb-3 max-w-3xl rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-400">
+                {t('reviewPreviewFailed')}
+              </p>
+            )}
             <AddEntry
               onSave={handleSave}
               onCancel={handleLeaveForLater}

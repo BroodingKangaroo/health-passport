@@ -63,7 +63,7 @@ class TestFunnelCounters:
         job = make_job(db, file_path=staged_file(upload_dir))
         import sqlalchemy
 
-        def fake_llm(markdown, client):
+        def fake_llm(markdown, client, **kwargs):
             db.execute(
                 sqlalchemy.update(ExtractionJob)
                 .where(ExtractionJob.id == job.id)

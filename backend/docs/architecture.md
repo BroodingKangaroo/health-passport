@@ -29,8 +29,10 @@ code, `/api/extract`, entry persistence, merge/delete, or DB migrations.
   (`target-version py39`; `B008`/`BLE001`/`RUF001-3`/`ASYNC230`/`ASYNC240`/
   `PERF203` ignored as intentional). Keep the tree lint-clean before
   committing.
-- `app.log` is written at runtime (logging in `main.py`); generated artifact,
-  not source.
+- `app.log` is written at runtime (logging configured in
+  `app/logging_setup.py`, installed by `main.py`; records also stream to
+  stdout with `threadName` and user/job context, and the file rotates at
+  5 MB × 3); generated artifact, not source.
 
 ## Seeder & LOINC dictionary
 
@@ -704,9 +706,14 @@ extractions "forget" units.
   ContextVar is invisible, so `app/api/ai.py` localizes them AFTER the fact
   from `OCRProcessingError.kind` (`ai.ocr_*` keys; the auth kind carries
   `http_status` for interpolation). Unmatched kinds fall back to the error's
-  own English message.
-- Still English by design: pydantic/FastAPI 422 validation messages, catch-all
-  SSE errors (raw `str(e)`), DB-persisted strings (entry titles, "Labs",
+  own English message. LLM extraction hard failures are localized the same
+  way from `LLMProcessingError.kind` (`ai.llm_*`): the SSE stream resolves
+  the key in-request, the batch worker stores it as the job's `error_key`
+  and the read path localizes it.
+- Catch-all SSE stream errors now emit the localized `ai.extract_failed`
+  (the raw exception text stays in the logs only).
+- Still English by design: pydantic/FastAPI 422 validation messages,
+  DB-persisted strings (entry titles, "Labs",
   note headings, "Raw OCR text:"), category/panel names, biomarker names and
   units. The frontend requests RU by sending `Accept-Language` on every API
   call (see `frontend/docs/architecture.md`).

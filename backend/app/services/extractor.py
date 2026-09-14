@@ -138,10 +138,11 @@ class LLMProcessingError(Exception):
     swallowed by the silent fallback record.
 
     ``kind`` mirrors ``OCRProcessingError.kind``: "auth" (401/403), "quota"
-    (429), "unknown" (anything else). The benchmark opts in via
-    ``llm_extract(..., raise_on_hard_error=True)`` so chat auth/quota exits 2
-    instead of polluting the run (ISSUES.md F11); the live pipeline keeps the
-    fallback behavior.
+    (429), "unknown" (anything else). Both the benchmark and the live
+    extraction paths opt in via ``llm_extract(..., raise_on_hard_error=True)``
+    so chat auth/quota surface as typed failures (benchmark exit 2; SSE and
+    batch import localize/refund) instead of degrading into the fallback
+    record (ISSUES.md F11).
     """
 
     def __init__(self, message: str, kind: str = "unknown"):
@@ -343,7 +344,7 @@ def _convert_to_pdf(bytes_data: bytes, ext: str) -> Optional[bytes]:
         logger.info("Converted %s to PDF (%d → %d bytes)", ext, len(bytes_data), pdf_bytes.tell())
         return pdf_bytes.getvalue()
     except Exception as e:
-        logger.warning("Image-to-PDF conversion failed for %s: %s", ext, e)
+        logger.warning("Image-to-PDF conversion failed for %s: %s", ext, e, exc_info=True)
         return None
 
 
@@ -413,24 +414,39 @@ def ocr_document(bytes_data: bytes, ext: str, client: Mistral) -> str:
                 logger.warning(
                     "OCR attempt %d/%d (candidate=%s) failed: %s",
                     attempt, OCR_MAX_ATTEMPTS, c_name, e,
+                    exc_info=True,
                 )
 
     raise _classify_ocr_error(last_err)
 
 
-def _parse_llm_response(result: object, markdown: str) -> RawMedicalRecord:
+class _LLMResponseParseError(Exception):
+    """The extraction call returned something that is not a RawMedicalRecord."""
+
+
+def _unknown_fallback(markdown: str) -> RawMedicalRecord:
+    """The silent degraded record: entry_type "unknown" carrying the OCR text.
+
+    Only reachable when the LLM call itself could not be completed — a valid
+    call that genuinely yields a non-medical document also returns
+    ``entry_type="unknown"`` but is a SUCCESS (no refund, unknown-editor).
+    """
+    return RawMedicalRecord(
+        entry_type="unknown",
+        notes=f"Raw OCR text:\n\n{markdown[:5000]}",
+    )
+
+
+def _parse_llm_response(result: object) -> RawMedicalRecord:
     if isinstance(result, RawMedicalRecord):
         return result
     if isinstance(result, str):
         try:
             parsed = json.loads(result)
             return RawMedicalRecord(**parsed)
-        except (json.JSONDecodeError, Exception) as e:
-            logger.error("Failed to parse LLM response as JSON: %s", e)
-    return RawMedicalRecord(
-        entry_type="unknown",
-        notes=f"Raw OCR text:\n\n{markdown[:5000]}",
-    )
+        except Exception as e:
+            raise _LLMResponseParseError(str(e)) from e
+    raise _LLMResponseParseError(f"unexpected LLM response type: {type(result).__name__}")
 
 
 _ANTI_PREFIX_RE = re.compile(r"^\s*anti\s*[-–]\s*", re.IGNORECASE)
@@ -461,10 +477,11 @@ def llm_extract(markdown: str, client: Mistral, *,
                 raise_on_hard_error: bool = False) -> RawMedicalRecord:
     """Run LLM extraction on OCR markdown text, returning a RawMedicalRecord.
 
-    ``raise_on_hard_error`` (benchmark) makes auth/quota chat failures raise
+    ``raise_on_hard_error`` makes auth/quota chat failures raise
     :class:`LLMProcessingError` instead of degrading into the silent
-    "unknown + Raw OCR text" fallback record, so the benchmark can map them to
-    its hard-failure exit (ISSUES.md F11). Other provider errors keep the
+    "unknown + Raw OCR text" fallback record: the benchmark maps them to its
+    hard-failure exit (ISSUES.md F11), the SSE stream localizes them, and the
+    batch worker stores a typed error key. Other provider errors keep the
     fallback behavior in both modes.
 
     A doctor_visit extraction that omits a numbered recommendation printed in
@@ -474,15 +491,27 @@ def llm_extract(markdown: str, client: Mistral, *,
     """
     try:
         record = _extraction_call(markdown, client)
+    except _LLMResponseParseError as e:
+        # Model JSON flakiness is usually transient — retry the call once
+        # before degrading to the silent "unknown" fallback record.
+        logger.error("Failed to parse LLM response as JSON: %s", e, exc_info=True)
+        try:
+            record = _extraction_call(markdown, client)
+        except _LLMResponseParseError as retry_err:
+            logger.error("Failed to parse LLM response on retry: %s", retry_err, exc_info=True)
+            return _unknown_fallback(markdown)
+        except Exception as retry_exc:
+            classified = _classify_chat_error(retry_exc)
+            if raise_on_hard_error and classified.kind in ("auth", "quota"):
+                raise classified from retry_exc
+            logger.error("Mistral chat.parse failed on retry: %s", retry_exc, exc_info=True)
+            return _unknown_fallback(markdown)
     except Exception as e:
         classified = _classify_chat_error(e)
         if raise_on_hard_error and classified.kind in ("auth", "quota"):
             raise classified from e
-        logger.error("Mistral chat.parse failed: %s", e)
-        return RawMedicalRecord(
-            entry_type="unknown",
-            notes=f"Raw OCR text:\n\n{markdown[:5000]}",
-        )
+        logger.error("Mistral chat.parse failed: %s", e, exc_info=True)
+        return _unknown_fallback(markdown)
 
     missing = _missing_numbered_leads(markdown, record)
     if missing:
@@ -495,7 +524,7 @@ def llm_extract(markdown: str, client: Mistral, *,
         try:
             retry = _extraction_call(markdown, client, correction=correction)
         except Exception as e:
-            logger.warning("Recommendation-completeness retry failed: %s", e)
+            logger.warning("Recommendation-completeness retry failed: %s", e, exc_info=True)
             retry = None
         if retry is not None and len(_missing_numbered_leads(markdown, retry)) < len(missing):
             logger.info(
@@ -524,8 +553,8 @@ def _extraction_call(markdown: str, client: Mistral,
         max_tokens=16000,
     )
     result = chat_response.choices[0].message.content
-    logger.info("LLM raw response: %s", result[:500] if isinstance(result, str) else type(result))
-    return _preserve_antibody_prefix(_parse_llm_response(result, markdown))
+    logger.info("LLM raw response: %d chars", len(result) if isinstance(result, str) else 0)
+    return _preserve_antibody_prefix(_parse_llm_response(result))
 
 
 _NUMBERED_ITEM_RE = re.compile(r"^\s*\d{1,2}[.)]\s+(\S[^\n]*)", re.MULTILINE)

@@ -96,7 +96,9 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
               )
             } else {
               // …then degrade to unauthenticated instead of a permanent
-              // skeleton (ISSUES.md #63).
+              // skeleton (ISSUES.md #63). Report-only: the design is
+              // deliberate, but the terminal failure should be visible.
+              console.error('Auth token verification failed after retries')
               setVerifyFailed(true)
               setUser(null)
               setAuthed(false)

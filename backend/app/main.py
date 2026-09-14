@@ -13,11 +13,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 load_dotenv()
-log_file = logging.FileHandler("app.log")
-log_file.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-log_file.setLevel(logging.INFO)
-logging.getLogger().setLevel(logging.INFO)
-logging.getLogger().addHandler(log_file)
+
+from app.logging_setup import LogContextMiddleware, setup_logging
+
+setup_logging()
 
 from app import i18n
 from app.api.account import router as account_router
@@ -60,6 +59,10 @@ app = FastAPI(title="HealthPassport API", version="1.0.0", lifespan=lifespan)
 # Resolve the request locale (Accept-Language) before anything user-facing is
 # built. Pure-ASGI — SSE streaming is untouched.
 app.add_middleware(LocaleMiddleware)
+
+# Log unhandled request exceptions (method/path + user context) and re-raise.
+# Pure-ASGI as well, so SSE responses stream through unbuffered.
+app.add_middleware(LogContextMiddleware)
 
 cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(

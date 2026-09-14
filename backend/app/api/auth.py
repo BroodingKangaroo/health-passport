@@ -31,6 +31,7 @@ from app.auth import (
 )
 from app.db import models
 from app.db.session import get_db
+from app.logging_setup import set_log_user
 from app.services.data_migration import copy_anonymous_data
 from app.services.mailer import send_reset_email
 from app.services.upload_cleanup import unlink_unreferenced_files
@@ -136,11 +137,13 @@ async def get_current_user_or_anon(
     if not token:
         from app.api.anon_session import get_or_create_anon_id
         anon_id = get_or_create_anon_id(request, response)
+        set_log_user(anon_id)
         return (None, anon_id, True)
     
     try:
         # Try authenticated user first
         user = await get_current_user(token, db)
+        set_log_user(user.id)
         return (user, user.id, False)
     except TokenExpiredError:
         # Expired tokens must force re-auth, never an anonymous session.
@@ -172,6 +175,7 @@ async def get_current_user_or_anon_strict(
     if not token:
         from app.api.anon_session import get_or_create_anon_id
         anon_id = get_or_create_anon_id(request, response)
+        set_log_user(anon_id)
         return (None, anon_id, True)
     # No 401 catch: invalid/expired tokens raise straight through
     # get_current_user (TokenExpiredError is itself a 401 HTTPException).

@@ -2,6 +2,7 @@
 Service for tracking and enforcing usage limits for both anonymous and registered users.
 """
 
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import update
@@ -17,6 +18,8 @@ from config import (
 # Convert MB to bytes
 ANON_STORAGE_BYTES = ANONYMOUS_LIMITS["storage_mb"] * 1024 * 1024
 REGISTERED_STORAGE_BYTES = REGISTERED_LIMITS["storage_mb"] * 1024 * 1024
+
+logger = logging.getLogger(__name__)
 
 
 def get_limits(db: Session, user_id: str, is_anonymous: bool) -> dict:
@@ -123,15 +126,17 @@ def check_and_record_ai_usage(db: Session, user_id: str, is_anonymous: bool, com
     return (True, usage.ai_extraction_count, max_ai)
 
 
-def refund_ai_extraction(db: Session, user_id: str, is_anonymous: bool) -> None:
+def refund_ai_extraction(db: Session, user_id: str, is_anonymous: bool) -> int:
     """
     Give back one AI-extraction attempt that was charged but never completed
     (e.g. OCR or LLM extraction failed after the increment was committed).
 
     Decrement is a single conditional UPDATE so concurrent refunds can never
     drive the counter negative. No-op when no UsageLimit row exists yet.
+    Returns the UPDATE rowcount: 0 means the counter was already at 0 (quota
+    drift worth a warning) or no row exists (an ordinary no-op).
     """
-    db.execute(
+    result = db.execute(
         update(UsageLimit)
         .where(
             UsageLimit.user_id == user_id,
@@ -141,6 +146,17 @@ def refund_ai_extraction(db: Session, user_id: str, is_anonymous: bool) -> None:
         .values(ai_extraction_count=UsageLimit.ai_extraction_count - 1)
     )
     db.commit()
+    if result.rowcount == 0:
+        row = (
+            db.query(UsageLimit)
+            .filter(UsageLimit.user_id == user_id, UsageLimit.is_anonymous == is_anonymous)
+            .first()
+        )
+        if row is not None:
+            logger.warning("Quota refund no-op for user %s: counter already at 0", user_id)
+        else:
+            logger.debug("Quota refund skipped for user %s: no usage row", user_id)
+    return result.rowcount
 
 
 def check_and_record_storage_usage(

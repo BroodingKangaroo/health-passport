@@ -20,7 +20,7 @@ from app.db.models import (
     UsageLimit,
 )
 from app.schemas.ai import RawBiomarker, RawMedicalRecord, StandardizedMedicalRecord
-from app.services.extractor import OCRProcessingError
+from app.services.extractor import LLMProcessingError, OCRProcessingError
 from tests.test_extract_jobs import TEST_USER_ID, make_job
 from tests.test_extract_jobs import jobs_db as jobs_db_fixture  # noqa: F401
 
@@ -90,7 +90,7 @@ def pipeline_mocks(monkeypatch):
             raise mocks["ocr_error"]
         return mocks["markdown"]
 
-    def fake_llm_extract(markdown, client):
+    def fake_llm_extract(markdown, client, **kwargs):
         return mocks["raw"]
 
     def fake_match(raw, definitions, db, user_id, client):
@@ -222,6 +222,24 @@ class TestFailures:
         assert len(notifications) == 1
         assert notifications[0].type == "import_job_failed"
 
+    def test_llm_hard_failure_stores_typed_key_and_refunds(
+        self, jobs_db, pipeline_mocks, monkeypatch
+    ):
+        db, _sm, upload_dir = jobs_db
+
+        def fake_llm(markdown, client, **kwargs):
+            raise LLMProcessingError("bad key", kind="auth")
+
+        # Override the fixture's silent fallback with a typed hard failure.
+        monkeypatch.setattr(ej.extractor, "llm_extract", fake_llm)
+        job = make_job(db, file_path=staged_file(upload_dir))
+        ej.process_job(job.id)
+        failed = _job_row(db, job.id)
+        assert failed.status == "failed"
+        assert failed.error_key == "ai.llm_auth"
+        assert _usage(db) == 2  # refunded exactly once
+        assert db.query(Notification).count() == 1
+
     def test_unexpected_exception_fails_refunds_and_worker_survives(
         self, jobs_db, pipeline_mocks
     ):
@@ -265,7 +283,7 @@ class TestCancel:
         job = make_job(db, file_path=staged)
         import sqlalchemy
 
-        def fake_llm_extract(markdown, client):
+        def fake_llm_extract(markdown, client, **kwargs):
             # The user cancels while the (mocked) extraction stage runs —
             # flag the job the way the API-side cancel endpoint would.
             db.execute(

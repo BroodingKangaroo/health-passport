@@ -160,3 +160,39 @@ def test_llm_extract_keeps_first_when_retry_not_better():
     record = llm_extract(_MARKDOWN_WITH_NUMBERS, client)
     assert client.calls == 2
     assert len(record.visit_data.recommendations) == 2
+
+
+def test_llm_extract_retries_json_parse_failure_then_succeeds():
+    import json
+
+    payload = json.dumps({"entry_type": "blood_test", "biomarkers": []})
+    client = _SeqClient(["definitely not json", payload])
+    record = llm_extract("markdown", client)
+    assert client.calls == 2
+    assert record.entry_type == "blood_test"
+
+
+def test_llm_extract_json_parse_failure_twice_falls_back():
+    client = _SeqClient(["not json", "still not json"])
+    record = llm_extract("markdown", client)
+    assert client.calls == 2
+    assert record.entry_type == "unknown"
+    assert record.notes.startswith("Raw OCR text:")
+
+
+def test_llm_extract_parse_retry_provider_error_falls_back():
+    class _ParseThenProviderError:
+        def __init__(self):
+            self.calls = 0
+            self.chat = self
+
+        def parse(self, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return _Response("not json")
+            raise _Err("500 upstream", 500)
+
+    client = _ParseThenProviderError()
+    record = llm_extract("markdown", client)
+    assert client.calls == 2
+    assert record.entry_type == "unknown"

@@ -76,6 +76,8 @@ export const timelineMessages = {
         noDocuments: 'No documents available for this event.',
         print: 'Print',
         download: 'Download',
+        printFailed: 'Print failed',
+        downloadFailed: 'Download failed',
       },
       doctorVisit: {
         originalSummary: 'Original Summary',
@@ -253,6 +255,8 @@ export const timelineMessages = {
         noDocuments: 'Для этого события нет доступных документов.',
         print: 'Печать',
         download: 'Скачать',
+        printFailed: 'Не удалось напечатать',
+        downloadFailed: 'Не удалось скачать',
       },
       doctorVisit: {
         originalSummary: 'Оригинал резюме',

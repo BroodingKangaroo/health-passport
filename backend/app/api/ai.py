@@ -18,6 +18,7 @@ from app.api.auth import get_current_user_or_anon
 from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
 from app.db.models import CategoryTranslationCache, Patient
 from app.db.session import SessionLocal, get_db
+from app.logging_setup import set_log_user
 from app.schemas.ai import (
     CategoryTranslationItem,
     CommitTranslationRequest,
@@ -527,16 +528,31 @@ async def extract_medical_data(
                     "estimate_s": round(timing_stats.estimate(timing_stats.STAGE_EXTRACT, len(markdown)), 1),
                 })
                 t0 = time.perf_counter()
-                llm_future = asyncio.get_running_loop().run_in_executor(
-                    None, extractor.llm_extract, markdown, client
-                )
+                def _llm_in_thread():
+                    # ContextVars do not propagate into executor threads.
+                    set_log_user(user_id)
+                    return extractor.llm_extract(markdown, client, raise_on_hard_error=True)
+
+                llm_future = asyncio.get_running_loop().run_in_executor(None, _llm_in_thread)
                 async for keepalive in _wait_with_keepalive(llm_future):
                     yield keepalive
-                raw = llm_future.result()
-                elapsed = time.perf_counter() - t0
-                bm_count = len(raw.biomarkers) if raw.biomarkers else 0
-                logger.info("Extraction took %.2fs — type: %s, biomarkers: %d", elapsed, raw.entry_type, bm_count)
-                timing_stats.record(timing_stats.STAGE_EXTRACT, elapsed, len(markdown))
+                try:
+                    raw = llm_future.result()
+                except extractor.LLMProcessingError as llm_err:
+                    # Classification ran in the executor thread where the
+                    # locale ContextVar is invisible — localize here from the
+                    # typed error's `kind`, mirroring the OCR path above.
+                    if llm_err.kind == "auth":
+                        error = i18n.tr_opt("ai.llm_auth", status=getattr(llm_err, "http_status", "401/403"))
+                    else:
+                        error = i18n.tr_opt(f"ai.llm_{llm_err.kind}")
+                    if error is None:
+                        error = i18n.tr("ai.llm_unknown")
+                else:
+                    elapsed = time.perf_counter() - t0
+                    bm_count = len(raw.biomarkers) if raw.biomarkers else 0
+                    logger.info("Extraction took %.2fs — type: %s, biomarkers: %d", elapsed, raw.entry_type, bm_count)
+                    timing_stats.record(timing_stats.STAGE_EXTRACT, elapsed, len(markdown))
 
             if error:
                 # The extraction count was committed before OCR/LLM ran; refund
@@ -574,6 +590,8 @@ async def extract_medical_data(
             t0 = time.perf_counter()
 
             def _match_in_thread():
+                # ContextVars do not propagate into executor threads.
+                set_log_user(user_id)
                 # Use a thread-local Session — the request's `db` is bound to
                 # the event-loop thread and must not be shared.
                 thread_db = SessionLocal()
@@ -613,7 +631,7 @@ async def extract_medical_data(
             raise
         except Exception as e:
             logger.error("Extraction stream failed: %s", e, exc_info=True)
-            error = str(e)
+            error = i18n.tr("ai.extract_failed")
 
         if error:
             # Same refund as the explicit failure paths above: the stream died

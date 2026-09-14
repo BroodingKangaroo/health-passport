@@ -13,6 +13,12 @@ export const sharedMessages = {
       delete: 'Delete',
       close: 'Close',
     },
+    errors: {
+      title: 'Something went wrong',
+      description:
+        'An unexpected error occurred while rendering this page. You can try again — your data is safe.',
+      retry: 'Try again',
+    },
     statuses: {
       normal: 'Normal',
       low: 'Low',
@@ -89,6 +95,12 @@ export const sharedMessages = {
       cancel: 'Отмена',
       delete: 'Удалить',
       close: 'Закрыть',
+    },
+    errors: {
+      title: 'Что-то пошло не так',
+      description:
+        'При отображении страницы произошла непредвиденная ошибка. Попробуйте ещё раз — ваши данные в безопасности.',
+      retry: 'Попробовать снова',
     },
     statuses: {
       normal: 'Норма',

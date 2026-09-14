@@ -186,7 +186,10 @@ def _biomarkers_from_db(db: Session, patient_id: str):
     for bid in sorted(all_biomarker_ids):
         defn = lookup_definition(defn_by_id, defn_by_loinc, bid)
         if not defn:
-            logger.warning("Skipping timeline biomarker with unresolvable id=%r", bid)
+            logger.warning(
+                "Skipping timeline biomarker with unresolvable id=%r (patient %s)",
+                bid, patient_id,
+            )
             continue
 
         readings_query = readings_by_bid.get(bid) or []

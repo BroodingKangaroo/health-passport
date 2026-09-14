@@ -15,6 +15,28 @@ from app.services.matcher import (
 )
 
 
+def test_match_and_convert_marks_degraded_on_failure(monkeypatch):
+    """A matcher crash still returns fallback data (success with a caveat),
+    but the record carries `matching_degraded` so the review UI can warn."""
+    from app.services.matcher import pipeline as pipeline_mod
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("matcher exploded")
+
+    monkeypatch.setattr(pipeline_mod, "_match_and_convert_impl", boom)
+    db = SessionLocal()
+    try:
+        raw = RawMedicalRecord(
+            entry_type="blood_test",
+            biomarkers=[RawBiomarker(name="Гемоглобин", value="130", unit="г/л")],
+        )
+        res = matcher.match_and_convert(raw, [], db, "u_degraded", client=None)
+        assert res.matching_degraded is True
+        assert len(res.biomarkers) == 1
+    finally:
+        db.close()
+
+
 class _FakeMsg:
     def __init__(self, content):
         self.content = content

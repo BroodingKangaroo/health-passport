@@ -46,6 +46,10 @@ export const addEntryMessages = {
       extractedBiomarkers:
         'and extracted {count, plural, other {# biomarkers}}.',
       reviewNote: 'Please review for accuracy.',
+      matchingDegraded:
+        'Automatic matching failed — values are shown as extracted, without reference ranges. Please check them carefully.',
+      skippedRowsSaved:
+        '{count, plural, one {# row was skipped on save — check its name and value} other {# rows were skipped on save — check their names and values}}',
       documentType: 'Document Type',
       optionBloodTest: 'Blood Test Panel',
       optionDoctorVisit: 'Doctor Visit / Clinical Notes',
@@ -239,6 +243,10 @@ export const addEntryMessages = {
       extractedBiomarkers:
         'и извлёк {count, plural, one {# биомаркер} few {# биомаркера} many {# биомаркеров} other {# биомаркера}}.',
       reviewNote: 'Пожалуйста, проверьте точность данных.',
+      matchingDegraded:
+        'Автоматическое сопоставление не удалось — значения показаны как распознаны, без референсных диапазонов. Пожалуйста, проверьте их внимательно.',
+      skippedRowsSaved:
+        '{count, plural, one {# строка пропущена при сохранении — проверьте название и значение} few {# строки пропущены при сохранении — проверьте названия и значения} many {# строк пропущено при сохранении — проверьте названия и значения} other {# строки пропущены при сохранении — проверьте названия и значения}}',
       documentType: 'Тип документа',
       optionBloodTest: 'Панель анализов крови',
       optionDoctorVisit: 'Приём врача / Клинические записи',

@@ -316,6 +316,9 @@ export interface StandardizedMedicalRecord {
   // Detected source-document language (deterministic detection on the OCR
   // text, backend-side); null when too short or ambiguous to decide.
   source_language?: string | null
+  // Matcher crashed server-side and the record fell back to unstandardized
+  // values; surfaced as an inline note in the add-entry/review editor only.
+  matching_degraded?: boolean
   biomarkers?: StandardizedBiomarker[] | null
   visit_data?: ExtractedVisitData | null
   instrumental_data?: ExtractedInstrumentalData | null
@@ -376,6 +379,9 @@ export interface SaveEntryResponse {
   success: boolean
   message: string
   id: string
+  // Rows the server dropped while parsing (missing name/value or unparseable
+  // value); > 0 shows a warning toast instead of losing them silently.
+  skipped_rows?: number
 }
 
 export interface DeleteEntryResponse {

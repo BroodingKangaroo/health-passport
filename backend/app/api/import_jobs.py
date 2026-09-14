@@ -377,7 +377,12 @@ async def create_import_job(
     db.commit()
     extract_jobs.enqueue_job(job.id)
     # Lazy global GC: expired staged jobs/files (any user) leave here.
-    extract_jobs.sweep_expired_jobs()
+    # Best-effort — a transient sweep failure must not 500 a submit whose
+    # job was already committed and enqueued.
+    try:
+        extract_jobs.sweep_expired_jobs()
+    except Exception:
+        logger.warning("Import-job GC sweep failed (submit path)", exc_info=True)
     return {"job_id": job.id}
 
 
@@ -387,8 +392,11 @@ async def list_import_jobs(
     user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon_strict),
 ):
     _user, user_id, _is_anonymous = user_data
-    # Lazy global GC on the list-read path too.
-    extract_jobs.sweep_expired_jobs()
+    # Lazy global GC on the list-read path too — best-effort, same rationale.
+    try:
+        extract_jobs.sweep_expired_jobs()
+    except Exception:
+        logger.warning("Import-job GC sweep failed (list path)", exc_info=True)
     rows = (
         db.query(ExtractionJob)
         .filter(ExtractionJob.user_id == user_id)

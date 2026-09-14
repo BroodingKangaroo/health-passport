@@ -139,14 +139,14 @@ def _translate_names_batch(
             max_tokens=2000,
         )
     except Exception as e:
-        logger.error("Name translation LLM call failed: %s", e)
+        logger.error("Name translation LLM call failed: %s", e, exc_info=True)
         return {}
 
     content = chat_response.choices[0].message.content
     try:
         parsed = LoincGuessBatch(**json.loads(content)) if isinstance(content, str) else content
     except (json.JSONDecodeError, Exception) as e:
-        logger.error("Failed to parse translation response: %s", e)
+        logger.error("Failed to parse translation response: %s", e, exc_info=True)
         return {}
 
     result: dict[str, str] = {}
@@ -194,7 +194,7 @@ def _llm_translate_visit_data(
             max_tokens=16000,
         )
     except Exception as e:
-        logger.error("Translate LLM call failed: %s", e)
+        logger.error("Translate LLM call failed: %s", e, exc_info=True)
         return _fallback_translate(raw_visit_data)
 
     content = chat_response.choices[0].message.content
@@ -204,7 +204,7 @@ def _llm_translate_visit_data(
             parsed = json.loads(content)
             return StandardizedVisitData(**parsed)
         except (json.JSONDecodeError, Exception) as e:
-            logger.error("Failed to parse translate response: %s", e)
+            logger.error("Failed to parse translate response: %s", e, exc_info=True)
             return _fallback_translate(raw_visit_data)
 
     return content

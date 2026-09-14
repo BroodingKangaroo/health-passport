@@ -31,6 +31,9 @@ class SaveEntryResponse(BaseModel):
     success: bool
     message: str
     id: str = ""
+    # Rows the server dropped while parsing the form (missing name/value or an
+    # unparseable value) — the client warns instead of silently losing them.
+    skipped_rows: int = 0
 
 
 class DeleteEntryResponse(BaseModel):
