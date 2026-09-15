@@ -391,8 +391,13 @@ export function AddEntry({
     setCategories((prev) => [
       // 'New Group' stays English on purpose: it is a DEFAULT CATEGORY NAME
       // seeded into the editable input and persisted to the DB, not a UI label.
+      // The random suffix keeps ids unique across same-millisecond clicks.
       ...prev,
-      { id: `cat-${Date.now()}`, name: 'New Group', rows: [newRow()] },
+      {
+        id: `cat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: 'New Group',
+        rows: [newRow()],
+      },
     ])
   }
 
@@ -849,7 +854,15 @@ export function AddEntry({
           unit-conflict dialog stays unmounted; it re-opens afterwards if
           conflicts remain. Same rule for the pending type-switch confirm. */}
       {pendingExtractFile === null && pendingTypeSwitch === null && (
-        <UnitConflictDialog conflicts={unitConflicts} onResolve={applyResolutions} />
+        <UnitConflictDialog
+          // Remount per conflict batch: `choices` is component state seeded
+          // from the props, and resolving a batch keeps this mounted (it
+          // returns null only while conflicts are empty) — without the key,
+          // stale choices could leak into the next batch.
+          key={unitConflicts.map((c) => c.rowId).join('|')}
+          conflicts={unitConflicts}
+          onResolve={applyResolutions}
+        />
       )}
 
       <ExtractionConfirmDialog

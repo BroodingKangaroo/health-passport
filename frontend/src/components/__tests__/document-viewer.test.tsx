@@ -1,16 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { DocumentViewer } from '../shared/DocumentViewer'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
 
+const pdfjsMock = vi.hoisted(() => ({
+  getDocument: vi.fn(),
+  getPage: vi.fn(),
+  destroy: vi.fn(),
+}))
+
 vi.mock('pdfjs-dist', () => ({
   GlobalWorkerOptions: { workerSrc: '' },
+  getDocument: pdfjsMock.getDocument,
 }))
 
 beforeEach(() => {
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
     blob: () => Promise.resolve(new Blob()),
+    arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
   }) as unknown as typeof fetch
   Object.defineProperty(URL, 'createObjectURL', {
     configurable: true,
@@ -22,6 +30,24 @@ beforeEach(() => {
     writable: true,
     value: vi.fn(),
   })
+
+  pdfjsMock.getPage.mockReset()
+  pdfjsMock.getPage.mockImplementation(async () => ({
+    getViewport: () => ({ width: 600, height: 800 }),
+    render: () => ({ promise: Promise.resolve(), cancel: vi.fn() }),
+    rotate: 0,
+  }))
+  pdfjsMock.destroy.mockReset()
+  pdfjsMock.destroy.mockResolvedValue(undefined)
+  pdfjsMock.getDocument.mockReset()
+  pdfjsMock.getDocument.mockImplementation(() => ({
+    // A pdf.js PDFDocumentLoadingTask: destroy() owns the document+worker.
+    promise: Promise.resolve({
+      numPages: 2,
+      getPage: pdfjsMock.getPage,
+    }),
+    destroy: pdfjsMock.destroy,
+  }))
 })
 
 afterEach(() => {
@@ -98,5 +124,60 @@ describe('DocumentViewer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
     expect(wrapper.style.width).toBe('368px')
     expect(wrapper.style.height).toBe('276px')
+  })
+
+  it('destroys the pdf.js document on unmount', async () => {
+    const { unmount } = render(
+      <TestI18nProvider>
+        <DocumentViewer url="/static/uploads/report.pdf" />
+      </TestI18nProvider>,
+    )
+
+    await waitFor(() => expect(pdfjsMock.getPage).toHaveBeenCalled())
+    expect(pdfjsMock.destroy).not.toHaveBeenCalled()
+
+    unmount()
+    expect(pdfjsMock.destroy).toHaveBeenCalledTimes(1)
+  })
+
+  it('destroys the previous pdf.js document when the url changes', async () => {
+    const { rerender } = render(
+      <TestI18nProvider>
+        <DocumentViewer url="/static/uploads/first.pdf" />
+      </TestI18nProvider>,
+    )
+    await waitFor(() => expect(pdfjsMock.getPage).toHaveBeenCalled())
+
+    rerender(
+      <TestI18nProvider>
+        <DocumentViewer url="/static/uploads/second.pdf" />
+      </TestI18nProvider>,
+    )
+
+    await waitFor(() => expect(pdfjsMock.destroy).toHaveBeenCalledTimes(1))
+    expect(pdfjsMock.getDocument).toHaveBeenCalledTimes(2)
+  })
+
+  it('destroys the loading task even when the document resolves after unmount', async () => {
+    let resolveDoc: (value: unknown) => void = () => {}
+    pdfjsMock.getDocument.mockImplementation(() => ({
+      promise: new Promise((resolve) => { resolveDoc = resolve }),
+      destroy: pdfjsMock.destroy,
+    }))
+
+    const { unmount } = render(
+      <TestI18nProvider>
+        <DocumentViewer url="/static/uploads/slow.pdf" />
+      </TestI18nProvider>,
+    )
+    await waitFor(() => expect(pdfjsMock.getDocument).toHaveBeenCalled())
+
+    unmount()
+    // Destroyed at unmount time, without waiting for the document promise.
+    expect(pdfjsMock.destroy).toHaveBeenCalledTimes(1)
+
+    resolveDoc({ numPages: 1, getPage: pdfjsMock.getPage })
+    await Promise.resolve()
+    expect(pdfjsMock.destroy).toHaveBeenCalledTimes(1)
   })
 })

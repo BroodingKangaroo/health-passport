@@ -70,6 +70,7 @@ function detail(overrides: Partial<ImportJobDetail>): ImportJobDetail {
     error_key: null,
     error_params: null,
     updated_at: null,
+    saved_entry_id: null,
     ...overrides,
   }
 }

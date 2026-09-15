@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SessionProvider } from 'next-auth/react'
 
@@ -130,6 +130,8 @@ describe('NotificationBell', () => {
     const retry = await screen.findByText('Retry')
     fireEvent.click(retry)
     await waitFor(() => expect(retryMock).toHaveBeenCalledWith('job-2'))
+    // The inner control must not bubble into the row's mark-read handler.
+    expect(readOneMock).not.toHaveBeenCalled()
   })
 
   it('dismisses an item', async () => {
@@ -141,6 +143,21 @@ describe('NotificationBell', () => {
     fireEvent.click(await screen.findByTestId('notification-bell'))
     fireEvent.click(await screen.findByText('Dismiss'))
     await waitFor(() => expect(dismissMock).toHaveBeenCalledWith('n3'))
+    expect(readOneMock).not.toHaveBeenCalled()
+  })
+
+  it('marks an item read exactly once from the row button', async () => {
+    fetchMock.mockResolvedValue({
+      unread_count: 1,
+      items: [note({ id: 'n4' })],
+    })
+    renderBell()
+    fireEvent.click(await screen.findByTestId('notification-bell'))
+    // The header also offers "Mark all read" — scope to the item's row.
+    const row = (await screen.findByText('lab.pdf')).closest('li') as HTMLElement
+    fireEvent.click(within(row).getByRole('button', { name: 'Mark all read' }))
+    await waitFor(() => expect(readOneMock).toHaveBeenCalledTimes(1))
+    expect(readOneMock).toHaveBeenCalledWith('n4')
   })
 
 })

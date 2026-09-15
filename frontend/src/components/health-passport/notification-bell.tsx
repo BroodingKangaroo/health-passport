@@ -262,7 +262,12 @@ export function NotificationBell() {
                       {item.type === 'import_job_failed' && item.job_id && (
                         <button
                           type="button"
-                          onClick={() => void handleRetry(item)}
+                          onClick={(e) => {
+                            // The row's own click marks it read; an inner
+                            // control must not double-fire that.
+                            e.stopPropagation()
+                            void handleRetry(item)
+                          }}
                           className="text-[11px] font-semibold text-primary underline underline-offset-2"
                         >
                           {t('bellFailedAction')}
@@ -271,7 +276,10 @@ export function NotificationBell() {
                       {!item.read_at && (
                         <button
                           type="button"
-                          onClick={() => void handleItemClick(item)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void handleItemClick(item)
+                          }}
                           aria-label={t('bellMarkAllRead')}
                           className="flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
                         >
@@ -280,7 +288,10 @@ export function NotificationBell() {
                       )}
                       <button
                         type="button"
-                        onClick={() => void handleDismiss(item)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void handleDismiss(item)
+                        }}
                         className="ml-auto flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
                       >
                         <X className="size-3" />

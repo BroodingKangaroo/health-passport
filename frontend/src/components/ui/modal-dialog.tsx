@@ -32,6 +32,13 @@ export function ModalDialog({
   panelClassName?: string
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
+  // Latest onClose without making it an effect dependency: callers pass inline
+  // arrows, and re-running the effect on every parent render would re-focus
+  // the panel and discard the user's current focus position.
+  const onCloseRef = useRef(onClose)
+  useEffect(() => {
+    onCloseRef.current = onClose
+  })
 
   useEffect(() => {
     if (!open) return
@@ -41,9 +48,9 @@ export function ModalDialog({
     panel?.focus()
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && onClose) {
+      if (e.key === 'Escape' && onCloseRef.current) {
         e.stopPropagation()
-        onClose()
+        onCloseRef.current()
         return
       }
       if (e.key !== 'Tab' || !panel) return
@@ -70,7 +77,7 @@ export function ModalDialog({
     // works no matter which element holds focus.
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 

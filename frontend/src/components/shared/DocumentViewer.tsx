@@ -78,6 +78,10 @@ export function DocumentViewer({ url, fill = false, actions }: DocumentViewerPro
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const renderTaskRef = useRef<pdfjs.RenderTask | null>(null)
+  // The live pdf.js loading task (owns the document + worker transport):
+  // effect cleanup destroys it, so no document survives a url change or
+  // unmount and a load cancelled mid-flight still releases its resources.
+  const pdfLoadingTaskRef = useRef<pdfjs.PDFDocumentLoadingTask | null>(null)
   const isDragging = useRef(false)
   const dragStartX = useRef(0)
   const dragStartY = useRef(0)
@@ -158,7 +162,10 @@ export function DocumentViewer({ url, fill = false, actions }: DocumentViewerPro
       })
       .then(async (buf) => {
         if (cancelled) return
-        const doc = await pdfjs.getDocument({ data: new Uint8Array(buf) }).promise
+        const task = pdfjs.getDocument({ data: new Uint8Array(buf) })
+        pdfLoadingTaskRef.current = task
+        const doc = await task.promise
+        // Cleanup already destroyed the loading task (unmount/url change).
         if (cancelled) return
         setPdf(doc)
         setNumPages(doc.numPages)
@@ -180,7 +187,18 @@ export function DocumentViewer({ url, fill = false, actions }: DocumentViewerPro
           setLoading(false)
         }
       })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      // Cancel the render and destroy the pdf.js loading task (document +
+      // worker/transport); pdf.js otherwise keeps it alive for the page.
+      try { renderTaskRef.current?.cancel() } catch {}
+      renderTaskRef.current = null
+      const task = pdfLoadingTaskRef.current
+      pdfLoadingTaskRef.current = null
+      if (task) {
+        try { void task.destroy() } catch {}
+      }
+    }
   }, [url, isImage])
 
   const renderPage = useCallback(async () => {
