@@ -106,9 +106,6 @@ class MatrixCell(BaseModel):
     # True when the LLM couldn't determine a cross-scale conversion. The
     # flowsheet cell still renders the raw value; the UI shows a warning.
     needs_review: bool = False
-    # True when the reading was merged into an existing entry from a later
-    # upload rather than created with it.
-    merged: bool = False
 
 
 class MatrixRow(BaseModel):

@@ -272,6 +272,8 @@ def sweep_expired_jobs(db: Session | None = None) -> int:
         db = get_sessionmaker()()
     expired = []
     dismissed_expired = []
+    removed = []
+    dismissed_swept = []
     refunds: list[tuple[str, bool]] = []
     file_paths: list[str] = []
     freed = 0
@@ -298,29 +300,60 @@ def sweep_expired_jobs(db: Session | None = None) -> int:
             .all()
         )
         if expired or dismissed_expired:
-            expired_ids = [j.id for j in expired]
-            file_paths = [j.file_path for j in expired] + [
-                j.file_path for j in dismissed_expired
-            ]
+            # Every mutation below is CONDITIONAL on the snapshot's status AND
+            # the TTL cutoff. The candidates were read outside a write
+            # transaction, so a concurrent CAS transition (worker claim,
+            # cancel, retry, dismiss, restore, save) can land in between; the
+            # guard makes the sweep lose that race rather than deleting a live
+            # job (or refunding the same one twice). ``rowcount`` says whether
+            # this sweep actually won the row.
+            #
             # An expired dismissed row keeps its history forever — only the
             # file goes: file_size=0 (takes it out of the staged-bytes cap
             # and the restore file check) and result=None (the payload can
             # never be re-attached once the window is shut — bound the row's
             # size like the saved-row result-clearing rule).
             for j in dismissed_expired:
-                j.file_size = 0
-                j.result = None
-            refunds = [
-                (j.user_id, bool(j.is_anonymous))
-                for j in expired
-                if j.status in ("queued", "processing")
-            ]
-            if expired:
-                db.execute(
-                    delete(Notification).where(Notification.job_id.in_(expired_ids))
+                result = db.execute(
+                    update(ExtractionJob)
+                    .where(
+                        ExtractionJob.id == j.id,
+                        ExtractionJob.status == "dismissed",
+                        ExtractionJob.updated_at < cutoff,
+                    )
+                    .values(file_size=0, result=None)
+                    .execution_options(synchronize_session=False)
                 )
+                if result.rowcount:
+                    dismissed_swept.append(j)
+                    file_paths.append(j.file_path)
+            if expired:
+                removed_ids = []
                 for job in expired:
-                    db.delete(job)
+                    result = db.execute(
+                        delete(ExtractionJob)
+                        .where(
+                            ExtractionJob.id == job.id,
+                            ExtractionJob.status == job.status,
+                            ExtractionJob.updated_at < cutoff,
+                        )
+                        .execution_options(synchronize_session=False)
+                    )
+                    if result.rowcount:
+                        removed.append(job)
+                        removed_ids.append(job.id)
+                if removed_ids:
+                    db.execute(
+                        delete(Notification).where(
+                            Notification.job_id.in_(removed_ids)
+                        )
+                    )
+                refunds = [
+                    (j.user_id, bool(j.is_anonymous))
+                    for j in removed
+                    if j.status in ("queued", "processing")
+                ]
+                file_paths += [j.file_path for j in removed]
             db.commit()
             # After the rows are gone: the staged file is unreferenced (no
             # Attachment row ever points at a staged job file) — unlink it.
@@ -331,7 +364,7 @@ def sweep_expired_jobs(db: Session | None = None) -> int:
     finally:
         if own_db:
             db.close()
-    if not expired and not dismissed_expired:
+    if not removed and not dismissed_swept:
         return 0
     for user_id, is_anonymous in refunds:
         refund_db = get_sessionmaker()()
@@ -346,9 +379,9 @@ def sweep_expired_jobs(db: Session | None = None) -> int:
     logger.info(
         "Import-job GC: removed %d expired jobs (%d dismissed rows kept as "
         "history, file swept), freed %d bytes",
-        len(expired), len(dismissed_expired), freed,
+        len(removed), len(dismissed_swept), freed,
     )
-    return len(expired)
+    return len(removed)
 
 
 _JOB_LOCK_FILENAME = ".job-worker.pid"

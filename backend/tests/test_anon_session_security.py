@@ -182,6 +182,24 @@ class TestForgedCookieIsNotAPrincipal:
         timeline = await cookie_client.get("/api/timeline")
         assert entry_id in [e["id"] for e in timeline.json()["events"]]
 
+    async def test_anon_cookie_is_persistent_across_browser_restart(
+        self, cookie_client
+    ):
+        """The anon id is the ONLY handle on the session's data. A
+        session-scoped cookie (no Max-Age) was silently dropped when the
+        browser closed, orphaning every upload — the cookie must be
+        persistent."""
+        resp = await cookie_client.get("/api/timeline")
+
+        assert resp.status_code == 200
+        set_cookie = next(
+            c
+            for c in resp.headers.get_list("set-cookie")
+            if c.startswith(ANONYMOUS_COOKIE_NAME)
+        )
+        assert "Max-Age=" in set_cookie
+        assert "Max-Age=0" not in set_cookie
+
 
 class TestRegisterMigrationUsesVerifiedCookie:
     def _seed_anon_data(self, db):

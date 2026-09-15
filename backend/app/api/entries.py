@@ -71,6 +71,12 @@ logger = logging.getLogger(__name__)
 
 _LOINC_RE = re.compile(r"^\d+-\d+(\.\d+)?$")
 
+# Entry types the save/merge endpoints accept. ``unknown`` is an extraction
+# OUTPUT (the AI could not classify the document) and must never be persisted
+# as an entry type — the UI asks the user to pick one, and the timeline only
+# knows how to render these four.
+_ALLOWED_ENTRY_TYPES = ("blood_test", "doctor_visit", "instrumental_test", "procedure")
+
 
 def _is_loinc(code: Optional[str]) -> bool:
     return bool(code) and bool(_LOINC_RE.match(code))
@@ -698,6 +704,14 @@ async def save_entry(
     user_data: tuple[Optional[Patient], str, bool] = Depends(get_current_user_or_anon),
 ):
     _user, user_id, is_anonymous = user_data
+    if type not in _ALLOWED_ENTRY_TYPES:
+        # ``unknown`` (or any other client value) has no timeline renderer and
+        # would crash the frontend's TYPE_VISUALS lookup — reject it here,
+        # before any staged job is claimed or file is written.
+        raise HTTPException(
+            status_code=400,
+            detail=i18n.tr("entries.invalid_entry_type", type=type),
+        )
     entry_id = uuid.uuid4().hex
     staged_job = None
     if import_job_id:

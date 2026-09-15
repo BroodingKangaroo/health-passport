@@ -1396,6 +1396,43 @@ class TestMergeEntry:
         assert merged[0].value_text == "Negative"
         assert merged[0].status == "normal"
 
+    async def test_merge_excluded_from_flowsheet(self, client, db_session):
+        """Contract (AGENTS.md): merged readings appear ONLY in the timeline
+        details view — the flowsheet adds no matrix row/cell for a merged-in
+        analyte (print/export is fed by the same payload)."""
+        from app.db.models import BiomarkerDefinition, BiomarkerReading
+
+        target_id = await self._create_target(client)
+        await client.post(
+            f"/api/entry/{target_id}/merge",
+            data={
+                "date": "2025-03-10",
+                "biomarkers": _biomarkers_json([_row("MergeOnly Analyte", "7.7")]),
+            },
+        )
+
+        merged_defn = next(
+            d
+            for d in db_session.query(BiomarkerDefinition).all()
+            if (d.names or {}).get("en") == "MergeOnly Analyte"
+        )
+        reading = (
+            db_session.query(BiomarkerReading)
+            .filter(BiomarkerReading.biomarker_id == merged_defn.id)
+            .one()
+        )
+        assert reading.merged is True
+        # Sanity: the timeline DOES surface it (the exclusion is flowsheet-only).
+        timeline = (await client.get("/api/timeline")).json()
+        timeline_ids = {b["id"] for b in timeline["biomarkers"]}
+        assert merged_defn.id in timeline_ids
+
+        data = (await client.get("/api/flowsheet")).json()
+        row_ids = [row["id"] for cat in data["matrix"] for row in cat["rows"]]
+        assert merged_defn.id not in row_ids
+        biomarker_ids = [b["id"] for b in data["biomarkers"]]
+        assert not any(b.startswith(f"{merged_defn.id}-") for b in biomarker_ids)
+
 
 def _cbc_biomarkers_json() -> str:
     return json.dumps([
@@ -1521,3 +1558,48 @@ class TestNormalizeDate:
         assert dt.utcoffset() == tz.utc.utcoffset(dt)
         # 23:30+02:00 == 21:30 UTC — the wall-clock shift proves conversion.
         assert (dt.hour, dt.minute) == (21, 30)
+
+
+class TestSaveEntryTypeValidation:
+    """``unknown`` is an extraction OUTPUT — persisting it used to crash the
+    timeline (TYPE_VISUALS has no entry for it) and no detail view could
+    render the entry. The API must reject it (and any other stray value)."""
+
+    async def test_save_rejects_unknown_type(self, client):
+        resp = await client.post(
+            "/api/entry",
+            data={"type": "unknown", "date": "2025-11-15"},
+        )
+
+        assert resp.status_code == 400
+        assert "Unsupported entry type" in resp.json()["detail"]
+
+    async def test_save_rejects_arbitrary_type(self, client):
+        resp = await client.post(
+            "/api/entry",
+            data={"type": "not_a_type", "date": "2025-11-15"},
+        )
+
+        assert resp.status_code == 400
+
+    async def test_save_accepts_procedure_type(self, client):
+        # ``procedure`` is a real savable type (seeded entries + timeline
+        # renderer exist) — only ``unknown``/garbage is rejected.
+        resp = await client.post(
+            "/api/entry",
+            data={"type": "procedure", "date": "2025-11-15", "title": "Colonoscopy"},
+        )
+
+        assert resp.status_code == 200
+
+    async def test_rejected_type_creates_no_entry(self, client):
+        before = (await client.get("/api/timeline")).json()["events"]
+
+        await client.post(
+            "/api/entry",
+            data={"type": "unknown", "date": "2025-11-15"},
+        )
+
+        after = (await client.get("/api/timeline")).json()["events"]
+        assert len(after) == len(before)
+        assert all(e["type"] != "unknown" for e in after)

@@ -144,6 +144,23 @@ def normalize_qual(text: Any) -> Optional[str]:
     return _QUAL_MAP.get(s.lower(), s)
 
 
+# Lab documents never carry values anywhere near double range. Capping the
+# exponent keeps hostile input (``9*10^20000000``) from constructing a
+# multi-million-digit int before the float conversion fails — that path is
+# a CPU/memory DoS reachable from a plain entry value or reference string.
+_MAX_EXPONENT = 308
+
+
+def _bounded_exponent(text: str) -> Optional[int]:
+    """Parse a text exponent, returning ``None`` when it falls outside double
+    range (the caller bails out instead of doing the math)."""
+    try:
+        exp = int(text)
+    except (TypeError, ValueError):
+        return None
+    return exp if abs(exp) <= _MAX_EXPONENT else None
+
+
 def _parse_numeric_token(text: str) -> Optional[float]:
     """Parse a single numeric token (one side of a range, or a bare value)
     into a float. Accepts plain numbers, Russian comma decimals, scientific
@@ -159,17 +176,25 @@ def _parse_numeric_token(text: str) -> Optional[float]:
     # Scientific notation: N × 10^K → N * 10^K
     m = _SCI_MULT_RE.match(s)
     if m:
-        try:
-            return float(m.group(1).replace(',', '.')) * (10 ** int(m.group(2)))
-        except (TypeError, ValueError):
+        exp = _bounded_exponent(m.group(2))
+        if exp is None:
             return None
+        try:
+            val = float(m.group(1).replace(',', '.')) * (10 ** exp)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        return val if math.isfinite(val) else None
     # Mathematical exponentiation: N^K → N ** K (so "10^10" = 1e10)
     m = _POW_RE.match(s)
     if m:
-        try:
-            return float(m.group(1).replace(',', '.')) ** int(m.group(2))
-        except (TypeError, ValueError):
+        exp = _bounded_exponent(m.group(2))
+        if exp is None:
             return None
+        try:
+            val = float(m.group(1).replace(',', '.')) ** exp
+        except (TypeError, ValueError, OverflowError):
+            return None
+        return val if math.isfinite(val) else None
     # Russian decimal comma: "8,75"
     m = _COMMA_RE.match(s)
     if m:
@@ -210,9 +235,15 @@ def _parse_range_side(text: str) -> Optional[float]:
     try:
         num = float(m.group(1).replace(',', '.'))
         if m.group(2) is not None:
-            num = num * (10 ** int(m.group(2)))
+            exp = _bounded_exponent(m.group(2))
+            if exp is None:
+                return None
+            num = num * (10 ** exp)
         elif m.group(3) is not None:
-            num = num ** int(m.group(3))
+            exp = _bounded_exponent(m.group(3))
+            if exp is None:
+                return None
+            num = num ** exp
     except (TypeError, ValueError, OverflowError):
         return None
     return num if math.isfinite(num) else None
@@ -309,18 +340,17 @@ def parse_value(text: Any) -> Union[float, str, None]:
         pass
     else:
         return val if math.isfinite(val) else None
-    # 2. Scientific notation: "9*10^7", "9×10^7", "9·10^7", "9x10^3" → N*10^K
+    # 2. Scientific notation: "9*10^7", "9×10^7", "9·10^7", "9x10^3" → N*10^K.
+    #    A matched-but-unparseable form (exponent outside double range) is a
+    #    structured invalid numeric: return None directly instead of letting
+    #    the step-6 first-number fallback resurrect a misleading "9".
     m = _SCI_MULT_RE.match(s)
     if m:
-        v = _parse_numeric_token(s)
-        if v is not None:
-            return v
+        return _parse_numeric_token(s)
     # 3. Mathematical exponentiation: "10^10" → 10^10 = 1e10
     m = _POW_RE.match(s)
     if m:
-        v = _parse_numeric_token(s)
-        if v is not None:
-            return v
+        return _parse_numeric_token(s)
     # 4. Russian decimal comma: "8,75"
     m = _COMMA_RE.match(s)
     if m:

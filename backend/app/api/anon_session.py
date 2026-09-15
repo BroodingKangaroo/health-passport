@@ -17,6 +17,12 @@ from fastapi import Request, Response
 from app.auth import SECRET_KEY
 from config import ANONYMOUS_COOKIE_NAME
 
+# The anonymous cookie is the ONLY handle on an anonymous user's data, so it
+# must outlive a browser restart (a session cookie silently orphaned every
+# upload when the browser closed). 30 days matches the registration-migration
+# window expectations and the next-auth session lifetime.
+ANONYMOUS_COOKIE_MAX_AGE_S = 60 * 60 * 24 * 30
+
 
 def sign_anon_id(anon_id: str) -> str:
     """Return the cookie value carrying ``anon_id`` plus its HMAC signature."""
@@ -46,7 +52,8 @@ def verify_anon_cookie(value: Optional[str]) -> Optional[str]:
 def get_or_create_anon_id(request: Request, response: Response) -> str:
     """
     Get a verified anonymous ID from the signed cookie or create a new session.
-    Cookie has NO expiration (persists until explicitly cleared).
+    Cookie is PERSISTENT (max-age below): the anon id is the only handle on
+    the session's data, so a browser restart must not orphan it.
     Returns the bare anon id (principal); only the cookie carries the signature.
     """
     anon_id = verify_anon_cookie(request.cookies.get(ANONYMOUS_COOKIE_NAME))
@@ -67,6 +74,6 @@ def get_or_create_anon_id(request: Request, response: Response) -> str:
             httponly=True,
             samesite="none" if is_secure else "lax",
             secure=is_secure,
-            max_age=None  # No expiration - persists until cleared
+            max_age=ANONYMOUS_COOKIE_MAX_AGE_S,
         )
     return anon_id

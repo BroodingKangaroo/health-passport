@@ -6,7 +6,7 @@ import queue as queue_mod
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text, update
 from sqlalchemy.orm import sessionmaker
 
 import app.services.extract_jobs as ej
@@ -184,6 +184,106 @@ class TestGcSweep:
         assert removed == 2
         # Each non-terminal job refunds exactly once: 3 - 2 = 1.
         assert get_usage(db).ai_extraction_count == 1
+
+    def test_gc_double_sweep_refunds_once(self, jobs_db):
+        db, _sm, _dir = jobs_db
+        self._expire(db, make_job(db, status="queued"))
+
+        assert ej.sweep_expired_jobs() == 1
+        assert ej.sweep_expired_jobs() == 0  # row gone — nothing to refund again
+
+        assert get_usage(db).ai_extraction_count == 2
+
+    @staticmethod
+    def _arm_before_statement(engine, prefix, action):
+        """Simulate a concurrent transaction landing between the sweep's
+        snapshot read and its write: fire ``action`` once, right before the
+        first statement whose leading keyword is ``prefix``."""
+        state = {"fired": False}
+
+        @event.listens_for(engine, "before_cursor_execute")
+        def _hook(conn, cursor, statement, parameters, context, executemany):
+            if state["fired"]:
+                return
+            if statement.lstrip().upper().startswith(prefix):
+                state["fired"] = True
+                action()
+
+        return _hook, state
+
+    def test_gc_loses_race_to_concurrent_claim(self, jobs_db):
+        """A worker claiming the job (queued→processing) after the sweep's
+        snapshot must win: the conditional DELETE matches 0 rows, the job
+        survives and no refund is issued."""
+        db, sm, _dir = jobs_db
+        job = make_job(db, status="queued")
+        self._expire(db, job)
+        job_id = job.id
+        engine = db.get_bind()
+
+        def claim():
+            other = sm()
+            try:
+                other.execute(
+                    update(ExtractionJob)
+                    .where(ExtractionJob.id == job_id)
+                    .values(status="processing", updated_at=datetime.now(timezone.utc))
+                )
+                other.commit()
+            finally:
+                other.close()
+
+        hook, _state = self._arm_before_statement(engine, "DELETE", claim)
+        try:
+            removed = ej.sweep_expired_jobs()
+        finally:
+            event.remove(engine, "before_cursor_execute", hook)
+
+        assert removed == 0
+        db.expire_all()
+        row = db.query(ExtractionJob).filter(ExtractionJob.id == job_id).one()
+        assert row.status == "processing"
+        assert get_usage(db).ai_extraction_count == 3  # untouched — no refund
+
+    def test_gc_dismissed_file_sweep_loses_race_to_restore(self, jobs_db):
+        """A restore (dismissed→done) after the sweep's snapshot must keep the
+        row's file and result: the conditional UPDATE matches 0 rows."""
+        db, sm, upload_dir = jobs_db
+        job = make_job(db, status="dismissed")
+        job.result = {"entry_type": "blood_test"}
+        self._expire(db, job)
+        job_id = job.id
+        staged = os.path.join(upload_dir, JOB_FILE_NAME)
+        with open(staged, "wb") as f:
+            f.write(b"pdf-bytes")
+        db.commit()
+        engine = db.get_bind()
+
+        def restore():
+            other = sm()
+            try:
+                other.execute(
+                    update(ExtractionJob)
+                    .where(ExtractionJob.id == job_id)
+                    .values(status="done", updated_at=datetime.now(timezone.utc))
+                )
+                other.commit()
+            finally:
+                other.close()
+
+        hook, _state = self._arm_before_statement(engine, "UPDATE", restore)
+        try:
+            removed = ej.sweep_expired_jobs()
+        finally:
+            event.remove(engine, "before_cursor_execute", hook)
+
+        assert removed == 0
+        db.expire_all()
+        row = db.query(ExtractionJob).filter(ExtractionJob.id == job_id).one()
+        assert row.status == "done"  # the restore won
+        assert row.file_size == 1234  # not zeroed by the losing sweep
+        assert row.result is not None
+        assert os.path.exists(staged)  # staged file must survive the race
 
     def test_gc_leaves_fresh_jobs_alone(self, jobs_db):
         db, _sm, _dir = jobs_db

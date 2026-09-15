@@ -59,10 +59,16 @@ def _build_flowsheet(db: Session, patient_id: str):
     date_headers = _build_date_headers(blood_tests)
 
     # One batched query instead of one per entry (ISSUES.md #59); per-entry
-    # dict shape and last-wins semantics preserved.
+    # dict shape and last-wins semantics preserved. Merged readings are
+    # excluded BY DESIGN: they belong to the timeline details view only (the
+    # merged-section header describes their separate upload) — the flowsheet
+    # and the print/export payload must not grow a row/cell for them.
     all_readings = (
         db.query(BiomarkerReading)
-        .filter(BiomarkerReading.entry_id.in_([bt.id for bt in blood_tests]))
+        .filter(
+            BiomarkerReading.entry_id.in_([bt.id for bt in blood_tests]),
+            BiomarkerReading.merged.is_(False),
+        )
         .order_by(BiomarkerReading.id)
         .all()
     )
@@ -220,7 +226,6 @@ def _matrix_cell(
         status=reading.status,
         scale_function=reading.scale_function,
         needs_review=bool(reading.needs_review),
-        merged=bool(reading.merged),
     )
 
 

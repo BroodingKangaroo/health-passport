@@ -199,6 +199,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Invalid date/time format: {error}",
         "ru": "Неверный формат даты/времени: {error}",
     },
+    "entries.invalid_entry_type": {
+        "en": "Unsupported entry type: '{type}'. Choose blood test, doctor visit, or instrumental test.",
+        "ru": "Неподдерживаемый тип записи: «{type}». Выберите анализ крови, визит к врачу или инструментальное исследование.",
+    },
     "entries.date_in_future": {
         "en": "Date cannot be in the future",
         "ru": "Дата не может быть в будущем",

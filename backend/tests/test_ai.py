@@ -466,6 +466,52 @@ class TestExtractEndpoint:
             )
             assert resp.status_code == 200, f"Failed for {filename}"
 
+    @patch("app.api.ai.extractor.ocr_document")
+    async def test_disconnect_at_error_yield_refunds_exactly_once(
+        self, mock_ocr, db_session, monkeypatch
+    ):
+        """The failure path refunds BEFORE yielding the error event. A client
+        that disconnects at that yield used to trigger a second refund
+        (GeneratorExit), draining an earlier legitimate extraction — the
+        guard must make the whole stream refund exactly once."""
+        from io import BytesIO
+
+        from fastapi import UploadFile
+        from starlette.requests import Request as StarletteRequest
+        from starlette.responses import Response as StarletteResponse
+
+        from app.api.ai import extract_medical_data
+        from tests.seed_data import TEST_USER_ID
+
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        # One prior legitimate extraction (count 1) + the one this stream
+        # charges (count 2). A single-refund stream must end at 1.
+        self._seed_ai_usage(db_session, count=1)
+        mock_ocr.side_effect = OCRProcessingError("OCR failed", kind="ocr")
+
+        stream_response = await extract_medical_data(
+            request=StarletteRequest({"type": "http", "method": "POST", "path": "/api/extract", "headers": []}),
+            response=StarletteResponse(),
+            file=UploadFile(filename="lab.pdf", file=BytesIO(b"fake content")),
+            db=db_session,
+            user_data=(None, TEST_USER_ID, False),
+        )
+
+        gen = stream_response.body_iterator
+        while True:
+            chunk = await gen.__anext__()
+            if "event: error" in chunk:
+                break
+
+        assert self._ai_usage_count(db_session) == 1  # refund #1 happened
+
+        # Client hangs up while the generator is suspended at the error yield.
+        await gen.aclose()
+
+        # Exactly one refund for this stream: 1 prior + 1 charged − 1 = 1.
+        # The old double-refund path would leave 0 (draining the prior one).
+        assert self._ai_usage_count(db_session) == 1
+
 
 @pytest.fixture(scope="function")
 def anon_db_session():

@@ -179,7 +179,7 @@ def _refund_on_abort(db: Session, user_id: str, is_anonymous: bool, reason: str)
     """
     try:
         refund_ai_extraction(db, user_id, is_anonymous)
-        logger.info("Extraction %s by client — quota refunded", reason)
+        logger.info("Extraction %s — quota refunded", reason)
     except Exception:
         logger.warning("Quota refund for %s extraction failed", reason, exc_info=True)
 
@@ -484,6 +484,23 @@ async def extract_medical_data(
     async def event_stream():
         error = None
         markdown = None
+        refunded = False
+
+        def _refund_once(reason: str) -> None:
+            """Refund the charged extraction at most once per stream.
+
+            The explicit failure path refunds BEFORE yielding the error event,
+            and a client disconnect at (or after) that yield raises
+            GeneratorExit into the same generator — without this guard the
+            second refund drains an earlier, legitimate extraction instead
+            (the conditional decrement in ``refund_ai_extraction`` clamps at 0,
+            so the loss lands on a different attempt)."""
+            nonlocal refunded
+            if refunded:
+                return
+            refunded = True
+            _refund_on_abort(db, user_id, is_anonymous, reason)
+
         try:
             # Stage 1: OCR
             yield _sse("progress", {"stage": "ocr_scanning"})
@@ -557,8 +574,10 @@ async def extract_medical_data(
             if error:
                 # The extraction count was committed before OCR/LLM ran; refund
                 # it so a failed document doesn't burn one of the (limited)
-                # AI extractions for nothing.
-                refund_ai_extraction(db, user_id, is_anonymous)
+                # AI extractions for nothing. The guard matters here too: this
+                # yield sits inside the try, so a disconnect right at it would
+                # otherwise refund a second time via GeneratorExit.
+                _refund_once("failed")
                 yield _sse("error", {"message": error})
                 return
 
@@ -622,12 +641,12 @@ async def extract_medical_data(
             # Client disconnected mid-stream: the extraction never delivered a
             # result, so refund the already-charged quota (best-effort — the
             # request session may be tearing down).
-            _refund_on_abort(db, user_id, is_anonymous, "cancelled")
+            _refund_once("cancelled")
             raise
         except GeneratorExit:
             # Generator closed while suspended (client went away before
             # completion): same refund, then keep propagating.
-            _refund_on_abort(db, user_id, is_anonymous, "closed early")
+            _refund_once("closed early")
             raise
         except Exception as e:
             logger.error("Extraction stream failed: %s", e, exc_info=True)
@@ -636,7 +655,9 @@ async def extract_medical_data(
         if error:
             # Same refund as the explicit failure paths above: the stream died
             # before producing a result, so the charged extraction is refunded.
-            refund_ai_extraction(db, user_id, is_anonymous)
+            # The guard keeps a disconnect at the error yield from refunding
+            # twice.
+            _refund_once("failed")
             yield _sse("error", {"message": error})
 
     return _sse_response(response, event_stream())

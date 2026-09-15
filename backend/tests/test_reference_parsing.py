@@ -11,6 +11,7 @@ import pytest
 
 from app.services.reference import (
     _parse_numeric_token,
+    _parse_range_side,
     compute_status,
     parse_reference,
     parse_value,
@@ -38,6 +39,36 @@ def test_parse_value_still_parses_plain_numbers():
 def test_parse_value_rejects_numeric_overflow():
     # A digit run too large for a float must not become inf.
     assert parse_value("9" * 400) is None
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "9*10^20000000",  # huge exponent: 10**N built a multi-million-digit int
+        "9×10^999999",
+        "10^20000000",
+        "9^999999",  # same DoS through the N^K branch
+    ],
+)
+def test_parse_value_rejects_hostile_exponents(raw):
+    # The exponent is clamped BEFORE the math (the old code stalled for
+    # seconds building the int, then raised OverflowError past the float
+    # conversion while only TypeError/ValueError were caught).
+    assert parse_value(raw) is None
+    assert _parse_numeric_token(raw) is None
+
+
+def test_parse_value_exponent_at_double_boundary():
+    assert parse_value("10^308") == pytest.approx(1e308)
+    assert parse_value("9*10^30") == pytest.approx(9e30)
+    assert parse_value("2^10") == 1024.0
+
+
+def test_parse_reference_huge_exponent_is_unknown():
+    assert parse_reference("9*10^20000000 - 9*10^20000001") is None
+    # A glued-unit range side goes through _LEADING_NUM_RE — same clamp, and
+    # must not fall back to the bare "9" leading digit.
+    assert _parse_range_side("9*10^20000000 копий/мл") is None
 
 
 @pytest.mark.parametrize(

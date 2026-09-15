@@ -89,6 +89,8 @@ Replaces the old `range_min`/`range_max` + qualitative-flag model:
   `SECRET_KEY` as JWTs (`app/auth.py`). `verify_anon_cookie` (`app/api/
   anon_session.py`) rejects unsigned, tampered, or non-`anon-`-prefixed values;
   `get_current_user_or_anon` then treats that request as a fresh session.
+  The cookie is **persistent** (`Max-Age` = 30 days): it is the only handle on
+  the anonymous session's data, so a browser restart must not orphan it.
 - `get_current_user_or_anon_strict` (import-job + notification endpoints):
   a token that IS present but fails to validate (bad signature, unknown
   user, expired) is a hard 401 — never the anonymous fallback; a fully
@@ -283,7 +285,10 @@ Reference for agents so these aren't re-derived via grep each session:
   IS refunded: the SSE stream never delivered a result event, so the user
   shouldn't pay for an extraction they didn't get. The refund is best-effort
   via `_refund_on_abort` (`app/api/ai.py`) — it never raises and the original
-  cancellation always propagates.
+  cancellation always propagates. Every refund path runs through the stream's
+  `_refund_once` guard, so a disconnect at (or after) the error-event yield —
+  which the explicit failure path already refunded before yielding — cannot
+  refund the same extraction twice and drain an earlier legitimate one.
 - During the long silent OCR/LLM/matching phases the SSE stream emits
   `: keep-alive` comment lines every 15s (ignored by SSE clients and the e2e
   harness) so a healthy-but-slow extraction isn't mistaken for a dead one.
@@ -426,7 +431,12 @@ saves it. Nothing is persisted without user review.
   `dismissed` history rows are never row-deleted — `saved` forever (its file
   is the entry's Attachment), `dismissed` stays visible forever too, but an
   expired dismissed row loses its staged FILE (file_size zeroed), which is
-  what ends the 72h restore window.
+  what ends the 72h restore window. Every sweep mutation is a conditional
+  UPDATE/DELETE (`id` + snapshot `status` + `updated_at < cutoff`): the
+  candidates are read without a write lock, so the guard makes the sweep LOSE
+  to any concurrent CAS transition (worker claim, cancel, retry, dismiss,
+  restore, save) instead of deleting a live job — and a refund is issued only
+  for rows whose DELETE actually won, so a job can never be refunded twice.
 - The per-user pending cap at submit bounds the uncharged-storage worst
   case: the job-count cap counts `queued`/`processing`, the staged-bytes cap
   counts every job still holding a file (`queued`/`processing`/`done`/
@@ -627,6 +637,13 @@ extractions "forget" units.
   `{title, clinic, provider, time}` (non-empty fields only; blank title falls
   back to the uploaded document's filename sans extension) so the UI can
   describe the second test.
+- Merged readings are excluded from `GET /api/flowsheet` server-side (the
+  batched readings query filters `merged IS FALSE`): the flowsheet matrix
+  cells, the derived `biomarkers` list (print/export picks its rows from it),
+  and correlation see original readings only. `/api/timeline` keeps surfacing
+  them (`merged` / `merged_source` per reading) — the timeline details view is
+  their only home. `MatrixCell` therefore has no `merged` field (removed; it
+  was never read by any client).
 - Shared helpers `_ReadingSpec`/`_resolve_definition`/`_parse_biomarker_rows`
   keep `save_entry` and merge in lockstep.
 - `GET /api/entries/by-date` returns per-biomarker `names`+`synonyms` so
