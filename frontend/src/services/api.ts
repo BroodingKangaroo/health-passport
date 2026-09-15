@@ -68,6 +68,45 @@ export class UsageLimitError extends Error {
   }
 }
 
+/**
+ * Global re-auth hook. A 401 on a request that CARRIED a bearer token means
+ * the backend no longer accepts that token: either it expired, or the account
+ * bumped its session version (password change, password reset, confirmed
+ * email change) and this copy is stale. NextAuth's local session can outlive
+ * the backend token, so the user would otherwise stay "signed in" on a page
+ * that keeps failing. AuthStatusProvider registers the handler once and
+ * clears the NextAuth session, landing the user on /login.
+ */
+let _onUnauthorized: (() => void) | null = null
+// The token that already triggered a sign-out, so a burst of 401s from
+// parallel queries (and react-query's retries) reaches the handler once.
+let _unauthorizedToken: string | null = null
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  _onUnauthorized = handler
+  if (!handler) _unauthorizedToken = null
+}
+
+/** Fire the re-auth hook at most once per bearer token. */
+export function notifyUnauthorized(): void {
+  const token = getAccessToken()
+  if (!token || _unauthorizedToken === token) return
+  _unauthorizedToken = token
+  _onUnauthorized?.()
+}
+
+/**
+ * Build the ApiError for a failed response, first firing the re-auth hook for
+ * a 401. Every fetch wrapper in this module (and in `import-jobs` /
+ * `notifications`) goes through here so a dead token is handled identically
+ * everywhere instead of only on the mount-time /auth/me probe.
+ */
+export async function apiError(res: Response, fallback: string): Promise<ApiError> {
+  if (res.status === 401) notifyUnauthorized()
+  const body = await res.json().catch(() => null)
+  return new ApiError(res.status, extractDetail(body, fallback))
+}
+
 function authHeaders(): Record<string, string> {
   const token = getAccessToken()
   return token ? { Authorization: `Bearer ${token}` } : {}
@@ -113,8 +152,7 @@ async function apiGet<T>(path: string): Promise<T> {
     // Same localized-detail extraction as every POST/DELETE path (ISSUES.md
     // #66): the backend's localized `detail` must reach the UI, not a
     // generic status text.
-    const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, extractDetail(body, `GET ${path} failed: ${res.statusText}`))
+    throw await apiError(res, `GET ${path} failed: ${res.statusText}`)
   }
   return res.json()
 }
@@ -134,7 +172,7 @@ export async function fetchFlowsheetData(
     credentials: 'include',
     signal: opts?.signal,
   })
-  if (!res.ok) throw new ApiError(res.status, 'GET /flowsheet failed')
+  if (!res.ok) throw await apiError(res, 'GET /flowsheet failed')
   return res.json()
 }
 
@@ -158,11 +196,7 @@ export async function fetchEntriesByDate(
     signal: opts?.signal,
   })
   if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new ApiError(
-      res.status,
-      extractDetail(body, `GET /entries/by-date failed: ${res.statusText}`),
-    )
+    throw await apiError(res, `GET /entries/by-date failed: ${res.statusText}`)
   }
   return res.json()
 }
@@ -240,11 +274,7 @@ export async function translateBiomarkerNames(
         const body = await res.json().catch(() => null)
         throw new UsageLimitError(res.status, extractDetail(body, apiFallback('usageLimitReached')))
       }
-      const body = await res.json().catch(() => null)
-      throw new ApiError(
-        res.status,
-        extractDetail(body, apiFallback('postTranslateFailed')),
-      )
+      throw await apiError(res, apiFallback('postTranslateFailed'))
     }
     const data = (await res.json()) as {
       translations: (TranslateNameItem & { source?: TranslationSource })[]
@@ -293,8 +323,7 @@ export async function commitTranslatedNames(
     body: JSON.stringify({ lang, items }),
   })
   if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, extractDetail(body, apiFallback('postTranslateCommitFailed')))
+    throw await apiError(res, apiFallback('postTranslateCommitFailed'))
   }
   const data = (await res.json()) as { saved?: number }
   return data.saved ?? 0
@@ -320,8 +349,7 @@ export async function extractMedicalData(
       const body = await res.json().catch(() => null)
       throw new UsageLimitError(res.status, extractDetail(body, apiFallback('usageLimitReached')))
     }
-    const body = await res.json().catch(() => null)
-      throw new ApiError(res.status, extractDetail(body, apiFallback('postExtractFailed')))
+    throw await apiError(res, apiFallback('postExtractFailed'))
   }
 
   if (!res.body) throw new Error('Response body is missing — cannot read extraction stream')
@@ -534,8 +562,7 @@ export async function saveMedicalEntry(formData: FormData): Promise<SaveEntryRes
       const body = await res.json().catch(() => null)
       throw new UsageLimitError(res.status, extractDetail(body, apiFallback('usageLimitReached')))
     }
-    const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, extractDetail(body, apiFallback('postEntryFailed')))
+    throw await apiError(res, apiFallback('postEntryFailed'))
   }
   return res.json()
 }
@@ -556,8 +583,7 @@ export async function mergeMedicalEntry(
       const body = await res.json().catch(() => null)
       throw new UsageLimitError(res.status, extractDetail(body, apiFallback('usageLimitReached')))
     }
-    const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, extractDetail(body, apiFallback('postEntryMergeFailed')))
+    throw await apiError(res, apiFallback('postEntryMergeFailed'))
   }
   return res.json()
 }
@@ -570,8 +596,7 @@ export async function deleteEntry(id: string): Promise<DeleteEntryResponse> {
     credentials: 'include',
   })
   if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, extractDetail(body, apiFallback('deleteEntryFailed')))
+    throw await apiError(res, apiFallback('deleteEntryFailed'))
   }
   return res.json() as Promise<DeleteEntryResponse>
 }
@@ -591,8 +616,7 @@ export async function changePassword(
     }),
   })
   if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, extractDetail(body, apiFallback('changePasswordFailed')))
+    throw await apiError(res, apiFallback('changePasswordFailed'))
   }
 }
 
@@ -603,10 +627,61 @@ export async function deleteAccount(): Promise<DeleteAccountResponse> {
     credentials: 'include',
   })
   if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, extractDetail(body, apiFallback('deleteAccountFailed')))
+    throw await apiError(res, apiFallback('deleteAccountFailed'))
   }
   return res.json() as Promise<DeleteAccountResponse>
+}
+
+/**
+ * Start an email change: re-verifies the password and emails a confirmation
+ * link to the NEW address. Nothing changes until that link is opened, so a
+ * typo cannot lock the user out.
+ */
+export async function changeEmail(
+  currentPassword: string,
+  newEmail: string,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/change-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...baseHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_email: newEmail,
+    }),
+  })
+  if (!res.ok) {
+    throw await apiError(res, apiFallback('changeEmailFailed'))
+  }
+}
+
+/** Complete an email change with the emailed single-use token. */
+export async function confirmEmailChange(token: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/confirm-email-change`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...baseHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({ token }),
+  })
+  if (!res.ok) {
+    throw await apiError(res, apiFallback('confirmEmailChangeFailed'))
+  }
+}
+
+/**
+ * Whether this instance can send email at all (password reset, email change).
+ * Instance-level and account-independent, so it is safe to expose — the reset
+ * endpoint itself answers 200 uniformly (no user enumeration) and therefore
+ * cannot tell the user that no email will arrive.
+ */
+export async function fetchEmailDeliveryEnabled(): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/auth/email-delivery`, {
+    headers: { ...baseHeaders() },
+    credentials: 'include',
+  })
+  if (!res.ok) throw await apiError(res, apiFallback('emailDeliveryStatusFailed'))
+  const body = (await res.json()) as { enabled: boolean }
+  return body.enabled
 }
 
 export interface RegisterPayload {
@@ -641,8 +716,7 @@ export async function registerUser(payload: RegisterPayload): Promise<RegisterRe
     body: JSON.stringify(payload),
   })
   if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, extractDetail(body, apiFallback('registerFailed')))
+    throw await apiError(res, apiFallback('registerFailed'))
   }
   return res.json() as Promise<RegisterResponse>
 }
@@ -660,8 +734,7 @@ export async function requestPasswordReset(email: string): Promise<void> {
     body: JSON.stringify({ email }),
   })
   if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, extractDetail(body, apiFallback('resetRequestFailed')))
+    throw await apiError(res, apiFallback('resetRequestFailed'))
   }
 }
 
@@ -674,8 +747,7 @@ export async function resetUserPassword(token: string, newPassword: string): Pro
     body: JSON.stringify({ token, new_password: newPassword }),
   })
   if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, extractDetail(body, apiFallback('resetPasswordFailed')))
+    throw await apiError(res, apiFallback('resetPasswordFailed'))
   }
 }
 
@@ -719,8 +791,7 @@ export async function downloadAccountExport(format: 'json' | 'csv'): Promise<voi
     credentials: 'include',
   })
   if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, extractDetail(body, apiFallback('exportFailed')))
+    throw await apiError(res, apiFallback('exportFailed'))
   }
   const blob = await res.blob()
   const dateStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
@@ -751,8 +822,7 @@ export async function fetchCurrentUser(token: string | null | undefined): Promis
   })
   if (res.status === 401) return null
   if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, extractDetail(body, 'GET /auth/me failed'))
+    throw await apiError(res, 'GET /auth/me failed')
   }
   return res.json()
 }

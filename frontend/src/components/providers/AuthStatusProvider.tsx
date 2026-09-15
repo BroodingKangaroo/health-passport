@@ -8,7 +8,12 @@ import {
   type ReactNode,
 } from 'react'
 import { useSession, signOut } from 'next-auth/react'
-import { fetchCurrentUser, fetchAnonId, type CurrentUser } from '@/services/api'
+import {
+  fetchCurrentUser,
+  fetchAnonId,
+  setUnauthorizedHandler,
+  type CurrentUser,
+} from '@/services/api'
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
 
@@ -29,6 +34,11 @@ const AuthStatusContext = createContext<AuthStatusContextValue | null>(null)
 // 'unauthenticated' (recoverable via refresh()/login).
 const VERIFY_ATTEMPTS = 3
 const VERIFY_RETRY_BASE_MS = 1500
+
+// Where a session that the BACKEND no longer accepts lands the user. Distinct
+// from a user-initiated sign-out (which goes to '/'), and tagged so the login
+// page can explain why they are suddenly looking at a login form.
+const SESSION_EXPIRED_URL = '/login?session=expired'
 
 export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const { data: session, status: sessionStatus } = useSession()
@@ -83,7 +93,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
               // session — clear it so the menu and data stay consistent.
               setUser(null)
               setAuthed(false)
-              signOut({ callbackUrl: '/' })
+              signOut({ callbackUrl: SESSION_EXPIRED_URL })
             }
           })
           .catch(() => {
@@ -124,6 +134,17 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
 
   const refresh = () => setNonce((n) => n + 1)
   const visibleUser = status === 'authenticated' ? user : null
+
+  // Any authenticated request answered 401 (expired token, or one retired by
+  // a password change / email change elsewhere) must land on login instead of
+  // leaving the user on a page that keeps failing. Registered once for the
+  // whole app; services/api.ts fires it from every fetch wrapper.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      signOut({ callbackUrl: SESSION_EXPIRED_URL })
+    })
+    return () => setUnauthorizedHandler(null)
+  }, [])
 
   return (
     <AuthStatusContext.Provider value={{ status, user: visibleUser, anonId, refresh }}>

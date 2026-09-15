@@ -15,6 +15,8 @@ export const authMessages = {
       noAccount: "Don't have an account?",
       signUp: 'Sign up',
       demo: 'Demo: {credentials}',
+      sessionExpired:
+        'Your session ended — your password or email changed, or it simply expired. Sign in again to continue.',
     },
     register: {
       title: 'Create Account',
@@ -68,6 +70,8 @@ export const authMessages = {
       unexpectedError: 'Something went wrong. Please try again.',
       remembered: 'Remembered your password?',
       signIn: 'Sign in',
+      emailDeliveryWarning:
+        'Email delivery is not configured on this instance, so the reset link cannot be emailed. Ask the operator to enable it.',
     },
     resetPassword: {
       title: 'Set a new password',
@@ -86,6 +90,17 @@ export const authMessages = {
       updating: 'Updating...',
       submit: 'Update password',
     },
+    confirmEmailChange: {
+      title: 'Confirm new email',
+      subtitle: 'One step left before your new email address becomes the one you sign in with',
+      confirm: 'Confirm new email',
+      confirming: 'Confirming...',
+      done: 'Email updated. Sign in with the new address from now on.',
+      goToSignIn: 'Go to sign in',
+      invalidLink: 'This confirmation link is invalid or has expired. Request a new one from Settings.',
+      requestNewLink: 'Back to sign in',
+      unexpectedError: 'Something went wrong. Please try again.',
+    },
   },
   ru: {
     login: {
@@ -102,6 +117,8 @@ export const authMessages = {
       noAccount: 'Нет аккаунта?',
       signUp: 'Зарегистрироваться',
       demo: 'Демо: {credentials}',
+      sessionExpired:
+        'Сессия завершена — пароль или email изменились либо истёк срок действия. Войдите снова, чтобы продолжить.',
     },
     register: {
       title: 'Создать аккаунт',
@@ -155,6 +172,8 @@ export const authMessages = {
       unexpectedError: 'Что-то пошло не так. Попробуйте ещё раз.',
       remembered: 'Вспомнили пароль?',
       signIn: 'Войти',
+      emailDeliveryWarning:
+        'На этом сервере не настроена отправка писем, поэтому ссылка для сброса пароля не придёт. Попросите администратора настроить отправку.',
     },
     resetPassword: {
       title: 'Задайте новый пароль',
@@ -172,6 +191,17 @@ export const authMessages = {
       confirmNewPasswordPlaceholder: 'Введите пароль ещё раз',
       updating: 'Обновление...',
       submit: 'Обновить пароль',
+    },
+    confirmEmailChange: {
+      title: 'Подтверждение нового email',
+      subtitle: 'Остался один шаг до смены адреса, с которым вы будете входить',
+      confirm: 'Подтвердить новый email',
+      confirming: 'Подтверждение...',
+      done: 'Email изменён. Входите в аккаунт с новым адресом.',
+      goToSignIn: 'Перейти ко входу',
+      invalidLink: 'Ссылка подтверждения недействительна или устарела. Запросите новую в настройках.',
+      requestNewLink: 'Вернуться ко входу',
+      unexpectedError: 'Что-то пошло не так. Попробуйте ещё раз.',
     },
   },
 } as const

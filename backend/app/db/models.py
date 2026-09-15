@@ -16,6 +16,14 @@ class Patient(Base):
     dob = Column(String, nullable=False)
     gender = Column(String, nullable=False)
     external_id = Column(String, nullable=False)
+    # Monotonic session version (roadmap 0.4). Bumped whenever the credential
+    # or login identity changes — password change, password reset, confirmed
+    # email change. Every JWT carries the value it was issued with (the `tv`
+    # claim) and get_current_user rejects a token whose claim is behind this
+    # row: that is what makes the emailed "reset your password immediately"
+    # advice actually evict a session an attacker already holds. Tokens minted
+    # before the column existed carry no claim and are read as 0.
+    token_version = Column(Integer, nullable=False, default=0, server_default="0")
 
     entries = relationship("MedicalEntry", back_populates="patient", cascade="all, delete-orphan")
 
@@ -184,6 +192,26 @@ class PasswordResetToken(Base):
     patient_id = Column(String, ForeignKey("patients.id"), nullable=False)
     # SHA-256 of the raw token (the raw value is only ever emailed/returned
     # once); a DB leak must not allow replaying a reset.
+    token_hash = Column(String, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    patient = relationship("Patient")
+
+
+class EmailChangeToken(Base):
+    """Pending email change, confirmed by a one-time link sent to the NEW
+    address (double opt-in). ``patients.email`` is only rewritten when the
+    token is consumed, so an unconfirmed request changes nothing."""
+
+    __tablename__ = "email_change_tokens"
+
+    id = Column(String, primary_key=True)
+    patient_id = Column(String, ForeignKey("patients.id"), nullable=False)
+    # Requested address, held here until confirmation.
+    new_email = Column(String, nullable=False)
+    # SHA-256 of the raw token (see PasswordResetToken).
     token_hash = Column(String, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     used_at = Column(DateTime(timezone=True), nullable=True)

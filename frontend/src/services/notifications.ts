@@ -6,7 +6,7 @@
  */
 import { getAccessToken } from '@/lib/auth-token'
 import { getApiLocale } from '@/i18n/api-locale'
-import { ApiError, extractDetail } from '@/services/api'
+import { ApiError, apiError } from '@/services/api'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL
   ? `${process.env.NEXT_PUBLIC_API_URL}/api`
@@ -37,9 +37,10 @@ function baseHeaders(): Record<string, string> {
   }
 }
 
+// Routed through the shared helper so a 401 fires the global re-auth hook
+// exactly like every call in services/api.ts.
 async function parseError(res: Response, fallback: string): Promise<ApiError> {
-  const body = await res.json().catch(() => null)
-  return new ApiError(res.status, extractDetail(body, fallback))
+  return apiError(res, fallback)
 }
 
 /** {unread_count, items[<=50 newest]} — tenant-scoped (anon included). */

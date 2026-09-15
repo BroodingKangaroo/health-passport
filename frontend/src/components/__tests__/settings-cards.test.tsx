@@ -19,18 +19,22 @@ vi.mock('sonner', () => ({
 }))
 
 const mockChangePassword = vi.fn()
+const mockChangeEmail = vi.fn()
 const mockDeleteAccount = vi.fn()
 const mockDownloadExport = vi.fn()
 const mockFetchUsageLimits = vi.fn()
+const mockFetchEmailDeliveryEnabled = vi.fn()
 
 vi.mock('@/services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/services/api')>()
   return {
     ...actual,
     changePassword: (...args: unknown[]) => mockChangePassword(...args),
+    changeEmail: (...args: unknown[]) => mockChangeEmail(...args),
     deleteAccount: (...args: unknown[]) => mockDeleteAccount(...args),
     downloadAccountExport: (...args: unknown[]) => mockDownloadExport(...args),
     fetchUsageLimits: (...args: unknown[]) => mockFetchUsageLimits(...args),
+    fetchEmailDeliveryEnabled: (...args: unknown[]) => mockFetchEmailDeliveryEnabled(...args),
   }
 })
 
@@ -70,6 +74,8 @@ const DELETE_RESPONSE: DeleteAccountResponse = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Email delivery is configured by default; the warning has its own test.
+  mockFetchEmailDeliveryEnabled.mockResolvedValue(true)
 })
 
 afterEach(() => {
@@ -97,6 +103,76 @@ describe('ProfileCard', () => {
   it('renders the loading skeleton while auth resolves', () => {
     renderI18n(<ProfileCard status="loading" user={null} anonId={null} />)
     expect(screen.getByTestId('profile-loading')).toBeDefined()
+  })
+
+  it('starts an email change and reports that the link was sent', async () => {
+    mockChangeEmail.mockResolvedValue(undefined)
+    renderI18n(<ProfileCard status="authenticated" user={TEST_USER} anonId={null} />)
+
+    // The form is collapsed until the user asks for it.
+    expect(screen.queryByTestId('change-email-form')).toBeNull()
+    fireEvent.click(screen.getByTestId('change-email-toggle'))
+    fireEvent.change(screen.getByTestId('new-email'), {
+      target: { value: 'new@example.com' },
+    })
+    fireEvent.change(screen.getByTestId('email-change-password'), {
+      target: { value: 'secret123' },
+    })
+    fireEvent.click(screen.getByTestId('submit-email-change'))
+
+    await waitFor(() => {
+      expect(mockChangeEmail).toHaveBeenCalledWith('secret123', 'new@example.com')
+    })
+    // Double opt-in: the address is unchanged until the link is opened, and
+    // the note says exactly that.
+    const note = screen.getByTestId('email-change-sent').textContent ?? ''
+    expect(note).toContain('new@example.com')
+    expect(note).toContain('user@example.com')
+    expect(screen.getByText('user@example.com')).toBeDefined()
+  })
+
+  it('surfaces the backend error when the email change is refused', async () => {
+    mockChangeEmail.mockRejectedValue(new ApiError(400, 'Current password is incorrect'))
+    renderI18n(<ProfileCard status="authenticated" user={TEST_USER} anonId={null} />)
+
+    fireEvent.click(screen.getByTestId('change-email-toggle'))
+    fireEvent.change(screen.getByTestId('new-email'), {
+      target: { value: 'new@example.com' },
+    })
+    fireEvent.change(screen.getByTestId('email-change-password'), {
+      target: { value: 'wrong' },
+    })
+    fireEvent.click(screen.getByTestId('submit-email-change'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain(
+        'Current password is incorrect',
+      )
+    })
+    expect(screen.queryByTestId('email-change-sent')).toBeNull()
+  })
+
+  it('offers no email change affordance to anonymous sessions', () => {
+    renderI18n(<ProfileCard status="unauthenticated" user={null} anonId="anon-123" />)
+    expect(screen.queryByTestId('change-email-toggle')).toBeNull()
+  })
+
+  it('warns that no email can arrive when the instance has no mail transport', async () => {
+    mockFetchEmailDeliveryEnabled.mockResolvedValue(false)
+    renderI18n(<ProfileCard status="authenticated" user={TEST_USER} anonId={null} />)
+    fireEvent.click(screen.getByTestId('change-email-toggle'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('email-delivery-warning').textContent).toContain(
+        'Email delivery is not configured',
+      )
+    })
+  })
+
+  it('shows no warning when email delivery is configured or unknown', () => {
+    renderI18n(<ProfileCard status="authenticated" user={TEST_USER} anonId={null} />)
+    fireEvent.click(screen.getByTestId('change-email-toggle'))
+    expect(screen.queryByTestId('email-delivery-warning')).toBeNull()
   })
 })
 
@@ -179,6 +255,7 @@ describe('DangerZoneCard (registered)', () => {
 
   it('submits a valid change-password form and toasts success', async () => {
     mockChangePassword.mockResolvedValue(undefined)
+    mockSignOut.mockResolvedValue(undefined)
     renderI18n(<DangerZoneCard user={TEST_USER} />)
     fillChangePassword()
     fireEvent.click(screen.getByTestId('save-password'))
@@ -186,6 +263,11 @@ describe('DangerZoneCard (registered)', () => {
       expect(mockChangePassword).toHaveBeenCalledWith('oldpass123', 'newpass456')
     })
     expect(toast.success).toHaveBeenCalledWith('Password changed.')
+    // The backend retires every token on a password change, including this
+    // tab's — so the UI leaves deliberately for the login page.
+    await waitFor(() => {
+      expect(mockSignOut).toHaveBeenCalledWith({ callbackUrl: '/login?session=expired' })
+    })
   })
 
   it('rejects mismatched passwords client-side without calling the API', () => {

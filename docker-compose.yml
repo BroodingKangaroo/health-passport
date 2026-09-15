@@ -9,6 +9,21 @@ services:
       # written by the import-jobs worker persist with it (a bare-file mount
       # pins one file — its -wal/-shm siblings would be lost on restart).
       - DATABASE_URL=sqlite:////app/data/health_passport.db
+      # Base URL of the links in outgoing mail (password reset, email-change
+      # confirmation). Set it to the public URL this deployment is reached at,
+      # else recipients get a link pointing at their own localhost.
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      # Defaults to `development` because this compose file is the local-run
+      # path: with ENVIRONMENT=production and no SMTP (the default) the
+      # password-reset flow would silently do nothing — the dev fallback that
+      # logs the one-time link is suppressed exactly there.
+      # TRADEOFF, read before self-hosting: in development a one-time reset
+      # link IS written to the container log when SMTP is off, and a logged
+      # link is an account takeover. A real deployment must set
+      # ENVIRONMENT=production (in ./backend/.env or the host environment —
+      # this `environment:` entry overrides env_file, so export it or edit
+      # this line) AND configure SMTP_*.
+      - ENVIRONMENT=${ENVIRONMENT:-development}
     volumes:
       - backend_uploads:/app/static/uploads
       - backend_db:/app/data

@@ -1,9 +1,11 @@
 # Product Roadmap — Growth & Trust
 
-**Status:** approved direction; Phase 0 partially shipped (statuses marked
-below).
-**Created:** 2026-08-31. **Updated:** 2026-09-09 (0.6 shipped; flowsheet touch
-consciously dropped — see the 0.6 scope note).
+**Status:** approved direction; **Phase 0 fully shipped** (statuses marked
+below), Phase 1 next.
+**Created:** 2026-08-31. **Updated:** 2026-09-15 (0.4 shipped — password reset
+wired for real delivery, email change added; see the 0.4 scope note. Previous:
+2026-09-09, 0.6 shipped; flowsheet touch consciously dropped — see the 0.6
+scope note).
 **Scope:** user-experience and marketing-driven improvements. Technical designs are
 summarized at roadmap level with code pointers for implementers; detailed designs
 happen per-feature at implementation time.
@@ -115,16 +117,68 @@ first-time visitors don't hand over their first document.
   `InstrumentalData` (the migration gap once listed here and in Phase 5 is
   fixed); `backend/e2e/inputs/` holds 9 documents (the roadmap once said 8).
 
-### 0.4 Working password reset (+ email change)
+### 0.4 Working password reset (+ email change) — ✅ SHIPPED
 
-- The whole reset flow already exists (`PasswordResetToken` model,
-  `POST /api/auth/forgot-password` with throttling, token-consuming
-  `POST /api/auth/reset-password`) — it is inert only because SMTP is disabled
-  by default (`SMTP_ENABLED` in `backend/config.py`; the reset link goes to
-  server logs).
-- Deploy with real SMTP; make failure states user-visible rather than silent.
-- Add email change (missing entirely; email is read-only in
-  `settings/profile-card.tsx`).
+- Verified first, because the roadmap text turned out to be stale: the reset
+  pipeline (`PasswordResetToken`, throttled `POST /api/auth/forgot-password`,
+  CAS-claimed `POST /api/auth/reset-password`) was already complete and well
+  covered; the blocker was never the code but the deployment wiring. The one
+  real bug: `FRONTEND_URL` was unset everywhere, so with SMTP already enabled
+  (it was, in the dev `.env`) every reset email carried a `localhost:3000`
+  link.
+- **Wiring + ops**: `FRONTEND_URL` is now documented in
+  `backend/.env.example`, passed through by `docker-compose.yml`, and set to
+  the tunnel URL by `scripts/demo-tunnel.sh` (which now allocates the tunnel
+  *before* starting the backend, because the backend needs the URL too).
+  `.env.example` documents the full `SMTP_*` set. `ENVIRONMENT=production`
+  turns the long-dead "never log a one-time link" guard into real behaviour —
+  nothing in the repo set `ENVIRONMENT` before, so the guard could never fire
+  while a misconfigured deployment wrote live reset links into `app.log`.
+  (Follow-up: compose now defaults `ENVIRONMENT` to `development`, because
+  compose is the local-run path and production semantics plus no SMTP make the
+  reset flow silently do nothing; a real deployment must set `production`
+  explicitly. `SMTP_SECURITY=starttls|ssl|none` was added for implicit-TLS
+  providers, and credentials without TLS are refused unless `none` is
+  explicit.)
+- **Failure visibility**: mail now leaves the request path (`BackgroundTasks`
+  + `mailer.deliver`), which both removes the latency side channel that told a
+  caller whether an address was registered and routes every failure through
+  one structured `email delivery failed — <kind>` log event. Because the reset
+  endpoint must stay uniform (anti-enumeration), the user-visible half is
+  instance-level: the new public `GET /api/auth/email-delivery` +
+  `useEmailDeliveryEnabled()` let `/forgot-password` and the settings
+  email-change form say "this instance cannot email you" instead of promising
+  an inbox that stays empty.
+- **Email change (net-new)**: `POST /api/auth/change-email` +
+  `POST /api/auth/confirm-email-change`, double opt-in by construction — the
+  request re-verifies the password, stages a 30-minute single-use
+  `email_change_tokens` row (SHA-256 hash + pending address) and mails a
+  confirmation link to the NEW address; `patients.email` changes only when
+  that link is opened, which also notifies the OLD address with a
+  `/forgot-password` recovery link. A typo therefore cannot lock anyone out.
+  Conflicts are 409 (the unique index is the real guard), the caller's own
+  address is a 400 no-op, and the flow is throttled per account. UI: a Change
+  toggle in the profile card plus the public `/confirm-email-change` page
+  (confirms on an explicit click, so a link scanner cannot burn the token).
+  Refined in the same change that added session invalidation (below): an
+  address owned by ANOTHER account no longer returns a 409 — that was a
+  user-enumeration oracle — so the request answers the same uniform 200 and
+  warns the squatted address instead. The confirm-time conflict is still a 409
+  (it needs a token that was emailed to the address, so it leaks nothing).
+- Docs synced: `backend/docs/architecture.md` (auth section — including the
+  stale "dev secrets are committed" line it had drifted into),
+  `frontend/docs/architecture.md`, and the AGENTS.md invariants.
+- Tests: `backend/tests/test_email_change.py` (12), `test_mailer.py` (9),
+  frontend `settings-cards` / `confirm-email-change` / `forgot-password` cases.
+- **Follow-up shipped with the audit fixes**: JWT revocation after a password
+  or email change — the item below that 0.4 originally deferred to Phase 5.
+  `patients.token_version` is embedded in every token as the `tv` claim and
+  bumped by password change, password reset and confirmed email change, so
+  "reset your password" actually evicts a stolen session. Email addresses are
+  normalized (trim + lowercase) everywhere so one mailbox is one account.
+  Registration still does not verify the address; email change remains the
+  recovery path for a typo'd signup address, which is the strongest reason
+  this feature exists.
 
 ### 0.5 AGENTS.md doc-drift fix — ✅ SHIPPED
 
@@ -373,8 +427,9 @@ Serves ② primarily.
   classes (OCR spelling variants, translation phrasing drift, noisy
   title/recommendations fields) using the live benchmark loop
   (`backend/benchmark/run_benchmark.py`).
-- **JWT revocation** after password change/reset (today old tokens stay valid
-  for up to 7 days — documented gap in `backend/app/api/auth.py`).
+- ~~**JWT revocation** after password change/reset~~ — shipped ahead of
+  schedule in the 0.4 follow-up (`patients.token_version` + the `tv` claim;
+  password change, password reset and confirmed email change all bump it).
 - **Monthly quota reset** (ISSUES.md candidate; current quotas are lifetime
   counters).
 

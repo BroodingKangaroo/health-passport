@@ -405,14 +405,39 @@ stored strings, so translation happens only at render sites:
 ## Auth pages & password reset
 
 - Public pages under `src/app/`: `login`, `register`, `forgot-password`,
-  `reset-password`. No middleware guards routes; auth is enforced server-side
-  via `get_current_user_or_anon` on data endpoints.
+  `reset-password`, `confirm-email-change`. No middleware guards routes; auth
+  is enforced server-side via `get_current_user_or_anon` on data endpoints.
 - `/forgot-password` posts to `/api/auth/forgot-password` (proxied); on success
   it shows a static confirmation (the backend never reveals whether the email
   exists). `/reset-password` reads `?token=` from the URL, validates a new
   password client-side (min 8 chars, mirroring register), posts to
   `/api/auth/reset-password`, and offers a link back to `/login`. Both pages
   follow the login/register Card layout and go through the server-side proxy.
+- `/confirm-email-change` reads `?token=` and **confirms on an explicit button
+  click, not on mount** — the token is single-use, and a mail scanner or link
+  preview fetching the page must not be able to consume it. Missing token →
+  invalid-link state; success → "email updated" + a button to `/login`.
+- **Dead backend tokens land on `/login`** (roadmap 0.4). A 7-day JWT can be
+  retired server-side at any time (password change, password reset, confirmed
+  email change), while NextAuth's session cookie still looks valid. The
+  backend is the source of truth: `AuthStatusProvider` verifies the token
+  against `GET /api/auth/me` on mount, and `services/api.ts` exposes
+  `setUnauthorizedHandler` — a single hook (registered once by the provider)
+  that every fetch wrapper calls through `apiError()` on a 401 **that carried
+  a bearer token** (a tokenless 401, e.g. a wrong-password login, must not fire
+  it). Both paths `signOut({ callbackUrl: '/login?session=expired' })`, and the
+  login page renders `login.sessionExpired` for that query param, so the user
+  learns why they are back at a login form. The hook fires at most once per
+  token, so parallel react-query failures do not sign out repeatedly. Sibling
+  services (`import-jobs.ts`, `notifications.ts`) route their `parseError`
+  through the same helper.
+- **Honest delivery state**: `/forgot-password` and the settings email-change
+  form both use `useEmailDeliveryEnabled()` (`src/lib/hooks/`), which probes
+  `GET /api/auth/email-delivery`. When the instance has no SMTP transport they
+  show `emailDeliveryWarning` instead of promising an inbox that will stay
+  empty — the backend's uniform 200 (anti-enumeration) cannot report a
+  per-address failure, so instance capability is the only honest signal.
+  `null` (probe pending or failed) stays silent rather than warning on a guess.
 
 ## Settings tab
 
@@ -442,6 +467,18 @@ stored strings, so translation happens only at render sites:
 - **Profile card**: registered → name/email/dob/gender rows (gender labels
   reuse the `header.gender*` keys); anonymous → explainer + Register CTA
   (router.push — this project's `Button` has no `asChild`) + session id.
+  The email row carries a **Change** toggle that reveals an inline
+  email-change form (`changeEmail(password, newEmail)`): new address + current
+  password, submitting to `POST /api/auth/change-email`. The card reports only
+  "confirmation link sent to {email} — your address stays {current} until you
+  open it", because the backend switches the address only when that link is
+  followed (double opt-in). Backend refusals (wrong password, throttled, own
+  address) surface inline through `ApiError.message`. Anonymous sessions get no
+  email affordance. The one refusal that does NOT surface is a taken address:
+  the backend answers a uniform 200 there (a 409 used to be an enumeration
+  oracle), so the caller sees the same "link sent" note and the message simply
+  never arrives — the deliberate anti-enumeration tradeoff, identical in spirit
+  to forgot-password's uniform 200.
 - **Usage card**: renders `fetchUsageLimits()` — AI extractions and storage
   as progress bars ("{used} of {total} used", `Limit reached` when a meter is
   exhausted). This is the ONLY place quota is surfaced proactively; upload
@@ -456,7 +493,11 @@ stored strings, so translation happens only at render sites:
 - **Danger zone card**: registered users get the change-password form
   (client-side mismatch + ≥8-char checks mirroring register/reset; backend
   errors surface through `ApiError.message` — the server's localized
-  detail) and a Popover-confirmed **Delete account** (same destructive
+  detail). A successful change bumps the account's session version server-side,
+  so this tab's own token is dead: the card toasts and then deliberately
+  `signOut({ callbackUrl: '/login?session=expired' })` rather than waiting for
+  the next request to 401. Registered users also get a Popover-confirmed
+  **Delete account** (same destructive
   pattern as `entry-settings.tsx`) which calls `deleteAccount()` then
   `signOut({ callbackUrl: '/' })`. Anonymous users see only session-data
   deletion, which ends with `window.location.assign('/')` — a full reload

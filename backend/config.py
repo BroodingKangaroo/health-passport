@@ -50,6 +50,14 @@ SMTP_USER = os.environ.get("SMTP_USER", "")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 SMTP_FROM = os.environ.get("SMTP_FROM", "no-reply@healthpassport.local")
 SMTP_TLS = os.environ.get("SMTP_TLS", "").lower() in ("1", "true", "yes")
+# Transport security mode: "starttls" (submission port 587), "ssl" (implicit
+# TLS, port 465 — several providers require it) or "none" (plaintext). Left
+# unset to keep the legacy SMTP_TLS flag authoritative: SMTP_TLS=true →
+# starttls, false → none. An EXPLICIT value always wins, and "none" is the only
+# accepted opt-out from the plaintext-credentials guard in services/mailer.py —
+# a deployment that sets SMTP_USER/SMTP_PASSWORD but forgets SMTP_TLS now
+# fails closed instead of submitting the password in the clear.
+SMTP_SECURITY = os.environ.get("SMTP_SECURITY", "").strip().lower()
 
 # Batch import: staged extraction jobs (result + file) expire this many hours
 # after their last update. Swept lazily (enqueue + list-read) by the import

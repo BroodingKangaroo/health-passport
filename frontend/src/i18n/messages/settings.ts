@@ -20,6 +20,19 @@ export const settingsMessages = {
         email: 'Email',
         dob: 'Date of birth',
         gender: 'Gender',
+        changeEmail: 'Change',
+        changeEmailTitle: 'Change email',
+        newEmail: 'New email',
+        newEmailPlaceholder: 'new@example.com',
+        currentPassword: 'Current password',
+        submitChangeEmail: 'Send confirmation link',
+        sendingChangeEmail: 'Sending…',
+        emailChangeSent:
+          'Confirmation link sent to {email}. Your address stays {current} until you open it.',
+        emailChangeFailed: 'Could not start the email change.',
+        emailDeliveryWarning:
+          'Email delivery is not configured on this instance, so the confirmation link cannot be emailed. Ask the operator to enable it.',
+        cancel: 'Cancel',
       },
       usage: {
         title: 'Usage',
@@ -82,6 +95,19 @@ export const settingsMessages = {
         email: 'Email',
         dob: 'Дата рождения',
         gender: 'Пол',
+        changeEmail: 'Изменить',
+        changeEmailTitle: 'Смена email',
+        newEmail: 'Новый email',
+        newEmailPlaceholder: 'new@example.com',
+        currentPassword: 'Текущий пароль',
+        submitChangeEmail: 'Отправить ссылку',
+        sendingChangeEmail: 'Отправка…',
+        emailChangeSent:
+          'Ссылка отправлена на {email}. Текущий адрес {current} останется, пока вы не перейдёте по ссылке.',
+        emailChangeFailed: 'Не удалось начать смену email.',
+        emailDeliveryWarning:
+          'На этом сервере не настроена отправка писем, поэтому ссылка для подтверждения не придёт. Попросите администратора настроить отправку.',
+        cancel: 'Отмена',
       },
       usage: {
         title: 'Использование',

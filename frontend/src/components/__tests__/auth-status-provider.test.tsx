@@ -1,14 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, act } from '@testing-library/react'
 
-const { useSessionMock, signOutMock, fetchCurrentUserMock, fetchAnonIdMock } = vi.hoisted(
-  () => ({
-    useSessionMock: vi.fn(),
-    signOutMock: vi.fn(),
-    fetchCurrentUserMock: vi.fn(),
-    fetchAnonIdMock: vi.fn(),
-  }),
-)
+const {
+  useSessionMock,
+  signOutMock,
+  fetchCurrentUserMock,
+  fetchAnonIdMock,
+  setUnauthorizedHandlerMock,
+} = vi.hoisted(() => ({
+  useSessionMock: vi.fn(),
+  signOutMock: vi.fn(),
+  fetchCurrentUserMock: vi.fn(),
+  fetchAnonIdMock: vi.fn(),
+  setUnauthorizedHandlerMock: vi.fn(),
+}))
 
 vi.mock('next-auth/react', () => ({
   useSession: useSessionMock,
@@ -22,6 +27,7 @@ vi.mock('@/services/api', async (importOriginal) => {
     ...actual,
     fetchCurrentUser: fetchCurrentUserMock,
     fetchAnonId: fetchAnonIdMock,
+    setUnauthorizedHandler: setUnauthorizedHandlerMock,
   }
 })
 
@@ -109,5 +115,44 @@ describe('AuthStatusProvider transient failure recovery (ISSUES.md #63)', () => 
       expect(screen.getByTestId('status').textContent).toBe('unauthenticated'),
     )
     expect(fetchAnonIdMock).toHaveBeenCalled()
+  })
+})
+
+describe('AuthStatusProvider re-auth path (roadmap 0.4)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('sends a backend-rejected session to /login with an explanation', async () => {
+    useSessionMock.mockReturnValue({
+      data: { accessToken: 'stale-token' },
+      status: 'authenticated',
+    })
+    // NextAuth still holds a session, but the backend 401s the token (it
+    // expired, or a password/email change retired it).
+    fetchCurrentUserMock.mockResolvedValue(null)
+
+    renderProvider()
+
+    await waitFor(() =>
+      expect(signOutMock).toHaveBeenCalledWith({ callbackUrl: '/login?session=expired' }),
+    )
+    // The header keeps its skeleton until the NextAuth session clears (the
+    // signOut redirect carries the user to /login); it must NOT flip to a
+    // signed-in state for a token the backend already rejected.
+    expect(screen.getByTestId('status').textContent).not.toBe('authenticated')
+  })
+
+  it('registers a global 401 handler that signs out to /login', async () => {
+    useSessionMock.mockReturnValue({ data: null, status: 'authenticated' })
+    fetchAnonIdMock.mockResolvedValue('anon-123')
+
+    renderProvider()
+    await waitFor(() => expect(setUnauthorizedHandlerMock).toHaveBeenCalled())
+
+    const handler = setUnauthorizedHandlerMock.mock.calls[0][0] as () => void
+    expect(typeof handler).toBe('function')
+    handler()
+    expect(signOutMock).toHaveBeenCalledWith({ callbackUrl: '/login?session=expired' })
   })
 })

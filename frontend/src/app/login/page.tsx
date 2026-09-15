@@ -16,6 +16,9 @@ function LoginForm() {
   const searchParams = useSearchParams()
   const t = useTranslations("login")
   const callbackUrl = searchParams.get("callbackUrl") ?? "/"
+  // Set by AuthStatusProvider when the backend rejected an otherwise valid
+  // NextAuth session (expired, or retired by a password/email change).
+  const sessionExpired = searchParams.get("session") === "expired"
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -59,6 +62,15 @@ function LoginForm() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {sessionExpired && (
+              <div
+                data-testid="session-expired-notice"
+                className="flex items-center gap-2 rounded-lg border border-border bg-muted/50 p-3 text-sm text-muted-foreground"
+              >
+                <AlertCircle className="size-4 shrink-0" />
+                {t("sessionExpired")}
+              </div>
+            )}
             {error && (
               <div className="flex items-center gap-2 rounded-lg border border-status-high/20 bg-status-high/5 p-3 text-sm text-status-high">
                 <AlertCircle className="size-4 shrink-0" />

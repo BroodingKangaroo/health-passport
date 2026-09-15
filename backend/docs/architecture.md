@@ -13,8 +13,26 @@ code, `/api/extract`, entry persistence, merge/delete, or DB migrations.
   `DATABASE_URL`. Tests use an in-memory sqlite via `tests/conftest.py`
   (auto-created/seeded per test; no DB setup needed).
 - **Required env**: `MISTRAL_API_KEY` (in `.env`) — needed for
-  OCR/extraction/matching in `ai.py`. `.env` and `.jwt_secret` are committed
-  here (dev-only secrets; not production-safe).
+  OCR/extraction/matching in `ai.py`. `.env` and `.jwt_secret` are
+  **gitignored** (dev-only secrets; not production-safe) — `backend/.env.example`
+  documents the expected keys, including the mail/URL ones below.
+- **Mail env** (`.env.example` has the full list): `FRONTEND_URL` is the base
+  of every link in outgoing email; `SMTP_ENABLED` + `SMTP_HOST/PORT/USER/
+  PASSWORD/FROM` configure the transport, and `SMTP_SECURITY=
+  starttls|ssl|none` selects it (`ssl` = implicit TLS via `smtplib.SMTP_SSL`
+  for providers that require port 465; the legacy `SMTP_TLS` flag still works
+  when `SMTP_SECURITY` is unset — true → starttls, false → none). Credentials
+  over an unencrypted connection are REFUSED unless the operator explicitly
+  sets `SMTP_SECURITY=none`, so a deployment that sets `SMTP_USER`/
+  `SMTP_PASSWORD` but forgets the flag fails closed instead of submitting the
+  password in the clear. `ENVIRONMENT=production` suppresses the dev-only
+  fallback that logs a one-time link when SMTP is off; `docker-compose.yml`
+  defaults `ENVIRONMENT` to `development` because it is the local-run path
+  (with no SMTP and production semantics, the reset flow would silently do
+  nothing) — a real deployment must set it to `production`. Unset
+  `FRONTEND_URL` silently points emailed links at `http://localhost:3000` —
+  every deployment that sends mail must set it (docker-compose passes
+  `FRONTEND_URL` through; `scripts/demo-tunnel.sh` sets it to the tunnel URL).
 - **Chat model knob**: all chat LLM calls (extraction, translation, matcher
   helpers) use `config.MISTRAL_CHAT_MODEL` (env `MISTRAL_CHAT_MODEL`,
   default `mistral-medium-latest` since 2026-08-29 — the tier dropped
@@ -93,8 +111,9 @@ Replaces the old `range_min`/`range_max` + qualitative-flag model:
   the anonymous session's data, so a browser restart must not orphan it.
 - `get_current_user_or_anon_strict` (import-job + notification endpoints):
   a token that IS present but fails to validate (bad signature, unknown
-  user, expired) is a hard 401 — never the anonymous fallback; a fully
-  ABSENT token still degrades to the anonymous session. Guards against the
+  user, expired, or superseded by a session-version bump) is a hard 401 —
+  never the anonymous fallback; a fully ABSENT token still degrades to the
+  anonymous session. Guards against the
   frontend's mount-time auth race answering with another principal's (empty)
   list as a 200, which the client would cache until the next poll tick.
 - The raw cookie is **never** trusted as the authorization principal: forging it
@@ -739,9 +758,10 @@ extractions "forget" units.
   note headings, "Raw OCR text:"), category/panel names, biomarker names and
   units. The frontend requests RU by sending `Accept-Language` on every API
   call (see `frontend/docs/architecture.md`).
-- The password-reset email (`app/services/mailer.py`) is bilingual
-  (English block + Russian block, both carrying the reset link) because there
-  is no per-user language preference in the data model.
+- Every email (`app/services/mailer.py`: password reset, email-change
+  confirmation, email-change notice) is bilingual (English block + Russian
+  block, each carrying its link) because there is no per-user language
+  preference in the data model.
 
 ## Auth & password reset (`/api/auth`)
 
@@ -755,32 +775,90 @@ extractions "forget" units.
   `POST /api/auth/reset-password {token, new_password}`.
   - `forgot-password` always returns 200 with the same body whether or not the
     email exists (no user enumeration; a mailer failure is logged and also
-    returns 200). If the user exists it stores a 30-minute, single-use token —
+    returns 200). Delivery is queued as a Starlette `BackgroundTasks` step, so
+    a registered address does not pay the SMTP round-trip inside the response
+    (that latency would itself reveal whether the account exists). If the user
+    exists it stores a 30-minute, single-use token —
     only its SHA-256 hash is persisted in the `password_reset_tokens` table
     (`token_hash`, `patient_id`, `expires_at`, `used_at`) — and emails the raw
-    token via `app/services/mailer.py` (sent off the event loop). Expired and
-    used tokens are purged on each request. The emailed link always uses the
+    token via `app/services/mailer.py`. Expired and used tokens are purged on
+    each request (both reset and email-change tables). The emailed link always uses the
     configured `FRONTEND_URL` (default `http://localhost:3000`) — request
     Origin/Referer headers are never trusted, since a direct API caller could
     otherwise rewrite the link to a phishing domain holding a valid token. In
     local dev (`SMTP_ENABLED` unset, the default) the reset link is logged
-    instead of emailed. Endpoint is rate-limited in-memory (5/hour per email,
-    20/hour per IP).
+    instead of emailed — unless `ENVIRONMENT=production`, where the link is
+    never written to the log (a logged one-time link is an account takeover).
+    Endpoint is rate-limited in-memory (5/hour per email, 20/hour per IP).
   - `login` throttles FAILED attempts in-memory (10/15 min per email,
     30/15 min per IP; ISSUES.md #51) — successful logins never consume the
     window, and a full window refuses even correct credentials with 429.
+- `GET /api/auth/email-delivery` (public) returns `{enabled: bool}` — whether
+  this instance has an SMTP transport at all. It is account-independent (it
+  leaks nothing about any user), and it exists because the reset endpoint's
+  uniform 200 makes per-address delivery reporting impossible; the UI uses it
+  to stop promising an inbox that will stay empty when SMTP is off.
   - `reset-password` validates the token (exists, unused, unexpired), enforces
     the ≥8-char/≤72-byte password rule, replaces `patients.hashed_password`, and
     claims the token with a conditional `used_at IS NULL` UPDATE (a concurrent
-    replay loses with 400). Existing JWT sessions stay valid until their
-    normal expiry; the new password takes effect on the next login.
+    replay loses with 400). It also bumps `patients.token_version`, so every
+    JWT issued before the reset is rejected from now on — the remedy the
+    email-change notice recommends has to actually evict an already-stolen
+    session. The user signs in again with the new password.
+
+- **Email change** (roadmap 0.4): `POST /api/auth/change-email
+  {current_password, new_email}` + `POST /api/auth/confirm-email-change
+  {token}`. **Double opt-in by construction**: requesting is registered-only
+  (`get_current_user`; anonymous fails 401), re-verifies the current bcrypt
+  hash (wrong → 400 `auth.incorrect_password`), rejects the caller's own
+  address case-insensitively (400 `auth.email_unchanged`, so a no-op never
+  burns an email), and is throttled per account (5/hour). An address owned by
+  ANOTHER account is deliberately NOT reported (a 409 there was a
+  user-enumeration oracle: any signed-in user with their password could probe
+  whether an arbitrary address exists): the request answers the same uniform
+  200 as for a free address and emails that address a "someone tried to use
+  it" notice instead (`send_email_change_squatted_notice`, queued as a
+  `BackgroundTasks` step so timing matches too); no token row is staged. The
+  requested address is normalized (trim + lowercase) first.
+  It writes a 30-minute single-use `email_change_tokens` row — `new_email`
+  plus the SHA-256 token hash, never the raw token — and emails the
+  confirmation link to the **new** address; `patients.email` is NOT touched,
+  so a typo cannot lock the owner out. Confirming validates the token
+  (exists/unused/unexpired), re-checks the address (409 if it was claimed in
+  the meantime; the `UNIQUE(email)` index is the real guard — a losing
+  concurrent registration surfaces as `IntegrityError` → 409), claims it with
+  the same conditional-UPDATE CAS, rewrites `patients.email` (normalized),
+  bumps `patients.token_version` — sessions issued under the OLD address,
+  including a thief's, are dead from that moment — and emails a notice to the
+  **old** address pointing at `/forgot-password`, which is now a real recovery
+  path rather than a cosmetic suggestion. (The confirm-time 409 is NOT an
+  oracle: it needs a token that was emailed to the address, so it is
+  unreachable for an address the caller does not control.) The confirm
+  endpoint is public, like `reset-password`: the token proves control of the
+  new address, so it works while signed out. JWTs carry a now-stale `email`
+  claim, which is cosmetic — authorization reads only `sub`.
 
 - **In-app password change**: `POST /api/auth/change-password
   {current_password, new_password}` — registered only (anonymous principals
   fail `get_current_user` with 401, mirroring `/api/auth/me`), verifies the
   current bcrypt hash (wrong → 400 `auth.incorrect_password`), enforces the
-  same ≥8-char/≤72-byte rule, and re-hashes. Existing JWT sessions stay valid until
-  their normal expiry — same semantics as reset.
+  same ≥8-char/≤72-byte rule, and re-hashes. It bumps `token_version` too, so
+  every session — the caller's own included — is retired and the user signs in
+  again with the new password.
+
+- **Session version (`patients.token_version`)**: every JWT is issued with the
+  account's current version as the `tv` claim (`issue_access_token`), and
+  `get_current_user` rejects a token whose claim is behind the row: expired
+  tokens raise `TokenExpiredError`, superseded ones `TokenStaleError` (both
+  `ReauthRequiredError`) with 401 `auth.session_invalidated`. The marker type
+  is what keeps `get_current_user_or_anon` honest — a token that WAS valid must
+  never silently degrade to an anonymous session. A token without the claim
+  (issued before the column existed) reads as `0`, the column default, so the
+  migration itself logs nobody out. Added to existing DBs by
+  `migrate_add_columns()`. Addresses are also normalized (trim + lowercase) on
+  register / login lookup / both email-change paths, with legacy rows rewritten
+  by `migrate_normalize_emails()` (rows colliding only by case are reported and
+  left alone: two accounts on one mailbox is a product decision).
 
 - **Account self-deletion**: `DELETE /api/auth/account` — works for BOTH
   principals (registered delete the whole account, anonymous wipe their

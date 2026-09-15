@@ -122,6 +122,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Token expired",
         "ru": "Срок действия токена истёк",
     },
+    "auth.session_invalidated": {
+        "en": "Your session has ended. Please sign in again.",
+        "ru": "Сессия завершена. Войдите в систему заново.",
+    },
     "auth.invalid_credentials": {
         "en": "Invalid authentication credentials",
         "ru": "Недействительные учётные данные",
@@ -173,6 +177,26 @@ MESSAGES: dict[str, dict[str, str]] = {
     "auth.message_password_changed": {
         "en": "Password changed.",
         "ru": "Пароль изменён.",
+    },
+    "auth.email_unchanged": {
+        "en": "This is already your email address",
+        "ru": "Это уже ваш текущий email",
+    },
+    "auth.too_many_email_change_requests": {
+        "en": "Too many email change requests. Try again later.",
+        "ru": "Слишком много запросов на смену email. Попробуйте позже.",
+    },
+    "auth.invalid_email_change_token": {
+        "en": "Invalid or expired email confirmation link",
+        "ru": "Недействительная или устаревшая ссылка подтверждения email",
+    },
+    "auth.message_email_change_sent": {
+        "en": "Confirmation link sent to {email}. Your email will change once you open it.",
+        "ru": "Ссылка для подтверждения отправлена на {email}. Email изменится после перехода по ссылке.",
+    },
+    "auth.message_email_changed": {
+        "en": "Email changed to {email}. Sign in with the new address from now on.",
+        "ru": "Email изменён на {email}. Входите в аккаунт с новым адресом.",
     },
     "auth.message_account_deleted": {
         "en": "Your data has been permanently deleted.",

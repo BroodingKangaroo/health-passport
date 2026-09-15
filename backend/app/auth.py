@@ -38,6 +38,22 @@ SECRET_KEY = _get_secret_key()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
+# JWT claim carrying the account's ``token_version`` at issue time. Read back
+# by ``get_current_user``; an absent claim means a pre-token-version token and
+# is treated as 0.
+TOKEN_VERSION_CLAIM = "tv"
+
+
+def normalize_email(email: str) -> str:
+    """Canonical form of an address: trimmed + lowercased.
+
+    pydantic's ``EmailStr`` lowercases only the DOMAIN, so ``Bob@x.com`` and
+    ``bob@x.com`` reach the same mailbox but were two distinct rows to SQLite's
+    case-sensitive UNIQUE index. Every write path stores this form and every
+    lookup normalizes its input, so one mailbox is exactly one account.
+    """
+    return (email or "").strip().lower()
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plain password against a hash.
@@ -69,6 +85,32 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
+def issue_access_token(user: "models.Patient") -> str:
+    """Mint an access token for ``user`` carrying its current session version.
+
+    All login-issued tokens go through here so the ``tv`` claim can never be
+    forgotten at a call site.
+    """
+    return create_access_token(
+        data={
+            "sub": user.id,
+            "email": user.email,
+            TOKEN_VERSION_CLAIM: user.token_version or 0,
+        },
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+
+
+def bump_token_version(user: "models.Patient") -> None:
+    """Invalidate every token issued for ``user`` so far.
+
+    Call this from the same transaction that changes the password or the login
+    address; the caller commits. Monotonic (never reset), so a token minted
+    before the bump can never match again.
+    """
+    user.token_version = (user.token_version or 0) + 1
+
+
 def decode_token(token: str) -> Optional[dict]:
     """Decode and validate a JWT token.
 
@@ -86,8 +128,17 @@ def decode_token(token: str) -> Optional[dict]:
 
 
 def get_user_by_email(db: Session, email: str) -> Optional[models.Patient]:
-    """Get a user by email."""
-    return db.query(models.Patient).filter(models.Patient.email == email).first()
+    """Get a user by email (case-insensitive, whitespace-tolerant).
+
+    Compares the NORMALIZED input against the normalized stored form: every
+    write path normalizes (and ``migrate_normalize_emails`` rewrote legacy
+    rows), so this is an exact, index-friendly equality rather than a
+    ``lower()`` scan.
+    """
+    normalized = normalize_email(email)
+    if not normalized:
+        return None
+    return db.query(models.Patient).filter(models.Patient.email == normalized).first()
 
 
 def authenticate_user(db: Session, email: str, password: str) -> Optional[models.Patient]:
@@ -114,7 +165,7 @@ def create_user(db: Session, email: str, password: str, name: str, dob: str, gen
     
     user = models.Patient(
         id=user_id,
-        email=email,
+        email=normalize_email(email),
         hashed_password=hashed_password,
         name=name,
         dob=dob,

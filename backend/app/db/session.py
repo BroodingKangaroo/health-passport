@@ -1,8 +1,11 @@
+import logging
 import os
 import re
 
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
+
+logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
@@ -121,10 +124,55 @@ def migrate_local_definition_ids(engine) -> None:
                 ), {"new_id": new_id, "old_id": row.id})
 
 
+def migrate_normalize_emails(engine) -> None:
+    """Idempotent data migration: trim + lowercase ``patients.email``.
+
+    Registration/login/email-change now normalize addresses, but rows written
+    before that keep whatever casing they were inserted with — and SQLite's
+    UNIQUE index is case-sensitive, so ``Bob@x.com`` next to ``bob@x.com``
+    would be two accounts sharing one mailbox while looking like the same
+    login. Rewriting identity data must never be a guess, so addresses that
+    differ ONLY by case (and/or surrounding whitespace) are detected first:
+    they are two rows claiming one mailbox, which is a product decision (merge
+    or rename). Those groups are reported and left exactly as they are —
+    lowercasing them would just crash the UNIQUE index — and every other row
+    is rewritten in place.
+    """
+    insp = inspect(engine)
+    if not insp.has_table("patients"):
+        return
+    with engine.begin() as conn:
+        rows = conn.execute(text("SELECT id, email FROM patients")).fetchall()
+        groups: dict[str, list[tuple[str, str]]] = {}
+        for row in rows:
+            stored = row.email or ""
+            groups.setdefault(stored.strip().lower(), []).append((row.id, stored))
+
+        for normalized, members in groups.items():
+            if len(members) > 1:
+                # Never merge/rename silently: leave the colliding rows alone
+                # and make the operator decide.
+                logger.error(
+                    "Email normalization skipped for %r: %d patients share this "
+                    "mailbox (%s). Resolve the duplicate accounts, then restart.",
+                    normalized,
+                    len(members),
+                    ", ".join(f"{pid}={stored!r}" for pid, stored in members),
+                )
+                continue
+            patient_id, stored = members[0]
+            if stored != normalized:
+                conn.execute(
+                    text("UPDATE patients SET email = :email WHERE id = :id"),
+                    {"email": normalized, "id": patient_id},
+                )
+
+
 def init_db():
     from app.db import models  # noqa: F401
     Base.metadata.create_all(bind=engine)
     migrate_add_columns(engine)
+    migrate_normalize_emails(engine)
     migrate_local_definition_ids(engine)
 
 

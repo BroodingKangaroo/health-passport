@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { LanguageSwitch } from "@/components/shared/language-switch"
 import { requestPasswordReset } from "@/services/api"
+import { useEmailDeliveryEnabled } from "@/lib/hooks/useEmailDeliveryEnabled"
 
 export default function ForgotPasswordPage() {
   const t = useTranslations("forgotPassword")
@@ -17,6 +18,11 @@ export default function ForgotPasswordPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [sent, setSent] = useState(false)
+  // The backend answers 200 uniformly (no user enumeration), so it cannot
+  // report delivery problems about a specific address. Instance-level "this
+  // deployment cannot send email at all" is reportable, and without it this
+  // screen promises an inbox that will stay empty.
+  const emailDeliveryEnabled = useEmailDeliveryEnabled()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -64,6 +70,15 @@ export default function ForgotPasswordPage() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
+              {emailDeliveryEnabled === false && (
+                <div
+                  className="flex items-center gap-2 rounded-lg border border-status-high/20 bg-status-high/5 p-3 text-sm text-status-high"
+                  role="status"
+                  data-testid="email-delivery-warning"
+                >
+                  {t("emailDeliveryWarning")}
+                </div>
+              )}
               {error && (
                 <div
                   className="flex items-center gap-2 rounded-lg border border-status-high/20 bg-status-high/5 p-3 text-sm text-status-high"

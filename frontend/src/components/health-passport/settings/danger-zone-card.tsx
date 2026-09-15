@@ -40,6 +40,10 @@ function ChangePasswordForm() {
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
+      // Changing the password bumps the account's session version server-side,
+      // so this tab's token is already dead. Leave deliberately with an
+      // explanation on /login instead of collecting a 401 on the next request.
+      await signOut({ callbackUrl: '/login?session=expired' })
     } catch (err) {
       // ApiError carries either the backend's localized `detail` or the
       // localized apiFallback string; anything else is a network error.

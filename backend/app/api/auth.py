@@ -11,8 +11,15 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi.concurrency import run_in_threadpool
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jwt import ExpiredSignatureError
 from pydantic import BaseModel, EmailStr
@@ -22,20 +29,29 @@ from sqlalchemy.orm import Session
 
 from app import i18n
 from app.auth import (
-    ACCESS_TOKEN_EXPIRE_MINUTES,
+    TOKEN_VERSION_CLAIM,
     authenticate_user,
-    create_access_token,
+    bump_token_version,
     create_user,
     decode_token,
     get_password_hash,
     get_user_by_email,
+    issue_access_token,
+    normalize_email,
     verify_password,
 )
 from app.db import models
 from app.db.session import get_db
 from app.logging_setup import set_log_user
 from app.services.data_migration import copy_anonymous_data
-from app.services.mailer import send_reset_email
+from app.services.mailer import (
+    deliver,
+    email_delivery_enabled,
+    send_email_change_email,
+    send_email_change_notice,
+    send_email_change_squatted_notice,
+    send_reset_email,
+)
 from app.services.upload_cleanup import unlink_unreferenced_files
 from config import ANONYMOUS_COOKIE_NAME, FRONTEND_URL
 
@@ -66,11 +82,21 @@ def _validate_password_length(password: str) -> None:
         )
 
 
-class TokenExpiredError(HTTPException):
-    """Marker subclass: lets ``get_current_user_or_anon`` distinguish an
-    expired token (force re-auth) from any other 401 (fall back to an
-    anonymous session) without string-comparing localized detail messages,
-    which silently broke whenever a message was reworded (ISSUES.md #52)."""
+class ReauthRequiredError(HTTPException):
+    """Marker base class: the request's token IS present but is no longer
+    usable, so the caller must re-authenticate. ``get_current_user_or_anon``
+    re-raises these instead of degrading to an anonymous session — detection
+    is typed, never a string compare on a localized detail (ISSUES.md #52)."""
+
+
+class TokenExpiredError(ReauthRequiredError):
+    """The token's ``exp`` has passed."""
+
+
+class TokenStaleError(ReauthRequiredError):
+    """The token was superseded by a session-version bump: the account's
+    password or login address changed after this token was issued, so an
+    attacker holding a copy must not keep a session (roadmap 0.4)."""
 
 
 class UserCreate(BaseModel):
@@ -136,6 +162,16 @@ async def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Se
             detail=i18n.tr("auth.user_not_found"),
             headers={"WWW-Authenticate": "Bearer"},
         )
+    # Session version: a token minted before the account's password/login
+    # address changed is dead. Tokens predating the claim read as 0, which is
+    # the column default — so they stay valid until the next bump, exactly the
+    # pre-migration behaviour, instead of logging every user out on deploy.
+    if payload.get(TOKEN_VERSION_CLAIM, 0) != (user.token_version or 0):
+        raise TokenStaleError(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=i18n.tr("auth.session_invalidated"),
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
 
 
@@ -165,8 +201,10 @@ async def get_current_user_or_anon(
         user = await get_current_user(token, db)
         set_log_user(user.id)
         return (user, user.id, False)
-    except TokenExpiredError:
-        # Expired tokens must force re-auth, never an anonymous session.
+    except ReauthRequiredError:
+        # Expired or superseded tokens must force re-auth, never an anonymous
+        # session: the anonymous fallback would silently answer with an empty
+        # dataset under someone else's (nonexistent) identity.
         raise
     except HTTPException as e:
         if e.status_code == status.HTTP_401_UNAUTHORIZED:
@@ -197,8 +235,8 @@ async def get_current_user_or_anon_strict(
         anon_id = get_or_create_anon_id(request, response)
         set_log_user(anon_id)
         return (None, anon_id, True)
-    # No 401 catch: invalid/expired tokens raise straight through
-    # get_current_user (TokenExpiredError is itself a 401 HTTPException).
+    # No 401 catch: invalid, expired or superseded tokens raise straight
+    # through get_current_user (both markers are 401 HTTPExceptions).
     user = await get_current_user(token, db)
     return (user, user.id, False)
 
@@ -222,8 +260,12 @@ def register(
     """Register a new user, optionally copying anonymous data."""
     _validate_password_length(user_data.password)
 
+    # Normalized on the way in: one mailbox is one account, whatever casing
+    # the client sent (EmailStr only lowercases the domain).
+    email = normalize_email(user_data.email)
+
     # Check if email already exists
-    if get_user_by_email(db, user_data.email):
+    if get_user_by_email(db, email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=i18n.tr("auth.email_already_registered"),
@@ -245,7 +287,7 @@ def register(
     try:
         user = create_user(
             db,
-            user_data.email,
+            email,
             user_data.password,
             user_data.name,
             user_data.dob,
@@ -310,11 +352,9 @@ def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.id, "email": user.email},
-        expires_delta=access_token_expires,
-    )
+    # Carries the account's token_version, so a later password reset / email
+    # change can retire this token (see get_current_user).
+    access_token = issue_access_token(user)
     return TokenResponse(access_token=access_token, token_type="bearer")
 
 
@@ -333,6 +373,24 @@ def read_users_me(current_user: models.Patient = Depends(get_current_user)):
 
 class AnonIdResponse(BaseModel):
     anon_id: str
+
+
+class EmailDeliveryStatus(BaseModel):
+    enabled: bool
+
+
+@router.get("/email-delivery", response_model=EmailDeliveryStatus)
+def read_email_delivery_status():
+    """Whether this instance can send email at all (password reset, email change).
+
+    Public and account-independent on purpose: it leaks nothing about any user
+    (it is an instance capability, not a per-address answer), and it is what
+    lets the reset / email-change screens say "this instance cannot email you"
+    instead of promising an inbox that will stay empty. Without SMTP the
+    backend still answers 200 to keep the reset endpoint unenumerable, so this
+    status is the only honest signal available to the person clicking.
+    """
+    return EmailDeliveryStatus(enabled=email_delivery_enabled())
 
 
 @router.get("/anon-id", response_model=AnonIdResponse)
@@ -363,8 +421,9 @@ def change_password(
     """Set a new password after verifying the current one (registered only).
 
     Anonymous principals fail `get_current_user` with 401 (not authenticated),
-    mirroring /api/auth/me. Existing JWT sessions stay valid until their normal
-    expiry — same semantics as password reset.
+    mirroring /api/auth/me. The session version is bumped, so every token
+    issued before this change — including the one that made this request — is
+    rejected from now on and the user signs in again with the new password.
     """
     _validate_password_length(body.new_password)
     if not verify_password(body.current_password, current_user.hashed_password):
@@ -373,6 +432,7 @@ def change_password(
             detail=i18n.tr("auth.incorrect_password"),
         )
     current_user.hashed_password = get_password_hash(body.new_password)
+    bump_token_version(current_user)
     db.commit()
     return {"message": i18n.tr("auth.message_password_changed")}
 
@@ -421,9 +481,10 @@ async def delete_account(
         models.BiomarkerDefinition.user_id == user_id,
         models.BiomarkerDefinition.scope == "local",
     ).delete(synchronize_session=False)
-    db.query(models.PasswordResetToken).filter(
-        models.PasswordResetToken.patient_id == user_id,
-    ).delete(synchronize_session=False)
+    for token_model in (models.PasswordResetToken, models.EmailChangeToken):
+        db.query(token_model).filter(
+            token_model.patient_id == user_id,
+        ).delete(synchronize_session=False)
     db.query(models.UsageLimit).filter(
         models.UsageLimit.user_id == user_id,
     ).delete(synchronize_session=False)
@@ -449,7 +510,19 @@ class ResetPasswordRequest(BaseModel):
     new_password: str
 
 
+class ChangeEmailRequest(BaseModel):
+    current_password: str
+    new_email: EmailStr
+
+
+class ConfirmEmailChangeRequest(BaseModel):
+    token: str
+
+
 RESET_TOKEN_TTL_MINUTES = 30
+# Email changes are confirmed by a link sent to the NEW address; the pending
+# window is short because nothing is at stake yet if it lapses.
+EMAIL_CHANGE_TOKEN_TTL_MINUTES = 30
 
 # In-memory rate limiting (no infra): per-key sliding windows keep the auth
 # endpoints from being abused. The forgot-password endpoint throttles every
@@ -520,6 +593,11 @@ _RESET_EMAIL_LIMIT = 5
 _RESET_IP_LIMIT = 20
 _RESET_WINDOW = timedelta(hours=1)
 
+# Email-change requests are authenticated (one key per account, no IP key:
+# a shared NAT must not lock a household out of its own account).
+_EMAIL_CHANGE_LIMIT = 5
+_EMAIL_CHANGE_WINDOW = timedelta(hours=1)
+
 _LOGIN_FAIL_EMAIL_LIMIT = 10
 _LOGIN_FAIL_IP_LIMIT = 30
 _LOGIN_FAIL_WINDOW = timedelta(minutes=15)
@@ -530,19 +608,27 @@ def _hash_reset_token(token: str) -> str:
 
 
 def _purge_stale_tokens(db: Session) -> None:
-    """Opportunistic cleanup of expired or already-used reset tokens."""
-    db.query(models.PasswordResetToken).filter(
-        (models.PasswordResetToken.expires_at < datetime.now(timezone.utc))
-        | (models.PasswordResetToken.used_at.isnot(None))
-    ).delete(synchronize_session=False)
+    """Opportunistic cleanup of expired or already-used auth tokens."""
+    for model in (models.PasswordResetToken, models.EmailChangeToken):
+        db.query(model).filter(
+            (model.expires_at < datetime.now(timezone.utc))
+            | (model.used_at.isnot(None))
+        ).delete(synchronize_session=False)
 
 
 @router.post("/forgot-password")
-async def forgot_password(request: Request, body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+async def forgot_password(
+    request: Request,
+    body: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """Send a password-reset link if the email is registered.
 
     Always returns the same response so the endpoint can't be used to probe
-    which emails have accounts.
+    which emails have accounts — including in its timing: delivery is queued
+    as a background task, so a registered address never pays the SMTP
+    round-trip inside the response.
     """
     client_ip = request.client.host if request.client else "unknown"
     email_key = body.email.lower()
@@ -574,12 +660,10 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest, db: Ses
 
     if user:
         reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
-        try:
-            await run_in_threadpool(send_reset_email, body.email, reset_url)
-        except Exception:
-            # Never leak delivery failures to the client: the response stays
-            # uniform (no user enumeration) and the user can simply re-request.
-            logger.exception("Failed to send password reset email to %s", body.email)
+        # Never leak delivery failures to the client: the response stays
+        # uniform (no user enumeration) and the user can simply re-request.
+        # `deliver` logs failures; the response is already written by then.
+        background_tasks.add_task(deliver, "password reset", send_reset_email, body.email, reset_url)
 
     return {"message": i18n.tr("auth.message_reset_sent")}
 
@@ -629,6 +713,175 @@ async def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_d
         )
 
     user.hashed_password = get_password_hash(body.new_password)
+    # Retire every session issued before the reset: this is the remedy the
+    # email-change notice tells the previous owner to use, so it must
+    # actually evict an attacker who already holds a token.
+    bump_token_version(user)
     db.commit()
 
     return {"message": i18n.tr("auth.message_password_updated")}
+
+
+@router.post("/change-email")
+async def change_email(
+    body: ChangeEmailRequest,
+    background_tasks: BackgroundTasks,
+    current_user: models.Patient = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Start an email change (registered only): re-verify the password, then
+    email a confirmation link to the NEW address.
+
+    Double opt-in by construction — ``patients.email`` is not touched here, so
+    a typo cannot lock the owner out; the switch happens only when the link is
+    opened (`POST /confirm-email-change`). Verify-then-switch also means the
+    new address is proven reachable before it becomes the login identity.
+
+    An address already owned by another account is NOT reported as a 409: that
+    answer would be an enumeration oracle (any signed-in user with their
+    password could probe whether an arbitrary address has an account), which
+    is exactly what forgot-password was built to avoid. The caller gets the
+    same "confirmation link sent" response either way; the squatted address
+    instead receives a notice that someone tried to use it.
+    """
+    new_email = normalize_email(body.new_email)
+    if new_email == normalize_email(current_user.email):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=i18n.tr("auth.email_unchanged"),
+        )
+    if _throttled(
+        f"emailchange:user:{current_user.id}",
+        _EMAIL_CHANGE_LIMIT,
+        _EMAIL_CHANGE_WINDOW,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=i18n.tr("auth.too_many_email_change_requests"),
+        )
+    _prune_throttle_keys()
+
+    if not verify_password(body.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=i18n.tr("auth.incorrect_password"),
+        )
+
+    existing = get_user_by_email(db, new_email)
+    if existing is not None and existing.id != current_user.id:
+        # Anti-enumeration: never reveal that the address is taken. Warn its
+        # owner (they may be about to be impersonated) and answer the caller
+        # exactly as for a free address — same body, same timing (the send is
+        # a BackgroundTasks step). No token row: confirming one could only
+        # ever conflict.
+        background_tasks.add_task(
+            deliver,
+            "email change squatted notice",
+            send_email_change_squatted_notice,
+            new_email,
+        )
+        return {"message": i18n.tr("auth.message_email_change_sent", email=new_email)}
+
+    _purge_stale_tokens(db)
+    token = secrets.token_urlsafe(32)
+    db.add(models.EmailChangeToken(
+        id=secrets.token_urlsafe(16),
+        patient_id=current_user.id,
+        new_email=new_email,
+        token_hash=_hash_reset_token(token),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=EMAIL_CHANGE_TOKEN_TTL_MINUTES),
+    ))
+    db.commit()
+
+    confirm_url = f"{FRONTEND_URL}/confirm-email-change?token={token}"
+    background_tasks.add_task(
+        deliver, "email change confirmation", send_email_change_email, new_email, confirm_url
+    )
+    return {"message": i18n.tr("auth.message_email_change_sent", email=new_email)}
+
+
+@router.post("/confirm-email-change")
+async def confirm_email_change(
+    body: ConfirmEmailChangeRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Consume an email-change token: switch the account's address and warn the
+    previous one.
+
+    The token is the proof of control over the new address, so this endpoint is
+    public (like reset-password) — it works even when the user is signed out.
+    """
+    token = db.query(models.EmailChangeToken).filter(
+        models.EmailChangeToken.token_hash == _hash_reset_token(body.token)
+    ).first()
+    if not token or token.used_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=i18n.tr("auth.invalid_email_change_token"),
+        )
+    if token.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=i18n.tr("auth.invalid_email_change_token"),
+        )
+
+    user = db.query(models.Patient).filter(models.Patient.id == token.patient_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=i18n.tr("auth.invalid_email_change_token"),
+        )
+
+    # The address may have been claimed by another account between request and
+    # confirmation; the unique index below is the real guard, this is the
+    # friendly error.
+    new_email = normalize_email(token.new_email)
+    existing = get_user_by_email(db, new_email)
+    if existing is not None and existing.id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=i18n.tr("auth.email_already_registered"),
+        )
+
+    old_email = user.email
+    # Single-use claim (same CAS pattern as reset-password): a concurrent
+    # replay loses the race and can never switch the address twice.
+    claimed = db.execute(
+        update(models.EmailChangeToken)
+        .where(
+            models.EmailChangeToken.id == token.id,
+            models.EmailChangeToken.used_at.is_(None),
+        )
+        .values(used_at=datetime.now(timezone.utc))
+    )
+    if claimed.rowcount != 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=i18n.tr("auth.invalid_email_change_token"),
+        )
+
+    user.email = new_email
+    # The login identity changed: retire every session issued under the old
+    # address (the previous owner's copy included). The notice below points the
+    # old address at /forgot-password, which now works as advertised.
+    bump_token_version(user)
+    try:
+        db.commit()
+    except IntegrityError:
+        # Concurrent registration of the same address: the unique index wins.
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=i18n.tr("auth.email_already_registered"),
+        ) from None
+
+    background_tasks.add_task(
+        deliver,
+        "email change notice",
+        send_email_change_notice,
+        old_email,
+        new_email,
+        f"{FRONTEND_URL}/forgot-password",
+    )
+    return {"message": i18n.tr("auth.message_email_changed", email=new_email)}
