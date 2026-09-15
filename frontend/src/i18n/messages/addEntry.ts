@@ -32,7 +32,6 @@ export const addEntryMessages = {
       slowerThanUsual: '· taking longer than usual — {seconds}s elapsed',
       or: 'OR',
       skipManual: 'Skip Upload & Enter Manually',
-      multiFileNotice: 'Only the first document is processed — upload files one at a time.',
       aiDisclosure:
         'Documents are processed by an AI service and are not stored there. You can delete or export your data at any time.',
     },
@@ -240,7 +239,6 @@ export const addEntryMessages = {
       slowerThanUsual: '· дольше обычного — прошло {seconds} с',
       or: 'ИЛИ',
       skipManual: 'Пропустить загрузку и ввести вручную',
-      multiFileNotice: 'Обрабатывается только первый документ — загружайте файлы по одному.',
       aiDisclosure:
         'Документы обрабатываются ИИ-сервисом и не хранятся в нём. Вы можете удалить или экспортировать свои данные в любой момент.',
     },

@@ -53,17 +53,12 @@ export const importMessages = {
       trackerFailed: 'Failed',
       trackerCancelled: 'Cancelled',
       // ----- Review page /review-import (B4) -----
-      reviewTitle: 'Review extracted document',
       reviewLeaveForLater: 'Leave for later',
-      reviewNextDocument: 'Next document',
       reviewSavedToast: 'Document saved',
       reviewDismissToast: 'Document dismissed',
-      reviewMergedToast: 'Entries merged',
-      reviewSameDateHint:
-        'An entry already exists on this date — you can merge this document into it.',
       reviewGone:
         'This import is no longer available — it may have been saved, dismissed or expired.',
-      reviewBack: 'Back to timeline',
+      reviewBack: 'Back to imports',
       reviewLoadFailed: 'Couldn’t load the extracted document.',
       reviewPreviewFailed: 'Couldn’t load the document preview. The extracted data is still reviewable.',
       reviewLoading: 'Loading…',
@@ -123,17 +118,12 @@ export const importMessages = {
       trackerFailed: 'Ошибка',
       trackerCancelled: 'Отменено',
       // ----- Review page /review-import (B4) -----
-      reviewTitle: 'Проверка распознанного документа',
       reviewLeaveForLater: 'Оставить на потом',
-      reviewNextDocument: 'Следующий документ',
       reviewSavedToast: 'Документ сохранён',
       reviewDismissToast: 'Документ отклонён',
-      reviewMergedToast: 'Записи объединены',
-      reviewSameDateHint:
-        'На эту дату уже есть запись — можно объединить этот документ с ней.',
       reviewGone:
         'Этот импорт больше недоступен — возможно, он сохранён, удалён или истёк.',
-      reviewBack: 'К хронологии',
+      reviewBack: 'К импортам',
       reviewLoadFailed: 'Не удалось загрузить распознанный документ.',
       reviewPreviewFailed: 'Не удалось загрузить предпросмотр документа. Данные всё ещё доступны для проверки.',
       reviewLoading: 'Загрузка…',

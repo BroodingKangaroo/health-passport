@@ -79,9 +79,6 @@ export function PrintSetup() {
       return
     }
     // The document promises an AI translation: actually perform it before
-    // navigating. The backend persists names[lang] on the definitions, so
-    // repeated generates of an already-translated document are free.
-    // The document promises an AI translation: actually perform it before
     // navigating. Nothing is persisted here — the review dialog's confirm
     // step commits only the terms the user accepted.
     setLastRun(null)

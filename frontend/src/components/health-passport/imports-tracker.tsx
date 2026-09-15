@@ -255,6 +255,13 @@ export function ImportsTracker() {
         </div>
       ) : (
         <>
+          {active.length > 0 && (
+            <div className="mb-2" data-testid="imports-active-title">
+              <p className="px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {t('trackerActiveTitle')}
+              </p>
+            </div>
+          )}
           <ul className="space-y-2">
             {active.map((job) => (
               <li

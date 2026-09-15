@@ -147,6 +147,8 @@ describe('ImportsTracker', () => {
     })
     renderTracker(<ImportsTracker />)
     await screen.findByText('new.pdf')
+    // Active list carries its own "In progress" section heading.
+    expect(screen.getByTestId('imports-active-title')).toHaveTextContent('In progress')
     expect(screen.getByText('old.pdf')).toBeInTheDocument()
     expect(screen.getByText('Identifying medical data...')).toBeInTheDocument()
     expect(screen.getByText('OCR quota exceeded (HTTP 429).')).toBeInTheDocument()
