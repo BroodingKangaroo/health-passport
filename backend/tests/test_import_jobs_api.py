@@ -1067,3 +1067,21 @@ class TestStrictPrincipal:
         resp = await strict_api.get("/api/import/jobs")
         assert resp.status_code == 200
         assert resp.json() == {"items": []}
+
+
+def test_localized_error_falls_back_to_raw_key_when_catalog_key_missing():
+    """A removed/renamed catalog key must still render text (the raw key),
+    not an empty error."""
+    from types import SimpleNamespace
+
+    job = SimpleNamespace(error_key="import.some_removed_key", error_params={})
+    assert import_api._localized_error(job) == "import.some_removed_key"
+
+
+def test_localized_error_renders_known_key():
+    from types import SimpleNamespace
+
+    from app import i18n
+
+    job = SimpleNamespace(error_key="import.not_found", error_params={})
+    assert import_api._localized_error(job) == i18n.tr("import.not_found")

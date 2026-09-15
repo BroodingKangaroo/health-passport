@@ -60,8 +60,9 @@ def chat_failover_events() -> int:
         return _failover_events
 
 DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-# Per-call HTTP timeout and bounded retries for transient failures (429/5xx).
-# The benchmark's pollution guard counts whatever still escapes.
+# Per-call HTTP timeout and bounded retries for transient failures
+# (429/5xx/network). The benchmark's pollution guard counts whatever still
+# escapes.
 CHAT_CALL_TIMEOUT_S = 300.0
 CHAT_MAX_ATTEMPTS = 3
 CHAT_RETRY_BACKOFF_S = 2.0
@@ -200,10 +201,17 @@ class OpenRouterChatClient:
                 data = self._post(self._chat_payload(
                     hint_messages, temperature, max_tokens,
                     object_rf if use_object else schema_rf))
-            except RuntimeError as e:
+            except (RuntimeError, httpx.TransportError) as e:
                 last_err = e
-                transient = "HTTP 429" in str(e) or "HTTP 5" in str(e)
-                schema_rejected = "HTTP 400" in str(e)
+                # Transport failures (connect/read timeouts, resets, DNS) are
+                # as transient as a 429/5xx: retry them within the same bound.
+                transport_error = isinstance(e, httpx.TransportError)
+                transient = (
+                    transport_error
+                    or "HTTP 429" in str(e)
+                    or "HTTP 5" in str(e)
+                )
+                schema_rejected = not transport_error and "HTTP 400" in str(e)
                 if schema_rejected and attempt == 1:
                     continue  # json_object fallback, no sleep
                 if not transient or attempt == CHAT_MAX_ATTEMPTS:

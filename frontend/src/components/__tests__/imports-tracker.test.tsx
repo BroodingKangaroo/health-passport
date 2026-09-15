@@ -48,6 +48,7 @@ function job(overrides: Partial<ImportJobSummary>): ImportJobSummary {
     updated_at: null,
     error: null,
     restorable: false,
+    saved_entry_id: null,
     merge_conflicts: [],
     ...overrides,
   }

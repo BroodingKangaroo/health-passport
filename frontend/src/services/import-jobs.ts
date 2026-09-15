@@ -40,6 +40,8 @@ export interface ImportJobSummary {
   error: string | null
   /** A dismissed done-extraction can be revived via restoreImportJob. */
   restorable?: boolean
+  /** The entry a `saved` job produced (null for all other statuses). */
+  saved_entry_id: string | null
   /** Display names of the record's biomarkers that already exist in a
    * same-date entry — merging would be refused (409). Empty = mergeable. */
   merge_conflicts?: string[]

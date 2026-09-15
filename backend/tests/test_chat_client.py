@@ -386,3 +386,33 @@ def test_no_json_anywhere_raises_cleanly():
 def test_extract_json_object_rejects_unparseable():
     with pytest.raises(RuntimeError):
         _extract_json_object("{broken")
+
+
+def test_transport_errors_retry_then_succeed(monkeypatch):
+    """Network failures (connect/read timeouts) are transient like a 429/5xx
+    and share the same bounded retry budget."""
+    import httpx
+
+    monkeypatch.setattr("app.services.chat_client.CHAT_RETRY_BACKOFF_S", 0)
+    client, calls = _make_client([
+        httpx.ConnectError("connection refused"),
+        httpx.ReadTimeout("read timed out"),
+        _ok_body('{"name": "n", "value": 5}'),
+    ])
+    resp = client.parse(messages=[{"role": "system", "content": ""}],
+                        response_format=_Out)
+    assert len(calls) == 3
+    assert json.loads(resp.choices[0].message.content)["value"] == 5
+
+
+def test_persistent_transport_error_raises_bounded(monkeypatch):
+    import httpx
+
+    monkeypatch.setattr("app.services.chat_client.CHAT_RETRY_BACKOFF_S", 0)
+    client, calls = _make_client([
+        httpx.ConnectError("still down") for _ in range(5)
+    ])
+    with pytest.raises(httpx.TransportError):
+        client.parse(messages=[{"role": "system", "content": ""}],
+                     response_format=_Out)
+    assert len(calls) == 3  # bounded by CHAT_MAX_ATTEMPTS

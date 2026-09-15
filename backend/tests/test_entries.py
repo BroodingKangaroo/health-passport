@@ -686,6 +686,46 @@ class TestDeleteEntry:
         assert db_session.query(MedicalEntry).filter(MedicalEntry.id == entry_id).first() is not None
         assert db_session.query(Attachment).filter(Attachment.entry_id == entry_id).count() == 1
 
+    async def test_delete_floors_storage_counter_at_zero(self, client, db_session, tmp_path, monkeypatch):
+        """Counter drift (tracked total below the freed bytes) must reset the
+        counter to zero, not silently leave the stale positive value."""
+        import os
+
+        from app.db.models import UsageLimit
+        from app.services.usage_limits import get_limits
+        from tests.seed_data import TEST_USER_ID
+
+        test_dir = str(tmp_path / "uploads_storage_drift")
+        os.makedirs(test_dir, exist_ok=True)
+        monkeypatch.setattr("app.api.entries.UPLOAD_DIR", test_dir)
+
+        content = b"%PDF-1.4 storage-drift fixture"  # 30 bytes > tracked 5
+        upload_resp = await client.post(
+            "/api/entry",
+            data={
+                "type": "blood_test",
+                "date": "2025-04-03",
+                "clinic": "Drift Lab",
+                "title": "Storage Drift",
+                "biomarkers": json.dumps([{"id": "cat-1", "name": "CBC", "rows": []}]),
+            },
+            files={"file": ("fixture.pdf", content, "application/pdf")},
+        )
+        assert upload_resp.status_code == 200
+        entry_id = upload_resp.json()["id"]
+
+        # Force the drift: the tracked counter no longer covers the file size.
+        db_session.query(UsageLimit).filter(UsageLimit.user_id == TEST_USER_ID).update(
+            {"total_upload_size_bytes": 5}
+        )
+        db_session.commit()
+
+        resp = await client.delete(f"/api/entry/{entry_id}")
+        assert resp.status_code == 200
+
+        db_session.expire_all()
+        assert get_limits(db_session, TEST_USER_ID, False)["total_upload_size_bytes"] == 0
+
     async def test_delete_keeps_file_when_other_entry_still_references_it(self, client, db_session, tmp_path, monkeypatch):
         """Regression: the anon→user migration duplicates the attachment row
         so two entries can share one file_path. Deleting one must not unlink

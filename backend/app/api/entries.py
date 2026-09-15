@@ -19,7 +19,7 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from sqlalchemy import String, cast, func, or_, update
+from sqlalchemy import String, case, cast, func, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -957,10 +957,11 @@ def _parse_size_to_bytes(size_str: str) -> int:
 
 
 def _decrement_storage_quota(db: Session, user_id: str, is_anonymous: bool, freed_bytes: int) -> None:
-    """Decrement the user's tracked storage usage by `freed_bytes` (clamped at
-    zero) using a single conditional UPDATE so concurrent deletes don't drive
-    the counter negative. Missing rows are silently skipped — there's nothing
-    to refund against."""
+    """Decrement the user's tracked storage usage by `freed_bytes`, flooring
+    the counter at zero with a single conditional UPDATE so concurrent deletes
+    can't drive it negative. A counter below `freed_bytes` (drift, already-
+    missing files) is reset to zero instead of silently left overstated.
+    Missing rows are silently skipped — there's nothing to refund against."""
     from app.db.models import UsageLimit
     if freed_bytes <= 0:
         return
@@ -969,10 +970,15 @@ def _decrement_storage_quota(db: Session, user_id: str, is_anonymous: bool, free
         .where(
             UsageLimit.user_id == user_id,
             UsageLimit.is_anonymous == is_anonymous,
-            UsageLimit.total_upload_size_bytes >= freed_bytes,
         )
         .values(
-            total_upload_size_bytes=UsageLimit.total_upload_size_bytes - freed_bytes,
+            total_upload_size_bytes=case(
+                (
+                    UsageLimit.total_upload_size_bytes >= freed_bytes,
+                    UsageLimit.total_upload_size_bytes - freed_bytes,
+                ),
+                else_=0,
+            ),
             last_activity=datetime.now(timezone.utc),
         )
     )

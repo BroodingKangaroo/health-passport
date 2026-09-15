@@ -362,7 +362,9 @@ def ocr_document(bytes_data: bytes, ext: str, client: Mistral) -> str:
     The upload + OCR calls use a bounded per-call timeout (see ``OCR_CALL_TIMEOUT_MS``)
     and are retried a few times, because the Mistral Files endpoint intermittently
     stalls on large uploads — without this, a single stuck request would hang the
-    whole SSE stream. Auth/quota failures are not retried.
+    whole SSE stream. Auth/quota failures are not retried at all; an ``invalid``
+    rejection (400/413/414/422) is not retried on the same candidate either
+    (the next candidate is still tried).
 
     Raises OCRProcessingError when OCR processing fails.
     """
@@ -407,15 +409,21 @@ def ocr_document(bytes_data: bytes, ext: str, client: Mistral) -> str:
                 return markdown
             except Exception as e:
                 last_err = e
-                kind = _classify_ocr_error(e).kind
+                classified = _classify_ocr_error(e)
                 # Auth/quota will never succeed on retry — fail fast.
-                if kind in ("auth", "quota"):
-                    raise _classify_ocr_error(e) from e
+                if classified.kind in ("auth", "quota"):
+                    raise classified from e
                 logger.warning(
                     "OCR attempt %d/%d (candidate=%s) failed: %s",
                     attempt, OCR_MAX_ATTEMPTS, c_name, e,
                     exc_info=True,
                 )
+                # `invalid` (400/413/414/422) means the API rejected this
+                # payload — retrying it cannot succeed, so stop burning
+                # attempts and move on to the next candidate (the raw image
+                # can still work when the converted PDF was rejected).
+                if classified.kind == "invalid":
+                    break
 
     raise _classify_ocr_error(last_err)
 

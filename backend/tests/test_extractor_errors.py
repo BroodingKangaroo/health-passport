@@ -196,3 +196,64 @@ def test_llm_extract_parse_retry_provider_error_falls_back():
     record = llm_extract("markdown", client)
     assert client.calls == 2
     assert record.entry_type == "unknown"
+
+
+class _FakeOcrClient:
+    """Mistral-shaped client whose upload always fails with `error` and whose
+    OCR process must never run."""
+
+    def __init__(self, error):
+        self.error = error
+        self.upload_calls = 0
+        from types import SimpleNamespace
+
+        self.files = SimpleNamespace(upload=self._upload)
+        self.ocr = SimpleNamespace(process=self._process)
+
+    def _upload(self, **kwargs):
+        self.upload_calls += 1
+        raise self.error
+
+    def _process(self, **kwargs):
+        raise AssertionError("ocr.process must not run after an upload failure")
+
+
+def test_ocr_invalid_error_does_not_retry_the_same_candidate():
+    """A 400/413-classified rejection is not transient: one upload attempt
+    per candidate (here: the single PDF candidate) instead of OCR_MAX_ATTEMPTS."""
+    from app.services.extractor import OCRProcessingError, ocr_document
+
+    client = _FakeOcrClient(_Err("Status 400", 400))
+    with pytest.raises(OCRProcessingError) as excinfo:
+        ocr_document(b"%PDF-1.4 broken", ".pdf", client)
+    assert excinfo.value.kind == "invalid"
+    assert client.upload_calls == 1
+
+
+def test_ocr_invalid_error_still_tries_the_next_candidate():
+    """An image has two candidates (converted PDF, raw image); an invalid
+    rejection of the first must not skip the second."""
+    import io
+
+    from PIL import Image
+
+    from app.services.extractor import OCRProcessingError, ocr_document
+
+    buf = io.BytesIO()
+    Image.new("RGB", (2, 2), "white").save(buf, format="PNG")
+
+    client = _FakeOcrClient(_Err("Status 422", 422))
+    with pytest.raises(OCRProcessingError):
+        ocr_document(buf.getvalue(), ".png", client)
+    # one attempt on the converted-PDF candidate + one on the raw image
+    assert client.upload_calls == 2
+
+
+def test_ocr_server_error_still_retries():
+    """5xx stays transient: the bounded retry loop is unchanged."""
+    from app.services.extractor import OCR_MAX_ATTEMPTS, OCRProcessingError, ocr_document
+
+    client = _FakeOcrClient(_Err("Status 503", 503))
+    with pytest.raises(OCRProcessingError):
+        ocr_document(b"%PDF-1.4 busy", ".pdf", client)
+    assert client.upload_calls == OCR_MAX_ATTEMPTS

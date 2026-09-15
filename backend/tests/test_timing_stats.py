@@ -1,7 +1,7 @@
 """Tests for the rolling extraction-timing stats behind the SSE `estimate_s`
 progress values. Each test runs against its own in-memory engine — the
-service is monkeypatched away from the shared file-backed SessionLocal so
-test samples never pollute (or read) the dev DB."""
+fixture points the extract_jobs sessionmaker seam at it, so test samples
+never pollute (or read) the dev DB."""
 
 import pytest
 from sqlalchemy import create_engine
@@ -13,15 +13,18 @@ from app.db.session import Base
 
 
 @pytest.fixture
-def stats_db(monkeypatch):
+def stats_db():
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
     )
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     Base.metadata.create_all(bind=engine)
-    monkeypatch.setattr(timing_stats, "SessionLocal", TestingSessionLocal)
-    return TestingSessionLocal
+    from app.services import extract_jobs
+
+    extract_jobs.set_sessionmaker(TestingSessionLocal)
+    yield TestingSessionLocal
+    extract_jobs.set_sessionmaker(None)
 
 
 def _rows(stats_db, stage):

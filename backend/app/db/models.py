@@ -289,6 +289,8 @@ class ImportFunnelEvent(Base):
     # questions: "docs imported per new user" (submitted/saved counts) and
     # "review completion rate" (saved / extracted). Cancelled jobs write no
     # rows. Rows are never deleted — they are counters, not job state.
+    # Intentionally write-only: the data is collected ahead of the planned
+    # metrics/dashboard work; no app code reads it yet.
     id = Column(Integer, primary_key=True, autoincrement=True)
     # "submitted" | "extracted" | "saved" | "failed"
     event = Column(String, nullable=False)

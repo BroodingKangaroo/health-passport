@@ -20,7 +20,6 @@ from typing import Optional
 from sqlalchemy import delete, select
 
 from app.db.models import ExtractionTimingSample
-from app.db.session import SessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +56,16 @@ _FALLBACK_EXTRACT_SEC_PER_CHAR = 0.0023
 _FALLBACK_MATCH_S = 3.5
 
 
+def _session_factory():
+    """The worker-facing sessionmaker seam (``extract_jobs.get_sessionmaker``)
+    so timing writes land in the same DB as the extraction that produced them
+    and tests can redirect them away from the file-backed default. Imported
+    lazily because ``extract_jobs`` imports this module at top level."""
+    from app.services.extract_jobs import get_sessionmaker
+
+    return get_sessionmaker()
+
+
 def record(stage: str, seconds: float, chars: int = 0) -> None:
     """Persist one completed stage duration and prune old samples.
 
@@ -69,7 +78,7 @@ def record(stage: str, seconds: float, chars: int = 0) -> None:
     if stage == STAGE_EXTRACT and chars <= 0:
         return
     try:
-        db = SessionLocal()
+        db = _session_factory()()
         try:
             db.add(ExtractionTimingSample(stage=stage, seconds=seconds, chars=chars))
             db.commit()
@@ -98,7 +107,7 @@ def _prune(db, stage: str) -> None:
 
 
 def _recent(stage: str) -> list[ExtractionTimingSample]:
-    db = SessionLocal()
+    db = _session_factory()()
     try:
         return list(
             db.query(ExtractionTimingSample)

@@ -74,10 +74,12 @@ def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str, commit: boo
         BiomarkerDefinition.scope == "local"
     ).all()
 
-    # Map old def IDs to new def IDs
+    # Map old def IDs to new def IDs. The per-user scheme matches the
+    # matcher/manual-entry paths, so the startup legacy-id rewriter
+    # (app/db/session.py) never has to touch (and merge) these rows.
     def_id_map: dict[str, str] = {}
     for defn in defs:
-        new_def_id = f"local-{uuid.uuid4().hex[:12]}"
+        new_def_id = f"local-{new_user_id}-{uuid.uuid4().hex[:12]}"
         def_id_map[defn.id] = new_def_id
 
         new_def = BiomarkerDefinition(

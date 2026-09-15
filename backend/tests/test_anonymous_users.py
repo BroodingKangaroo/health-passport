@@ -351,6 +351,69 @@ class TestDataMigration:
             "clinic": "Other Clinic",
         }
 
+    def test_copied_local_def_ids_use_canonical_scheme(self, anon_db_session):
+        """Copied local definitions must carry the per-user id scheme the
+        matcher/manual paths use, so the startup legacy-id rewriter leaves
+        them alone (the old ``local-{uuid12}`` shape got rewritten)."""
+        from app.db.session import migrate_local_definition_ids
+
+        entry = MedicalEntry(
+            id="anon-entry-legacy-id",
+            patient_id=TEST_ANON_ID,
+            type="blood_test",
+            date=datetime.fromisoformat("2026-01-01T00:00:00").replace(tzinfo=timezone.utc),
+            title="Legacy Id Entry",
+            clinic="Test Clinic",
+        )
+        # The anon def itself uses the pre-#37 tenant-blind id shape.
+        defn = BiomarkerDefinition(
+            id="local-abcdef123456",
+            names={"en": "Legacy Marker"},
+            category="Custom",
+            reference={"kind": "interval", "low": 0.0, "high": 10.0},
+            unit="x",
+            scope="local",
+            user_id=TEST_ANON_ID,
+            reference_source="local",
+        )
+        reading = BiomarkerReading(
+            entry_id=entry.id,
+            biomarker_id=defn.id,
+            value=5.0,
+            reference={"kind": "interval", "low": 0.0, "high": 10.0},
+            status="normal",
+            original_name="Legacy Marker",
+            original_value="5",
+        )
+        anon_db_session.add_all([entry, defn, reading])
+        anon_db_session.commit()
+
+        copy_anonymous_data(anon_db_session, TEST_ANON_ID, TEST_USER_ID)
+
+        copied = (
+            anon_db_session.query(BiomarkerDefinition)
+            .filter(BiomarkerDefinition.user_id == TEST_USER_ID)
+            .one()
+        )
+        assert copied.id.startswith(f"local-{TEST_USER_ID}-")
+        assert not copied.id.startswith("local-abcdef123456")
+
+        # The startup rewriter must leave the copied def (and its reading) alone.
+        reading_count_before = anon_db_session.query(BiomarkerReading).filter(
+            BiomarkerReading.biomarker_id == copied.id
+        ).count()
+        migrate_local_definition_ids(anon_db_session.get_bind())
+        anon_db_session.expire_all()
+        still = (
+            anon_db_session.query(BiomarkerDefinition)
+            .filter(BiomarkerDefinition.id == copied.id)
+            .first()
+        )
+        assert still is not None
+        assert anon_db_session.query(BiomarkerReading).filter(
+            BiomarkerReading.biomarker_id == copied.id
+        ).count() == reading_count_before
+
     def test_copy_anonymous_data_copies_instrumental_and_source_language(
         self, anon_db_session
     ):

@@ -63,9 +63,12 @@ def _localized_error(job: ExtractionJob) -> Optional[str]:
         return None
     params = job.error_params or {}
     try:
-        return tr_opt(job.error_key, **params)
+        resolved = tr_opt(job.error_key, **params)
     except (KeyError, ValueError):
         return job.error_key
+    # A catalog key removed/renamed since the failure was recorded must still
+    # render text; the raw key is the diagnostic fallback (never null).
+    return resolved if resolved is not None else job.error_key
 
 
 def _job_restorable(job: ExtractionJob) -> bool:
@@ -100,6 +103,9 @@ def _job_summary(job: ExtractionJob) -> dict:
         # Restore eligibility (see _job_restorable).
         "restorable": _job_restorable(job),
         "merge_conflicts": [],
+        # The entry a saved job produced (history rows), surfaced so the
+        # tracker can link back to the timeline entry.
+        "saved_entry_id": job.saved_entry_id,
     }
 
 

@@ -363,7 +363,8 @@ saves it. Nothing is persisted without user review.
 - `GET /api/import/jobs` returns ALL non-expired rows (active work +
   `saved`/`dismissed`/`cancelled` history); the frontend sections them. Each
   summary also carries `restorable` (a dismissed job that still holds its
-  staged result — revivable via restore, below) and `merge_conflicts`
+  staged result — revivable via restore, below), `saved_entry_id` (the entry
+  a `saved` history row produced; null otherwise) and `merge_conflicts`
   (display names of the staged blood-test record's biomarkers that already
   exist in a same-date blood-test entry — computed batched at list time by
   `_merge_overlap_conflicts`, mirroring the merge endpoint's rule:
@@ -401,7 +402,9 @@ saves it. Nothing is persisted without user review.
   unknown-type), `saved` (reviewed entry consumed the job), `failed`.
   Cancelled jobs write nothing. Answers "docs imported per new user" and
   "review completion rate" (saved/extracted) before a review fast-track is
-  ever considered. Rows are never deleted.
+  ever considered. Rows are never deleted. Deliberately write-only for now:
+  the data is collected ahead of the planned metrics/dashboard work
+  (ISSUES.md) — nothing in the app reads it yet.
 
 ### Save / merge with `import_job_id`
 
