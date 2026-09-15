@@ -638,6 +638,54 @@ class TestDeleteEntry:
 
         assert db_session.query(MedicalEntry).filter(MedicalEntry.id == entry_id).first() is None
 
+    async def test_delete_commit_failure_keeps_file_and_rows(self, client, db_session, tmp_path, monkeypatch):
+        """A failed deletion commit must leave both the DB rows and the bytes
+        intact: the unlink happens only after the delete is durable, so a
+        commit failure can never leave rows pointing at deleted files."""
+        import os
+
+        import pytest
+
+        from app.db.models import Attachment, MedicalEntry
+
+        test_dir = str(tmp_path / "uploads_delete_commit_fail")
+        os.makedirs(test_dir, exist_ok=True)
+        monkeypatch.setattr("app.api.entries.UPLOAD_DIR", test_dir)
+
+        content = b"%PDF-1.4 delete-commit-failure fixture"
+        upload_resp = await client.post(
+            "/api/entry",
+            data={
+                "type": "blood_test",
+                "date": "2025-04-02",
+                "clinic": "Delete Lab",
+                "title": "Commit-Failure Delete",
+                "biomarkers": json.dumps([{"id": "cat-1", "name": "CBC", "rows": []}]),
+            },
+            files={"file": ("fixture.pdf", content, "application/pdf")},
+        )
+        assert upload_resp.status_code == 200
+        entry_id = upload_resp.json()["id"]
+
+        att = db_session.query(Attachment).filter(Attachment.entry_id == entry_id).first()
+        saved_path = os.path.join(test_dir, os.path.basename(att.file_path))
+        assert os.path.isfile(saved_path)
+
+        def failing_commit():
+            raise RuntimeError("simulated commit failure")
+
+        monkeypatch.setattr(db_session, "commit", failing_commit)
+        with pytest.raises(RuntimeError):
+            await client.delete(f"/api/entry/{entry_id}")
+
+        # The request aborted mid-transaction — clear it before asserting.
+        db_session.rollback()
+
+        # then — nothing was unlinked and no row disappeared
+        assert os.path.isfile(saved_path)
+        assert db_session.query(MedicalEntry).filter(MedicalEntry.id == entry_id).first() is not None
+        assert db_session.query(Attachment).filter(Attachment.entry_id == entry_id).count() == 1
+
     async def test_delete_keeps_file_when_other_entry_still_references_it(self, client, db_session, tmp_path, monkeypatch):
         """Regression: the anon→user migration duplicates the attachment row
         so two entries can share one file_path. Deleting one must not unlink
@@ -1343,6 +1391,37 @@ class TestMergeEntry:
 
         after = get_limits(db_session, TEST_USER_ID, False)["total_upload_size_bytes"]
         assert after == before + len(content)
+
+    async def test_merge_commit_failure_unlinks_saved_file(self, client, db_session, tmp_path, monkeypatch):
+        """A failed merge commit must not orphan the freshly written file —
+        the save_entry safety net (ISSUES.md #54) applies to merges too."""
+        import os
+
+        import pytest
+
+        from app.db.models import Attachment
+
+        test_dir = str(tmp_path / "uploads_merge_commit_fail")
+        os.makedirs(test_dir, exist_ok=True)
+        monkeypatch.setattr("app.api.entries.UPLOAD_DIR", test_dir)
+
+        target_id = await self._create_target(client)
+
+        def failing_commit():
+            raise RuntimeError("simulated commit failure")
+
+        monkeypatch.setattr(db_session, "commit", failing_commit)
+        with pytest.raises(RuntimeError):
+            await client.post(
+                f"/api/entry/{target_id}/merge",
+                data={"date": "2025-03-10", "biomarkers": _biomarkers_json([_row("Creatinine", "0.9")])},
+                files={"file": ("second_draw.pdf", b"%PDF-1.4 orphan fixture", "application/pdf")},
+            )
+        db_session.rollback()
+
+        # then — no Attachment row survived and no file was left behind
+        assert db_session.query(Attachment).filter(Attachment.entry_id == target_id).count() == 0
+        assert os.listdir(test_dir) == []
 
     async def test_merge_multiple_documents_on_one_entry(self, client, db_session, tmp_path, monkeypatch):
         """Two merges with files attach both — attachment ids must be unique."""

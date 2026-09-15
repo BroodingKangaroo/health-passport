@@ -122,6 +122,18 @@ class TestChangePassword:
         assert resp.status_code == 400
         assert resp.json()["detail"] == "Password must be at least 8 characters"
 
+    async def test_new_password_too_long_400(self, db_session):
+        """bcrypt truncates at 72 bytes — the cap is enforced before hashing."""
+        async with _make_client(db_session) as ac:
+            resp = await ac.post(
+                "/api/auth/change-password",
+                json={"current_password": "testpassword123", "new_password": "a" * 73},
+            )
+        assert resp.status_code == 400
+        assert "72" in resp.json()["detail"]
+        db_session.expire_all()
+        assert authenticate_user(db_session, "test@example.com", "testpassword123") is not None
+
     async def test_anonymous_gets_401(self, db_session):
         # No get_current_user override and no token → the real 401 path.
         async with _make_client(db_session, override_current_user=False) as ac:

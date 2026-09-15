@@ -15,6 +15,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jwt import ExpiredSignatureError
 from pydantic import BaseModel, EmailStr
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -44,6 +45,24 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 PASSWORD_MIN_LENGTH = 8
+# bcrypt silently truncates at 72 BYTES — a longer input would make two
+# different passwords hash identically. The cap is in bytes (not chars):
+# multibyte input can exceed it at well under 72 characters.
+PASSWORD_MAX_BYTES = 72
+
+
+def _validate_password_length(password: str) -> None:
+    """Reject passwords outside the bcrypt-safe range with a localized 400."""
+    if len(password) < PASSWORD_MIN_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=i18n.tr("auth.password_too_short", min_length=PASSWORD_MIN_LENGTH),
+        )
+    if len(password.encode("utf-8")) > PASSWORD_MAX_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=i18n.tr("auth.password_too_long", max_bytes=PASSWORD_MAX_BYTES),
+        )
 
 
 class TokenExpiredError(HTTPException):
@@ -200,11 +219,7 @@ def register(
     db: Session = Depends(get_db)
 ):
     """Register a new user, optionally copying anonymous data."""
-    if len(user_data.password) < PASSWORD_MIN_LENGTH:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=i18n.tr("auth.password_too_short", min_length=PASSWORD_MIN_LENGTH),
-        )
+    _validate_password_length(user_data.password)
 
     # Check if email already exists
     if get_user_by_email(db, user_data.email):
@@ -350,11 +365,7 @@ def change_password(
     mirroring /api/auth/me. Existing JWT sessions stay valid until their normal
     expiry — same semantics as password reset.
     """
-    if len(body.new_password) < PASSWORD_MIN_LENGTH:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=i18n.tr("auth.password_too_short", min_length=PASSWORD_MIN_LENGTH),
-        )
+    _validate_password_length(body.new_password)
     if not verify_password(body.current_password, current_user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -469,12 +480,33 @@ def _record_throttle(key: str) -> None:
 
 
 def _prune_throttle_keys() -> None:
-    """Bound the in-memory throttle: drop keys whose windows have emptied."""
-    if len(_throttle_windows) < _THROTTLE_MAX_KEYS:
-        return
+    """Bound the in-memory throttle map.
+
+    Every window is at most ``_RESET_WINDOW`` long, so a key whose entries are
+    all older than that can never affect a decision again — drop it (this is
+    what bounds one-shot keys, e.g. distinct failed-login emails, which are
+    never queried a second time). A burst of distinct keys can still exceed
+    the cap within the window, so evict the least-recently-active windows down
+    to the cap; memory stays bounded by construction."""
+    now = datetime.now(timezone.utc)
     for key, q in list(_throttle_windows.items()):
+        while q and now - q[0] > _RESET_WINDOW:
+            q.popleft()
         if not q:
             del _throttle_windows[key]
+    over = len(_throttle_windows) - _THROTTLE_MAX_KEYS
+    if over <= 0:
+        return
+    evicted = 0
+    for key, _ in sorted(
+        _throttle_windows.items(), key=lambda kv: kv[1][-1]
+    )[:over]:
+        del _throttle_windows[key]
+        evicted += 1
+    logger.warning(
+        "Throttle map exceeded %d keys — evicted %d least-recently-active windows",
+        _THROTTLE_MAX_KEYS, evicted,
+    )
 
 
 _RESET_EMAIL_LIMIT = 5
@@ -528,7 +560,12 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest, db: Ses
             token_hash=_hash_reset_token(token),
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_TTL_MINUTES),
         ))
-        db.commit()
+    # Commit even when the email is unknown: the opportunistic purge above
+    # must persist for unknown emails too (get_db only closes the session,
+    # which would otherwise roll the DELETE back).
+    db.commit()
+
+    if user:
         reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
         try:
             await run_in_threadpool(send_reset_email, body.email, reset_url)
@@ -543,11 +580,7 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest, db: Ses
 @router.post("/reset-password")
 async def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
     """Set a new password using a one-time reset token."""
-    if len(body.new_password) < PASSWORD_MIN_LENGTH:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=i18n.tr("auth.password_too_short", min_length=PASSWORD_MIN_LENGTH),
-        )
+    _validate_password_length(body.new_password)
 
     token = db.query(models.PasswordResetToken).filter(
         models.PasswordResetToken.token_hash == _hash_reset_token(body.token)
@@ -570,8 +603,25 @@ async def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_d
             detail=i18n.tr("auth.invalid_reset_token"),
         )
 
+    # Single-use claim: the conditional UPDATE only matches a still-unused
+    # token, so a concurrent second request with the same token loses the
+    # race (rowcount 0) and can never overwrite the password again. Claim
+    # before touching the hash so a later failure rolls both back together.
+    claimed = db.execute(
+        update(models.PasswordResetToken)
+        .where(
+            models.PasswordResetToken.id == token.id,
+            models.PasswordResetToken.used_at.is_(None),
+        )
+        .values(used_at=datetime.now(timezone.utc))
+    )
+    if claimed.rowcount != 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=i18n.tr("auth.invalid_reset_token"),
+        )
+
     user.hashed_password = get_password_hash(body.new_password)
-    token.used_at = datetime.now(timezone.utc)
     db.commit()
 
     return {"message": i18n.tr("auth.message_password_updated")}

@@ -134,6 +134,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Password must be at least {min_length} characters",
         "ru": "Пароль должен содержать не менее {min_length} символов",
     },
+    "auth.password_too_long": {
+        "en": "Password must be at most {max_bytes} bytes (multi-byte characters count as several)",
+        "ru": "Пароль должен быть не длиннее {max_bytes} байт (многобайтовые символы считаются за несколько)",
+    },
     "auth.email_already_registered": {
         "en": "Email already registered",
         "ru": "Этот email уже зарегистрирован",

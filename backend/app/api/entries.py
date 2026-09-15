@@ -906,6 +906,7 @@ async def merge_entry(
         entry.notes = (entry.notes + "\n" + notes) if entry.notes else notes
 
     staged_job = None
+    att = None
     if import_job_id:
         # Claim AFTER the conflict checks: a 409 above leaves nothing
         # claimed; from here a failure rolls the claim back (job stays
@@ -914,9 +915,18 @@ async def merge_entry(
         _attach_staged_file(db, entry_id, user_id, is_anonymous, staged_job)
         _consume_staged_job(db, staged_job, entry_id)
     elif file and file.filename:
-        await _save_attachment(db, entry_id, user_id, is_anonymous, file)
+        att = await _save_attachment(db, entry_id, user_id, is_anonymous, file)
 
-    db.commit()
+    try:
+        db.commit()
+    except BaseException:
+        # Same safety net as save_entry (ISSUES.md #54): a failed commit must
+        # not leave a freshly written file on disk without its row. A staged
+        # job's file is NOT unlinked — the rollback restores the claim, so the
+        # job (and its file) stays reviewable.
+        if att is not None and att.file_path:
+            unlink_upload_file(att.file_path, UPLOAD_DIR)
+        raise
     return SaveEntryResponse(
         success=True,
         message=i18n.tr("entries.message_entry_merged"),
@@ -1006,21 +1016,30 @@ async def delete_entry(
     visit_id = entry.id if entry.visit_data is not None else None
 
     db.delete(entry)
-    db.flush()  # surface cascade + unlink before we touch the filesystem
+    db.flush()  # surface cascade errors before the commit below
+
+    # Commit the deletion BEFORE touching the filesystem: once the rows are
+    # durably gone, a failed unlink can at worst leave a stray file (safe),
+    # never a committed row pointing at deleted bytes (the pre-fix failure
+    # mode when commit failed after the unlink).
+    db.commit()
 
     freed_bytes = unlink_unreferenced_files(db, attachment_paths, UPLOAD_DIR)
 
-    if freed_bytes > 0:
-        # Prefer the on-disk size (truth) over the parsed human string
-        # (fuzzy) when we have it. Fall back to the parsed sum only when the
-        # file was already missing.
-        _decrement_storage_quota(db, user_id, is_anonymous, freed_bytes)
-    elif attachment_size_bytes > 0:
-        # All attachment files were missing; refund the size we knew about
-        # so the counter doesn't overstate storage in use.
-        _decrement_storage_quota(db, user_id, is_anonymous, attachment_size_bytes)
-
-    db.commit()
+    # Prefer the on-disk size (truth) over the parsed human string (fuzzy)
+    # when we have it. Fall back to the parsed sum only when the file was
+    # already missing, so the counter doesn't overstate storage in use.
+    refund_bytes = freed_bytes if freed_bytes > 0 else attachment_size_bytes
+    if refund_bytes > 0:
+        try:
+            _decrement_storage_quota(db, user_id, is_anonymous, refund_bytes)
+            db.commit()
+        except Exception:
+            # The deletion is already durable; a stale (overstated) quota
+            # counter is the safe direction — never fail the request over a
+            # best-effort refund.
+            db.rollback()
+            logger.warning("Failed to refund storage quota for entry %s", entry_id, exc_info=True)
 
     return {
         "success": True,
