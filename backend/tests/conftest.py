@@ -13,6 +13,32 @@ from tests.seed_data import seed_test_db
 TEST_DATABASE_URL = "sqlite:///:memory:"
 
 
+@pytest.fixture(autouse=True)
+def _isolate_import_workers():
+    """Stop the process-global import-job worker pool after EVERY test.
+
+    ``app/services/extract_jobs.py`` keeps its queue + daemon worker threads
+    module-global (correct for the single-process backend). Tests that
+    exercise the real thread path (``test_extract_jobs_worker.py``) start
+    those workers, and they would otherwise keep running for the rest of the
+    session, dequeueing a LATER test's job and running it through whatever
+    sessionmaker that test injected. When the later test's engine shares one
+    DBAPI connection between threads (``StaticPool`` in-memory, as
+    ``anon_api``/``api`` do), that worker races the test's own ``Session``
+    on a single SQLite connection and corrupts its savepoint bookkeeping
+    (``no such savepoint`` / ``database schema has changed``).
+
+    Teardown (not setup), so a test that intentionally starts workers still
+    gets them; the shutdown drains the queue before stopping, so nothing is
+    left to execute against an already torn-down sessionmaker.
+    """
+    yield
+    import app.services.extract_jobs as _ej
+
+    _ej.shutdown_workers()
+    _ej.set_sessionmaker(None)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _seeded_shared_database():
     """The matcher tests (and a few auth tests) query the SHARED file-backed

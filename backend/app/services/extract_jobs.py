@@ -81,10 +81,16 @@ def get_sessionmaker() -> sessionmaker:
 # In-memory job queue (per-process by design — guarded at startup). Holds job
 # ids; the daemon workers consume them. Threads start lazily on first
 # enqueue.
-job_queue: queue.Queue[str] = queue.Queue()
+job_queue: queue.Queue = queue.Queue()
 
 _workers_started = False
+_worker_threads: list[threading.Thread] = []
 _workers_lock = threading.Lock()
+
+# Sentinel ``shutdown_workers`` enqueues to wake each worker: a worker that
+# dequeues it returns instead of running ``process_job`` (everything else on
+# the queue is a job-id string).
+_WORKER_STOP = object()
 
 
 def enqueue_job(job_id: str) -> None:
@@ -104,12 +110,60 @@ def _ensure_workers() -> None:
                 target=_worker_loop, args=(i,), name=f"import-worker-{i}", daemon=True
             )
             thread.start()
+            _worker_threads.append(thread)
         _workers_started = True
+
+
+def shutdown_workers(timeout: float = 5.0) -> int:
+    """Stop the daemon worker threads and empty the queue. Idempotent.
+
+    The workers are process-global and, once started, would otherwise live
+    until the process exits — fine in production (a daemon pool that serves
+    the process lifetime) but wrong for a test session, where a worker left
+    over from an earlier test would dequeue a LATER test's job and run it
+    through that test's injected sessionmaker. That is a cross-test leak of
+    thread + queue state, not a production race: production sessions come
+    from ``SessionLocal()`` (a fresh connection per session), while several
+    tests inject a ``StaticPool`` in-memory engine whose single DBAPI
+    connection is shared with the test's own ``Session`` — two threads on
+    one SQLite connection is what corrupts the savepoint bookkeeping.
+
+    The queue is drained BEFORE the stop sentinels go in, so no leftover
+    job id is ever executed against a sessionmaker the caller has already
+    torn down. Returns the number of workers signalled (0 when none ran).
+    """
+    global _workers_started
+    with _workers_lock:
+        threads = list(_worker_threads)
+        _worker_threads.clear()
+        _workers_started = False
+    drained = 0
+    while True:
+        try:
+            job_queue.get_nowait()
+            drained += 1
+        except queue.Empty:
+            break
+    if not threads:
+        return 0
+    for _ in threads:
+        job_queue.put(_WORKER_STOP)
+    for thread in threads:
+        thread.join(timeout)
+        if thread.is_alive():
+            logger.warning(
+                "Import worker %s did not stop within %.1fs", thread.name, timeout
+            )
+    logger.info("Import workers stopped (%d threads, %d queued jobs dropped)", len(threads), drained)
+    return len(threads)
 
 
 def _worker_loop(worker_idx: int) -> None:
     while True:
         job_id = job_queue.get()
+        if job_id is _WORKER_STOP:
+            job_queue.task_done()
+            return
         try:
             process_job(job_id)
         except Exception:

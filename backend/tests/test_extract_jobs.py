@@ -3,6 +3,7 @@ single-process guard, SQLite WAL/busy_timeout infra."""
 
 import os
 import queue as queue_mod
+import threading
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -68,6 +69,44 @@ def make_job(db, **overrides) -> ExtractionJob:
 
 def get_usage(db) -> UsageLimit:
     return db.query(UsageLimit).filter(UsageLimit.user_id == TEST_USER_ID).first()
+
+
+def _live_worker_names() -> list[str]:
+    return [t.name for t in threading.enumerate() if t.name.startswith("import-worker")]
+
+
+class TestWorkerShutdown:
+    """``shutdown_workers`` is the seam that keeps the process-global worker
+    pool from leaking across tests (conftest's autouse isolation fixture);
+    without it a worker started by one test dequeues a later test's job and
+    races that test's ``Session`` on its injected single-connection engine."""
+
+    def test_shutdown_stops_the_pool_and_is_idempotent(self, jobs_db, monkeypatch):
+        # The fixture's job is to point ``set_sessionmaker`` at a throwaway
+        # engine, so a stray worker can never reach the file-backed global DB.
+        _db, _sm, _dir = jobs_db
+        assert _live_worker_names() == []
+        assert ej.shutdown_workers() == 0  # nothing started yet: a no-op
+
+        processed = []
+        handled = threading.Event()
+
+        def fake_process_job(job_id):
+            processed.append(job_id)
+            handled.set()
+
+        monkeypatch.setattr(ej, "process_job", fake_process_job)
+        ej.enqueue_job("job-a")  # starts the daemon pool lazily
+        assert handled.wait(5), "worker never dequeued the enqueued job"
+        assert ej._workers_started is True
+        assert _live_worker_names() == ["import-worker-0"]
+
+        assert ej.shutdown_workers() == 1
+        assert ej._workers_started is False
+        assert _live_worker_names() == []
+        assert ej.job_queue.empty()
+        assert processed == ["job-a"]
+        assert ej.shutdown_workers() == 0  # idempotent
 
 
 class TestModelDefaults:
