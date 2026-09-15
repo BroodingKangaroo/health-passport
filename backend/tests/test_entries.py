@@ -762,7 +762,9 @@ class TestDeleteEntry:
                 entry_id=eid,
                 name="shared.pdf",
                 type="Lab Report",
-                size=f"{os.path.getsize(shared_path) // 1024} KB",
+                # A deliberately non-zero parsed size: the old parsed-size
+                # fallback refunded this even though the file was kept.
+                size="1 KB",
                 file_path=file_path,
             ))
         db_session.commit()

@@ -71,4 +71,63 @@ describe('printAuthedDocument', () => {
       vi.useRealTimers()
     }
   })
+
+  it('cleans up after the safety timeout even if load never fires', async () => {
+    vi.useFakeTimers()
+    try {
+      await printAuthedDocument('/static/uploads/report.pdf')
+
+      expect(document.querySelector('iframe')).not.toBeNull()
+      vi.advanceTimersByTime(60_000)
+      expect(document.querySelector('iframe')).toBeNull()
+      expect(URL.revokeObjectURL).toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('removes the iframe when print() throws', async () => {
+    await printAuthedDocument('/static/uploads/report.pdf')
+
+    const iframe = document.querySelector('iframe') as HTMLIFrameElement
+    const win = iframe.contentWindow as PrintWindow
+    win.print = () => {
+      throw new Error('print blocked')
+    }
+    fireEvent.load(iframe)
+
+    expect(document.querySelector('iframe')).toBeNull()
+    expect(URL.revokeObjectURL).toHaveBeenCalled()
+  })
+
+  it('cleans up when the iframe has no contentWindow', async () => {
+    await printAuthedDocument('/static/uploads/report.pdf')
+
+    const iframe = document.querySelector('iframe') as HTMLIFrameElement
+    Object.defineProperty(iframe, 'contentWindow', {
+      configurable: true,
+      get: () => null,
+    })
+    fireEvent.load(iframe)
+
+    expect(document.querySelector('iframe')).toBeNull()
+    expect(URL.revokeObjectURL).toHaveBeenCalled()
+  })
+
+  it('revokes both blob URLs for an image document', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(new Blob(['img'], { type: 'image/png' })),
+    }) as unknown as typeof fetch
+
+    await printAuthedDocument('/static/uploads/scan.png')
+
+    const iframe = document.querySelector('iframe') as HTMLIFrameElement
+    const win = stubPrint(iframe)
+    fireEvent.load(iframe)
+    win.onafterprint!(new Event('afterprint'))
+
+    // The HTML wrapper URL and the image URL.
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2)
+  })
 })

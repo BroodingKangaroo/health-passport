@@ -196,7 +196,11 @@ export function DocumentViewer({ url, fill = false, actions }: DocumentViewerPro
       const task = pdfLoadingTaskRef.current
       pdfLoadingTaskRef.current = null
       if (task) {
-        try { void task.destroy() } catch {}
+        try {
+          // destroy() rejects when the worker was already torn down; that is
+          // an expected teardown outcome, not an unhandled rejection.
+          void task.destroy().catch(() => {})
+        } catch {}
       }
     }
   }, [url, isImage])

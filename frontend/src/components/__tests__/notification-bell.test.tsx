@@ -153,9 +153,9 @@ describe('NotificationBell', () => {
     })
     renderBell()
     fireEvent.click(await screen.findByTestId('notification-bell'))
-    // The header also offers "Mark all read" — scope to the item's row.
+    // The header offers "Mark all read" — scope to the item's row.
     const row = (await screen.findByText('lab.pdf')).closest('li') as HTMLElement
-    fireEvent.click(within(row).getByRole('button', { name: 'Mark all read' }))
+    fireEvent.click(within(row).getByRole('button', { name: 'Mark read' }))
     await waitFor(() => expect(readOneMock).toHaveBeenCalledTimes(1))
     expect(readOneMock).toHaveBeenCalledWith('n4')
   })

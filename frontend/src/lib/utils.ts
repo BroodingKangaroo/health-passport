@@ -71,15 +71,19 @@ export async function printAuthedDocument(url: string): Promise<void> {
   iframe.style.border = '0'
   document.body.appendChild(iframe)
 
-  let timer: ReturnType<typeof setTimeout> | undefined
   let cleanedUp = false
   const cleanup = () => {
     if (cleanedUp) return
     cleanedUp = true
-    if (timer !== undefined) clearTimeout(timer)
     iframe.remove()
     revoke()
   }
+
+  // Safety net armed BEFORE the load handler: an iframe that never fires
+  // `load` (revoked blob URL, replaced body) is still released. `cleanedUp`
+  // makes the afterprint/timeout/throw paths collapse into one cleanup, so
+  // the pending timer needs no cancellation.
+  setTimeout(cleanup, 60_000)
 
   iframe.onload = () => {
     const w = iframe.contentWindow
@@ -89,9 +93,6 @@ export async function printAuthedDocument(url: string): Promise<void> {
       return
     }
     w.onafterprint = cleanup
-    // Safety net: afterprint does not fire for programmatic prints in some
-    // browsers (and two cleanups are harmless — `cleanedUp` makes it once).
-    timer = setTimeout(cleanup, 60_000)
     try { w.focus() } catch {}
     try { w.print() } catch { cleanup() }
   }

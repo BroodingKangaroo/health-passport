@@ -180,4 +180,44 @@ describe('DocumentViewer', () => {
     await Promise.resolve()
     expect(pdfjsMock.destroy).toHaveBeenCalledTimes(1)
   })
+
+  it('never creates a loading task when the fetch resolves after unmount', async () => {
+    let resolveFetch: (value: unknown) => void = () => {}
+    global.fetch = vi.fn(
+      () => new Promise((resolve) => { resolveFetch = resolve }),
+    ) as unknown as typeof fetch
+
+    const { unmount } = render(
+      <TestI18nProvider>
+        <DocumentViewer url="/static/uploads/cancelled.pdf" />
+      </TestI18nProvider>,
+    )
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled())
+    unmount()
+
+    resolveFetch({
+      ok: true,
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(pdfjsMock.getDocument).not.toHaveBeenCalled()
+  })
+
+  it('destroys the loading task when switching from a PDF to an image', async () => {
+    const { rerender } = render(
+      <TestI18nProvider>
+        <DocumentViewer url="/static/uploads/first.pdf" />
+      </TestI18nProvider>,
+    )
+    await waitFor(() => expect(pdfjsMock.getPage).toHaveBeenCalled())
+
+    rerender(
+      <TestI18nProvider>
+        <DocumentViewer url="/static/uploads/scan.png" />
+      </TestI18nProvider>,
+    )
+
+    await waitFor(() => expect(pdfjsMock.destroy).toHaveBeenCalledTimes(1))
+    expect(await screen.findByAltText('Document preview')).toBeDefined()
+  })
 })

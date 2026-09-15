@@ -108,6 +108,13 @@ class TestSaveWithJobId:
         # The staged file is NOT unlinked — the attachment references it.
         assert os.path.isfile(os.path.join(str(upload_dir), os.path.basename(att.file_path)))
 
+        # The list summary exposes the saved entry id so history can deep-link.
+        listing = await client.get("/api/import/jobs")
+        assert listing.status_code == 200
+        summary = next(j for j in listing.json()["items"] if j["id"] == job.id)
+        assert summary["status"] == "saved"
+        assert summary["saved_entry_id"] == entry_id
+
     @pytest.mark.asyncio
     async def test_save_rejects_foreign_queued_expired_jobs(
         self, client, db_session, monkeypatch, tmp_path

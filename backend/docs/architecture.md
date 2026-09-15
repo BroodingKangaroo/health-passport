@@ -605,8 +605,10 @@ extractions "forget" units.
   references the same path — so the anon→user migration case (which
   duplicates the attachment row, see `auth.py:168`) is safe and never unlinks
   a still-shared file.
-- Storage quota is refunded by a single conditional `UPDATE UsageLimit` so
-  concurrent deletes cannot drive the counter negative.
+- Storage quota is refunded in one `UPDATE UsageLimit` per delete: the
+  counter is floored at zero (CASE, so drift self-heals) and only files that
+  were actually unlinked (or already missing) are refunded — a still-shared
+  file is kept and refunds nothing.
 - Scoped to `user_id`; unknown or other-user's ids return 404 (no info leak).
 - Schema: `DeleteEntryResponse` in `app/schemas/common.py`.
 
@@ -745,9 +747,10 @@ extractions "forget" units.
 
 - Registration/login are credentials-based; the frontend proxies them through
   NextAuth (`/api/auth/register`, `/api/auth/login`). Passwords are bcrypt
-  hashed (`app/auth.py`) and must be 8–72 bytes (bcrypt truncates at 72; the
-  cap is enforced on the backend for both register and reset). JWTs are signed
-  with `SECRET_KEY`/`.jwt_secret`.
+  hashed (`app/auth.py`) and must be at least 8 characters and at most 72
+  bytes (bcrypt truncates at 72; enforced on register, change-password and
+  reset; overlong login input fails verification instead of erroring). JWTs
+  are signed with `SECRET_KEY`/`.jwt_secret`.
 - Password recovery: `POST /api/auth/forgot-password {email}` and
   `POST /api/auth/reset-password {token, new_password}`.
   - `forgot-password` always returns 200 with the same body whether or not the
@@ -767,7 +770,7 @@ extractions "forget" units.
     30/15 min per IP; ISSUES.md #51) — successful logins never consume the
     window, and a full window refuses even correct credentials with 429.
   - `reset-password` validates the token (exists, unused, unexpired), enforces
-    the 8–72-byte password rule, replaces `patients.hashed_password`, and
+    the ≥8-char/≤72-byte password rule, replaces `patients.hashed_password`, and
     claims the token with a conditional `used_at IS NULL` UPDATE (a concurrent
     replay loses with 400). Existing JWT sessions stay valid until their
     normal expiry; the new password takes effect on the next login.
@@ -776,7 +779,7 @@ extractions "forget" units.
   {current_password, new_password}` — registered only (anonymous principals
   fail `get_current_user` with 401, mirroring `/api/auth/me`), verifies the
   current bcrypt hash (wrong → 400 `auth.incorrect_password`), enforces the
-  same 8–72-byte rule, and re-hashes. Existing JWT sessions stay valid until
+  same ≥8-char/≤72-byte rule, and re-hashes. Existing JWT sessions stay valid until
   their normal expiry — same semantics as reset.
 
 - **Account self-deletion**: `DELETE /api/auth/account` — works for BOTH

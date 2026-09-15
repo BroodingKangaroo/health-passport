@@ -113,6 +113,17 @@ class TestChangePassword:
         assert resp.status_code == 400
         assert resp.json()["detail"] == "Current password is incorrect"
 
+    async def test_overlong_current_password_400_not_500(self, db_session):
+        """bcrypt raises above 72 bytes; the verify path must report a wrong
+        current password (400), not crash."""
+        async with _make_client(db_session) as ac:
+            resp = await ac.post(
+                "/api/auth/change-password",
+                json={"current_password": "a" * 73, "new_password": "newpassword456"},
+            )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Current password is incorrect"
+
     async def test_new_password_too_short_400(self, db_session):
         async with _make_client(db_session) as ac:
             resp = await ac.post(

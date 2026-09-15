@@ -75,12 +75,14 @@ def cleanup_database(db_path: str) -> dict:
             if not entries:
                 return {"entries": 0, "freed_bytes": 0}
 
-            # path -> (owner, parsed size), snapshotted BEFORE the cascade.
-            files: dict[str, tuple[str, int]] = {}
+            # path -> [(owner, parsed size)], snapshotted BEFORE the cascade.
+            files: dict[str, list[tuple[str, int]]] = {}
             for e in entries:
                 for a in e.attachments:
                     if a.file_path:
-                        files[a.file_path] = (e.patient_id, _parse_size(a.size or ""))
+                        files.setdefault(a.file_path, []).append(
+                            (e.patient_id, _parse_size(a.size or ""))
+                        )
 
             for e in entries:
                 db.delete(e)
@@ -88,7 +90,7 @@ def cleanup_database(db_path: str) -> dict:
 
             freed_bytes = 0
             refunds: dict[str, int] = {}
-            for file_path, (user_id, parsed) in files.items():
+            for file_path, owners in files.items():
                 still_referenced = (
                     db.query(AttachmentModel)
                     .filter(AttachmentModel.file_path == file_path)
@@ -97,9 +99,10 @@ def cleanup_database(db_path: str) -> dict:
                 if still_referenced is not None:
                     continue  # shared with a surviving entry — keep the file
                 on_disk = unlink_upload_file(file_path)
-                freed = on_disk if on_disk > 0 else parsed
                 freed_bytes += on_disk
-                refunds[user_id] = refunds.get(user_id, 0) + freed
+                for user_id, parsed in owners:
+                    freed = on_disk if on_disk > 0 else parsed
+                    refunds[user_id] = refunds.get(user_id, 0) + freed
 
             # Floor the counter at zero (same CASE guard as the delete path).
             for user_id, refund in refunds.items():

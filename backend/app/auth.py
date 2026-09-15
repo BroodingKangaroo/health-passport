@@ -40,8 +40,16 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain password against a hash."""
-    return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
+    """Verify a plain password against a hash.
+
+    bcrypt raises ``ValueError`` when the input exceeds its 72-byte limit;
+    such input can never match a stored hash (they are capped at 72 bytes on
+    the setting paths), so treat it as a failed verification instead of
+    surfacing an unauthenticated 500 on login/change-password."""
+    try:
+        return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
+    except ValueError:
+        return False
 
 
 def get_password_hash(password: str) -> str:

@@ -57,7 +57,7 @@ from app.services.extractor import ALLOWED_EXTENSIONS as ATTACHMENT_EXTENSIONS
 from app.services.extractor import FileTooLargeError, read_capped
 from app.services.language_detect import SUPPORTED_LANGUAGES
 from app.services.reference import compute_status, merge_reference, normalize_qual, parse_value
-from app.services.upload_cleanup import unlink_unreferenced_files, unlink_upload_file
+from app.services.upload_cleanup import unlink_upload_file
 from app.services.usage_limits import check_and_record_storage_usage
 from config import IMPORT_JOB_TTL_H
 
@@ -1009,14 +1009,14 @@ async def delete_entry(
     if not entry:
         raise HTTPException(status_code=404, detail=i18n.tr("entries.entry_not_found", entry_id=entry_id))
 
-    # Snapshot attachment file_paths BEFORE the cascade deletes the rows, so we
-    # can re-query "are there any remaining references?" after the delete.
-    attachment_paths: list[str] = [
-        a.file_path for a in entry.attachments if a.file_path
+    # Snapshot attachment file_paths + parsed sizes BEFORE the cascade deletes
+    # the rows, so we can re-query "are there any remaining references?" after
+    # the delete and refund only files that were actually freed.
+    attachment_refunds: list[tuple[str, int]] = [
+        (a.file_path, _parse_size_to_bytes(a.size or ""))
+        for a in entry.attachments
+        if a.file_path
     ]
-    attachment_size_bytes = sum(
-        _parse_size_to_bytes(a.size or "") for a in entry.attachments
-    )
 
     # Capture visit id BEFORE delete so we can confirm cascade below.
     visit_id = entry.id if entry.visit_data is not None else None
@@ -1030,12 +1030,26 @@ async def delete_entry(
     # mode when commit failed after the unlink).
     db.commit()
 
-    freed_bytes = unlink_unreferenced_files(db, attachment_paths, UPLOAD_DIR)
+    freed_bytes = 0
+    refund_bytes = 0
+    for file_path, parsed_size in attachment_refunds:
+        still_referenced = (
+            db.query(AttachmentModel)
+            .filter(AttachmentModel.file_path == file_path)
+            .first()
+        )
+        if still_referenced is not None:
+            # Shared with a surviving entry (anon→user migration duplicates
+            # the row): the file stays on disk, so nothing is refunded.
+            continue
+        on_disk = unlink_upload_file(file_path, UPLOAD_DIR)
+        freed_bytes += on_disk
+        # Prefer the on-disk size (truth) over the parsed human string
+        # (fuzzy) when we have it. Fall back to the parsed size only when
+        # the file was already missing, so the counter doesn't overstate
+        # storage in use.
+        refund_bytes += on_disk if on_disk > 0 else parsed_size
 
-    # Prefer the on-disk size (truth) over the parsed human string (fuzzy)
-    # when we have it. Fall back to the parsed sum only when the file was
-    # already missing, so the counter doesn't overstate storage in use.
-    refund_bytes = freed_bytes if freed_bytes > 0 else attachment_size_bytes
     if refund_bytes > 0:
         try:
             _decrement_storage_quota(db, user_id, is_anonymous, refund_bytes)

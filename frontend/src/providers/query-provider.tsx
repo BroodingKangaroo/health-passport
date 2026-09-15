@@ -4,8 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import dynamic from 'next/dynamic'
 import { useState, type ReactNode } from 'react'
 
-// Dev-only and dynamically imported: the devtools chunk is never loaded in
-// production (and Next's env inlining drops the import entirely).
+// Dev-only: the render guard keeps the devtools unmounted in production, and
+// the dynamic import keeps them out of the main bundle (the package also
+// resolves to a no-op stub under its `production` export condition).
 const ReactQueryDevtools = dynamic(
   () =>
     import('@tanstack/react-query-devtools').then((m) => m.ReactQueryDevtools),

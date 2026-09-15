@@ -6,6 +6,7 @@ Handles registration, login, current user info, and password reset.
 import hashlib
 import logging
 import secrets
+import threading
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -456,6 +457,9 @@ RESET_TOKEN_TTL_MINUTES = 30
 # legitimate users sharing an IP are never locked out (ISSUES.md #51).
 _throttle_windows: dict[str, deque] = defaultdict(deque)
 _THROTTLE_MAX_KEYS = 10_000
+# Login runs in Starlette's threadpool, so concurrent requests mutate this
+# map from different threads; every access goes under the lock.
+_throttle_lock = threading.Lock()
 
 
 def _throttled(key: str, limit: int, window: timedelta, record: bool = True) -> bool:
@@ -465,18 +469,20 @@ def _throttled(key: str, limit: int, window: timedelta, record: bool = True) -> 
     throttles check first and append only via :func:`_record_throttle` when
     the attempt actually fails."""
     now = datetime.now(timezone.utc)
-    q = _throttle_windows[key]
-    while q and now - q[0] > window:
-        q.popleft()
-    if len(q) >= limit:
-        return True
-    if record:
-        q.append(now)
-    return False
+    with _throttle_lock:
+        q = _throttle_windows[key]
+        while q and now - q[0] > window:
+            q.popleft()
+        if len(q) >= limit:
+            return True
+        if record:
+            q.append(now)
+        return False
 
 
 def _record_throttle(key: str) -> None:
-    _throttle_windows[key].append(datetime.now(timezone.utc))
+    with _throttle_lock:
+        _throttle_windows[key].append(datetime.now(timezone.utc))
 
 
 def _prune_throttle_keys() -> None:
@@ -489,20 +495,21 @@ def _prune_throttle_keys() -> None:
     the cap within the window, so evict the least-recently-active windows down
     to the cap; memory stays bounded by construction."""
     now = datetime.now(timezone.utc)
-    for key, q in list(_throttle_windows.items()):
-        while q and now - q[0] > _RESET_WINDOW:
-            q.popleft()
-        if not q:
+    with _throttle_lock:
+        for key, q in list(_throttle_windows.items()):
+            while q and now - q[0] > _RESET_WINDOW:
+                q.popleft()
+            if not q:
+                del _throttle_windows[key]
+        over = len(_throttle_windows) - _THROTTLE_MAX_KEYS
+        if over <= 0:
+            return
+        evicted = 0
+        for key, _ in sorted(
+            _throttle_windows.items(), key=lambda kv: kv[1][-1]
+        )[:over]:
             del _throttle_windows[key]
-    over = len(_throttle_windows) - _THROTTLE_MAX_KEYS
-    if over <= 0:
-        return
-    evicted = 0
-    for key, _ in sorted(
-        _throttle_windows.items(), key=lambda kv: kv[1][-1]
-    )[:over]:
-        del _throttle_windows[key]
-        evicted += 1
+            evicted += 1
     logger.warning(
         "Throttle map exceeded %d keys — evicted %d least-recently-active windows",
         _THROTTLE_MAX_KEYS, evicted,

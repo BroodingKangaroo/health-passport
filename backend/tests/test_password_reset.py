@@ -356,6 +356,16 @@ class TestLoginThrottle:
             resp = await login_client.post("/api/auth/login", data=good)
             assert resp.status_code == 200
 
+    async def test_overlong_password_fails_as_401_not_500(self, login_client):
+        """bcrypt raises ValueError above 72 bytes; the login path must treat
+        that as a failed verification (401), not an unauthenticated 500."""
+        resp = await login_client.post(
+            "/api/auth/login",
+            data={"username": TEST_USER_EMAIL, "password": "a" * 73},
+        )
+        assert resp.status_code == 401
+        assert "Incorrect email or password" in resp.json()["detail"]
+
 
 class TestForgotPasswordPurgePersistence:
     async def test_unknown_email_commit_persists_purge(self, file_backed_reset_client):

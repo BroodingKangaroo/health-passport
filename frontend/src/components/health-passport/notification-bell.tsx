@@ -280,7 +280,7 @@ export function NotificationBell() {
                             e.stopPropagation()
                             void handleItemClick(item)
                           }}
-                          aria-label={t('bellMarkAllRead')}
+                          aria-label={t('bellMarkRead')}
                           className="flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
                         >
                           <Check className="size-3" />
