@@ -109,6 +109,28 @@ describe('HistoryList', () => {
     expect(container.querySelector('.bg-event-doctor-visit-bg')).not.toBeNull()
   })
 
+  it('renders an unknown backend event type with a neutral fallback (no crash)', () => {
+    // Legacy rows (or a newer backend) can carry a type this build does not
+    // know; TYPE_VISUALS[event.type] used to be an unguarded lookup and the
+    // whole timeline crashed on it.
+    const unknownEvent: MedicalEvent = {
+      ...eventWithLongClinic,
+      id: 'legacy-1',
+      type: 'unknown' as MedicalEvent['type'],
+      title: 'Unclassified scan',
+    }
+
+    renderI18n(
+      <HistoryList events={[unknownEvent]} selectedId="" onSelect={vi.fn()} />,
+    )
+
+    expect(screen.getByText('Unclassified scan')).toBeInTheDocument()
+    // Neutral fallback bubble/icon, never a categorical type token.
+    const card = screen.getByText('Unclassified scan').closest('button')
+    expect(card?.querySelector('.bg-muted')).not.toBeNull()
+    expect(card?.querySelector('.bg-event-blood-test-bg')).toBeNull()
+  })
+
   it('keeps the card shrinkable inside its column (min-w-0 on the row flex item)', () => {
     // Regression guard for the card-blowout bug: the card button is a flex
     // item of the row; without min-w-0 its automatic minimum size is the

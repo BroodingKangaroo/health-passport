@@ -54,12 +54,45 @@ function buildReference(type: RefType, lo: string, hi: string): Reference | null
   }
 }
 
+/** Structural equality for the two reference kinds — used to decide whether
+ *  an incoming prop actually differs from what the editor already holds. */
+function refEquals(a: Reference | null, b: Reference | null): boolean {
+  if (!a || !b) return a === b
+  if (a.kind === 'interval' && b.kind === 'interval') {
+    return (a.low ?? null) === (b.low ?? null) && (a.high ?? null) === (b.high ?? null)
+  }
+  if (a.kind === 'qualitative' && b.kind === 'qualitative') {
+    return (a.expected ?? null) === (b.expected ?? null)
+  }
+  return false
+}
+
 export function ReferenceInput({ value, onChange }: Props) {
   const t = useTranslations('reference')
   const [initial] = useState(() => parseType(value))
   const [type, setType] = useState<RefType>(initial.type)
   const [loVal, setLoVal] = useState(initial.lo)
   const [hiVal, setHiVal] = useState(initial.hi)
+
+  // Adopt references that arrive from OUTSIDE (picking a biomarker supplies
+  // its definition's reference via onReferenceChange). State used to be
+  // initialized once: the editor showed "—" for the real bounds and the next
+  // edit emitted `null`, silently WIPING the definition's reference.
+  // The incoming prop is compared SEMANTICALLY against the reference the
+  // local state would emit: keystroke echoes (which parse to the same value,
+  // e.g. a trailing "1." for low=1) never clobber in-progress typing, while a
+  // genuinely different external reference is adopted (the documented
+  // "adjust state when a prop changes" render-time pattern).
+  const [prevValue, setPrevValue] = useState(value)
+  if (prevValue !== value) {
+    setPrevValue(value)
+    if (!refEquals(value, buildReference(type, loVal, hiVal))) {
+      const parsed = parseType(value)
+      setType(parsed.type)
+      setLoVal(parsed.lo)
+      setHiVal(parsed.hi)
+    }
+  }
 
   const emit = (t: RefType, lo: string, hi: string) => {
     onChange(buildReference(t, lo, hi))

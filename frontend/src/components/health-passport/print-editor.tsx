@@ -14,6 +14,7 @@ import { cn, formatNumber, formatNumberFull } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
 import { formatReference } from '@/lib/reference'
+import { isOutOfRange } from '@/lib/status-labels'
 import { qualitativeLabel } from '@/lib/qualitative-labels'
 import {
   dateId,
@@ -131,7 +132,7 @@ export function PrintEditor({
           if (!hasData) return false
           if (showAbnormalOnly) {
             const cells = visibleDateIndices.map((i) => row.cells[i]).filter(Boolean)
-            return cells.some((c) => c.status !== 'normal')
+            return cells.some((c) => isOutOfRange(c.status))
           }
           return true
         })
@@ -220,7 +221,7 @@ export function PrintEditor({
   }, [dates])
 
   return (
-    <div className="flex h-screen flex-col print:block print:h-auto">
+    <div className="flex h-dvh flex-col print:block print:h-auto">
       <style>{`
         @media print {
           @page {
@@ -242,8 +243,11 @@ export function PrintEditor({
         <div className="w-[120px]" />
       </div>
 
-      <div className="flex min-h-0 flex-1 print:m-0 print:block print:p-0">
-        <aside className="flex w-[350px] shrink-0 flex-col border-r border-border bg-card print:hidden">
+      {/* Stacked below lg: the fixed 350px sidebar left the paper preview
+          off-screen on phones. The sidebar is capped so the document stays
+          visible without scrolling past every control. */}
+      <div className="flex min-h-0 flex-1 flex-col print:m-0 print:block print:p-0 lg:flex-row">
+        <aside className="flex max-h-[45vh] w-full shrink-0 flex-col border-b border-border bg-card print:hidden lg:max-h-none lg:w-[350px] lg:border-r lg:border-b-0">
           <div className="flex-1 space-y-7 overflow-y-auto px-5 py-5">
             <section>
               <SectionTitle>{t('formatting')}</SectionTitle>
@@ -643,11 +647,11 @@ export function PrintEditor({
                                 key={row.id + '-' + di}
                                 className={cn(
                                   'border border-gray-300 px-2 py-0.5 text-center tabular-nums',
-                                  cell.status !== 'normal' && 'font-semibold text-red-600',
+                                  isOutOfRange(cell.status) && 'font-semibold text-red-600',
                                 )}
                               >
                                 {qualitativeLabel(compactNumbers ? formatNumber(cell.value) : formatNumberFull(cell.value), lang)}
-                                {cell.status !== 'normal' ? '\u00A0*' : ''}
+                                {isOutOfRange(cell.status) ? '\u00A0*' : ''}
                               </td>
                             )
                           })}

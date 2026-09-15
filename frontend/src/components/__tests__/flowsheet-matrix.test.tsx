@@ -139,6 +139,25 @@ describe('FlowsheetMatrix cells', () => {
     expect(screen.getByText('Absent')).toBeInTheDocument()
   })
 
+  it('renders unknown-status values neutrally (no bold/red flag)', () => {
+    const row: MatrixRow = {
+      ...makeRow('unk', 'Unclassifiable', ['7.7']),
+      cells: [{ value: '7.7', status: '' }],
+    }
+    renderI18n(
+      <FlowsheetMatrix
+        dates={dates}
+        matrix={makeMatrix([row])}
+        biomarkers={[]}
+      />,
+    )
+
+    const cell = screen.getByText('7.7')
+    expect(cell.className).not.toContain('font-bold')
+    expect(cell.className).not.toContain('text-status-high')
+    expect(cell.className).toContain('text-foreground')
+  })
+
   it('shows the legend line and compact two-line date headers', () => {
     renderI18n(
       <FlowsheetMatrix

@@ -51,9 +51,13 @@ export const addEntryMessages = {
       skippedRowsSaved:
         '{count, plural, one {# row was skipped on save — check its name and value} other {# rows were skipped on save — check their names and values}}',
       documentType: 'Document Type',
+      optionSelectType: 'Select document type…',
       optionBloodTest: 'Blood Test Panel',
       optionDoctorVisit: 'Doctor Visit / Clinical Notes',
       optionInstrumental: 'Instrumental Test (MRI, Elastography, ECG...)',
+      unclassifiedWarning:
+        "We couldn't identify this document's type. Choose one to continue — biomarker rows will start empty.",
+      documentTypeRequired: 'Choose a document type before saving.',
       date: 'Date *',
       timeRequired: 'Time (required)',
       timeOptional: 'Time (optional)',
@@ -172,6 +176,13 @@ export const addEntryMessages = {
       keepCurrent: 'Keep current data',
       extractNew: 'Extract new document',
     },
+    typeSwitchConfirm: {
+      title: 'Switch document type?',
+      description:
+        'Changing the document type clears the data currently in the form. This cannot be undone.',
+      keepCurrent: 'Keep current type',
+      switchType: 'Switch anyway',
+    },
     biomarkerCombobox: {
       searchPlaceholder: 'Search biomarker…',
       namePlaceholder: 'Name',
@@ -248,9 +259,13 @@ export const addEntryMessages = {
       skippedRowsSaved:
         '{count, plural, one {# строка пропущена при сохранении — проверьте название и значение} few {# строки пропущены при сохранении — проверьте названия и значения} many {# строк пропущено при сохранении — проверьте названия и значения} other {# строки пропущены при сохранении — проверьте названия и значения}}',
       documentType: 'Тип документа',
+      optionSelectType: 'Выберите тип документа…',
       optionBloodTest: 'Панель анализов крови',
       optionDoctorVisit: 'Приём врача / Клинические записи',
       optionInstrumental: 'Инструментальное исследование (МРТ, эластография, ЭКГ...)',
+      unclassifiedWarning:
+        'Не удалось определить тип документа. Выберите его, чтобы продолжить — строки биомаркеров будут пустыми.',
+      documentTypeRequired: 'Выберите тип документа перед сохранением.',
       date: 'Дата *',
       timeRequired: 'Время (обязательно)',
       timeOptional: 'Время (необязательно)',
@@ -368,6 +383,13 @@ export const addEntryMessages = {
         'Повторное распознавание файла <file>{fileName}</file> заменит данные, которые сейчас находятся в форме и были получены из предыдущего документа.',
       keepCurrent: 'Оставить текущие данные',
       extractNew: 'Распознать новый документ',
+    },
+    typeSwitchConfirm: {
+      title: 'Сменить тип документа?',
+      description:
+        'Смена типа документа очистит данные, которые сейчас находятся в форме. Это действие нельзя отменить.',
+      keepCurrent: 'Оставить текущий тип',
+      switchType: 'Всё равно сменить',
     },
     biomarkerCombobox: {
       searchPlaceholder: 'Поиск биомаркера…',

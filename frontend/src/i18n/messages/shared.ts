@@ -24,6 +24,7 @@ export const sharedMessages = {
       low: 'Low',
       high: 'High',
       abnormal: 'Abnormal',
+      unknown: 'Unknown',
     },
     languageSwitch: {
       label: 'Language',
@@ -107,6 +108,7 @@ export const sharedMessages = {
       low: 'Низкий',
       high: 'Высокий',
       abnormal: 'Отклонение',
+      unknown: 'Не определён',
     },
     languageSwitch: {
       label: 'Язык',

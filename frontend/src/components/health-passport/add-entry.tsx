@@ -17,6 +17,7 @@ import { InstrumentalTestForm } from './InstrumentalTestForm'
 import { UploadScreen } from './upload-screen'
 import { DocumentPreviewPane } from './document-preview-pane'
 import { UnitConflictDialog } from './unit-conflict-dialog'
+import { TypeSwitchConfirmDialog } from './type-switch-confirm-dialog'
 import { ExtractionConfirmDialog } from './extraction-confirm-dialog'
 import {
   saveMedicalEntry,
@@ -105,6 +106,8 @@ export function AddEntry({
   // POST /api/entry on save (null in manual mode / failed extractions).
   const [sourceLanguage, setSourceLanguage] = useState<string | null>(null)
   const [matchingDegraded, setMatchingDegraded] = useState(false)
+  // Document-type switch awaiting confirmation (the switch resets the form).
+  const [pendingTypeSwitch, setPendingTypeSwitch] = useState<string | null>(null)
 
   const dateRef = useRef<HTMLInputElement>(null)
   const timeRef = useRef<HTMLInputElement>(null)
@@ -125,7 +128,10 @@ export function AddEntry({
   // itself appears when useExtraction flips uploadState afterwards.
   function applyExtractedRecord(result: StandardizedMedicalRecord) {
     setEntryMode('ai')
-    setDocumentType(result.entry_type)
+    // ``unknown`` is the extractor's "could not classify" output and is not a
+    // savable type (the API rejects it, the timeline has no visual for it):
+    // leave the select empty with an explicit warning so the user picks one.
+    setDocumentType(result.entry_type === 'unknown' ? '' : result.entry_type)
     setSourceLanguage(result.source_language ?? null)
     setMatchingDegraded(Boolean(result.matching_degraded))
 
@@ -315,11 +321,23 @@ export function AddEntry({
   // would otherwise be persisted onto a doctor-visit / instrumental-test entry
   // as invisible blood-test readings, and stale visit/instrumental data would
   // leak into the wrong editor.
-  function handleDocumentTypeChange(type: string) {
+  function applyDocumentTypeChange(type: string) {
     setDocumentType(type)
     setCategories(manualCategories())
     setVisitFormData(null)
     setInstrumentalTestFormData(null)
+  }
+
+  function handleDocumentTypeChange(type: string) {
+    if (type === documentType) return
+    // An AI misclassification is corrected here; the switch always resets
+    // the companion form state, so ask first when real data would be lost
+    // (silently discarding extracted rows looked like data loss).
+    if (hasFormData(documentType, categories, visitFormData, instrumentalTestFormData)) {
+      setPendingTypeSwitch(type)
+      return
+    }
+    applyDocumentTypeChange(type)
   }
 
   function handleFileRefChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -386,6 +404,13 @@ export function AddEntry({
     setSaving(true)
     setSaveError(null)
     try {
+      // The extractor may fail to classify a document (entry_type
+      // 'unknown'): the type select then stays empty and a save must not
+      // fall through to a default (the backend rejects '' too).
+      if (!documentType) {
+        setSaveError(t('documentTypeRequired'))
+        return
+      }
       // Date is required and must not be in the future — a blank silently
       // saved as "today" and a future date broke timeline ordering before.
       const dateStr = dateRef.current?.value ?? ''
@@ -558,7 +583,7 @@ export function AddEntry({
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-6 py-4">
-      <div className="flex items-start gap-5">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
         {/* LEFT COLUMN — Document Preview */}
         <DocumentPreviewPane
           objectUrl={objectUrl}
@@ -568,7 +593,7 @@ export function AddEntry({
         />
 
         {/* RIGHT COLUMN — Form */}
-        <div className="w-[55%] flex flex-col overflow-hidden rounded-xl border bg-card">
+        <div className="flex w-full flex-col overflow-hidden rounded-xl border bg-card lg:w-[55%]">
           <div className="flex-1 overflow-y-auto p-4">
             {aiError && (
               <div className="mb-4 flex items-start gap-3 rounded-lg border border-status-high/20 bg-status-high/5 p-3">
@@ -593,7 +618,16 @@ export function AddEntry({
               </div>
             )}
 
-            {!isManual && !aiError && (
+            {!isManual && !aiError && documentType === '' && (
+              <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-500/40 dark:bg-amber-500/10">
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  {t('unclassifiedWarning')}
+                </p>
+              </div>
+            )}
+
+            {!isManual && !aiError && documentType !== '' && (
               <div className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
                 <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
                 <p className="text-xs text-foreground">
@@ -621,6 +655,9 @@ export function AddEntry({
                   onChange={(e) => handleDocumentTypeChange(e.target.value)}
                   className="flex h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm shadow-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
                 >
+                  <option value="" disabled>
+                    {t('optionSelectType')}
+                  </option>
                   <option value="blood_test">{t('optionBloodTest')}</option>
                   <option value="doctor_visit">{t('optionDoctorVisit')}</option>
                   <option value="instrumental_test">{t('optionInstrumental')}</option>
@@ -798,7 +835,7 @@ export function AddEntry({
             <div className="flex items-center gap-2">
               <Button
                 onClick={handleSave}
-                disabled={saving || (timeRequired && !timeValue && !merging)}
+                disabled={saving || !documentType || (timeRequired && !timeValue && !merging)}
               >
                 {saving ? t('saving') : merging ? t('mergeSave') : t('save')}
               </Button>
@@ -810,8 +847,8 @@ export function AddEntry({
       {/* Prevent dialog stacking (ISSUES.md #69): while a replacement-file
           extraction confirmation is pending, it takes precedence and the
           unit-conflict dialog stays unmounted; it re-opens afterwards if
-          conflicts remain. */}
-      {pendingExtractFile === null && (
+          conflicts remain. Same rule for the pending type-switch confirm. */}
+      {pendingExtractFile === null && pendingTypeSwitch === null && (
         <UnitConflictDialog conflicts={unitConflicts} onResolve={applyResolutions} />
       )}
 
@@ -819,6 +856,15 @@ export function AddEntry({
         fileName={pendingExtractFile?.name ?? null}
         onConfirm={confirmReplacementExtraction}
         onCancel={() => setPendingExtractFile(null)}
+      />
+
+      <TypeSwitchConfirmDialog
+        pending={pendingTypeSwitch !== null}
+        onConfirm={() => {
+          if (pendingTypeSwitch) applyDocumentTypeChange(pendingTypeSwitch)
+          setPendingTypeSwitch(null)
+        }}
+        onCancel={() => setPendingTypeSwitch(null)}
       />
     </div>
   )

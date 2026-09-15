@@ -147,7 +147,7 @@ export function ExpandedBiomarkerDetails({
                         statusText[reading.status as Status],
                       )}
                     >
-                      {localizedStatus(reading.status, tRoot)}
+                      {localizedStatus(reading.status, tRoot) || tRoot('statuses.unknown')}
                     </span>
                   </li>
                 )

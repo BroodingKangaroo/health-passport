@@ -37,6 +37,7 @@ vi.mock('@/services/api', async (importOriginal) => {
 const mockSignOut = vi.fn()
 vi.mock('next-auth/react', () => ({
   signOut: (...args: unknown[]) => mockSignOut(...args),
+  useSession: () => ({ data: null, status: 'unauthenticated' }),
 }))
 
 const mockPush = vi.fn()

@@ -82,7 +82,7 @@ export function BiomarkerDetails() {
           <p className={cn('text-lg font-bold', statusText[biomarker.status])}>
             {formatNumber(biomarker.value) || '—'} {unitLabel(biomarker.definition.unit, biomarker.reference ?? biomarker.definition.reference, locale)}{' '}
             <span className="text-sm font-semibold capitalize">
-              ({localizedStatus(biomarker.status, tRoot)})
+              ({localizedStatus(biomarker.status, tRoot) || tRoot('statuses.unknown')})
             </span>
           </p>
         </div>

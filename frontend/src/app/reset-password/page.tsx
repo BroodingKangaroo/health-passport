@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { LanguageSwitch } from "@/components/shared/language-switch"
+import { resetUserPassword } from "@/services/api"
 
 function ResetPasswordForm() {
   const router = useRouter()
@@ -38,24 +39,13 @@ function ResetPasswordForm() {
 
     setIsLoading(true)
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || ""
-      const res = await fetch(`${API_URL}/api/auth/reset-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ token, new_password: password }),
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        setError(data.detail || t("unexpectedError"))
-        return
-      }
-
+      // Shared api layer: proxy-only URL, Accept-Language, and a 422
+      // validation `detail` array becomes readable text instead of crashing
+      // the page on an object rendered as a React child.
+      await resetUserPassword(token, password)
       setDone(true)
-    } catch {
-      setError(t("unexpectedError"))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("unexpectedError"))
     } finally {
       setIsLoading(false)
     }

@@ -29,6 +29,20 @@ export const STATUS_TEXT_CLASS: Record<Status, string> = {
   low: 'text-status-low',
   high: 'text-status-high',
   abnormal: 'text-status-high',
+  // Unknown status (numeric value vs unrecognized qualitative expected):
+  // neutral, NEVER the out-of-range color.
+  '': 'text-muted-foreground',
+}
+
+/**
+ * True only for statuses that mean "outside the reference range". The
+ * unknown status (``""``) and missing statuses are NOT out-of-range — every
+ * flag/star/red-bold decision must go through this helper, or unknown
+ * readings light up as abnormal (and `undefined - undefined = NaN` breaks
+ * status sorts).
+ */
+export function isOutOfRange(status: string | null | undefined): boolean {
+  return status === 'low' || status === 'high' || status === 'abnormal'
 }
 
 /** Chart colors for out-of-range vs in-range points/lines. */

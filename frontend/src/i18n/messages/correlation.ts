@@ -6,7 +6,7 @@ export const correlationMessages = {
     correlation: {
       view: {
         loading: 'Loading...',
-        failedToLoad: 'Failed to load data. Is the backend running?',
+        failedToLoad: 'Couldn’t load your data.',
       },
       tabs: {
         topPairs: 'Top correlated pairs',
@@ -65,7 +65,7 @@ export const correlationMessages = {
     correlation: {
       view: {
         loading: 'Загрузка...',
-        failedToLoad: 'Не удалось загрузить данные. Проверьте, работает ли сервер.',
+        failedToLoad: 'Не удалось загрузить данные.',
       },
       tabs: {
         topPairs: 'Топ коррелирующих пар',

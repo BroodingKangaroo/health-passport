@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { fetchFlowsheetData } from '@/services/api'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
+import { useAuthPrincipal } from '@/lib/hooks/useAuthPrincipal'
 import { useAuthStatus } from '@/components/providers/AuthStatusProvider'
 import { PrintEditor } from '@/components/health-passport/print-editor'
 import { dateId } from '@/lib/print-document'
@@ -15,6 +16,7 @@ export function PrintEditorView() {
   const t = useTranslations('print.editorView')
   const { mode, targetLanguage, initFilters } = usePrintConfig()
   const { user } = useAuthStatus()
+  const { uid, authReady } = useAuthPrincipal()
   const [data, setData] = useState<FlowsheetResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -24,23 +26,34 @@ export function PrintEditorView() {
   // column/row selections, so re-running on `t` identity changes (locale)
   // would silently reset them (ISSUES.md #75). The failure message reads the
   // current translator through a ref so the effect has no locale dependency.
+  // The fetch waits for session readiness (`authReady`) — a tokenless hard
+  // reload would otherwise be answered by the anonymous principal.
   const tRef = useRef(t)
   useEffect(() => {
     tRef.current = t
   }, [t])
   useEffect(() => {
+    if (!authReady) return
+    let cancelled = false
     fetchFlowsheetData()
       .then((res: FlowsheetResponse) => {
+        if (cancelled) return
         setData(res)
         const allDateLabels = res.dates.map(dateId)
         const allRowIds = res.matrix.flatMap((cat) => cat.rows.map((r) => r.id))
         initFilters(allDateLabels, allRowIds)
       })
       .catch((err) => {
+        if (cancelled) return
         setError(err instanceof Error ? err.message : tRef.current('failedToLoad'))
       })
-      .finally(() => setLoading(false))
-  }, [initFilters])
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [authReady, uid, initFilters])
 
   let lang: PrintLang = targetLanguage
   let bilingual = false

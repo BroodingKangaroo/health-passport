@@ -6,6 +6,7 @@ import { Gauge } from 'lucide-react'
 
 import { Card } from '@/components/ui/card'
 import { formatBytes } from '@/components/health-passport/entry-settings'
+import { useAuthPrincipal } from '@/lib/hooks/useAuthPrincipal'
 import { fetchUsageLimits } from '@/services/api'
 import type { UsageLimits } from '@/lib/types'
 
@@ -53,14 +54,22 @@ function UsageBar({
 export function UsageCard() {
   const t = useTranslations('settings.usage')
   const locale = useLocale()
+  const { uid, authReady } = useAuthPrincipal()
   const [limits, setLimits] = useState<UsageLimits | null>(null)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
+    // Gate on session readiness: a tokenless fetch on a hard reload is
+    // answered by the anonymous principal and would show the anon quota for
+    // a registered user (and never correct itself).
+    if (!authReady) return
     let cancelled = false
     fetchUsageLimits()
       .then((l) => {
-        if (!cancelled) setLimits(l)
+        if (!cancelled) {
+          setLimits(l)
+          setFailed(false)
+        }
       })
       .catch(() => {
         if (!cancelled) setFailed(true)
@@ -68,7 +77,7 @@ export function UsageCard() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [authReady, uid])
 
   return (
     <Card className="p-6" data-testid="usage-card">

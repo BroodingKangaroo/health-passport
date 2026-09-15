@@ -39,7 +39,7 @@ export function DocumentPreviewPane({
 }: DocumentPreviewPaneProps) {
   const t = useTranslations('preview')
   return (
-    <div className="sticky top-6 relative w-[45%] overflow-hidden rounded-xl border bg-card">
+    <div className="relative max-h-[60vh] w-full overflow-hidden rounded-xl border bg-card lg:sticky lg:top-6 lg:max-h-none lg:w-[45%]">
       {objectUrl && (
         <button
           type="button"

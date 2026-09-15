@@ -15,7 +15,7 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
-import { TYPE_VISUALS } from '@/lib/event-visuals'
+import { TYPE_VISUALS, eventVisual } from '@/lib/event-visuals'
 import { Badge } from '@/components/ui/badge'
 import { hasFlagged, statusCountsByEvent, type StatusCounts } from '@/lib/event-status'
 import type { MedicalEvent, EventType, BiomarkerResult } from '@/lib/types'
@@ -591,7 +591,7 @@ export function HistoryList({ events, selectedId, onSelect, biomarkers }: Histor
           ) : (
             filteredEvents.map((event, idx) => {
               const active = event.id === selectedId
-              const visual = TYPE_VISUALS[event.type]
+              const visual = eventVisual(event.type)
               const Icon = visual.icon
               const count = event.attachments?.length ?? 0
               const eventCounts = statusCounts.get(event.id)

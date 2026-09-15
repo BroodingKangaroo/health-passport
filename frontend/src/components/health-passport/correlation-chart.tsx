@@ -551,8 +551,8 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
   }, [chartData, selectedBiomarkers])
 
   return (
-    <div className="grid h-[calc(100vh-220px)] w-full grid-cols-[380px_1fr] gap-5">
-      <Card className="flex h-full min-h-0 flex-col border-border">
+    <div className="grid w-full grid-cols-1 gap-5 lg:h-[calc(100vh-220px)] lg:grid-cols-[380px_1fr]">
+      <Card className="flex h-[45vh] min-h-0 flex-col border-border lg:h-full">
         <div className="flex items-center gap-x-2 border-b border-border px-3 py-2.5">
           <button
             type="button"
@@ -651,7 +651,7 @@ export function CorrelationChart({ biomarkers: allBiomarkers }: { biomarkers: Bi
         )}
       </Card>
 
-      <Card className="flex h-full min-h-0 flex-col border-border">
+      <Card className="flex h-[55vh] min-h-0 flex-col border-border lg:h-full">
         <div className="flex items-start justify-between gap-3 border-b border-border p-4">
           <div>
             <h2 className="text-base font-semibold text-foreground">

@@ -8,6 +8,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { HeaderBar } from '@/components/health-passport/header-bar'
 import { NavBar } from '@/components/shared/NavBar'
+import { LoadErrorState } from '@/components/shared/LoadErrorState'
 import { HistoryList } from '@/components/health-passport/history-list'
 import { DoctorVisitDetails } from '@/components/health-passport/doctor-visit-details'
 import { BloodTestDetails } from '@/components/health-passport/blood-test-details'
@@ -141,8 +142,8 @@ export function TimelineContent({
 
   if (error) {
     return (
-      <main className="mx-auto max-w-[1800px] p-5 text-center text-sm text-status-high">
-        {t('loadError')}
+      <main className="mx-auto max-w-[1800px] p-5 text-center">
+        <LoadErrorState message={t('loadError')} onRetry={refetch} />
       </main>
     )
   }

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { LanguageSwitch } from "@/components/shared/language-switch"
+import { requestPasswordReset } from "@/services/api"
 
 export default function ForgotPasswordPage() {
   const t = useTranslations("forgotPassword")
@@ -23,24 +24,13 @@ export default function ForgotPasswordPage() {
     setError("")
 
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || ""
-      const res = await fetch(`${API_URL}/api/auth/forgot-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email }),
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        setError(data.detail || t("unexpectedError"))
-        return
-      }
-
+      // Shared api layer: proxy-only URL, Accept-Language, and FastAPI's 422
+      // `detail` array becomes readable text instead of an object rendered as
+      // a React child (which used to crash the page).
+      await requestPasswordReset(email)
       setSent(true)
-    } catch {
-      setError(t("unexpectedError"))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("unexpectedError"))
     } finally {
       setIsLoading(false)
     }

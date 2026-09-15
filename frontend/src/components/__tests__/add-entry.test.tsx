@@ -328,6 +328,95 @@ describe('AddEntry', () => {
     expect(screen.getAllByText('LDL').length).toBeGreaterThanOrEqual(1)
   })
 
+  it('blocks saving when the extractor could not classify the document', async () => {
+    const aiResult: StandardizedMedicalRecord = {
+      entry_type: 'unknown',
+      date: '2026-07-15',
+      time: null,
+      clinic: null,
+      provider: null,
+      title: 'Unreadable scan',
+      notes: null,
+      biomarkers: [],
+      visit_data: null,
+      instrumental_data: null,
+    }
+
+    renderWithProviders(
+      <AddEntry
+        onSave={vi.fn()}
+        stagedJob={{ jobId: 'job-unknown', record: aiResult }}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/couldn't identify this document's type/i),
+      ).toBeInTheDocument()
+    }, { timeout: 3000 })
+    // The type select stays on the explicit placeholder (never a silent
+    // default like blood_test) and Save is disabled until a type is picked.
+    expect(screen.getByDisplayValue('Select document type…')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Save to HealthPassport' }),
+    ).toBeDisabled()
+  })
+
+  it('confirms before a document-type switch discards extracted data', async () => {
+    const aiResult: StandardizedMedicalRecord = {
+      entry_type: 'blood_test',
+      date: '2026-07-15',
+      time: null,
+      clinic: 'Test Lab',
+      provider: null,
+      title: 'Switch Panel',
+      notes: null,
+      biomarkers: [
+        {
+          raw_name: 'Hemoglobin', raw_value: '145', raw_unit: 'g/L', raw_range_string: '130-170',
+          standard_name_en: 'Hemoglobin', standard_value: 145, standard_unit: 'g/L',
+          reference: { kind: 'interval', low: 130, high: 170 },
+          status: 'normal', category: 'Complete Blood Count',
+          definition_id: 'hb', scope: 'global',
+        },
+      ],
+      visit_data: null,
+      instrumental_data: null,
+    }
+
+    renderWithProviders(
+      <AddEntry
+        onSave={vi.fn()}
+        stagedJob={{ jobId: 'job-switch', record: aiResult }}
+      />,
+    )
+    await waitFor(
+      () => expect(screen.getByDisplayValue('Blood Test Panel')).toBeInTheDocument(),
+      { timeout: 3000 },
+    )
+
+    // Changing the type would reset the extracted row — ask first.
+    fireEvent.change(screen.getByDisplayValue('Blood Test Panel'), {
+      target: { value: 'doctor_visit' },
+    })
+    expect(screen.getByText('Switch document type?')).toBeInTheDocument()
+
+    // Cancel keeps the extracted data and the original type.
+    fireEvent.click(screen.getByRole('button', { name: 'Keep current type' }))
+    expect(screen.queryByText('Switch document type?')).toBeNull()
+    expect(screen.getByDisplayValue('Blood Test Panel')).toBeInTheDocument()
+
+    // Confirming applies the switch (and clears the companion state).
+    fireEvent.change(screen.getByDisplayValue('Blood Test Panel'), {
+      target: { value: 'doctor_visit' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Switch anyway' }))
+    expect(screen.queryByText('Switch document type?')).toBeNull()
+    expect(
+      screen.getByDisplayValue('Doctor Visit / Clinical Notes'),
+    ).toBeInTheDocument()
+  })
+
   it('pre-fills doctor visit form from AI data', async () => {
     const aiResult: StandardizedMedicalRecord = {
       entry_type: 'doctor_visit',

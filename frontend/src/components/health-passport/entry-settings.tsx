@@ -140,6 +140,7 @@ export function EntrySettings({
       low: 0,
       high: 0,
       abnormal: 0,
+      '': 0,
     }
     for (const b of biomarkers ?? []) {
       counts[b.status] += 1
@@ -253,12 +254,20 @@ export function EntrySettings({
               value={(biomarkers?.length ?? 0).toString()}
               hint={
                 biomarkers && biomarkers.length > 0
-                  ? t('statusBreakdown', {
-                      normal: biomarkerCounts.normal,
-                      low: biomarkerCounts.low,
-                      high: biomarkerCounts.high,
-                      abnormal: biomarkerCounts.abnormal,
-                    })
+                  ? biomarkerCounts[''] > 0
+                    ? t('statusBreakdownUnknown', {
+                        normal: biomarkerCounts.normal,
+                        low: biomarkerCounts.low,
+                        high: biomarkerCounts.high,
+                        abnormal: biomarkerCounts.abnormal,
+                        unknown: biomarkerCounts[''],
+                      })
+                    : t('statusBreakdown', {
+                        normal: biomarkerCounts.normal,
+                        low: biomarkerCounts.low,
+                        high: biomarkerCounts.high,
+                        abnormal: biomarkerCounts.abnormal,
+                      })
                   : undefined
               }
             />

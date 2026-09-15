@@ -110,6 +110,25 @@ describe('EntrySettings', () => {
     expect(screen.getByText('1 normal · 1 low · 1 high · 1 abnormal')).toBeDefined()
   })
 
+  it('counts unknown-status readings separately instead of rendering NaN', () => {
+    const unknownReading: BiomarkerResult = {
+      ...bloodTestBiomarkers[0],
+      id: 'unk',
+      status: '',
+    }
+    renderI18n(
+      <EntrySettings
+        event={baseEvent}
+        biomarkers={[...bloodTestBiomarkers, unknownReading]}
+        onDeleted={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.getByText('1 normal · 1 low · 1 high · 1 abnormal · 1 unknown'),
+    ).toBeDefined()
+  })
+
   it('shows visit-specific counts (notes, prescriptions, recommendations) for a doctor visit', () => {
     renderI18n(
       <EntrySettings

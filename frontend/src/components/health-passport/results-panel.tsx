@@ -36,12 +36,14 @@ interface SortState {
   dir: SortDir
 }
 
-/** Clinical severity: ascending shows calmest first, descending flags first. */
+/** Clinical severity: ascending shows calmest first, descending flags first.
+ *  Unknown (`''`) sorts after abnormal — it needs attention but is not a flag. */
 const STATUS_RANK: Record<Status, number> = {
   normal: 0,
   low: 1,
   high: 2,
   abnormal: 3,
+  '': 4,
 }
 
 // Missing-value buckets: 0 = primary content, 1 = text values (qualitative

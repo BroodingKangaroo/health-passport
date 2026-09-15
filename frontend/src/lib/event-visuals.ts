@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import { Droplet, Stethoscope, Brain, Syringe } from 'lucide-react'
+import { Droplet, Stethoscope, Brain, Syringe, FileQuestion } from 'lucide-react'
 
 import type { EventType } from './types'
 
@@ -83,4 +83,33 @@ export const TYPE_VISUALS: Record<EventType, EventTypeVisual> = {
     labelKey: 'typeProcedure',
     chipLabelKey: 'chipProcedure',
   },
+}
+
+/**
+ * Neutral presentation for an event type this build does not know (legacy
+ * rows persisted before entry-type validation, or a newer backend). Kept
+ * OUT of ``TYPE_VISUALS`` on purpose: the type inventory is guarded by
+ * event-visuals.test.ts, and an unknown type must never receive a
+ * categorical ``--event-*`` token (the channel contract reserves those for
+ * the four real types). Uses only semantic muted tokens.
+ */
+export const UNKNOWN_EVENT_VISUAL: EventTypeVisual = {
+  icon: FileQuestion,
+  bubbleClass: 'bg-muted text-muted-foreground',
+  nodeClass: 'bg-muted-foreground',
+  dotClass: 'bg-muted-foreground',
+  textClass: 'text-muted-foreground',
+  chipClass: 'border-border bg-muted text-muted-foreground',
+  labelKey: 'typeUnknown',
+  chipLabelKey: 'chipUnknown',
+}
+
+/**
+ * Safe lookup for types that arrive from the API (untyped at runtime): falls
+ * back to the neutral visual instead of crashing the whole timeline on
+ * ``TYPE_VISUALS[event.type].icon`` for an unexpected value.
+ */
+export function eventVisual(type: string): EventTypeVisual {
+  const known = TYPE_VISUALS as Partial<Record<string, EventTypeVisual>>
+  return known[type] ?? UNKNOWN_EVENT_VISUAL
 }

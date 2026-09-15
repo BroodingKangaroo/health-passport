@@ -59,7 +59,11 @@ export function LabResultForm({
               aria-label={t('categoryName')}
               className="mb-1.5 w-full bg-transparent text-[11px] font-semibold uppercase tracking-wide text-muted-foreground outline-none focus:text-foreground"
             />
-            <div className="overflow-hidden rounded-lg border border-border">
+            {/* overflow-x-auto, never overflow-hidden: the row grid has
+                min-width columns (~700px total), so below that width the
+                unit/reference cells and the remove button must scroll into
+                view instead of being silently clipped. */}
+            <div className="overflow-x-auto rounded-lg border border-border">
               <div className="grid grid-cols-[minmax(220px,3fr)_minmax(150px,1.2fr)_120px_minmax(200px,2fr)_auto] items-center gap-x-2 border-b border-border bg-muted/50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 <span>{t('headerBiomarker')}</span>
                 <span>{t('headerValue')}</span>

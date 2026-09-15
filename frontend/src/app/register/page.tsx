@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Loader2 } from "lucide-react"
-import { signIn } from "next-auth/react"
+import { signIn, useSession } from "next-auth/react"
 import { toast } from "sonner"
 import { useTranslations } from "next-intl"
 
@@ -29,9 +29,15 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [hasAnonData, setHasAnonData] = useState(false)
   const [migrateData, setMigrateData] = useState(true)
+  const { status: sessionStatus } = useSession()
 
-  // Check if user has anonymous data
+  // Check if user has anonymous data. Gated on session resolution, and
+  // skipped for an already-registered visitor: a tokenless probe would be
+  // answered by that user's OWN account data, which is not anonymous data to
+  // migrate (the checkbox used to appear based on the account's entries).
   useEffect(() => {
+    if (sessionStatus === "loading") return
+    if (sessionStatus === "authenticated") return
     Promise.all([
       fetchUsageLimits().catch(() => null),
       fetchTimelineEvents().catch(() => null),
@@ -43,7 +49,7 @@ export default function RegisterPage() {
         setHasAnonData(true)
       }
     })
-  }, [])
+  }, [sessionStatus])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }))
@@ -85,7 +91,12 @@ export default function RegisterPage() {
       })
 
       if (result?.error) {
-        // Registration succeeded but auto-login failed — send to /login.
+        // Registration succeeded but auto-login failed — tell the user the
+        // account exists before bouncing to /login, or they may retry
+        // registration and hit "email already registered".
+        toast.info(t("toast.accountCreated"), {
+          description: t("toast.signInManually"),
+        })
         router.push("/login")
         return
       }

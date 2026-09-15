@@ -6,7 +6,7 @@ export const timelineMessages = {
     timeline: {
       views: {
         timeline: {
-          loadError: 'Failed to load data. Is the backend running?',
+          loadError: 'Couldn’t load your data.',
           visitDetailsUnavailable: 'Visit details not yet available.',
           instrumentalDetailsUnavailable: 'Instrumental test details not yet available.',
           noDetailView: 'No detailed view available for this event type.',
@@ -18,7 +18,7 @@ export const timelineMessages = {
           eventPosition: 'Event {current} of {total}',
         },
         flowsheet: {
-          loadError: 'Failed to load flowsheet data. Is the backend running?',
+          loadError: 'Couldn’t load the flowsheet.',
         },
       },
       historyList: {
@@ -34,6 +34,7 @@ export const timelineMessages = {
         chipDoctorVisit: 'Visits',
         chipInstrumentalTest: 'Instrumental',
         chipProcedure: 'Procedures',
+        chipUnknown: 'Unknown',
         quickFilters: 'Quick Filters',
         abnormalResults: 'Abnormal Results',
         abnormalResultsDesc: 'Only lab tests with flagged values',
@@ -45,6 +46,7 @@ export const timelineMessages = {
         typeDoctorVisit: 'Doctor Visits',
         typeInstrumentalTest: 'Instrumental Tests',
         typeProcedure: 'Procedures',
+        typeUnknown: 'Unrecognized Entries',
         noRecordsOfType: 'No records of this type yet',
         flaggedHigh: '{count, plural, one {# high result} other {# high results}}',
         flaggedLow: '{count, plural, one {# low result} other {# low results}}',
@@ -116,6 +118,8 @@ export const timelineMessages = {
         none: 'None',
         biomarkers: 'Biomarkers',
         statusBreakdown: '{normal} normal · {low} low · {high} high · {abnormal} abnormal',
+        statusBreakdownUnknown:
+          '{normal} normal · {low} low · {high} high · {abnormal} abnormal · {unknown} unknown',
         clinicalNotes: 'Clinical Notes',
         prescriptions: 'Prescriptions',
         recommendations: 'Recommendations',
@@ -185,7 +189,7 @@ export const timelineMessages = {
     timeline: {
       views: {
         timeline: {
-          loadError: 'Не удалось загрузить данные. Проверьте, работает ли сервер.',
+          loadError: 'Не удалось загрузить данные.',
           visitDetailsUnavailable: 'Детали визита пока недоступны.',
           instrumentalDetailsUnavailable: 'Детали инструментального исследования пока недоступны.',
           noDetailView: 'Для этого типа записи подробный просмотр недоступен.',
@@ -197,7 +201,7 @@ export const timelineMessages = {
           eventPosition: 'Событие {current} из {total}',
         },
         flowsheet: {
-          loadError: 'Не удалось загрузить данные таблицы показателей. Проверьте, работает ли сервер.',
+          loadError: 'Не удалось загрузить таблицу показателей.',
         },
       },
       historyList: {
@@ -213,6 +217,7 @@ export const timelineMessages = {
         chipDoctorVisit: 'Приёмы',
         chipInstrumentalTest: 'Обследования',
         chipProcedure: 'Процедуры',
+        chipUnknown: 'Без типа',
         quickFilters: 'Быстрые фильтры',
         abnormalResults: 'Отклонения',
         abnormalResultsDesc: 'Только анализы с отклонениями от нормы',
@@ -224,6 +229,7 @@ export const timelineMessages = {
         typeDoctorVisit: 'Приёмы врачей',
         typeInstrumentalTest: 'Инструментальные исследования',
         typeProcedure: 'Процедуры',
+        typeUnknown: 'Записи без типа',
         noRecordsOfType: 'Записей этого типа пока нет',
         flaggedHigh: '{count, plural, one {# высокий результат} few {# высоких результата} many {# высоких результатов} other {# высоких результатов}}',
         flaggedLow: '{count, plural, one {# низкий результат} few {# низких результата} many {# низких результатов} other {# низких результатов}}',
@@ -295,6 +301,8 @@ export const timelineMessages = {
         none: 'Нет',
         biomarkers: 'Показатели',
         statusBreakdown: '{normal} норма · {low} низкий · {high} высокий · {abnormal} отклонение',
+        statusBreakdownUnknown:
+          '{normal} норма · {low} низкий · {high} высокий · {abnormal} отклонение · {unknown} без статуса',
         clinicalNotes: 'Клинические заметки',
         prescriptions: 'Назначения',
         recommendations: 'Рекомендации',

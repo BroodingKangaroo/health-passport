@@ -274,6 +274,30 @@ describe('PrintEditor', () => {
     expect(lowCells.length).toBeGreaterThan(0)
   })
 
+  it('renders unknown-status cells neutrally (no asterisk, no red)', () => {
+    const unknownMatrix: MatrixCategory[] = [
+      {
+        category: 'General',
+        rows: [
+          {
+            id: 'unk',
+            name: 'Unclassifiable',
+            original: '',
+            unit: 'mg/dL',
+            reference: null,
+            cells: [{ value: '7.7', status: '' }],
+          },
+        ],
+      },
+    ]
+    renderEditor({ matrix: unknownMatrix })
+
+    const cell = screen.getByText('7.7').closest('td')
+    expect(cell).not.toBeNull()
+    expect(cell?.className).not.toContain('text-red-600')
+    expect(cell?.textContent).not.toContain('*')
+  })
+
   it('shows language in the document header', () => {
     renderEditor({ lang: 'ru' })
     expect(screen.getByText(/Язык/)).toBeTruthy()

@@ -14,7 +14,7 @@ import { formatReference, isQualitative } from '@/lib/reference'
 import { coerceChartValue, chartReferenceBounds } from '@/lib/chart-series'
 import { qualitativeLabel } from '@/lib/qualitative-labels'
 import { activateOnKey } from '@/lib/a11y'
-import { STATUS_TEXT_CLASS as statusText } from '@/lib/status-labels'
+import { STATUS_TEXT_CLASS as statusText, isOutOfRange } from '@/lib/status-labels'
 import type { DateHeader, MatrixCategory, MatrixCell, BiomarkerResult } from '@/lib/types'
 
 // Fixed frozen-column widths. The name column MUST be a fixed pixel width
@@ -48,7 +48,7 @@ function splitDateLabel(label: string): { day: string; year: string | null } {
 function Cell({ cell }: { cell: MatrixCell }) {
   const locale = useLocale()
   const t = useTranslations('timeline.flowsheet')
-  const isOut = cell.status !== 'normal'
+  const isOut = isOutOfRange(cell.status)
   if (cell.value === EMPTY_CELL_VALUE) {
     return (
       <span

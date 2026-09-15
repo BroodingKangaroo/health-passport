@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, ArrowDown, ArrowUp, AlertTriangle } from 'lucide-react'
+import { Check, ArrowDown, ArrowUp, AlertTriangle, HelpCircle } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Badge } from '@/components/ui/badge'
 import type { Status } from '@/lib/types'
@@ -31,10 +31,20 @@ export function StatusBadge({ status }: { status: Status }) {
       </Badge>
     )
   }
+  if (status === 'abnormal') {
+    return (
+      <Badge variant="abnormal">
+        <AlertTriangle className="size-3" />
+        {t('abnormal')}
+      </Badge>
+    )
+  }
+  // Unknown (`''`) — a numeric result against an unrecognized qualitative
+  // expected value. Neutral chip: it is NOT a health warning.
   return (
-    <Badge variant="abnormal">
-      <AlertTriangle className="size-3" />
-      {t('abnormal')}
+    <Badge variant="chip">
+      <HelpCircle className="size-3" />
+      {t('unknown')}
     </Badge>
   )
 }

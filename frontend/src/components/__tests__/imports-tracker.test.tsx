@@ -98,6 +98,40 @@ describe('ImportsTracker', () => {
     expect(screen.queryByTestId('imports-empty')).not.toBeInTheDocument()
   })
 
+  it('shows a retryable error state when the jobs fetch fails', async () => {
+    fetchJobsMock.mockRejectedValue(new Error('network down'))
+    renderTracker(<ImportsTracker />)
+
+    expect(await screen.findByTestId('imports-error')).toBeInTheDocument()
+    expect(screen.queryByTestId('imports-empty')).not.toBeInTheDocument()
+
+    // Retry recovers into the (empty) list instead of a dead end.
+    fetchJobsMock.mockResolvedValue({ items: [] })
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByTestId('imports-empty')).toBeInTheDocument()
+  })
+
+  it('shows a toast when a row action fails (never a silent dead button)', async () => {
+    fetchJobsMock.mockResolvedValue({
+      items: [job({ id: 'job-x', status: 'queued', original_filename: 'x.pdf' })],
+    })
+    cancelMock.mockRejectedValue(new Error('network'))
+    renderTracker(<ImportsTracker />)
+
+    const rowText = await screen.findByText('x.pdf')
+    const cancelBtn = Array.from(
+      rowText.closest('li')!.querySelectorAll('button'),
+    ).find((b) => b.textContent === 'Cancel')
+    fireEvent.click(cancelBtn!)
+
+    const { toast } = await import('sonner')
+    await waitFor(() =>
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        'Couldn’t update the import. Please try again.',
+      ),
+    )
+  })
+
   it('lists active jobs with metadata and a collapsed history section', async () => {
     dismissMock.mockResolvedValue(undefined)
     fetchJobsMock.mockResolvedValue({

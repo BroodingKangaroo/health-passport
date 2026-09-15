@@ -106,8 +106,11 @@ export function ImportsTracker() {
         if (action === 'dismiss') await dismissImportJob(id)
       }
     } catch {
-      /* row keeps its last known state */
-      if (action === 'restore') toast.error(t('trackerRestoreFailed'))
+      /* row keeps its last known state — but the user must know the click
+         did nothing (silent failures used to look like a dead button) */
+      toast.error(
+        action === 'restore' ? t('trackerRestoreFailed') : t('trackerActionFailed'),
+      )
     } finally {
       // A failed refetch must not misreport a completed restore as failed —
       // the shared poll recovers on its next tick anyway.
@@ -223,6 +226,21 @@ export function ImportsTracker() {
           {[0, 1, 2].map((i) => (
             <div key={i} className="h-14 animate-pulse rounded-lg border bg-muted/40" />
           ))}
+        </div>
+      ) : jobsQuery.isError && items.length === 0 ? (
+        <div
+          className="rounded-xl border border-dashed p-8 text-center"
+          data-testid="imports-error"
+        >
+          <p className="text-sm text-muted-foreground">{t('trackerLoadFailed')}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={() => void jobsQuery.refetch()}
+          >
+            {t('trackerRetryLoad')}
+          </Button>
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-xl border border-dashed p-8 text-center" data-testid="imports-empty">

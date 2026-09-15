@@ -647,6 +647,38 @@ export async function registerUser(payload: RegisterPayload): Promise<RegisterRe
   return res.json() as Promise<RegisterResponse>
 }
 
+/**
+ * Request a password-reset email. Through the shared api layer so the request
+ * carries Accept-Language and a 422 validation array becomes readable text
+ * instead of crashing the auth page on an object rendered as a React child.
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/forgot-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...baseHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({ email }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new ApiError(res.status, extractDetail(body, apiFallback('resetRequestFailed')))
+  }
+}
+
+/** Complete a password reset with the emailed single-use token. */
+export async function resetUserPassword(token: string, newPassword: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...baseHeaders() },
+    credentials: 'include',
+    body: JSON.stringify({ token, new_password: newPassword }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new ApiError(res.status, extractDetail(body, apiFallback('resetPasswordFailed')))
+  }
+}
+
 function contentDispositionFilename(header: string | null, fallback: string): string {
   if (!header) return fallback
   // RFC 5987: filename*=UTF-8''<percent-encoded> wins when present — it is

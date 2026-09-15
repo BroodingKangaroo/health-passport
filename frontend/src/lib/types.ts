@@ -20,7 +20,10 @@ export interface ReferenceQualitative {
 
 export type Reference = ReferenceInterval | ReferenceQualitative
 
-export type Status = 'normal' | 'low' | 'high' | 'abnormal'
+// ``""`` is a real backend value: a numeric result against an unrecognized
+// qualitative expected value has NO computable status (docs/architecture.md
+// "Reference model"). It means "unknown", never "abnormal".
+export type Status = 'normal' | 'low' | 'high' | 'abnormal' | ''
 
 /* ----- Biomarker ----- */
 export interface BiomarkerDefinition {
@@ -181,9 +184,6 @@ export interface MatrixCell {
   // True when the LLM couldn't determine a cross-scale conversion. The
   // flowsheet cell still renders the raw value; the UI shows a warning.
   needs_review?: boolean
-  // True when the reading was merged into an existing entry from a later
-  // upload rather than created with it.
-  merged?: boolean
 }
 
 export interface MatrixRow {

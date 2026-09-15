@@ -41,6 +41,8 @@ const API_FALLBACKS = {
     changePasswordFailed: 'POST /auth/change-password failed',
     deleteAccountFailed: 'DELETE /auth/account failed',
     registerFailed: 'POST /auth/register failed',
+    resetRequestFailed: 'POST /auth/forgot-password failed',
+    resetPasswordFailed: 'POST /auth/reset-password failed',
     requestTimedOut: 'The request timed out. Please try again.',
     extractionFailed: 'Extraction failed',
     extractionTimedOut:
@@ -60,6 +62,8 @@ const API_FALLBACKS = {
     changePasswordFailed: 'Не удалось изменить пароль',
     deleteAccountFailed: 'Не удалось удалить аккаунт',
     registerFailed: 'Не удалось зарегистрироваться',
+    resetRequestFailed: 'Не удалось отправить письмо для сброса пароля',
+    resetPasswordFailed: 'Не удалось сбросить пароль',
     requestTimedOut: 'Время ожидания запроса истекло. Попробуйте ещё раз.',
     extractionFailed: 'Не удалось распознать документ',
     extractionTimedOut:
