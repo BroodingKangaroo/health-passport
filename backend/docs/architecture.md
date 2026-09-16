@@ -157,11 +157,12 @@ tenant's data, and it is deliberately one code path.
   passing through it.
 - **The public ENDPOINTS are GET-only, with no tenant id and no overrides**:
   they take no `patient_id`, no scope, no `include_*` and no `format`; every
-  choice is read from the link row. The module also carries the three POST
-  owner routes (`/api/share/links`, `…/{id}/revoke`, `…/revoke-all`), which
-  authenticate normally and are unreachable with only a share token. No
-  existing router gains an alternative auth path, so no write endpoint is one
-  dependency-swap from being public.
+  choice is read from the link row. The module also carries the owner routes
+  (`POST /api/share/links`, `…/{id}/revoke`, `…/revoke-all`, plus
+  `GET /api/share/notice` and `POST /api/share/notice/ack`), which authenticate
+  normally and are unreachable with only a share token. No existing router
+  gains an alternative auth path, so no write endpoint is one dependency-swap
+  from being public.
 - **No session minting**: the public routes depend on `resolve_share_context`,
   never `get_current_user_or_anon` (which calls `get_or_create_anon_id` and
   sets a cookie). A recipient is a stranger even if they happen to be a
@@ -177,12 +178,65 @@ tenant's data, and it is deliberately one code path.
   `canonical_unit_inferred` is dropped (owner-facing verification UI). Entry
   free-text `notes` are absent because the timeline payload shape never
   carried them.
+- **Scope (Stage 2, S5)**: a link's `scope` is either NULL — the whole record,
+  reported as `{"kind": "all"}` — or `{"kind": "range", "from", "to"}` at
+  whole-day granularity with either end optional. It is validated at create
+  (unknown kind / unparseable date / `from > to` → localized 400) and only
+  ever NARROWS: `share_links.date_range_from_scope` turns it into a `DateRange`
+  of UTC day boundaries (`from` = 00:00:00, `to` = 23:59:59.999999 of that
+  day), and `_apply_date_range` is applied to the builders the public path
+  calls — `_events_from_db`, `_biomarkers_from_db`, `_visits_from_db`,
+  `_instrumental_from_db` (`app/api/timeline.py`) and `_build_flowsheet`
+  (`app/api/flowsheet.py`). The authed routes pass no range, so their behaviour
+  is unchanged. Filtering the blood-test ENTRY set is what filters each
+  biomarker's reading history too — a reading whose entry is outside the window
+  cannot reappear inside another entry's history. `meta.scope` reports the real
+  scope.
+- **Expiry is validated against the principal (Stage 2, S4)**: the create body
+  carries `expiry_days` (and `scope`, `include_header`), and the router — not
+  the dialog — enforces registered `1 | 7 | 30` vs anonymous `1 | 7`, because
+  an anonymous session is itself capped at 7 days (technical plan §11). A
+  refusal is a 400 with a localized detail (`share.expiry_not_allowed`), so the
+  server cap and the UI cannot drift apart.
+- **Open counters (Stage 2, S2)**: `open_count` / `first_opened_at` /
+  `last_opened_at` on the link row, written by ONE debounced conditional
+  UPDATE (`share_links.mark_opened`, `SHARE_OPEN_DEBOUNCE_SECONDS = 300` in the
+  WHERE clause, so two concurrent opens cannot both pass and a refresh inside
+  the window leaves no trace). That same statement records the owner's current
+  record watermark in `first_open_record_at` / `last_open_record_at`, so "came
+  back after new data" is `open_count > 1 AND last_open_record_at >
+  first_open_record_at`. It remains the feature's only write on a GET: no IP,
+  no user agent, no per-visit rows.
+- **Record watermark and the new-data notice (Stage 2, S9)**: the watermark is
+  `MAX(medical_entries.created_at)` for the owner (`share_links.record_watermark`).
+  `notified_record_at` is initialised to it at creation, so pre-existing data
+  never raises a notice, and only `POST /api/share/notice/ack` bumps it — on
+  every non-revoked link (expired included; revoked rows are closed history).
+  `GET /api/share/notice` and `GET /api/share/links` are pure reads that
+  compute `show` / `has_new_data` on the fly (`state` is `active | expired |
+  revoked`, revoked wins). Accepted limitation: the watermark derives from
+  entry `created_at`, so deleting an entry does not move it back; a dedicated
+  `record_changed_at` column is deferred until a stamp proves load-bearing.
+- **Funnel table (Stage 2, S1)**: `share_funnel_events` (`event`,
+  `is_anonymous`, `created_at`) mirrors `ImportFunnelEvent` and is write-only.
+  Rows are SENDER actions only — `link_created` and `link_revoked` — never
+  deleted, one per action (revoke-all writes one per link actually closed; a
+  repeat revoke writes nothing), and they carry no recipient identity, no
+  token, no link id and no owner id.
+- **Ops takedown (Stage 2, S7)**: `backend/scripts/revoke_share_link.py` takes
+  the raw token from a report, hashes it, revokes exactly that row
+  (idempotently) and logs the action without printing the token. There is
+  deliberately no admin link list; the script addresses one reported link.
 - **Anonymous senders**: identical code paths; the link dies with the cookie if
   the session is lost, and registering re-keys it onto the new patient id so
   the sender keeps revoke power.
 - **Deletion**: `DELETE /api/auth/account` deletes the principal's links (a
   link owned by a deleted account must stop resolving). Expired and revoked
   rows are never swept — they are the sender's history.
+- **Dead column**: `share_links.include_notes` is retained and never read or
+  sent — entry notes never travel, and this repo's `migrate_add_columns()` only
+  ever adds columns, so removing it would need a migration path that does not
+  exist. `ShareLinkSummary` / `ShareLinkCreatedResponse` no longer expose it.
 
 ## Matcher package layout (`app/services/matcher/`)
 

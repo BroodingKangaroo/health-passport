@@ -9,6 +9,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 import { HeaderBar } from '@/components/health-passport/header-bar'
 import { NavBar } from '@/components/shared/NavBar'
 import { LoadErrorState } from '@/components/shared/LoadErrorState'
+import { ShareNotice } from '@/components/share/sender/share-notice'
 import { HistoryList } from '@/components/health-passport/history-list'
 import { DoctorVisitDetails } from '@/components/health-passport/doctor-visit-details'
 import { BloodTestDetails } from '@/components/health-passport/blood-test-details'
@@ -51,6 +52,11 @@ export function TimelineView() {
         <HeaderBar />
         <NavBar activeTab="timeline" />
       </div>
+      {/* Quiet, self-hiding aside between the chrome and the two-pane shell:
+          it only exists while an active link can see newer results. /demo
+          renders TimelineContent directly, so the marketing surface never
+          asks about links. */}
+      <ShareNotice />
       <TimelineContent
         data={data}
         isLoading={isLoading}

@@ -12,6 +12,7 @@ import { useLeaveGuard } from '@/providers/leave-guard-provider'
 import { ProfileCard } from '@/components/health-passport/settings/profile-card'
 import { UsageCard } from '@/components/health-passport/settings/usage-card'
 import { DataExportCard } from '@/components/health-passport/settings/data-export-card'
+import { ShareLinksCard } from '@/components/share/sender/share-links-card'
 import { DangerZoneCard } from '@/components/health-passport/settings/danger-zone-card'
 
 export function SettingsView() {
@@ -51,6 +52,7 @@ export function SettingsView() {
           <ProfileCard status={status} user={user} anonId={anonId} />
           <UsageCard />
           <DataExportCard />
+          <ShareLinksCard />
           <DangerZoneCard user={user} />
         </div>
         <p className="mt-6 text-xs text-muted-foreground">

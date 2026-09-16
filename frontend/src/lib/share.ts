@@ -52,10 +52,15 @@ export interface ShareLinkSummary {
   expires_at: string
   revoked_at: string | null
   first_opened_at: string | null
+  open_count: number
+  last_opened_at: string | null
   is_anonymous: boolean
-  scope: { kind: string }
+  scope: ShareLinkScope
   include_header: boolean
-  include_notes: boolean
+  /** Computed SERVER-side — render it, never re-derive it from the dates. */
+  state: ShareLinkState
+  /** Server-computed: the record gained entries after the sender acknowledged. */
+  has_new_data: boolean
 }
 
 export interface ShareLinkCreated {
@@ -63,22 +68,51 @@ export interface ShareLinkCreated {
   token: string
   created_at: string
   expires_at: string
-  scope: { kind: string }
+  scope: ShareLinkScope
   include_header: boolean
-  include_notes: boolean
+}
+
+/**
+ * The window a link exposes. `all` is the whole record; a `range` narrows it
+ * to whole days, and either end may be omitted (open-ended).
+ */
+export interface ShareLinkScope {
+  kind: 'all' | 'range'
+  from?: string | null
+  to?: string | null
+}
+
+/** The scope posted when creating a link: `null` means the whole record. */
+export interface ShareScopeRangeInput {
+  kind: 'range'
+  from: string | null
+  to: string | null
+}
+
+/**
+ * `POST /api/share/links` body. `expiry_days` is validated against the
+ * principal server-side (anonymous senders may only ask for 1 or 7), which is
+ * why the dialog hides 30 days for them instead of letting the request 400.
+ */
+export interface ShareLinkCreateInput {
+  expiry_days: number
+  scope: ShareScopeRangeInput | null
+  include_header: boolean
+}
+
+/** `GET /api/share/notice` — a pure read, never the acknowledgement. */
+export interface ShareNotice {
+  active_links: number
+  show: boolean
+}
+
+/** `POST /api/share/notice/ack` result. */
+export interface ShareNoticeAck {
+  success: boolean
+  acknowledged: number
 }
 
 export type ShareLinkState = 'active' | 'expired' | 'revoked'
-
-/** The three states the sender must be able to tell apart at a glance. */
-export function shareLinkState(
-  link: Pick<ShareLinkSummary, 'revoked_at' | 'expires_at'>,
-  now = Date.now(),
-): ShareLinkState {
-  if (link.revoked_at) return 'revoked'
-  if (new Date(link.expires_at).getTime() <= now) return 'expired'
-  return 'active'
-}
 
 /**
  * The "Needs attention" set: out-of-range AND reliable. A reading the app

@@ -89,6 +89,48 @@ retries.
   model): the CTA is `print:hidden`, the language switch does not exist yet,
   and the print editor is not reachable from this tree.
 
+### Sender surfaces (Stage 2) — dialog, card, notice
+
+Three sender-facing pieces, all under `components/share/sender/` (that
+directory is the OWNER's half and is excluded from the read-only import
+graph). Copy for them lives in the `share` catalog (sender) — never in
+`sharedView` (recipient).
+
+- **Create dialog** (`share-link-dialog.tsx`, opened by the header's "Share a
+  link" button): scope (whole record, or a `range` with either end optional),
+  expiry (1/7/30 days) and the personal-header checkbox, defaulting ON. The
+  raw token appears exactly once, right after creation; reopening the dialog
+  clears it. Entry notes never travel — there is no notes toggle. An
+  **anonymous** sender is offered 1 or 7 days only, plus the cookie warning
+  (clearing the browser data loses the ability to revoke), because the server
+  refuses 30 days for that principal (S4): the UI and the cap must agree. The
+  dialog creates only — managing and revoking lives in the card below.
+- **"Shared links" card** (`share-links-card.tsx`) on `/settings`: every link
+  the sender ever created, newest first. It renders the **server-computed**
+  `state` (`active`/`expired`/`revoked`) and `has_new_data` verbatim — the
+  client never derives validity from the dates — plus the scope in words
+  (`Whole record`, `{from} – {to}`, `From …`, `Until …`), the expiry, the
+  opened state from `open_count`/`last_opened_at` ("Opened # times · last
+  …", singular for 1, "Not opened yet" for 0), a per-row Revoke for active
+  rows, and a Popover-confirmed Revoke all that only exists while something is
+  active. Scope dates are whole days, parsed as LOCAL midnight so a positive
+  UTC offset cannot shift the day or add a time. Like `usage-card`, the first
+  read is gated on `useAuthPrincipal().authReady`.
+- **New-data notice** (`share-notice.tsx`) mounted in `TimelineView` between
+  the sticky chrome and `TimelineContent` — NOT inside `TimelineContent`, so
+  the `/demo` surface (which renders `TimelineContent` directly) never asks
+  about links. It renders a quiet `print:hidden` band only while
+  `GET /api/share/notice` answers `show: true`, reads once per mount, and
+  acknowledges with an explicit `POST /api/share/notice/ack` (never as a
+  side effect of the read); a failed ack keeps the line. A failed read stays
+  silent.
+
+API shapes live in `lib/share.ts` (`ShareLinkSummary` with `state`,
+`has_new_data`, `open_count`, `last_opened_at`; `ShareLinkCreateInput`;
+`ShareNotice`) and the four `*ShareLink*`/notice functions in
+`services/api.ts`, all through the `/api/*` proxy with `credentials:
+include`. The old client-side `shareLinkState()` helper is gone.
+
 ## Landing gate (`/`, zero-entries hero)
 
 - `/` (`src/app/page.tsx`) renders `LandingGate`
@@ -510,9 +552,10 @@ stored strings, so translation happens only at render sites:
 
 ## Settings page (`/settings`, Account & Data)
 
-- `views/SettingsView.tsx` composes four cards from
-  `components/health-passport/settings/`: `profile-card`, `usage-card`,
-  `data-export-card`, `danger-zone-card`. Entry point: a **Settings** item in
+- `views/SettingsView.tsx` composes five cards: `profile-card`, `usage-card`
+  and the danger zone from `components/health-passport/settings/`, plus the
+  data-export card and `components/share/sender/share-links-card.tsx` (the
+  sender's link history — see "Sender surfaces" below). Entry point: a **Settings** item in
   the header user dropdown (`header-bar.tsx`, next to Sign out — registered
   users only; anonymous sessions have no dropdown and reach `/settings` by
   URL). The view has a ghost "Back to Dashboard" sub-nav bar (reusing

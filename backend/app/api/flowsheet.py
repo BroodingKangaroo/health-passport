@@ -16,6 +16,7 @@ from app.api._serializers import (
     result_schema,
 )
 from app.api.auth import get_current_user_or_anon
+from app.api.timeline import DateRange, _apply_date_range
 from app.db.models import (
     BiomarkerDefinition as BiomarkerDefinitionModel,
 )
@@ -41,8 +42,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _build_flowsheet(db: Session, patient_id: str):
-    blood_tests = (
+def _build_flowsheet(
+    db: Session,
+    patient_id: str,
+    date_range: Optional[DateRange] = None,
+):
+    """Build the longitudinal table, optionally narrowed to a shared link's
+    day window.
+
+    ``date_range`` is None for the authed route (today's behaviour, unchanged)
+    and is only ever set from a link's scope. Every column, every cell and
+    every biomarker row follows the window because they are all derived from
+    this one blood-test set.
+    """
+    blood_tests = _apply_date_range(
         db.query(MedicalEntryModel)
         .filter(
             MedicalEntryModel.type == "blood_test",
@@ -52,9 +65,10 @@ def _build_flowsheet(db: Session, patient_id: str):
             MedicalEntryModel.date,
             MedicalEntryModel.created_at,
             MedicalEntryModel.id,
-        )
-        .all()
-    )
+        ),
+        date_range,
+        MedicalEntryModel.date,
+    ).all()
 
     date_headers = _build_date_headers(blood_tests)
 

@@ -462,6 +462,25 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Too many requests. Please try again in a moment.",
         "ru": "Слишком много запросов. Попробуйте ещё раз через минуту.",
     },
+    # The two sender-visible rejections of a create request (Stage 2, S4/S5).
+    # They differ per principal — anonymous senders cannot create a 30-day
+    # link — so the message states the rule instead of only the refusal.
+    "share.expiry_not_allowed": {
+        "en": "Choose one of these link lifetimes: {allowed} days.",
+        "ru": "Выберите один из доступных сроков: {allowed} дн.",
+    },
+    "share.scope_unknown_kind": {
+        "en": "That share scope is not supported.",
+        "ru": "Такая область доступа не поддерживается.",
+    },
+    "share.scope_invalid_date": {
+        "en": "Share dates must be valid dates in the format YYYY-MM-DD.",
+        "ru": "Даты должны быть корректными и в формате ГГГГ-ММ-ДД.",
+    },
+    "share.scope_invalid_range": {
+        "en": "The start date must not be after the end date.",
+        "ru": "Дата начала не может быть позже даты окончания.",
+    },
     # ----- app/api/account.py -----
     "export.invalid_format": {
         "en": "Invalid export format '{format}'. Supported: json, csv.",

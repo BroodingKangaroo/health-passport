@@ -26,7 +26,13 @@ export type {
 } from '@/lib/types'
 import { getAccessToken } from '@/lib/auth-token'
 import { apiFallback, getApiLocale } from '@/i18n/api-locale'
-import type { ShareLinkCreated, ShareLinkSummary } from '@/lib/share'
+import type {
+  ShareLinkCreateInput,
+  ShareLinkCreated,
+  ShareLinkSummary,
+  ShareNotice,
+  ShareNoticeAck,
+} from '@/lib/share'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL
   ? `${process.env.NEXT_PUBLIC_API_URL}/api`
@@ -850,11 +856,12 @@ export async function fetchAnonId(): Promise<string | null> {
  * once: only its hash is stored, so the sender can never re-display it and
  * "resend the same link" means "create a new one".
  */
-export async function createShareLink(): Promise<ShareLinkCreated> {
+export async function createShareLink(input: ShareLinkCreateInput): Promise<ShareLinkCreated> {
   const res = await fetch(`${API_BASE}/share/links`, {
     method: 'POST',
-    headers: { ...baseHeaders() },
+    headers: { 'Content-Type': 'application/json', ...baseHeaders() },
     credentials: 'include',
+    body: JSON.stringify(input),
   })
   if (!res.ok) throw await apiError(res, apiFallback('postShareLinkFailed'))
   return res.json()
@@ -884,5 +891,25 @@ export async function revokeAllShareLinks(): Promise<{ revoked: number }> {
     credentials: 'include',
   })
   if (!res.ok) throw await apiError(res, apiFallback('postShareRevokeFailed'))
+  return res.json()
+}
+
+/**
+ * Does an active link see data newer than the sender has acknowledged? A pure
+ * read: acknowledging is always a separate, explicit POST so merely rendering
+ * the timeline can never settle the notice.
+ */
+export async function fetchShareNotice(): Promise<ShareNotice> {
+  return apiGet<ShareNotice>('/share/notice')
+}
+
+/** The explicit acknowledgement — settles every active link at once. */
+export async function ackShareNotice(): Promise<ShareNoticeAck> {
+  const res = await fetch(`${API_BASE}/share/notice/ack`, {
+    method: 'POST',
+    headers: { ...baseHeaders() },
+    credentials: 'include',
+  })
+  if (!res.ok) throw await apiError(res, apiFallback('postShareNoticeAckFailed'))
   return res.json()
 }

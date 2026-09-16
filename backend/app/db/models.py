@@ -246,15 +246,36 @@ class ShareLink(Base):
     # null = whole passport, {"kind": "range", "from": …, "to": …} = a window.
     scope = Column(JSON, nullable=True)
     include_header = Column(Boolean, nullable=False, default=True)
+    # Retained, never sent (Stage 2, S3): entry free-text notes never travel,
+    # so the flag left the API surface. The column stays because this repo's
+    # migrate_add_columns() only ever adds — dropping it needs a migration
+    # path we do not have. Written as False, read by nobody.
     include_notes = Column(Boolean, nullable=False, default=False)
     default_locale = Column(String, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     expires_at = Column(DateTime(timezone=True), nullable=False)
     revoked_at = Column(DateTime(timezone=True), nullable=True)
-    # First successful public read — the only recipient-derived value the DB
-    # ever sees (no IP, no user agent, no per-visit rows).
+    # Open counters (S2). The only recipient-derived values the DB ever sees —
+    # no IP, no user agent, no per-visit rows: `open_count` is incremented by
+    # one debounced conditional UPDATE (share_links.mark_opened), so a refresh
+    # inside the debounce window leaves no trace at all.
+    open_count = Column(Integer, nullable=False, default=0)
     first_opened_at = Column(DateTime(timezone=True), nullable=True)
-    # New-data-notice watermark (sender-visible, never recipient-visible).
+    last_opened_at = Column(DateTime(timezone=True), nullable=True)
+    # Record watermark at the first / most recent counted open: "the newest
+    # data the owner had when the recipient looked". Both derive from
+    # MAX(medical_entries.created_at) for the owner, which is why deleting an
+    # entry does not move the watermark back (accepted limitation; a
+    # dedicated record_changed_at column is deferred until a stamp proves
+    # load-bearing).
+    first_open_record_at = Column(DateTime(timezone=True), nullable=True)
+    last_open_record_at = Column(DateTime(timezone=True), nullable=True)
+    # New-data-notice watermarks (sender-visible, never recipient-visible):
+    # `notified_record_at` is the record watermark the sender has already been
+    # told about — initialised at creation, bumped by the acknowledgement.
+    notified_record_at = Column(DateTime(timezone=True), nullable=True)
+    # Superseded by notified_record_at before either was ever written; kept
+    # because migrate_add_columns() never drops a column.
     last_notified_entry_at = Column(DateTime(timezone=True), nullable=True)
 
 
@@ -361,6 +382,26 @@ class ImportFunnelEvent(Base):
     # "submitted" | "extracted" | "saved" | "failed"
     event = Column(String, nullable=False)
     user_id = Column(String, nullable=False)
+    is_anonymous = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class ShareFunnelEvent(Base):
+    """Aggregate share-link funnel metrics (Stage 2, S1).
+
+    One row per SENDER action — ``link_created`` / ``link_revoked`` — never
+    deleted, mirroring :class:`ImportFunnelEvent`. Deliberately carries no
+    recipient identity, no token hash, no link id and no owner id: the table
+    answers "how many links do people create and how many do they take back",
+    and nothing about who read what. Intentionally write-only; no app code
+    reads it yet.
+    """
+
+    __tablename__ = "share_funnel_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # "link_created" | "link_revoked"
+    event = Column(String, nullable=False)
     is_anonymous = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 

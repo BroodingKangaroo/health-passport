@@ -47,6 +47,7 @@ from app.schemas import (
     VisitData,
     VisitNote,
 )
+from app.services.share_links import DateRange
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,29 @@ _FLOW_SHEET_LABEL_RE = re.compile(
 router = APIRouter()
 
 
-def _events_from_db(db: Session, patient_id: str, include_attachments: bool = True):
+def _apply_date_range(query, date_range: Optional[DateRange], date_column):
+    """Narrow a builder's query to a shared link's day window.
+
+    ``date_range`` is None on every authed route (no filtering at all) and is
+    only ever set from a link's scope, so a scope can narrow a shared read but
+    never widen one. The window is inclusive at both ends and already
+    day-wrapped by ``share_links.date_range_from_scope``.
+    """
+    if date_range is None:
+        return query
+    if date_range.start is not None:
+        query = query.filter(date_column >= date_range.start)
+    if date_range.end is not None:
+        query = query.filter(date_column <= date_range.end)
+    return query
+
+
+def _events_from_db(
+    db: Session,
+    patient_id: str,
+    include_attachments: bool = True,
+    date_range: Optional[DateRange] = None,
+):
     # Same-day tests are ordered by insertion time then id, so the event
     # order (and therefore the timeline's default selection) is deterministic.
     # selectinload: attachments in one extra query instead of one per entry
@@ -70,7 +93,7 @@ def _events_from_db(db: Session, patient_id: str, include_attachments: bool = Tr
     # ``include_attachments=False`` is what keeps a public share payload free
     # of /static/uploads URLs and filenames (technical plan §6); the authed
     # timeline keeps the default.
-    entries = (
+    entries = _apply_date_range(
         db.query(MedicalEntryModel)
         .options(selectinload(MedicalEntryModel.attachments))
         .filter(MedicalEntryModel.patient_id == patient_id)
@@ -78,9 +101,10 @@ def _events_from_db(db: Session, patient_id: str, include_attachments: bool = Tr
             MedicalEntryModel.date,
             MedicalEntryModel.created_at,
             MedicalEntryModel.id,
-        )
-        .all()
-    )
+        ),
+        date_range,
+        MedicalEntryModel.date,
+    ).all()
     return [
         MedicalEvent(
             id=e.id,
@@ -149,16 +173,26 @@ def _result_from_query(
     )
 
 
-def _biomarkers_from_db(db: Session, patient_id: str, include_merged: bool = True):
-    blood_tests = (
+def _biomarkers_from_db(
+    db: Session,
+    patient_id: str,
+    include_merged: bool = True,
+    date_range: Optional[DateRange] = None,
+):
+    # A shared link's window is applied to the blood-test ENTRY set, and the
+    # reading history is then built from exactly those entries — so a reading
+    # whose entry falls outside the window can never resurface inside another
+    # entry's history (the leak the Stage 2 plan's risk section names).
+    blood_tests = _apply_date_range(
         db.query(MedicalEntryModel)
         .filter(
             MedicalEntryModel.type == "blood_test",
             MedicalEntryModel.patient_id == patient_id,
         )
-        .order_by(MedicalEntryModel.date)
-        .all()
-    )
+        .order_by(MedicalEntryModel.date),
+        date_range,
+        MedicalEntryModel.date,
+    ).all()
     if not blood_tests:
         return []
 
@@ -181,6 +215,9 @@ def _biomarkers_from_db(db: Session, patient_id: str, include_merged: bool = Tru
             MedicalEntryModel.id,
         )
     )
+    # Belt and braces: the entry set above is already narrowed, so this only
+    # ever excludes rows the join could not have brought in anyway.
+    rows_query = _apply_date_range(rows_query, date_range, MedicalEntryModel.date)
     # The shared view excludes readings merged in from a later upload (D15:
     # merged readings belong to the timeline details view only, exactly as the
     # flowsheet and print document already treat them).
@@ -259,15 +296,24 @@ def _map_rec(r) -> dict:
     return {"original": "", "translated_en": ""}
 
 
-def _visits_from_db(db: Session, patient_id: str, include_attachments: bool = True):
+def _visits_from_db(
+    db: Session,
+    patient_id: str,
+    include_attachments: bool = True,
+    date_range: Optional[DateRange] = None,
+):
     visits: dict[str, VisitData] = {}
-    visit_data_rows = (
+    # Filtered on the ENTRY's date, not the visit's own date field: the entry
+    # is what the timeline puts on the calendar (and what a shared link's scope
+    # means to the sender who picked the range).
+    visit_data_rows = _apply_date_range(
         db.query(VisitDataModel, MedicalEntryModel)
         .options(selectinload(MedicalEntryModel.attachments))
         .join(MedicalEntryModel, VisitDataModel.entry_id == MedicalEntryModel.id)
-        .filter(MedicalEntryModel.patient_id == patient_id)
-        .all()
-    )
+        .filter(MedicalEntryModel.patient_id == patient_id),
+        date_range,
+        MedicalEntryModel.date,
+    ).all()
     for vd, entry in visit_data_rows:
         entry_attachments = (
             [
@@ -291,15 +337,21 @@ def _visits_from_db(db: Session, patient_id: str, include_attachments: bool = Tr
     return visits
 
 
-def _instrumental_from_db(db: Session, patient_id: str, include_attachments: bool = True):
+def _instrumental_from_db(
+    db: Session,
+    patient_id: str,
+    include_attachments: bool = True,
+    date_range: Optional[DateRange] = None,
+):
     instrumental: dict[str, InstrumentalData] = {}
-    instrumental_data_rows = (
+    instrumental_data_rows = _apply_date_range(
         db.query(InstrumentalDataModel, MedicalEntryModel)
         .options(selectinload(MedicalEntryModel.attachments))
         .join(MedicalEntryModel, InstrumentalDataModel.entry_id == MedicalEntryModel.id)
-        .filter(MedicalEntryModel.patient_id == patient_id)
-        .all()
-    )
+        .filter(MedicalEntryModel.patient_id == patient_id),
+        date_range,
+        MedicalEntryModel.date,
+    ).all()
     for idd, entry in instrumental_data_rows:
         entry_attachments = (
             [

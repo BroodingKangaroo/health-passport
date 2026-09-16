@@ -1087,6 +1087,11 @@ Three, all consequences rather than mistakes.
 
 ## 19. Open questions for the owner
 
+The `Q…` ids below are **local to this document** — the product plan
+(`docs/phase-1.1-product-plan.md` §12) numbers its own questions
+independently, so "Q2" here is not "Q2" there. Cite the document when quoting
+an id.
+
 | # | Question | Recommendation |
 |---|---|---|
 | **Q1** | Re-copy a link from the list, or hash-only? | **Hash-only** for v1 (§4.2). Revisit with an encrypted copy if support shows real loss. |

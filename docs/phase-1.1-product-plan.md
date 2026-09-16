@@ -388,14 +388,14 @@ derivable answer.
 | **D1** | What is shared by default | **Whole passport, as of the moment the recipient opens it** | The doctor's job is the whole picture; a default that forces the sender to pick a range makes "share my record" a configuration task. This is also what the roadmap specifies. | No |
 | **D2** | Date-range sharing | **Offered, optional** — a "since" date or a from/to pair in whole months, not a per-entry picker | The real use is "what has changed since your last visit" (persona 2), which a range expresses in one choice. Per-entry selection is deferred (§10). | No |
 | **D3** | Attachments / source documents | **Not shared in v1; the view may state that documents exist, but no previews or downloads** | Attachments are the highest-PII surface in the model: full name, address, insurance number, sometimes a family member on the same scan. The print passport does not include them either, and the shared view's job is decoding, not document delivery. This is the recommendation I am least certain of — see Q4. | **Yes** |
-| **D4** | Free-text `notes` on entries | **Excluded by default**, with a toggle to include | `notes` is the only field with no schema; it is where the sender writes to themselves ("scared about this one", "ask about the thing at work"). Clinical fields are typed and expected; journaling is not. | **Yes** |
+| **D4** | Free-text `notes` on entries | **Excluded — and not offered as a toggle** | `notes` is the only field with no schema; it is where the sender writes to themselves ("scared about this one", "ask about the thing at work"). Clinical fields are typed and expected; journaling is not. Stage 2 found the toggle has nothing to switch (entry notes never reached the shared payload at all), so it was dropped rather than left inert. | **Yes** |
 | **D5** | Typed clinical fields — verdict/diagnosis, recommendations, prescriptions, findings, conclusion | **Included** | These are the doctor's own output and the core of "arrive prepared". A record that hides the diagnosis and the recommendations is not usable at a visit. | No |
 | **D6** | Personal header (name, DOB, gender) | **On by default**, with one toggle to turn it off | **This deviates from the roadmap**, which says off by default. A doctor cannot safely act on labs without an identifier, and the link's secrecy — not the header — is what protects the record. Hiding the name while showing the results is privacy theatre that costs the feature its main use. See §14, F1. | **Yes** |
 | **D7** | Recipient locale | **The recipient's own language, never the sender's.** Default from the browser, overridable on the page, optionally preset by the sender in the link | The traveler persona is why this matters: a Russian patient's German doctor should read German chrome. The sender setting it in the link is a convenience, never a lock. See §8. | Partly — see Q6 |
 | **D8** | Default expiry | **7 days** | Long enough to cover the appointment and its follow-up, short enough that a forgotten link closes itself. The roadmap offers 7 or 30; 7 is the better default and 30 the better ceiling. | No |
 | **D9** | Expiry choices | **1 day / 7 days / 30 days** | A day for the "one appointment" case, a month for a referral cycle. Three options is the most a sender will read. | No |
 | **D10** | No-expiry links | **Not offered in v1** | An unlimited link is a permanent open door to clinical data, and the "promise" of revocation decays with the sender's memory. | No |
-| **D11** | Who may create links | **Registered users and anonymous-session users.** Anonymous links capped at **7 days maximum** | Roadmap-mandated, and consistent with the anonymous trial funnel. The cap and the warning in §5.6 are what keep an anonymous public surface defensible. | **Yes** |
+| **D11** | Who may create links | **Registered users and anonymous-session users.** Anonymous links capped at **7 days maximum** (1 or 7 only, no 30) | Roadmap-mandated, and consistent with the anonymous trial funnel. The cap and the warning in §5.6 are what keep an anonymous public surface defensible. | **Yes** |
 | **D12** | Active-link count | **No product limit**; the list is the guard | Multiple links is the normal case (one per doctor). Expiry and revoke-all are the real controls; a cap would only create support friction. | No |
 | **D13** | Readings the app knows are unreliable (`needs_review`, failed scale conversion) | **Excluded from the "Needs attention" flags and the trend lines; shown in the full table with a neutral "not standardised" mark** | A number the app could not convert must not appear as a confident flag to a clinician. Showing it in the full table preserves transparency and the source value. | No |
 | **D14** | Recipient tracking | **First-open timestamp only, sender-visible.** No per-visit log, no IP, no device, no location, no "live viewer" indicator | The sender wants to know the doctor looked, not to watch them read. A viewer log turns a clinical tool into surveillance and invites the sender to refresh it. | **Yes** — see Q5 |
@@ -413,11 +413,15 @@ feature exists to remove. A better privacy default for the sender is a
 stays on the dialog, so the sender who is sharing with a relative or who wants
 to minimise exposure can turn it off in one tap.
 
-**D4 — free-text notes.** The default is exclusion, and this is a deliberate
+**D4 — free-text notes.** Notes never travel, and this is a deliberate
 asymmetry with D5: typed clinical fields travel, journaling does not. The
 consequence to accept is that a useful note ("fasting sample, on a new
-medication since March") is sometimes left behind. That is the right side to
-err on, and the toggle is right there for the sender who wants it.
+medication since March") is left behind, with no way for the sender to opt it
+in. That is the right side to err on for a field that can contain anything:
+the original plan offered a toggle, but the shared payload never carried entry
+notes at all, so Stage 2 removed `include_notes` from the API surface instead
+of shipping a control that could not do anything. A "notes traveled" mode is a
+deferred candidate (§10) rather than a switch on the create dialog.
 
 ---
 
@@ -516,10 +520,15 @@ and existing EN strings in other catalogs must not be reworded.
 | Copied | Link copied | Ссылка скопирована |
 | List | Shared links | Общие ссылки |
 | List states | Active / Expired {date} / Revoked {date} | Активна / Истекла {date} / Отозвана {date} |
+| Opened state | Opened {count} times, last {date} / Not opened yet | Открывали {count} раз, последний — {date} / Ещё не открывали |
+| Scope in words | Whole record / {from} – {to} / From {date} / Until {date} | Вся карта / {from} – {to} / С {date} / До {date} |
 | Revoke | Revoke | Отозвать |
 | Panic button | Revoke all links | Отозвать все ссылки |
 | New-data notice | {count} active links can see your new results | {count} активных ссылок видят ваши новые результаты |
-| Anonymous warning | Clear your browser data and you will no longer be able to revoke this link. | Если вы очистите данные браузера, вы больше не сможете отозвать эту ссылку. |
+| Anonymous warning | Clear your browser data and you will no longer be able to revoke this link. Anonymous links last at most 7 days. | Если вы очистите данные браузера, вы больше не сможете отозвать эту ссылку. Анонимные ссылки живут не дольше 7 дней. |
+
+Dropped from the plan: the notes toggle (D4). Entry free-text never reaches
+the shared payload, so there is no control to offer.
 
 Recipient side:
 
@@ -730,17 +739,22 @@ to the recipient's identity.
 
 ### Open questions for the owner
 
+The `Q…` ids below are **local to this document** — the technical plan
+(`docs/phase-1.1-technical-plan.md` §19) numbers its own questions
+independently, so "Q2" here is not "Q2" there. Cite the document when quoting
+an id.
+
 | # | Question | Why the repo cannot answer it | Recommendation |
 |---|---|---|---|
 | **Q1** | Should the personal header default to on or off? | The roadmap says off; the doctor's job says on. This is a positioning judgement. | **On by default**, one toggle (D6). |
 | **Q2** | May anonymous-session users create links at all? | The roadmap says yes for funnel reasons; the revocation weakness is not addressed there. | **Yes**, capped at 7 days, with an explicit cookie warning (D11, §5.6). |
-| **Q3** | Is the free-text `notes` field in or out? | Unknowable from the code; it depends on what real senders write there. | **Out by default**, toggle to include (D4). |
+| **Q3** | Is the free-text `notes` field in or out? | Unknowable from the code; it depends on what real senders write there. | **Out, permanently** (D4). Stage 2 confirmed the field never reached the shared payload, so the planned toggle was dropped and `include_notes` left the API surface. |
 | **Q4** | Do attachments travel with the link? | Depends on whether real doctors bounce off a decoded table and ask for the original report. | **Out in v1** (D3); revisit with the first recipient interviews. This is the decision I would most expect to reverse. |
 | **Q5** | How much does the sender get to see about recipient activity? | Nothing in the repo expresses an intent here; it is a product-ethics call. | **First-open timestamp only** (D14); no per-visit log, no live indicator. |
 | **Q6** | How many languages should the shared view's *chrome* support? | The app is EN/RU; the traveler persona implies more. | **EN/RU chrome in v1**, reusing the printed passport's 7-language headings where they overlap; expand if traveler usage shows up. |
 | **Q7** | What happens to links when the account or session is deleted? | Not addressed in the roadmap. | **Account deletion kills every link immediately** (ownership). Anonymous session loss leaves links live until expiry but unrevocable — say so in the warning. |
 | **Q8** | Is there a cap on active links? | No product reason found. | **No cap** (D12); add one only if abuse appears. |
-| **Q9** | Where do recipient and sender share metrics live? | The repo has one write-only funnel table and no metrics stack; error tracking and dashboards are explicitly unscheduled. | Pick the home **before** launch (reuse the existing funnel-event pattern) and keep recipient identity out of it. |
+| **Q9** | Where do recipient and sender share metrics live? | The repo has one write-only funnel table and no metrics stack; error tracking and dashboards are explicitly unscheduled. | **Answered in Stage 2**: `share_funnel_events` mirrors `ImportFunnelEvent`, records sender actions only (`link_created` / `link_revoked`), and carries no recipient identity. Recipient-side signals are the opaque `open_count` / `last_opened_at` counters, not events. |
 | **Q10** | What is the abuse and takedown path for a published third party's records? | Not addressed anywhere in the repo. | Define a **report path and a removal process** before public launch; it is a precondition, not a v1.1 nice-to-have. |
 | **Q11** | Legal posture: is the sender always the controller of their own shared data? | Requires a human/legal call; it also affects the privacy policy text. | Keep the consumer framing ("the owner shares their own record") and get it reviewed before launch. |
 | **Q12** | Does the recipient's view need to say *whose* record it is when the header is off? | Product judgement about the relative case. | Leave it unlabelled and let the sender's scope choice carry the meaning; the relative knows who sent the link. |
@@ -767,9 +781,10 @@ take it back.
 
 The "Shared links" card with all three states, revoke-all, the first-open
 timestamp, the expiry choice (1/7/30), the anonymous cap and its warning, the
-date-range scope, the header and notes toggles, and the new-data notice on
-active links. Also Stage 1's own measurement: sender events, recipient open,
-and return-after-new-data events.
+date-range scope, the header toggle, and the new-data notice on active links.
+The notes toggle was dropped once Stage 2 confirmed entry notes never reach the
+shared payload (D4). Also Stage 1's own measurement: sender events, recipient
+open, and return-after-new-data events.
 
 This is where the feature stops being a demo and starts being a trust
 instrument.
