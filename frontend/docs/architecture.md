@@ -31,6 +31,64 @@ incrementally (verified on Next 16 dev + standalone), so `streamApiBase()` in
 explicitly set (direct-origin escape hatch; requires `CORS_ORIGINS` on the
 backend to include the site).
 
+**Rewrites only apply to incoming requests.** A fetch the Next *server* makes
+does not pass through them, so the public share page
+(`src/app/(public)/s/[token]/page.tsx` → `src/services/share.ts`) addresses
+`STATIC_PROXY_URL` (default `http://localhost:8000`) directly — the same value
+the rewrites use, one line and one comment, not a second API base. Browser-side
+calls from that page (the lazy "All results" fetch) still go through `/api/*`
+like every other client call.
+
+## Shared view (`/s/<token>`) — the public share surface
+
+A share link is the only surface a person without an account ever sees. It
+lives in its own route group and its own root layout, because the authed tree
+would otherwise do three things a stranger must not trigger: fetch
+`/api/auth/session`, mount the anonymous-session path, and inherit react-query
+retries.
+
+- **Route groups.** `src/app/(app)/**` holds every existing page unchanged
+  (route groups do not affect URLs); `src/app/(public)/**` holds the shared
+  route and supplies its own `<html>`/`<body>`, fonts and `globals.css`
+  (which stays at `src/app/globals.css`, imported by both root layouts).
+  There is no `src/app/layout.tsx`: Next only drops a parent provider by
+  giving a subtree its own ROOT layout. `src/app/api/**`,
+  `src/app/global-error.tsx` and the metadata files stay at the app root.
+- **No `AuthProvider`** in the public tree — that is the point of the split.
+  No `SessionProvider`, no `QueryProvider`, no leave-guard, no toast host.
+- **Server-rendered record.** The page is a server component that fetches the
+  record with `cache: 'no-store'` and the token in the `X-Share-Token` header
+  (`src/services/share.ts`). `no-store` is load-bearing: revocation and expiry
+  are evaluated per request on the backend, so ANY cache in front of this read
+  would keep a revoked link alive. `dynamic = 'force-dynamic'` is explicit for
+  the same reason.
+- **Read-only by construction.** The shared tree renders `SharedRecordView`
+  (+ the reused `FlowsheetMatrix`) and is forbidden from importing
+  `services/api.ts`, `lib/auth-token`, `AuthProvider` or `QueryProvider`; a
+  test walks the import graph under `src/components/share` (excluding
+  `sender/`) and `src/app/(public)` and fails on a violation. The reused
+  matrix rows are deliberately inert here: `FlowsheetMatrix.onOpenBiomarker` is
+  omitted, so a row is text rather than a door into `/details` (the flowsheet
+  view passes the callback; `TimelineContent.onViewDetails` uses the same
+  "omitted ⇒ affordance hidden" convention).
+- **Metadata and headers.** The page sets `robots: noindex, nofollow` and
+  `referrer: no-referrer`; `src/app/robots.ts` disallows `/s/`; the API
+  responses carry `Cache-Control: no-store` and `X-Robots-Tag`.
+- **Locale.** Resolved by the shared route itself
+  (`src/i18n/shared-locale.ts`): `?lang=` → `Accept-Language` →
+  `NEXT_LOCALE` → `en`. The authed `request.ts` (cookie-only) cannot see a URL
+  parameter, so the page wraps its subtree in `NextIntlClientProvider` with the
+  resolved locale. The public tree **never writes `NEXT_LOCALE`** — that would
+  change the recipient's own app language. `<html lang>` comes from the layout
+  (layouts never receive `searchParams`); `DocumentLang` corrects it when
+  `?lang=` disagrees.
+- **Language of the data is not the language of the chrome.** Biomarker names
+  come from the persisted multilingual `names` map, and a public page must
+  never fire a translation run (unbounded LLM cost behind a stranger's URL).
+- **Print** is the browser's own print over the page (the app's existing
+  model): the CTA is `print:hidden`, the language switch does not exist yet,
+  and the print editor is not reachable from this tree.
+
 ## Landing gate (`/`, zero-entries hero)
 
 - `/` (`src/app/page.tsx`) renders `LandingGate`
@@ -523,10 +581,15 @@ stored strings, so translation happens only at render sites:
   `router.refresh()` — the server tree re-renders with the new locale while
   client state survives.
 - Message catalogs: per-domain TS modules in `src/i18n/messages/`
-  (`shared/auth/addEntry/timeline/correlation/print.ts`), each exporting
+  (`shared/auth/addEntry/timeline/correlation/print.ts`, plus `sharedView.ts`
+  for the recipient and `share.ts` for the sender), each exporting
   `{ en, ru }` trees merged by `index.ts`. RU plurals use ICU
   one/few/many/other with the `count` param. `src/i18n/__tests__/messages.test.ts`
   guards en/ru key parity, non-empty values, and param consistency.
+- **The public share route is the exception**, and only about WHERE the locale
+  comes from: `src/i18n/shared-locale.ts` adds `?lang=` and `Accept-Language`
+  ahead of the cookie for `/s/<token>` (see "Shared view"), and the shared tree
+  never writes `NEXT_LOCALE`. Every other route keeps the cookie-only rule.
 - **Backend error text is localized server-side**, not in the browser:
   `services/api.ts` sends `Accept-Language: <locale>` on every API call
   (`baseHeaders()`), and the backend returns localized `detail`/SSE messages

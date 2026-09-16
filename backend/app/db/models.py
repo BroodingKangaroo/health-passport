@@ -220,6 +220,44 @@ class EmailChangeToken(Base):
     patient = relationship("Patient")
 
 
+class ShareLink(Base):
+    """A public, read-only link to a principal's record (roadmap 1.1).
+
+    ``owner_id`` is a ``Patient.id`` or an ``anon-…`` id — one column, the
+    same single-principal-id pattern every other user-keyed table uses, with
+    ``is_anonymous`` carrying the one fact a (patient_id, anon_id) pair would
+    have made structural. The raw token is never stored: only its SHA-256, so
+    a DB leak cannot be replayed into live access to clinical records.
+    ``expires_at`` is always set (there is no unlimited link) and expiry is
+    evaluated on every read, so a row is never swept — it is the sender's
+    history.
+    """
+
+    __tablename__ = "share_links"
+
+    # Sender-side handle: the list, revoke and revoke-all address a link by
+    # id, never by token.
+    id = Column(String, primary_key=True)
+    # SHA-256 hex of the raw token; unique so the public lookup is a single
+    # indexed point read.
+    token_hash = Column(String, nullable=False, unique=True, index=True)
+    owner_id = Column(String, nullable=False, index=True)
+    is_anonymous = Column(Boolean, nullable=False, default=True)
+    # null = whole passport, {"kind": "range", "from": …, "to": …} = a window.
+    scope = Column(JSON, nullable=True)
+    include_header = Column(Boolean, nullable=False, default=True)
+    include_notes = Column(Boolean, nullable=False, default=False)
+    default_locale = Column(String, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+    # First successful public read — the only recipient-derived value the DB
+    # ever sees (no IP, no user agent, no per-visit rows).
+    first_opened_at = Column(DateTime(timezone=True), nullable=True)
+    # New-data-notice watermark (sender-visible, never recipient-visible).
+    last_notified_entry_at = Column(DateTime(timezone=True), nullable=True)
+
+
 class ExtractionTimingSample(Base):
     __tablename__ = "extraction_timing_samples"
 

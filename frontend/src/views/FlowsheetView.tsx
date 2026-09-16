@@ -1,6 +1,7 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
+import { useRouter } from 'next/navigation'
 
 import { HeaderBar } from '@/components/health-passport/header-bar'
 import { NavBar } from '@/components/shared/NavBar'
@@ -11,6 +12,7 @@ import { useFlowsheetData } from '@/hooks/useFlowsheetData'
 export function FlowsheetView() {
   const t = useTranslations('timeline.views.flowsheet')
   const tc = useTranslations('common')
+  const router = useRouter()
   const { data, isLoading, error, refetch } = useFlowsheetData()
 
   if (isLoading) {
@@ -46,6 +48,7 @@ export function FlowsheetView() {
           dates={data!.dates}
           matrix={data!.matrix}
           biomarkers={data!.biomarkers}
+          onOpenBiomarker={(id) => router.push('/details?id=' + id + '&from=flowsheet')}
         />
       </main>
     </div>

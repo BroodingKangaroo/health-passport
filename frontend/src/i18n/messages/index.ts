@@ -10,6 +10,8 @@ import { demoMessages } from './demo'
 import { privacyMessages } from './privacy'
 import { importMessages } from './import'
 import { chartsMessages } from './charts'
+import { sharedViewMessages } from './sharedView'
+import { shareMessages } from './share'
 
 export const DEFAULT_LOCALE = 'en'
 export const SUPPORTED_LOCALES = ['en', 'ru'] as const
@@ -33,6 +35,8 @@ export const messages: Record<AppLocale, Record<string, unknown>> = {
     privacyMessages.en,
     importMessages.en,
     chartsMessages.en,
+    sharedViewMessages.en,
+    shareMessages.en,
   ),
   ru: merge(
     sharedMessages.ru,
@@ -47,7 +51,9 @@ export const messages: Record<AppLocale, Record<string, unknown>> = {
     privacyMessages.ru,
     importMessages.ru,
     chartsMessages.ru,
+    sharedViewMessages.ru,
+    shareMessages.ru,
   ),
 }
 
-export { sharedMessages, authMessages, addEntryMessages, timelineMessages, correlationMessages, printMessages, settingsMessages, landingMessages, demoMessages, privacyMessages, importMessages, chartsMessages }
+export { sharedMessages, authMessages, addEntryMessages, timelineMessages, correlationMessages, printMessages, settingsMessages, landingMessages, demoMessages, privacyMessages, importMessages, chartsMessages, sharedViewMessages, shareMessages }

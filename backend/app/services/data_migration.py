@@ -14,6 +14,7 @@ from app.db.models import (
     InstrumentalData,
     MedicalEntry,
     Notification,
+    ShareLink,
     UsageLimit,
     VisitData,
 )
@@ -38,6 +39,7 @@ def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str, commit: boo
         "readings_copied": 0,
         "import_jobs_migrated": 0,
         "notifications_migrated": 0,
+        "share_links_migrated": 0,
     }
 
     # Copy medical entries (generate new IDs to avoid conflicts)
@@ -198,6 +200,19 @@ def copy_anonymous_data(db: Session, anon_id: str, new_user_id: str, commit: boo
         Notification.user_id == anon_id
     ).update({"user_id": new_user_id}, synchronize_session=False)
     summary["notifications_migrated"] = notifications_migrated
+
+    # Re-key the session's share links (one-statement pattern, same as the
+    # jobs above) — NOT the copy used for entries. A link left pointing at the
+    # anon id would keep serving the frozen anonymous copy while the sender's
+    # real record moved on, and the sender would lose the ability to revoke.
+    # Re-keying keeps both the recipient's view and the sender's control.
+    share_links_migrated = db.query(ShareLink).filter(
+        ShareLink.owner_id == anon_id
+    ).update(
+        {"owner_id": new_user_id, "is_anonymous": False},
+        synchronize_session=False,
+    )
+    summary["share_links_migrated"] = share_links_migrated
 
     # Copy the anonymous usage record so the new registered user inherits the
     # consumption they already earned as an anonymous visitor (otherwise the

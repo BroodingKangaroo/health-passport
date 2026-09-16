@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button'
 import { useTheme } from '@/providers/theme-provider'
 import { useLeaveGuard } from '@/providers/leave-guard-provider'
 import { LanguageSwitch } from '@/components/shared/language-switch'
+import { ShareLinkButton } from '@/components/share/sender/share-link-dialog'
 import { NotificationBell } from './notification-bell'
 
 function formatDob(dob: string | undefined, locale: string): string {
@@ -133,6 +134,10 @@ export function HeaderBar() {
           <Printer className="size-3.5" />
           {t('print')}
         </Button>
+
+        {/* Share lives next to print: the same "give this to my doctor"
+            intent, as the lighter, always-current sibling of the PDF. */}
+        <ShareLinkButton />
 
         {/* Auth section — driven by backend-verified auth status */}
         {status === 'loading' ? (

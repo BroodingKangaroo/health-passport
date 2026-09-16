@@ -124,11 +124,62 @@ Replaces the old `range_min`/`range_max` + qualitative-flag model:
 - Registration-time data migration (`/api/auth/register` `migrate_data`) only
   reads the anon id through `verify_anon_cookie`, so a forged/legacy cookie can
   never copy another user's data into the new account.
+- A **share token is a third principal class** (see "Public share surface"):
+  a request that carries one has no session, sets no cookie, writes no
+  `UsageLimit` row, and is resolved by `resolve_share_context` alone.
 - **Wire contract**: `BiomarkerDefinition` / `BiomarkerDefinitionResponse`
   (and therefore every timeline/flowsheet/detail `definition` object) do **not**
   expose `user_id`. Definitions are serialized through `definition_schema` in
   `app/api/_serializers.py`; the owner id stays server-side so def lookups can
   never leak a tenant id into a client's matrix.
+
+## Public share surface (`app/api/share.py`, `app/services/share_links.py`)
+
+A share link is a third principal class: **not a session**, no cookie, no
+`UsageLimit` row. It is the only way a request with no credentials reads a
+tenant's data, and it is deliberately one code path.
+
+- **Token storage**: `hp_` + 32 random bytes, stored ONLY as SHA-256 hex in
+  `share_links.token_hash` (unique index) — the `PasswordResetToken` precedent.
+  The raw value is returned once, in the create response, so the sender can
+  never re-display a link; "resend" means "create a new one".
+- **Transport**: the recipient URL is `/s/<token>` (the link is the URL), but
+  the API call carries the token in the `X-Share-Token` header against constant
+  paths (`/api/share/record`, `/api/share/flowsheet`). No path or query string
+  ever contains a live credential, because this repo has no log-scrubbing
+  layer — uvicorn writes request paths to stdout and they end up in bug
+  reports.
+- **One enforcement point**: `resolve_share_context` is the only place a
+  client-supplied string becomes a tenant id. Missing, unknown, revoked and
+  expired tokens all return one identical 404 with one localized detail, so a
+  stranger who finds a dead token learns nothing about what it was. Both
+  public GETs depend on it, so no public endpoint can read owner data without
+  passing through it.
+- **GET-only, no tenant id, no overrides**: the public router takes no
+  `patient_id`, no scope, no `include_*` and no `format`; every choice is read
+  from the link row. No existing router gains an alternative auth path, so no
+  write endpoint is one dependency-swap from being public.
+- **No session minting**: the public routes depend on `resolve_share_context`,
+  never `get_current_user_or_anon` (which calls `get_or_create_anon_id` and
+  sets a cookie). A recipient is a stranger even if they happen to be a
+  logged-in user.
+- **Always current**: every read is a fresh DB read through the same builders
+  the authed timeline/flowsheet use, with `Cache-Control: no-store` and
+  `X-Robots-Tag: noindex, nofollow`. Revocation and expiry are evaluated on
+  request, so they take effect on the recipient's very next load — provided
+  nothing in front of the resolver caches.
+- **Payload differences from the tenant timeline**: attachments never travel
+  (`include_attachments=False` on the event/visit/instrumental builders), merged
+  readings are excluded (D15 — the flowsheet and print rules), and
+  `canonical_unit_inferred` is dropped (owner-facing verification UI). Entry
+  free-text `notes` are absent because the timeline payload shape never
+  carried them.
+- **Anonymous senders**: identical code paths; the link dies with the cookie if
+  the session is lost, and registering re-keys it onto the new patient id so
+  the sender keeps revoke power.
+- **Deletion**: `DELETE /api/auth/account` deletes the principal's links (a
+  link owned by a deleted account must stop resolving). Expired and revoked
+  rows are never swept — they are the sender's history.
 
 ## Matcher package layout (`app/services/matcher/`)
 
@@ -439,9 +490,12 @@ saves it. Nothing is persisted without user review.
   Any failure rolls the claim back — the job stays `done`, the file stays
   staged, storage stays uncharged.
 - Anon→register migration (`copy_anonymous_data`) RE-KEYS
-  `ExtractionJob.user_id` and `Notification.user_id` (one-statement
-  pattern, same as `UsageLimit`): staged jobs stay reviewable after
-  registration and their refunds hit the registered counter.
+  `ExtractionJob.user_id`, `Notification.user_id` and `ShareLink.owner_id`
+  (one-statement pattern, same as `UsageLimit`): staged jobs stay reviewable
+  after registration and their refunds hit the registered counter, and a link
+  created before registering keeps serving the *live* record while the sender
+  keeps the ability to revoke it. (Share links are re-keyed, not copied — a
+  link left on the anon id would serve the frozen anonymous copy forever.)
 
 ### Expiry, startup recovery, single-process constraint
 
@@ -762,6 +816,11 @@ extractions "forget" units.
   confirmation, email-change notice) is bilingual (English block + Russian
   block, each carrying its link) because there is no per-user language
   preference in the data model.
+- The public share surface returns only localized `detail` strings
+  (`share.link_unavailable`, `share.link_not_found`, `share.too_many_requests`)
+  — the record payload itself carries **no** server-localized prose, because it
+  is data: biomarker names come from the persisted multilingual `names` map and
+  the chrome is localized by the frontend from its own catalogs.
 
 ## Auth & password reset (`/api/auth`)
 
@@ -869,7 +928,10 @@ extractions "forget" units.
   across principals; shared helper `app/services/upload_cleanup.py
   unlink_unreferenced_files`, also used by `DELETE /api/entry`) → the
   caller's `scope=local` definitions (reading-free by then) →
-  `PasswordResetToken` rows → the `UsageLimit` row → the `Patient` row
+  `PasswordResetToken` rows → the `UsageLimit` row → the caller's
+  `ShareLink` rows (roadmap 1.1: a link owned by an account that no longer
+  exists must stop resolving rather than keep serving a record nobody can
+  revoke) → the `Patient` row
   (registered only; anonymous principals have no Patient row). An anonymous
   deletion also clears the anon cookie so the next visit starts a fresh
   session. Response: `{message (localized), deleted_entries, freed_bytes}`.
@@ -879,3 +941,7 @@ extractions "forget" units.
 New model columns are added to existing DBs by `migrate_add_columns()` in
 `app/db/session.py` (called from `init_db`; `create_all` only creates missing
 tables, not missing columns).
+
+New TABLES need no migration step: `create_all` creates them on the next boot,
+so `share_links` (roadmap 1.1) appears on a long-lived DB by restarting. Any
+column added to it later goes through `migrate_add_columns()` like every other.

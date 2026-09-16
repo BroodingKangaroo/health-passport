@@ -441,6 +441,27 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Visit '{id}' not found",
         "ru": "Визит '{id}' не найден",
     },
+    # ----- app/api/share.py -----
+    # One message for missing, unknown, expired and revoked tokens: a stranger
+    # who finds a dead token must not learn what it was or why it stopped.
+    "share.link_unavailable": {
+        "en": (
+            "This link is no longer active. If you still need this record, "
+            "ask the person who shared it to send a new link."
+        ),
+        "ru": (
+            "Эта ссылка больше не активна. Если запись всё ещё нужна, "
+            "попросите того, кто ею поделился, отправить новую ссылку."
+        ),
+    },
+    "share.link_not_found": {
+        "en": "Share link not found",
+        "ru": "Ссылка не найдена",
+    },
+    "share.too_many_requests": {
+        "en": "Too many requests. Please try again in a moment.",
+        "ru": "Слишком много запросов. Попробуйте ещё раз через минуту.",
+    },
     # ----- app/api/account.py -----
     "export.invalid_format": {
         "en": "Invalid export format '{format}'. Supported: json, csv.",

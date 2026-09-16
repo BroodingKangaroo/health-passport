@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 
-import ForgotPasswordPage from '@/app/forgot-password/page'
+import ForgotPasswordPage from '@/app/(app)/forgot-password/page'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
 
 const mockRequestPasswordReset = vi.fn()

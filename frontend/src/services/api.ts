@@ -26,6 +26,7 @@ export type {
 } from '@/lib/types'
 import { getAccessToken } from '@/lib/auth-token'
 import { apiFallback, getApiLocale } from '@/i18n/api-locale'
+import type { ShareLinkCreated, ShareLinkSummary } from '@/lib/share'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL
   ? `${process.env.NEXT_PUBLIC_API_URL}/api`
@@ -840,4 +841,48 @@ export async function fetchAnonId(): Promise<string | null> {
   } catch {
     return null
   }
+}
+
+/* ----- Share links (roadmap 1.1) ----- */
+
+/**
+ * Create a link to the caller's own record. The raw token comes back exactly
+ * once: only its hash is stored, so the sender can never re-display it and
+ * "resend the same link" means "create a new one".
+ */
+export async function createShareLink(): Promise<ShareLinkCreated> {
+  const res = await fetch(`${API_BASE}/share/links`, {
+    method: 'POST',
+    headers: { ...baseHeaders() },
+    credentials: 'include',
+  })
+  if (!res.ok) throw await apiError(res, apiFallback('postShareLinkFailed'))
+  return res.json()
+}
+
+/** Every link the caller ever created, newest first — expired and revoked rows
+ *  included, because the sender's history is the point. */
+export async function listShareLinks(): Promise<{ links: ShareLinkSummary[] }> {
+  return apiGet<{ links: ShareLinkSummary[] }>('/share/links')
+}
+
+/** Close one link. Immediate — the recipient's next load is a dead link. */
+export async function revokeShareLink(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/share/links/${encodeURIComponent(id)}/revoke`, {
+    method: 'POST',
+    headers: { ...baseHeaders() },
+    credentials: 'include',
+  })
+  if (!res.ok) throw await apiError(res, apiFallback('postShareRevokeFailed'))
+}
+
+/** The sender's escape hatch when they are not sure what is still out there. */
+export async function revokeAllShareLinks(): Promise<{ revoked: number }> {
+  const res = await fetch(`${API_BASE}/share/links/revoke-all`, {
+    method: 'POST',
+    headers: { ...baseHeaders() },
+    credentials: 'include',
+  })
+  if (!res.ok) throw await apiError(res, apiFallback('postShareRevokeFailed'))
+  return res.json()
 }

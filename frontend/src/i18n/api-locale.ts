@@ -46,6 +46,8 @@ const API_FALLBACKS = {
     registerFailed: 'POST /auth/register failed',
     resetRequestFailed: 'POST /auth/forgot-password failed',
     resetPasswordFailed: 'POST /auth/reset-password failed',
+    postShareLinkFailed: 'POST /share/links failed',
+    postShareRevokeFailed: 'POST /share/links revoke failed',
     requestTimedOut: 'The request timed out. Please try again.',
     extractionFailed: 'Extraction failed',
     extractionTimedOut:
@@ -70,6 +72,8 @@ const API_FALLBACKS = {
     registerFailed: 'Не удалось зарегистрироваться',
     resetRequestFailed: 'Не удалось отправить письмо для сброса пароля',
     resetPasswordFailed: 'Не удалось сбросить пароль',
+    postShareLinkFailed: 'Не удалось создать ссылку',
+    postShareRevokeFailed: 'Не удалось отозвать ссылку',
     requestTimedOut: 'Время ожидания запроса истекло. Попробуйте ещё раз.',
     extractionFailed: 'Не удалось распознать документ',
     extractionTimedOut:

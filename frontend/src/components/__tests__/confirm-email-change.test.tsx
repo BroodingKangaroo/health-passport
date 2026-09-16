@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 
-import ConfirmEmailChangePage from '@/app/confirm-email-change/page'
+import ConfirmEmailChangePage from '@/app/(app)/confirm-email-change/page'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
 import { ApiError } from '@/services/api'
 

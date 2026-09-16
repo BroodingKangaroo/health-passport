@@ -10,7 +10,9 @@ import { PrintConfigProvider } from '@/providers/print-config-provider'
 import { LeaveGuardProvider } from '@/providers/leave-guard-provider'
 import { AuthProvider } from '@/components/providers/AuthProvider'
 import { Toaster } from 'sonner'
-import './globals.css'
+// globals.css stays at the app root so both root layouts (the authed `(app)`
+// group and the public `(public)` group) can import the same stylesheet.
+import '@/app/globals.css'
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin', 'cyrillic'] })
 const geistMono = Geist_Mono({

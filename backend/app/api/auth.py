@@ -488,6 +488,12 @@ async def delete_account(
     db.query(models.UsageLimit).filter(
         models.UsageLimit.user_id == user_id,
     ).delete(synchronize_session=False)
+    # Deleting the principal takes its share links with it: a link owned by an
+    # account that no longer exists must stop resolving rather than keep
+    # serving a record nobody can revoke.
+    db.query(models.ShareLink).filter(
+        models.ShareLink.owner_id == user_id,
+    ).delete(synchronize_session=False)
 
     if user is not None:
         db.delete(user)

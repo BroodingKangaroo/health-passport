@@ -20,7 +20,7 @@ vi.mock('next-auth/react', () => ({
   signIn: vi.fn(),
 }))
 
-import LoginPage from '@/app/login/page'
+import LoginPage from '@/app/(app)/login/page'
 
 function renderLogin() {
   return render(

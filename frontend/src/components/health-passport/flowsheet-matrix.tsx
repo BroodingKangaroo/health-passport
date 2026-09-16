@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
 import { Search, ChevronRight, ArrowDown, ArrowUp } from 'lucide-react'
 
@@ -83,10 +82,20 @@ interface FlowsheetMatrixProps {
   dates: readonly DateHeader[]
   matrix: MatrixCategory[]
   biomarkers: BiomarkerResult[]
+  /**
+   * Row → full-details navigation. Omitted on the public share surface: a
+   * recipient has no details route, so rows stay plain, readable text instead
+   * of navigating into the app.
+   */
+  onOpenBiomarker?: (id: string) => void
 }
 
-export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixProps) {
-  const router = useRouter()
+export function FlowsheetMatrix({
+  dates,
+  matrix,
+  biomarkers,
+  onOpenBiomarker,
+}: FlowsheetMatrixProps) {
   const t = useTranslations('timeline.flowsheet')
   const locale = useLocale()
   const [query, setQuery] = useState('')
@@ -292,7 +301,8 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
                     return v == null ? null : { value: v, status: b.status }
                   })
                   .filter((h) => h != null) as { value: number; status: string }[]
-                const hasBio = bioResults.length > 0
+                // Rows only navigate when the caller supplies a destination.
+                const canOpen = bioResults.length > 0 && !!onOpenBiomarker
                 const bounds = chartReferenceBounds(row.reference)
                 // Align the tail of the cells array with the shown date
                 // window (cells are index-aligned with `dates`).
@@ -304,22 +314,21 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
                 return (
                   <div
                     key={row.id}
-                    role={hasBio ? 'button' : undefined}
-                    tabIndex={hasBio ? 0 : undefined}
-                    aria-disabled={hasBio ? undefined : true}
+                    role={canOpen ? 'button' : undefined}
+                    tabIndex={canOpen ? 0 : undefined}
+                    aria-disabled={canOpen ? undefined : true}
                     onClick={() => {
-                      if (hasBio) {
-                        router.push('/details?id=' + row.id + '&from=flowsheet')
-                      }
+                      if (canOpen) onOpenBiomarker?.(row.id)
                     }}
                     onKeyDown={(e) => {
-                      if (hasBio) activateOnKey(e, () => router.push('/details?id=' + row.id + '&from=flowsheet'))
+                      if (canOpen) activateOnKey(e, () => onOpenBiomarker?.(row.id))
                     }}
                     className={cn(
                       'group grid',
                       GRID_COLS,
                       'border-b border-border py-2.5 text-sm transition-colors',
-                      hasBio && 'cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none',
+                      canOpen &&
+                        'cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none',
                     )}
                     style={{ gridTemplateColumns: gridTemplateCols }}
                   >
@@ -351,7 +360,7 @@ export function FlowsheetMatrix({ dates, matrix, biomarkers }: FlowsheetMatrixPr
                     {cells.map((cell, i) => (
                       <Cell key={i} cell={cell} />
                     ))}
-                    {hasBio ? (
+                    {canOpen ? (
                       <span className="flex items-center justify-end pr-4 text-muted-foreground transition-colors group-hover:text-foreground">
                         <ChevronRight className="size-4" />
                       </span>

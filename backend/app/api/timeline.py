@@ -62,11 +62,14 @@ _FLOW_SHEET_LABEL_RE = re.compile(
 router = APIRouter()
 
 
-def _events_from_db(db: Session, patient_id: str):
+def _events_from_db(db: Session, patient_id: str, include_attachments: bool = True):
     # Same-day tests are ordered by insertion time then id, so the event
     # order (and therefore the timeline's default selection) is deterministic.
     # selectinload: attachments in one extra query instead of one per entry
     # (ISSUES.md #59).
+    # ``include_attachments=False`` is what keeps a public share payload free
+    # of /static/uploads URLs and filenames (technical plan §6); the authed
+    # timeline keeps the default.
     entries = (
         db.query(MedicalEntryModel)
         .options(selectinload(MedicalEntryModel.attachments))
@@ -89,10 +92,14 @@ def _events_from_db(db: Session, patient_id: str):
             status=e.status or "",
             clinic=e.clinic or "",
             source_language=e.source_language,
-            attachments=[
-                AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size, url=a.file_path)
-                for a in e.attachments
-            ],
+            attachments=(
+                [
+                    AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size, url=a.file_path)
+                    for a in e.attachments
+                ]
+                if include_attachments
+                else []
+            ),
         )
         for e in entries
     ]
@@ -142,7 +149,7 @@ def _result_from_query(
     )
 
 
-def _biomarkers_from_db(db: Session, patient_id: str):
+def _biomarkers_from_db(db: Session, patient_id: str, include_merged: bool = True):
     blood_tests = (
         db.query(MedicalEntryModel)
         .filter(
@@ -160,7 +167,7 @@ def _biomarkers_from_db(db: Session, patient_id: str):
     # their entry date. The SQL order is exactly _readings_query's
     # (date, created_at, entry id), so grouping in SQL order preserves each
     # biomarker's oldest-first sequence.
-    rows = (
+    rows_query = (
         db.query(BiomarkerReading, MedicalEntryModel.date)
         .join(MedicalEntryModel, BiomarkerReading.entry_id == MedicalEntryModel.id)
         .filter(
@@ -173,8 +180,13 @@ def _biomarkers_from_db(db: Session, patient_id: str):
             MedicalEntryModel.created_at,
             MedicalEntryModel.id,
         )
-        .all()
     )
+    # The shared view excludes readings merged in from a later upload (D15:
+    # merged readings belong to the timeline details view only, exactly as the
+    # flowsheet and print document already treat them).
+    if not include_merged:
+        rows_query = rows_query.filter(BiomarkerReading.merged.is_(False))
+    rows = rows_query.all()
     readings_by_bid: dict[str, list] = {}
     for r, date in rows:
         readings_by_bid.setdefault(r.biomarker_id, []).append((r, date))
@@ -247,7 +259,7 @@ def _map_rec(r) -> dict:
     return {"original": "", "translated_en": ""}
 
 
-def _visits_from_db(db: Session, patient_id: str):
+def _visits_from_db(db: Session, patient_id: str, include_attachments: bool = True):
     visits: dict[str, VisitData] = {}
     visit_data_rows = (
         db.query(VisitDataModel, MedicalEntryModel)
@@ -257,10 +269,14 @@ def _visits_from_db(db: Session, patient_id: str):
         .all()
     )
     for vd, entry in visit_data_rows:
-        entry_attachments = [
-            AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size, url=a.file_path)
-            for a in entry.attachments
-        ]
+        entry_attachments = (
+            [
+                AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size, url=a.file_path)
+                for a in entry.attachments
+            ]
+            if include_attachments
+            else []
+        )
         visits[entry.id] = VisitData(
             specialty=vd.specialty,
             provider=vd.provider,
@@ -275,7 +291,7 @@ def _visits_from_db(db: Session, patient_id: str):
     return visits
 
 
-def _instrumental_from_db(db: Session, patient_id: str):
+def _instrumental_from_db(db: Session, patient_id: str, include_attachments: bool = True):
     instrumental: dict[str, InstrumentalData] = {}
     instrumental_data_rows = (
         db.query(InstrumentalDataModel, MedicalEntryModel)
@@ -285,10 +301,14 @@ def _instrumental_from_db(db: Session, patient_id: str):
         .all()
     )
     for idd, entry in instrumental_data_rows:
-        entry_attachments = [
-            AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size, url=a.file_path)
-            for a in entry.attachments
-        ]
+        entry_attachments = (
+            [
+                AttachmentSchema(id=a.id, name=a.name, type=a.type, size=a.size, url=a.file_path)
+                for a in entry.attachments
+            ]
+            if include_attachments
+            else []
+        )
         instrumental[entry.id] = InstrumentalData(
             modality=idd.modality or "",
             findings=idd.findings or "",
