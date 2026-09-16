@@ -8,11 +8,15 @@ import { DEFAULT_LOCALE, SUPPORTED_LOCALES, type AppLocale } from './messages'
  * the shared route resolves its own locale, in this order:
  *
  *   1. `?lang=` on the URL (when supported)
- *   2. the request's `Accept-Language` — the recipient's browser
- *   3. `NEXT_LOCALE`, if the visitor happens to have one
- *   4. `en`
+ *   2. the link's `default_locale` — the sender's per-link preset (S10)
+ *   3. the request's `Accept-Language` — the recipient's browser
+ *   4. `NEXT_LOCALE`, if the visitor happens to have one
+ *   5. `en`
  *
- * The sender's own language never decides what the recipient reads.
+ * The sender's own UI language never decides what the recipient reads. The
+ * link preset is a different thing: a deliberate choice about who is
+ * receiving this link, made by the person who knows — and it is always
+ * overridable with `?lang=` or the in-page switch.
  */
 
 export function isSupportedLocale(value: string | null | undefined): value is AppLocale {
@@ -21,10 +25,12 @@ export function isSupportedLocale(value: string | null | undefined): value is Ap
 
 export function resolveSharedLocale(opts: {
   lang?: string | null
+  defaultLocale?: string | null
   acceptLanguage?: string | null
   cookieLocale?: string | null
 }): AppLocale {
   if (isSupportedLocale(opts.lang)) return opts.lang
+  if (isSupportedLocale(opts.defaultLocale)) return opts.defaultLocale
   const fromHeader = pickFromAcceptLanguage(opts.acceptLanguage)
   if (fromHeader) return fromHeader
   if (isSupportedLocale(opts.cookieLocale)) return opts.cookieLocale

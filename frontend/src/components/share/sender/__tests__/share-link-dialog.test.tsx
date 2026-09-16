@@ -3,11 +3,17 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { ShareLinkButton } from '@/components/share/sender/share-link-dialog'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
+import type { FlowsheetResponse } from '@/lib/types'
 
 const createShareLink = vi.fn()
+const fetchFlowsheetData = vi.fn()
+const translateBiomarkerNames = vi.fn()
 
 vi.mock('@/services/api', () => ({
   createShareLink: (input: unknown) => createShareLink(input),
+  fetchFlowsheetData: () => fetchFlowsheetData(),
+  translateBiomarkerNames: (lang: string, names: unknown, opts?: unknown) =>
+    translateBiomarkerNames(lang, names, opts),
 }))
 
 // `useAuthPrincipal` reads the next-auth session: an authenticated session is a
@@ -27,6 +33,7 @@ const created = {
   expires_at: '2026-09-22T10:00:00+00:00',
   scope: { kind: 'all' as const },
   include_header: true,
+  default_locale: null,
 }
 
 const renderButton = () =>
@@ -42,9 +49,56 @@ function openDialog() {
 
 beforeEach(() => {
   createShareLink.mockReset()
+  fetchFlowsheetData.mockReset()
+  fetchFlowsheetData.mockResolvedValue({ dates: [], matrix: [], biomarkers: [] })
+  translateBiomarkerNames.mockReset()
+  translateBiomarkerNames.mockResolvedValue({ names: new Map(), categories: {} })
   // Registered by default: the anonymous variant is the exception and sets it.
   session.current = { data: { user: { id: 'user-1' } }, status: 'authenticated' }
 })
+
+/** The minimal flowsheet response the translate-now step reads: matrix rows
+ *  are the record's biomarkers, `biomarkers` carries their definitions. */
+function flowsheetWith(
+  rows: { id: string; name: string; ru?: string }[],
+  ghostDefs: { id: string; name?: string; ru?: string }[] = [],
+): FlowsheetResponse {
+  return {
+    dates: [],
+    matrix: [
+      {
+        category: 'Complete Blood Count',
+        rows: rows.map((row) => ({
+          id: row.id,
+          name: row.name,
+          original: '',
+          original_lang: null,
+          unit: '',
+          reference: null,
+          cells: [],
+        })),
+      },
+    ],
+    biomarkers: [...rows, ...ghostDefs].map((row) => ({
+      id: row.id,
+      entry_id: 'evt',
+      definition: {
+        id: row.id,
+        names: row.ru ? { en: row.name, ru: row.ru } : { en: row.name },
+        synonyms: [],
+        category: 'Complete Blood Count',
+        unit: '',
+        reference: null,
+        scope: 'global',
+        reference_source: 'global',
+      },
+      value: 1,
+      date: '2026-01-01T00:00:00+00:00',
+      status: 'normal',
+      history: [],
+    })),
+  } as unknown as FlowsheetResponse
+}
 
 describe('ShareLinkButton', () => {
   it('creates a link with the chosen scope, expiry and header, and shows the URL exactly once', async () => {
@@ -66,6 +120,7 @@ describe('ShareLinkButton', () => {
         expiry_days: 30,
         scope: { kind: 'range', from: '2026-01-01', to: '2026-03-31' },
         include_header: true,
+        default_locale: null,
       }),
     )
 
@@ -90,6 +145,7 @@ describe('ShareLinkButton', () => {
         expiry_days: 7,
         scope: null,
         include_header: false,
+        default_locale: null,
       }),
     )
   })
@@ -108,6 +164,7 @@ describe('ShareLinkButton', () => {
         expiry_days: 7,
         scope: { kind: 'range', from: '2026-01-01', to: null },
         include_header: true,
+        default_locale: null,
       }),
     )
   })
@@ -173,5 +230,127 @@ describe('ShareLinkButton', () => {
     expect(await screen.findByRole('radio', { name: '7 дней' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: '1 день' })).toBeInTheDocument()
     expect(screen.getByText(/Вы не вошли в аккаунт/)).toBeInTheDocument()
+  })
+
+  it('sends no language preset by default, so the recipient browser decides', async () => {
+    createShareLink.mockResolvedValue(created)
+    renderButton()
+    openDialog()
+
+    expect(await screen.findByRole('radio', { name: "Recipient's choice" })).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Create link' }))
+
+    await waitFor(() =>
+      expect(createShareLink).toHaveBeenCalledWith({
+        expiry_days: 7,
+        scope: null,
+        include_header: true,
+        default_locale: null,
+      }),
+    )
+  })
+
+  it('pins the link to Russian, which the recipient can still override on the page', async () => {
+    createShareLink.mockResolvedValue({ ...created, default_locale: 'ru' })
+    renderButton()
+    openDialog()
+
+    fireEvent.click(await screen.findByRole('radio', { name: 'Russian' }))
+    const hint = screen.getByText(/The recipient can still switch it on the page/)
+    expect(hint).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Create link' }))
+
+    await waitFor(() =>
+      expect(createShareLink).toHaveBeenCalledWith({
+        expiry_days: 7,
+        scope: null,
+        include_header: true,
+        default_locale: 'ru',
+      }),
+    )
+  })
+
+  it('offers translate-now for a Russian link only while Russian names are missing', async () => {
+    createShareLink.mockResolvedValue({ ...created, default_locale: 'ru' })
+    fetchFlowsheetData.mockResolvedValue(
+      flowsheetWith([
+        { id: 'hb', name: 'Hemoglobin' },
+        { id: 'tsh', name: 'TSH', ru: 'ТТГ' },
+      ]),
+    )
+    renderButton()
+    openDialog()
+
+    // No Russian preset, no translate step.
+    expect(screen.queryByTestId('share-translate-now')).toBeNull()
+    fireEvent.click(await screen.findByRole('radio', { name: 'Russian' }))
+    // Only the missing ones (hemoglobin, not TSH) make it onto the payload,
+    // and the cost is stated before the sender commits.
+    expect(await screen.findByTestId('share-translate-now')).toBeInTheDocument()
+    expect(screen.getByText(/spends one AI translation from your quota/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('share-translate-now'))
+    fireEvent.click(screen.getByRole('button', { name: 'Create link' }))
+
+    await waitFor(() => expect(createShareLink).toHaveBeenCalledTimes(1))
+    await waitFor(() =>
+      expect(translateBiomarkerNames).toHaveBeenCalledWith(
+        'ru',
+        [{ id: 'hb', name: 'Hemoglobin' }],
+        { persist: true },
+      ),
+    )
+    expect(await screen.findByText('Names translated to Russian.')).toBeInTheDocument()
+  })
+
+  it('scopes the translate payload to the record, never the whole dictionary', async () => {
+    createShareLink.mockResolvedValue({ ...created, default_locale: 'ru' })
+    // Only `hb` is a matrix row (a real biomarker in the record); `ghost` is
+    // a definition the dialog could see elsewhere but the record never
+    // references — the 1500-LOINC-dictionary case in miniature.
+    fetchFlowsheetData.mockResolvedValue(
+      flowsheetWith([{ id: 'hb', name: 'Hemoglobin' }], [{ id: 'ghost' }]),
+    )
+    renderButton()
+    openDialog()
+
+    fireEvent.click(await screen.findByRole('radio', { name: 'Russian' }))
+    fireEvent.click(await screen.findByTestId('share-translate-now'))
+    fireEvent.click(screen.getByRole('button', { name: 'Create link' }))
+
+    await waitFor(() =>
+      expect(translateBiomarkerNames).toHaveBeenCalledWith(
+        'ru',
+        [{ id: 'hb', name: 'Hemoglobin' }],
+        { persist: true },
+      ),
+    )
+  })
+
+  it('hides translate-now from anonymous senders and never fetches their defs', async () => {
+    createShareLink.mockResolvedValue(created)
+    session.current = { data: null, status: 'unauthenticated' }
+    fetchFlowsheetData.mockResolvedValue(flowsheetWith([{ id: 'hb', name: 'Hemoglobin' }]))
+    renderButton()
+    openDialog()
+
+    fireEvent.click(await screen.findByRole('radio', { name: 'Russian' }))
+    expect(screen.queryByTestId('share-translate-now')).toBeNull()
+    expect(fetchFlowsheetData).not.toHaveBeenCalled()
+  })
+
+  it('still creates the link when the translation fails — declining is always allowed', async () => {
+    createShareLink.mockResolvedValue({ ...created, default_locale: 'ru' })
+    fetchFlowsheetData.mockResolvedValue(flowsheetWith([{ id: 'hb', name: 'Hemoglobin' }]))
+    translateBiomarkerNames.mockRejectedValue(new Error('LLM down'))
+    renderButton()
+    openDialog()
+
+    fireEvent.click(await screen.findByRole('radio', { name: 'Russian' }))
+    fireEvent.click(await screen.findByTestId('share-translate-now'))
+    fireEvent.click(screen.getByRole('button', { name: 'Create link' }))
+
+    expect(await screen.findByText(/\/s\/hp_abc123$/)).toBeInTheDocument()
+    expect(await screen.findByText(/Could not translate the names/)).toBeInTheDocument()
   })
 })

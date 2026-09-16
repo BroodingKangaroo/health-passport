@@ -57,6 +57,8 @@ export interface ShareLinkSummary {
   is_anonymous: boolean
   scope: ShareLinkScope
   include_header: boolean
+  /** The sender's per-link language preset (S10): "en" / "ru" or null. */
+  default_locale: string | null
   /** Computed SERVER-side — render it, never re-derive it from the dates. */
   state: ShareLinkState
   /** Server-computed: the record gained entries after the sender acknowledged. */
@@ -70,6 +72,7 @@ export interface ShareLinkCreated {
   expires_at: string
   scope: ShareLinkScope
   include_header: boolean
+  default_locale: string | null
 }
 
 /**
@@ -98,6 +101,8 @@ export interface ShareLinkCreateInput {
   expiry_days: number
   scope: ShareScopeRangeInput | null
   include_header: boolean
+  /** "en" / "ru", or null so the recipient's browser decides (S10). */
+  default_locale: string | null
 }
 
 /** `GET /api/share/notice` — a pure read, never the acknowledgement. */

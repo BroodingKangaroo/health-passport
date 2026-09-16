@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import { Search, ChevronRight, ArrowDown, ArrowUp } from 'lucide-react'
 
@@ -36,6 +36,38 @@ const RANGE_PRESETS: RangePreset[] = [6, 12, 'all']
 // Show the range presets only once there are enough columns for them to
 // matter (with ≤6 columns "last 6" would be identical to "all").
 const RANGE_PRESET_MIN_COLUMNS = 7
+
+// The card-per-biomarker layout below this width (Tailwind's `sm` boundary).
+// Mirrored instead of a Tailwind constant so the JS branch and the CSS
+// `sm:hidden` classes can never drift apart.
+const NARROW_QUERY = '(max-width: 639px)'
+
+function subscribeNarrow(callback: () => void): () => void {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return () => {}
+  }
+  const mq = window.matchMedia(NARROW_QUERY)
+  mq.addEventListener('change', callback)
+  return () => mq.removeEventListener('change', callback)
+}
+
+function getNarrow(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia(NARROW_QUERY).matches
+  )
+}
+
+/**
+ * Whether the viewport is below the `sm` breakpoint. Server and jsdom (no
+ * matchMedia) read "wide", so the table stays the only variant in tests and
+ * on the first paint; the change listener keeps the choice honest when the
+ * phone rotates or the window resizes.
+ */
+function useIsNarrow(): boolean {
+  return useSyncExternalStore(subscribeNarrow, getNarrow, () => false)
+}
 
 function splitDateLabel(label: string): { day: string; year: string | null } {
   // Backend labels are "Mar 20" (current year) or "Mar 20, 2023".
@@ -98,6 +130,7 @@ export function FlowsheetMatrix({
 }: FlowsheetMatrixProps) {
   const t = useTranslations('timeline.flowsheet')
   const locale = useLocale()
+  const isNarrow = useIsNarrow()
   const [query, setQuery] = useState('')
   const [range, setRange] = useState<RangePreset>('all')
 
@@ -199,7 +232,7 @@ export function FlowsheetMatrix({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className={cn('overflow-x-auto', isNarrow && 'hidden print:block')}>
         {/* The wrapper must be exactly as wide as the tracks' minimum sum:
             a plain block wrapper is only scrollport-wide, so the grid tracks
             (which overflow it horizontally) would paint beyond the wrapper's
@@ -382,6 +415,146 @@ export function FlowsheetMatrix({
           )}
         </div>
       </div>
+
+      {isNarrow && (
+        <div className="flex flex-col gap-4 p-4 print:hidden" data-testid="flowsheet-cards">
+          {filtered.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+              {query ? t('emptySearch', { query }) : t('empty')}
+            </p>
+          ) : (
+            filtered.map((cat) => (
+              <div key={cat.category} className="flex flex-col gap-2">
+                <p className="px-1 text-xs font-bold uppercase tracking-wide text-secondary-foreground">
+                  {cat.category}
+                </p>
+                {cat.rows.map((row) => {
+                  const bioResults = biomarkers.filter((b) => b.definition.id === row.id)
+                  const canOpen = bioResults.length > 0 && !!onOpenBiomarker
+                  const referenceText = formatReference(row.reference, row.unit, { lang: locale })
+                  const cells =
+                    range === 'all'
+                      ? row.cells
+                      : row.cells.slice(-(shownDates.length))
+                  const latest = cells[cells.length - 1]
+                  const latestDate = shownDates[shownDates.length - 1]
+                  return (
+                    <div
+                      key={row.id}
+                      role={canOpen ? 'button' : undefined}
+                      tabIndex={canOpen ? 0 : undefined}
+                      aria-disabled={canOpen ? undefined : true}
+                      onClick={() => {
+                        if (canOpen) onOpenBiomarker?.(row.id)
+                      }}
+                      onKeyDown={(e) => {
+                        if (canOpen) activateOnKey(e, () => onOpenBiomarker?.(row.id))
+                      }}
+                      className={cn(
+                        'rounded-lg border border-border bg-card p-3 transition-colors',
+                        canOpen && 'cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none',
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-foreground">
+                            {row.name}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground/70">
+                            {row.original} · {referenceText}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          {latest && latest.value !== EMPTY_CELL_VALUE ? (
+                            <>
+                              <p
+                                className={cn(
+                                  'flex items-center justify-end gap-0.5 text-base font-bold tabular-nums',
+                                  isOutOfRange(latest.status)
+                                    ? statusText[latest.status]
+                                    : 'text-foreground',
+                                )}
+                              >
+                                {qualitativeLabel(formatNumber(latest.value), locale)}
+                                {row.unit ? ` ${row.unit}` : ''}
+                                <ScaleNote
+                                  scaleFunction={latest.scale_function}
+                                  needsReview={latest.needs_review}
+                                />
+                              </p>
+                              {latestDate && (
+                                <p className="text-[11px] text-muted-foreground">
+                                  {splitDateLabel(latestDate.label).day}
+                                </p>
+                              )}
+                            </>
+                          ) : (
+                            <p className="text-sm text-muted-foreground/50">
+                              {EMPTY_CELL_VALUE}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      {cells.length > 1 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {cells.map((cell, i) => (
+                            <NarrowValueChip
+                              key={i}
+                              date={shownDates[i]}
+                              cell={cell}
+                              unit={row.unit}
+                              locale={locale}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </Card>
+  )
+}
+
+function NarrowValueChip({
+  date,
+  cell,
+  unit,
+  locale,
+}: {
+  date?: DateHeader
+  cell: MatrixCell
+  unit: string
+  locale: string
+}) {
+  const t = useTranslations('timeline.flowsheet')
+  const { day, year } = date ? splitDateLabel(date.label) : { day: '', year: null }
+  const isOut = isOutOfRange(cell.status)
+  return (
+    <span className="inline-flex items-baseline gap-1 rounded-md border border-border px-1.5 py-0.5 text-xs">
+      <span className="text-muted-foreground" title={date?.label}>
+        {day}
+        {year ? ` ’${year.slice(2)}` : ''}
+      </span>
+      {cell.value === EMPTY_CELL_VALUE ? (
+        <span className="text-muted-foreground/40" title={t('notMeasured')}>
+          {EMPTY_CELL_VALUE}
+        </span>
+      ) : (
+        <span
+          className={cn(
+            'tabular-nums',
+            isOut ? cn('font-medium', statusText[cell.status]) : 'text-foreground',
+          )}
+        >
+          {qualitativeLabel(formatNumber(cell.value), locale)}
+          {unit ? ` ${unit}` : ''}
+        </span>
+      )}
+    </span>
   )
 }

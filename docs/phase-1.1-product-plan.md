@@ -796,6 +796,21 @@ mobile pass on the shared view with the flowsheet degrading to cards, print
 styling for a printed shared view, the CTA instrumentation, and the sender's
 "translate for this recipient" step if the traveler need is real.
 
+**Stage 3 delivered (2026-09-17).** The EN|RU recipient switch (plain `?lang=`
+links, no cookie) and the sender's per-link `default_locale` preset, ranked
+after `?lang=` and above the browser; the flowsheet's card-per-biomarker
+narrow layout built inside the shared component (the owner's flowsheet and
+`/demo` improve with it) with the full table printing as a table; the
+tokenless CTA counter (`GET /api/share/cta` — 302, rate-limited, one
+`cta_clicked` funnel row with the sender flag NULL); the registered-sender
+"translate for this recipient" step reusing `POST /api/translate-biomarkers`
+with `persist: true` (the endpoint's target set gained `ru`); and the two
+Stage 2 review fixes — one canonical scope shape everywhere, and
+`has_new_data` never true on an expired row. The other five document
+languages are recorded as deferred (S9): no recipient evidence yet for
+whether the second language anyone needs is German or nothing, and Hebrew
+brings RTL layout work the shared surface has never done.
+
 **Stage 4 — Deferred candidates, on their own evidence.**
 
 Passcode-protected links, snapshot links, per-entry-type exclusions, and

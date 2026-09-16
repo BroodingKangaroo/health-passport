@@ -854,6 +854,7 @@ async def test_link_list_reports_state_scope_and_new_data(share_api, db_session)
         "is_anonymous",
         "scope",
         "include_header",
+        "default_locale",
         "state",
         "has_new_data",
     }
@@ -863,14 +864,14 @@ async def test_link_list_reports_state_scope_and_new_data(share_api, db_session)
     assert summary["last_opened_at"] is None
     assert summary["scope"] == {"kind": "range", "from": SCOPE_FROM, "to": None}
 
-    # The all-record case reports both keys with real nulls.
+    # The all-record case reports the one canonical shape everywhere.
     whole = await _create(client)
     all_record = next(
         link
         for link in (await client.get("/api/share/links")).json()["links"]
         if link["id"] == whole["id"]
     )
-    assert all_record["scope"] == {"kind": "all", "from": None, "to": None}
+    assert all_record["scope"] == {"kind": "all"}
 
     await _open(client, ranged["token"])
     opened = next(
@@ -934,7 +935,9 @@ async def test_link_list_reports_state_scope_and_new_data(share_api, db_session)
     assert listed[ranged["id"]]["revoked_at"] is not None
     assert listed[ranged["id"]]["has_new_data"] is False
     assert listed["expired-row"]["state"] == "expired"
-    assert listed["expired-row"]["has_new_data"] is True
+    # S3.4: an expired link nobody can open must not claim "new results since
+    # you shared" — only a live link may carry the flag.
+    assert listed["expired-row"]["has_new_data"] is False
 
     # ... and a revoked row that is also expired is still "revoked".
     db_session.query(ShareLink).filter(ShareLink.id == "expired-row").update(
@@ -1028,3 +1031,125 @@ async def test_revoke_link_is_callable_the_way_the_ops_script_calls_it(share_api
     )
     assert share_links.revoke_link(db_session, TEST_ANON_ID, other_row.id) is False
     assert (await _open(client, other["token"])).status_code == 200
+
+
+# Stage 3 — reach and polish (S10, S13, S3.4).
+# --------------------------------------------------------------------------
+
+
+async def test_default_locale_is_validated_and_round_trips(share_api, db_session):
+    """S10: the link carries the sender's per-link language preset — stored,
+    returned on create, echoed in meta and in the summary, EN/RU or None —
+    and anything else is refused with a localized 400."""
+    client, _principal = share_api
+
+    russian = await _create(client, default_locale="ru")
+    assert russian["default_locale"] == "ru"
+    body = (await _open(client, russian["token"])).json()
+    assert body["meta"]["default_locale"] == "ru"
+    summary = (await client.get("/api/share/links")).json()["links"][0]
+    assert summary["default_locale"] == "ru"
+    assert _link_row(db_session, russian["id"]).default_locale == "ru"
+
+    english = await _create(client, default_locale="en")
+    assert english["default_locale"] == "en"
+    assert (await _open(client, english["token"])).json()["meta"]["default_locale"] == "en"
+
+    # The preset is optional: omitting the field and sending null both mean
+    # the recipient's browser decides.
+    assert (await _create(client))["default_locale"] is None
+    assert (await _create(client, default_locale=None))["default_locale"] is None
+
+    refused = await client.post("/api/share/links", json={"default_locale": "de"})
+    assert refused.status_code == 400
+    assert refused.json()["detail"] == MESSAGES["share.locale_not_allowed"]["en"]
+    refused_ru = await client.post(
+        "/api/share/links",
+        json={"default_locale": "pl"},
+        headers={"Accept-Language": "ru-RU,ru;q=0.9"},
+    )
+    assert refused_ru.json()["detail"] == MESSAGES["share.locale_not_allowed"]["ru"]
+    # The refusals created nothing: the history is the four accepted links.
+    assert len((await client.get("/api/share/links")).json()["links"]) == 4
+
+
+async def test_scope_is_one_shape_everywhere(share_api):
+    """S3.4: the create response, meta.scope and the list summary all report
+    the same canonical shape — {"kind": "all"} or the full range with its
+    real (possibly null) ends."""
+    client, _principal = share_api
+    whole = await _create(client)
+    ranged = await _create(client, scope={"kind": "range", "from": SCOPE_FROM, "to": None})
+
+    assert whole["scope"] == {"kind": "all"}
+    assert ranged["scope"] == {"kind": "range", "from": SCOPE_FROM, "to": None}
+
+    record_meta = (await _open(client, whole["token"])).json()["meta"]
+    assert record_meta["scope"] == {"kind": "all"}
+
+    by_id = {
+        link["id"]: link for link in (await client.get("/api/share/links")).json()["links"]
+    }
+    assert by_id[whole["id"]]["scope"] == {"kind": "all"}
+    assert by_id[ranged["id"]]["scope"] == {"kind": "range", "from": SCOPE_FROM, "to": None}
+
+
+async def test_cta_redirect_counts_a_recipient_click_and_is_rate_limited(
+    share_api, db_session, monkeypatch
+):
+    """S13: the CTA is a tokenless GET that 302s to the landing page and
+    writes one funnel counter row with a NULL sender flag — a recipient-side
+    counter with no per-link attribution. POST is refused like the rest of
+    the public surface, and the same throttle covers it."""
+    client, _principal = share_api
+
+    first = await client.get("/api/share/cta", follow_redirects=False)
+    assert first.status_code == 302
+    assert first.headers["location"] == "/"
+    # The no-store/noindex controls sit on the redirect itself — a click
+    # through must not be cacheable any more than the record reads are.
+    assert first.headers["cache-control"] == "no-store"
+    assert first.headers["x-robots-tag"] == "noindex, nofollow"
+    rows = _funnel(db_session)
+    assert [row.event for row in rows] == ["cta_clicked"]
+    assert rows[0].is_anonymous is None
+
+    # A repeat click counts again, with no token involved anywhere.
+    again = await client.get("/api/share/cta", follow_redirects=False)
+    assert again.status_code == 302
+    assert len(_funnel(db_session)) == 2
+
+    post = await client.post("/api/share/cta")
+    assert post.status_code == 405
+
+    monkeypatch.setattr("app.api.share._PUBLIC_READ_LIMIT", 3)
+    reset_public_throttle()
+    for _ in range(3):
+        await client.get("/api/share/cta")
+    limited = await client.get("/api/share/cta")
+    assert limited.status_code == 429
+
+
+async def test_has_new_data_is_never_true_on_an_expired_link(share_api, db_session):
+    """S3.4: the new-data flag exists to make the sender act; an expired link
+    nobody can open must not claim "new results since you shared"."""
+    client, _principal = share_api
+    expired = await _create(client)
+    db_session.query(ShareLink).filter(ShareLink.id == expired["id"]).update(
+        {"expires_at": datetime.now(timezone.utc) - timedelta(minutes=5)},
+        synchronize_session=False,
+    )
+    db_session.add(
+        MedicalEntry(
+            id="expired-new-data",
+            patient_id=TEST_USER_ID,
+            type="blood_test",
+            date=_at("2026-05-01"),
+            title="After expiry",
+        )
+    )
+    db_session.commit()
+
+    listed = (await client.get("/api/share/links")).json()["links"][0]
+    assert listed["state"] == "expired"
+    assert listed["has_new_data"] is False

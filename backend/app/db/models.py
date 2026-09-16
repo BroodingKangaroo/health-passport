@@ -390,19 +390,28 @@ class ShareFunnelEvent(Base):
     """Aggregate share-link funnel metrics (Stage 2, S1).
 
     One row per SENDER action — ``link_created`` / ``link_revoked`` — never
-    deleted, mirroring :class:`ImportFunnelEvent`. Deliberately carries no
-    recipient identity, no token hash, no link id and no owner id: the table
-    answers "how many links do people create and how many do they take back",
-    and nothing about who read what. Intentionally write-only; no app code
-    reads it yet.
+    deleted, mirroring :class:`ImportFunnelEvent`. Since Stage 3 (S13) the
+    table also carries one RECIPIENT-side counter — ``cta_clicked``, written
+    by the public CTA redirect — and the sender flag is NULL on those rows:
+    ``is_anonymous IS NULL`` means "a recipient-side counter", the one fact
+    that keeps the table honest now that it holds two kinds of row.
+    Deliberately carries no recipient identity, no token hash, no link id and
+    no owner id: the table answers "how many links do people create, how many
+    do they take back, and how often does a recipient click through to the
+    product", and nothing about who read what. Intentionally write-only; no
+    app code reads it yet.
     """
 
     __tablename__ = "share_funnel_events"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    # "link_created" | "link_revoked"
+    # "link_created" | "link_revoked" | "cta_clicked"
     event = Column(String, nullable=False)
-    is_anonymous = Column(Boolean, nullable=False, default=True)
+    # True = an anonymous sender's action, False = a registered sender's
+    # action, None = a recipient-side counter (the CTA click).
+    # No default on purpose: SQLAlchemy would apply one to an explicit None,
+    # and the CTA rows must persist NULL. Every writer passes a value.
+    is_anonymous = Column(Boolean, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
 

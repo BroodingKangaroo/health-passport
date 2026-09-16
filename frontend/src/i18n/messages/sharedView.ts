@@ -15,6 +15,11 @@ export const sharedViewMessages = {
         expires: 'This link expires {date}. The owner can revoke it at any time.',
         readOnly: 'Read-only',
       },
+      language: {
+        label: 'Language',
+        en: 'English',
+        ru: 'Russian',
+      },
       flags: {
         title: 'Needs attention',
         empty: 'No results outside the reference range in this record.',
@@ -62,6 +67,11 @@ export const sharedViewMessages = {
         lastUpdated: 'Обновлено {date}',
         expires: 'Ссылка действует до {date}. Владелец может отозвать её в любой момент.',
         readOnly: 'Только просмотр',
+      },
+      language: {
+        label: 'Язык',
+        en: 'Английский',
+        ru: 'Русский',
       },
       flags: {
         title: 'Требует внимания',

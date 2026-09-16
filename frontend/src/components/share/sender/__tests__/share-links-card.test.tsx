@@ -38,6 +38,7 @@ function link(overrides: Partial<ShareLinkSummary>): ShareLinkSummary {
     is_anonymous: false,
     scope: { kind: 'all' },
     include_header: true,
+    default_locale: null,
     state: 'active',
     has_new_data: false,
     ...overrides,
@@ -138,6 +139,27 @@ describe('ShareLinksCard', () => {
     expect(within(rendered[1]).getByText(/Jan 1, 2026 . Mar 31, 2026/)).toBeInTheDocument()
     expect(within(rendered[2]).getByText('From Jan 1, 2026')).toBeInTheDocument()
     expect(within(rendered[3]).getByText('Until Mar 31, 2026')).toBeInTheDocument()
+  })
+
+  it('shows the sender which language a link is pinned to', async () => {
+    listShareLinks.mockResolvedValue({
+      links: [
+        link({ id: 'ru', default_locale: 'ru' }),
+        link({ id: 'en', default_locale: 'en' }),
+        link({ id: 'auto', default_locale: null }),
+      ],
+    })
+    renderCard()
+
+    const rendered = await rows()
+    expect(within(rendered[0]).getByTestId('share-language')).toHaveTextContent(
+      'Language: Russian',
+    )
+    expect(within(rendered[1]).getByTestId('share-language')).toHaveTextContent(
+      'Language: English',
+    )
+    // No preset, no line: the recipient's browser decides.
+    expect(within(rendered[2]).queryByTestId('share-language')).toBeNull()
   })
 
   it('marks a row whose link can already see newer results', async () => {

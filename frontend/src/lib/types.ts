@@ -210,7 +210,10 @@ export type PrintLang = 'ru' | 'en' | 'de' | 'fr' | 'es' | 'he' | 'pl'
 // target). `ru` is never a translation target: it is the internal sentinel
 // for "original" mode (Keep Original), which renders the source-document
 // name directly (row.original), regardless of the document's real language.
-export type TranslateLang = 'de' | 'fr' | 'es' | 'he' | 'pl'
+// `ru` joined with Stage 3 (S14): the share dialog's translate-now step
+// persists Russian names through the same endpoint. The print flow still only
+// ever sends the five document languages.
+export type TranslateLang = 'de' | 'fr' | 'es' | 'he' | 'pl' | 'ru'
 
 /* ----- Form Types ----- */
 export type UploadState = 'idle' | 'scanning' | 'editor'

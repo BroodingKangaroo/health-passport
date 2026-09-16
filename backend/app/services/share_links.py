@@ -48,6 +48,10 @@ SHARE_OPEN_DEBOUNCE_SECONDS = 300
 # Funnel events (S1) — sender actions only, never per recipient.
 FUNNEL_LINK_CREATED = "link_created"
 FUNNEL_LINK_REVOKED = "link_revoked"
+# The one recipient-side counter (S13): a click on the public CTA redirect.
+# Its funnel row carries ``is_anonymous = NULL`` — that is the flag that
+# separates recipient counters from sender actions (see the model).
+FUNNEL_CTA_CLICKED = "cta_clicked"
 
 
 def generate_token() -> str:
@@ -187,8 +191,8 @@ def record_watermark(db: Session, owner_id: str) -> Optional[datetime]:
     )
 
 
-def _funnel(db: Session, event: str, is_anonymous: bool) -> None:
-    db.add(ShareFunnelEvent(event=event, is_anonymous=bool(is_anonymous)))
+def _funnel(db: Session, event: str, is_anonymous: Optional[bool]) -> None:
+    db.add(ShareFunnelEvent(event=event, is_anonymous=is_anonymous))
 
 
 def create_link(
@@ -198,6 +202,7 @@ def create_link(
     ttl_days: int = SHARE_TTL_DAYS,
     scope: Optional[dict] = None,
     include_header: bool = True,
+    default_locale: Optional[str] = None,
 ) -> tuple[ShareLink, str]:
     """Create a link owned by ``owner_id`` and return ``(row, raw_token)``.
 
@@ -223,7 +228,7 @@ def create_link(
         scope=scope,
         include_header=include_header,
         include_notes=False,
-        default_locale=None,
+        default_locale=default_locale,
         open_count=0,
         created_at=now,
         expires_at=now + timedelta(days=ttl_days),
@@ -234,6 +239,19 @@ def create_link(
     db.commit()
     db.refresh(link)
     return link, raw_token
+
+
+def record_cta_click(db: Session) -> None:
+    """Count one recipient CTA click: a funnel row with the sender flag NULL.
+
+    The public CTA is tokenless by design (S13), so this row carries no link
+    id and no recipient identity — it answers "clicks per link opened", which
+    is the loop signal the roadmap asked for. NULL is the point: it marks the
+    row as a recipient-side counter, the second kind of row the funnel table
+    holds since Stage 3.
+    """
+    _funnel(db, FUNNEL_CTA_CLICKED, None)
+    db.commit()
 
 
 def resolve_share_link(db: Session, raw_token: Optional[str]) -> Optional[ShareLink]:

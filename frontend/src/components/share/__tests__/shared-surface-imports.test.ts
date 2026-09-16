@@ -17,6 +17,10 @@ const FORBIDDEN_IMPORTS = [
   '@/lib/auth-token',
   '@/components/providers/AuthProvider',
   '@/providers/query-provider',
+  // The language switch is plain links with `?lang=`; writing `NEXT_LOCALE`
+  // would change a stranger's own app locale, so the cookie writer itself is
+  // banned from the recipient tree (shared surface, excluding `sender/`).
+  '@/i18n/api-locale',
 ]
 
 const ROOTS = ['src/components/share', "src/app/(public)"]

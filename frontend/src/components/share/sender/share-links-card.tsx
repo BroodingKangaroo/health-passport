@@ -180,6 +180,13 @@ export function ShareLinksCard() {
                   </div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span>{t('expires', { date: formatDate(link.expires_at, dateLocale) })}</span>
+                    {link.default_locale && (
+                      <span data-testid="share-language">
+                        {t('language', {
+                          name: t(link.default_locale === 'ru' ? 'languageRu' : 'languageEn'),
+                        })}
+                      </span>
+                    )}
                     <span>
                       {link.last_opened_at
                         ? t('opened', {

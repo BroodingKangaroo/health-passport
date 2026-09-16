@@ -70,6 +70,7 @@ class ShareLinkCreatedResponse(BaseModel):
     expires_at: str
     scope: dict
     include_header: bool
+    default_locale: Optional[str] = None
 
 
 class ShareLinkCreateRequest(BaseModel):
@@ -78,13 +79,16 @@ class ShareLinkCreateRequest(BaseModel):
 
     ``expiry_days`` is validated against the principal in the router (the
     allowed sets differ for anonymous and registered senders); ``scope`` is a
-    range or nothing. Both are server-side rules, never just hidden UI.
+    range or nothing; ``default_locale`` (Stage 3, S10) is the sender's
+    per-link language preset, ``"en"`` / ``"ru"`` or None (the recipient's
+    browser decides). All are server-side rules, never just hidden UI.
     """
 
     # Whole-record default: None means {"kind": "all"}.
     expiry_days: int = 7
     scope: Optional[dict] = None
     include_header: bool = True
+    default_locale: Optional[str] = None
 
 
 class ShareLinkSummary(BaseModel):
@@ -106,6 +110,9 @@ class ShareLinkSummary(BaseModel):
     # {"kind": "range", "from": "YYYY-MM-DD"|None, "to": ...}.
     scope: dict
     include_header: bool
+    # The sender's per-link language preset (Stage 3, S10): "en" / "ru" or
+    # None when the recipient's browser decides.
+    default_locale: Optional[str] = None
     # "active" | "expired" | "revoked" — revoked wins over expired.
     state: str
     # True when the owner's record is newer than what this link has been

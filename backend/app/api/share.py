@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app import i18n
@@ -173,15 +174,6 @@ def _is_newer(candidate: Optional[datetime], reference: Optional[datetime]) -> b
 
 def _scope_payload(scope: Optional[dict]) -> dict:
     return scope if isinstance(scope, dict) else {"kind": "all"}
-
-
-def _list_scope_payload(scope: Optional[dict]) -> dict:
-    """The list's scope shape: always both ``kind`` and the real (possibly
-    null) range ends, so the card can render either variant without branching
-    on key presence."""
-    if isinstance(scope, dict) and scope.get("kind") == "range":
-        return {"kind": "range", "from": scope.get("from"), "to": scope.get("to")}
-    return {"kind": "all", "from": None, "to": None}
 
 
 def _link_state(link: ShareLinkModel, now: datetime) -> str:
@@ -353,11 +345,13 @@ def _link_summary(
             _iso_utc(link.last_opened_at) if link.last_opened_at else None
         ),
         is_anonymous=bool(link.is_anonymous),
-        scope=_list_scope_payload(link.scope),
+        scope=_scope_payload(link.scope),
         include_header=bool(link.include_header),
+        default_locale=link.default_locale,
         state=_link_state(link, now),
         has_new_data=(
             link.revoked_at is None
+            and _as_utc(link.expires_at) > now
             and _is_newer(watermark, link.notified_record_at)
         ),
     )
@@ -393,6 +387,11 @@ async def create_share_link(
                 allowed=", ".join(str(days) for days in allowed),
             ),
         )
+    if request.default_locale not in (None, "en", "ru"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=i18n.tr("share.locale_not_allowed"),
+        )
     try:
         scope = share_links.normalize_scope(request.scope)
     except share_links.ScopeError as exc:
@@ -408,6 +407,7 @@ async def create_share_link(
         ttl_days=request.expiry_days,
         scope=scope,
         include_header=request.include_header,
+        default_locale=request.default_locale,
     )
     return ShareLinkCreatedResponse(
         id=link.id,
@@ -416,7 +416,38 @@ async def create_share_link(
         expires_at=_iso_utc(link.expires_at),
         scope=_scope_payload(link.scope),
         include_header=bool(link.include_header),
+        default_locale=link.default_locale,
     )
+
+
+@router.get("/cta")
+async def share_cta(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Count a recipient's click through to the landing page and send them
+    there (Stage 3, S13).
+
+    Tokenless by design: per-link attribution would need the raw token in a
+    URL, which the public surface forbids everywhere else. The one counter
+    row goes to the funnel table with the sender flag NULL — a
+    recipient-side counter, not a sender action. This is the only public
+    write besides the debounced open counter, so it is rate-limited like
+    every public read and must stay a number, never a channel.
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    if not _public_requests_allowed(client_ip):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=i18n.tr("share.too_many_requests"),
+        )
+    share_links.record_cta_click(db)
+    redirect = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+    # Headers land on the RETURNED response, not an injected one: FastAPI only
+    # merges injected-Response headers when the handler is not returning its
+    # own Response, so the 302 would otherwise ship without them.
+    _no_store(redirect)
+    return redirect
 
 
 @router.get("/links", response_model=ShareLinkListResponse)

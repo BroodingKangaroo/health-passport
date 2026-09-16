@@ -1,12 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { HeartPulse, Info } from 'lucide-react'
 
 import { FlowsheetMatrix } from '@/components/health-passport/flowsheet-matrix'
 import { Button } from '@/components/ui/button'
+import { LanguageSwitch } from '@/components/share/language-switch'
 import { formatReference } from '@/lib/reference'
 import { biomarkerName, flaggedBiomarkers, SHARE_TOKEN_HEADER } from '@/lib/share'
 import type { SharedFlowsheet, SharedRecord } from '@/lib/share'
@@ -51,10 +51,13 @@ export function SharedRecordView({ token, record, locale }: SharedRecordViewProp
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card px-5 py-5 print:border-0 print:px-0">
         <div className="mx-auto flex max-w-3xl flex-col gap-1.5">
-          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <HeartPulse className="size-4 text-primary" aria-hidden />
-            {t('orientation.readOnly')}
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <HeartPulse className="size-4 text-primary" aria-hidden />
+              {t('orientation.readOnly')}
+            </p>
+            <LanguageSwitch token={token} locale={locale} />
+          </div>
           <h1 className="text-xl font-bold text-foreground">
             {record.header?.name
               ? t('orientation.ownedBy', { name: record.header.name })
@@ -188,13 +191,19 @@ export function SharedRecordView({ token, record, locale }: SharedRecordViewProp
           {t('footer.disclaimer')}
         </p>
         <div className="mt-4 print:hidden">
-          <Link
-            href="/"
+          {/* A plain anchor, deliberately NOT a Next <Link>: this href is an
+              API redirect endpoint, not an app route, and a client-side RSC
+              navigation would fire TWO requests at it (the router fetch plus
+              the fallback document load), doubling the S13 counter from the
+              first click. The browser goes straight to /api/share/cta and the
+              backend 302s once. */}
+          <a
+            href="/api/share/cta"
             rel="noreferrer"
             className="text-sm font-medium text-primary underline-offset-4 hover:underline"
           >
             {t('footer.cta')}
-          </Link>
+          </a>
         </div>
       </footer>
     </div>

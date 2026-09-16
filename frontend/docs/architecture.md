@@ -75,19 +75,29 @@ retries.
   `referrer: no-referrer`; `src/app/robots.ts` disallows `/s/`; the API
   responses carry `Cache-Control: no-store` and `X-Robots-Tag`.
 - **Locale.** Resolved by the shared route itself
-  (`src/i18n/shared-locale.ts`): `?lang=` → `Accept-Language` →
-  `NEXT_LOCALE` → `en`. The authed `request.ts` (cookie-only) cannot see a URL
-  parameter, so the page wraps its subtree in `NextIntlClientProvider` with the
-  resolved locale. The public tree **never writes `NEXT_LOCALE`** — that would
-  change the recipient's own app language. `<html lang>` comes from the layout
-  (layouts never receive `searchParams`); `DocumentLang` corrects it when
-  `?lang=` disagrees.
+  (`src/i18n/shared-locale.ts`): `?lang=` → the link's `default_locale` (the
+  sender's per-link preset, S10) → `Accept-Language` → `NEXT_LOCALE` → `en`.
+  The authed `request.ts` (cookie-only) cannot see a URL parameter, so the
+  page wraps its subtree in `NextIntlClientProvider` with the resolved locale.
+  The public tree **never writes `NEXT_LOCALE`** — that would change the
+  recipient's own app language; the EN|RU switch
+  (`src/components/share/language-switch.tsx`) is plain `?lang=` links, and
+  the cookie writer (`i18n/api-locale`) is banned from this tree by the import
+  graph test. `<html lang>` comes from the layout (layouts never receive
+  `searchParams`); `DocumentLang` corrects it when the final locale disagrees.
 - **Language of the data is not the language of the chrome.** Biomarker names
   come from the persisted multilingual `names` map, and a public page must
   never fire a translation run (unbounded LLM cost behind a stranger's URL).
+- **Narrow layout (S11/S12).** Below the `sm` breakpoint the reused
+  `FlowsheetMatrix` renders card-per-biomarker (a matchMedia branch inside
+  the shared component, so the owner's flowsheet and `/demo` improve too —
+  jsdom and the first paint stay on the wide table). The wide table stays in
+  the DOM and prints as a table regardless of the screen breakpoint; the
+  language switch and the CTA are `print:hidden`.
 - **Print** is the browser's own print over the page (the app's existing
-  model): the CTA is `print:hidden`, the language switch does not exist yet,
-  and the print editor is not reachable from this tree.
+  model): the CTA counts the click via `GET /api/share/cta` (S13) and is
+  `print:hidden`, the language switch is `print:hidden`, and the print editor
+  is not reachable from this tree.
 
 ### Sender surfaces (Stage 2) — dialog, card, notice
 

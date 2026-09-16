@@ -10,10 +10,30 @@ import { resolveSharedLocale } from '@/i18n/shared-locale'
 describe('resolveSharedLocale', () => {
   it('prefers an explicit ?lang= over everything else', () => {
     expect(
-      resolveSharedLocale({ lang: 'ru', acceptLanguage: 'en-US', cookieLocale: 'en' }),
+      resolveSharedLocale({
+        lang: 'ru',
+        defaultLocale: 'en',
+        acceptLanguage: 'en-US',
+        cookieLocale: 'en',
+      }),
     ).toBe('ru')
     // An unsupported ?lang= is ignored rather than trusted.
     expect(resolveSharedLocale({ lang: 'de', acceptLanguage: 'ru' })).toBe('ru')
+  })
+
+  it('lets the link preset outrank the recipient browser, but never ?lang=', () => {
+    // S10: the sender's deliberate per-link choice beats Accept-Language...
+    expect(
+      resolveSharedLocale({ defaultLocale: 'ru', acceptLanguage: 'en-US' }),
+    ).toBe('ru')
+    // ...and the recipient can always override it.
+    expect(
+      resolveSharedLocale({ lang: 'en', defaultLocale: 'ru', acceptLanguage: 'ru-RU' }),
+    ).toBe('en')
+    // An unsupported preset is ignored, not trusted.
+    expect(resolveSharedLocale({ defaultLocale: 'de', acceptLanguage: 'ru' })).toBe('ru')
+    // No preset at all falls through to the browser exactly as before.
+    expect(resolveSharedLocale({ defaultLocale: null, acceptLanguage: 'ru' })).toBe('ru')
   })
 
   it('falls back to the recipient browser language', () => {

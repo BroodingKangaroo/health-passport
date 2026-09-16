@@ -157,7 +157,11 @@ class BiomarkerNameItem(BaseModel):
 
 
 class TranslateRequest(BaseModel):
-    lang: Literal["de", "fr", "es", "he", "pl"]
+    # "ru" joined the target set with Stage 3's share-time translate step
+    # (S14): the create dialog offers it for a Russian-language link. The
+    # print document still renders ru from the source name, which is why the
+    # print flow never sends it here.
+    lang: Literal["de", "fr", "es", "he", "pl", "ru"]
     names: list[BiomarkerNameItem] = []
     # Category/panel heading strings to translate alongside ``names``. Unlike
     # names these are never persisted — they come back in the response only
@@ -178,7 +182,7 @@ class CommitTranslationItem(BaseModel):
 class CommitTranslationRequest(BaseModel):
     """Reviewed translations chosen by the user in the print-setup review
     dialog; written verbatim into the definitions' ``names[lang]``."""
-    lang: Literal["de", "fr", "es", "he", "pl"]
+    lang: Literal["de", "fr", "es", "he", "pl", "ru"]
     items: list[CommitTranslationItem] = []
 
 

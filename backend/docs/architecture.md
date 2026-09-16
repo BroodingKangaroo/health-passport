@@ -198,6 +198,12 @@ tenant's data, and it is deliberately one code path.
   an anonymous session is itself capped at 7 days (technical plan §11). A
   refusal is a 400 with a localized detail (`share.expiry_not_allowed`), so the
   server cap and the UI cannot drift apart.
+- **Language preset (Stage 3, S10)**: the create body also carries
+  `default_locale` — `"en"` / `"ru"` or `None`, anything else refused with a
+  localized 400 (`share.locale_not_allowed`). It is stored on the row, echoed
+  in the create response and the list summary, and served as
+  `meta.default_locale`; the recipient page ranks it between `?lang=` and
+  `Accept-Language`, and the recipient can always override it.
 - **Open counters (Stage 2, S2)**: `open_count` / `first_opened_at` /
   `last_opened_at` on the link row, written by ONE debounced conditional
   UPDATE (`share_links.mark_opened`, `SHARE_OPEN_DEBOUNCE_SECONDS = 300` in the
@@ -214,15 +220,27 @@ tenant's data, and it is deliberately one code path.
   every non-revoked link (expired included; revoked rows are closed history).
   `GET /api/share/notice` and `GET /api/share/links` are pure reads that
   compute `show` / `has_new_data` on the fly (`state` is `active | expired |
-  revoked`, revoked wins). Accepted limitation: the watermark derives from
-  entry `created_at`, so deleting an entry does not move it back; a dedicated
+  revoked`, revoked wins; `has_new_data` is never true on an expired row —
+  Stage 3, S3.4). Accepted limitation: the watermark derives from entry
+  `created_at`, so deleting an entry does not move it back; a dedicated
   `record_changed_at` column is deferred until a stamp proves load-bearing.
 - **Funnel table (Stage 2, S1)**: `share_funnel_events` (`event`,
   `is_anonymous`, `created_at`) mirrors `ImportFunnelEvent` and is write-only.
-  Rows are SENDER actions only — `link_created` and `link_revoked` — never
-  deleted, one per action (revoke-all writes one per link actually closed; a
-  repeat revoke writes nothing), and they carry no recipient identity, no
-  token, no link id and no owner id.
+  It holds TWO kinds of row since Stage 3: sender actions — `link_created` and
+  `link_revoked`, with `is_anonymous` True/False — and one recipient-side
+  counter — `cta_clicked` with `is_anonymous` NULL (the column is nullable;
+  `migrate_share_funnel_nullable` rebuilds the table on SQLite where the
+  Stage 2 schema declared NOT NULL). NULL is the flag that separates the
+  kinds. Rows are never deleted, one per action (revoke-all writes one per
+  link actually closed; a repeat revoke writes nothing), and they carry no
+  recipient identity, no token, no link id and no owner id.
+- **CTA redirect (Stage 3, S13)**: `GET /api/share/cta` is the one tokenless
+  public route — no `X-Share-Token`, no resolver — rate-limited like the
+  public reads, serving `302 → /` with a single `cta_clicked` funnel row
+  (`is_anonymous = NULL`). No per-link attribution: the raw token must never
+  appear in a URL, so attribution is off the table by construction. The loop
+  is measured as clicks ÷ links opened, which is what the roadmap's CTA
+  question asks.
 - **Ops takedown (Stage 2, S7)**: `backend/scripts/revoke_share_link.py` takes
   the raw token from a report, hashes it, revokes exactly that row
   (idempotently) and logs the action without printing the token. There is
@@ -594,10 +612,13 @@ saves it. Nothing is persisted without user review.
 ## Biomarker name translation (`POST /api/translate-biomarkers`)
 
 - Translates the English names of biomarker definitions into a target language
-  (`de`|`fr`|`es`|`he`|`pl`) and persists each translation into the definition's
-  `names[lang]` JSON column, so every later render (flowsheet, print editor)
-  reads it without another LLM call. `en`/`ru` are not targets: `en` names
-  already exist and `ru` prints the source name directly.
+  (`de`|`fr`|`es`|`he`|`pl`|`ru`) and persists each translation into the
+  definition's `names[lang]` JSON column, so every later render (flowsheet,
+  print editor) reads it without another LLM call. `en` is not a target (`en`
+  names already exist). `ru` joined the target set with Stage 3 (S14): the
+  share dialog's translate-now step persists Russian names through this same
+  endpoint for a Russian-language link; the print document still renders `ru`
+  from the source name, which is why the print flow never sends it here.
 - Request `{lang, names: [{id, name}], categories?: [str], persist?}`; response
   `{translations: [{id, name, source}], categories: [{original, translated,
   source}]}` — every requested id comes back, in request order,

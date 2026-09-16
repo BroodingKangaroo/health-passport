@@ -168,12 +168,65 @@ def migrate_normalize_emails(engine) -> None:
                 )
 
 
+def migrate_share_funnel_nullable(engine) -> None:
+    """Idempotent schema migration (Stage 3, S13): make
+    ``share_funnel_events.is_anonymous`` nullable so a CTA click — a
+    recipient-side counter, not a sender action — can store NULL.
+
+    ``migrate_add_columns()`` cannot express a nullability change (it only
+    adds columns), and SQLite has no ``ALTER COLUMN``, so the table is
+    rebuilt where SQLite requires it; on other dialects the constraint is
+    dropped with ``ALTER COLUMN``. No row is rewritten and no value changes:
+    existing sender rows keep their boolean flag. Runs only when the table
+    still declares the flag NOT NULL (a fresh DB already matches the model).
+    """
+    insp = inspect(engine)
+    if not insp.has_table("share_funnel_events"):
+        return
+    columns = {c["name"]: c for c in insp.get_columns("share_funnel_events")}
+    if "is_anonymous" not in columns or columns["is_anonymous"]["nullable"]:
+        return
+    backend = engine.url.get_backend_name()
+    with engine.begin() as conn:
+        if backend.startswith("sqlite"):
+            conn.execute(text(
+                "CREATE TABLE share_funnel_events_new ("
+                "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+                "event VARCHAR NOT NULL, "
+                "is_anonymous BOOLEAN, "
+                "created_at DATETIME"
+                ")"
+            ))
+            conn.execute(text(
+                "INSERT INTO share_funnel_events_new "
+                "(id, event, is_anonymous, created_at) "
+                "SELECT id, event, is_anonymous, created_at "
+                "FROM share_funnel_events"
+            ))
+            conn.execute(text("DROP TABLE share_funnel_events"))
+            conn.execute(text(
+                "ALTER TABLE share_funnel_events_new RENAME TO share_funnel_events"
+            ))
+            # The explicit created_at index dies with the old table; rebuild
+            # it under its original name.
+            conn.execute(text(
+                "CREATE INDEX ix_share_funnel_events_created_at "
+                "ON share_funnel_events (created_at)"
+            ))
+        else:
+            conn.execute(text(
+                "ALTER TABLE share_funnel_events "
+                "ALTER COLUMN is_anonymous DROP NOT NULL"
+            ))
+
+
 def init_db():
     from app.db import models  # noqa: F401
     Base.metadata.create_all(bind=engine)
     migrate_add_columns(engine)
     migrate_normalize_emails(engine)
     migrate_local_definition_ids(engine)
+    migrate_share_funnel_nullable(engine)
 
 
 def get_db():

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import { Copy, Link2 } from 'lucide-react'
 
@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ModalDialog } from '@/components/ui/modal-dialog'
 import { useAuthPrincipal } from '@/lib/hooks/useAuthPrincipal'
-import { createShareLink } from '@/services/api'
+import { createShareLink, fetchFlowsheetData, translateBiomarkerNames } from '@/services/api'
 import { shareUrl } from '@/lib/share'
 import type { ShareLinkCreated } from '@/lib/share'
 import { cn, formatDate } from '@/lib/utils'
@@ -63,6 +63,18 @@ function ShareLinkDialog({ open, onClose }: { open: boolean; onClose: () => void
   const [to, setTo] = useState('')
   const [expiryDays, setExpiryDays] = useState<number>(DEFAULT_EXPIRY_DAYS)
   const [includeHeader, setIncludeHeader] = useState(true)
+  // "auto" = no preset: the recipient's browser decides (S10). The link can
+  // also be pinned to English or Russian, and the recipient can always switch
+  // on the page itself.
+  const [defaultLocale, setDefaultLocale] = useState<'auto' | 'en' | 'ru'>('auto')
+  // The translate-now payload: only the biomarkers actually present in the
+  // record, missing names.ru. Fetched once per dialog open for a registered
+  // sender; scoped to the flowsheet's matrix rows (the same source the print
+  // flow feeds the translate endpoint with) so a 1500-row LOINC dictionary
+  // never becomes a 1500-name LLM batch (stage-3 review, F2).
+  const [missingRuNames, setMissingRuNames] = useState<{ id: string; name: string }[] | null>(null)
+  const [translateRequested, setTranslateRequested] = useState(false)
+  const [translateState, setTranslateState] = useState<'idle' | 'working' | 'done' | 'failed'>('idle')
 
   const [created, setCreated] = useState<ShareLinkCreated | null>(null)
   const [busy, setBusy] = useState(false)
@@ -79,8 +91,56 @@ function ShareLinkDialog({ open, onClose }: { open: boolean; onClose: () => void
       setCreated(null)
       setCopied(false)
       setFailed(false)
+      setDefaultLocale('auto')
+      setTranslateRequested(false)
+      setTranslateState('idle')
+      setMissingRuNames(null)
     }
   }
+
+  // Fetching the definition set is the owner's half of the feature, so it is
+  // gated on the session state AND only ever happens while the dialog is open.
+  useEffect(() => {
+    if (!open || !authReady || isAnonymous) return
+    let cancelled = false
+    fetchFlowsheetData()
+      .then((flowsheet) => {
+        if (cancelled) return
+        const defByRowId = new Map<string, { names?: Record<string, string> }>()
+        for (const result of flowsheet.biomarkers) {
+          defByRowId.set(result.definition.id, result.definition)
+        }
+        const missing: { id: string; name: string }[] = []
+        const seen = new Set<string>()
+        for (const category of flowsheet.matrix) {
+          for (const row of category.rows) {
+            if (seen.has(row.id)) continue
+            seen.add(row.id)
+            const definition = defByRowId.get(row.id)
+            if ((definition?.names ?? {})['ru']) continue
+            const name = (definition?.names?.en ?? row.name).trim()
+            // Never ask the LLM to invent an English name for a nameless row.
+            if (!name) continue
+            missing.push({ id: row.id, name })
+          }
+        }
+        setMissingRuNames(missing)
+      })
+      .catch(() => {
+        // A failed read just hides the translate step; the link itself never
+        // depends on it.
+        if (!cancelled) setMissingRuNames([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, authReady, isAnonymous])
+
+  const canTranslateNow =
+    !isAnonymous &&
+    authReady &&
+    defaultLocale === 'ru' &&
+    (missingRuNames?.length ?? 0) > 0
 
   // Both dates are `YYYY-MM-DD`, so a plain string compare is chronological.
   const rangeInvalid = scopeKind === 'range' && !!from && !!to && from > to
@@ -95,9 +155,21 @@ function ShareLinkDialog({ open, onClose }: { open: boolean; onClose: () => void
         expiry_days: expiryDays,
         scope: scopeKind === 'range' ? { kind: 'range', from: from || null, to: to || null } : null,
         include_header: includeHeader,
+        default_locale: defaultLocale === 'auto' ? null : defaultLocale,
       })
       setCreated(link)
       setFailed(false)
+      if (translateRequested && canTranslateNow && missingRuNames) {
+        setTranslateState('working')
+        try {
+          await translateBiomarkerNames('ru', missingRuNames, { persist: true })
+          setTranslateState('done')
+        } catch {
+          // The link is already made and the copy said the run could fail:
+          // the recipient falls back to the English names.
+          setTranslateState('failed')
+        }
+      }
     } catch {
       setFailed(true)
     } finally {
@@ -146,6 +218,21 @@ function ShareLinkDialog({ open, onClose }: { open: boolean; onClose: () => void
                 })}
               </span>
             </div>
+            {translateState === 'working' && (
+              <p className="text-xs text-muted-foreground" role="status">
+                {t('dialog.translating')}
+              </p>
+            )}
+            {translateState === 'done' && (
+              <p className="text-xs text-foreground" role="status">
+                {t('dialog.translated')}
+              </p>
+            )}
+            {translateState === 'failed' && (
+              <p className="text-xs text-amber-600" role="status">
+                {t('dialog.translateFailed')}
+              </p>
+            )}
           </div>
         ) : (
           <form onSubmit={create} className="flex flex-col gap-4">
@@ -199,6 +286,51 @@ function ShareLinkDialog({ open, onClose }: { open: boolean; onClose: () => void
               )}
               {rangeInvalid && <p className="text-xs text-destructive">{t('dialog.rangeInvalid')}</p>}
             </fieldset>
+
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-sm font-medium text-foreground">
+                {t('dialog.language')}
+              </legend>
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                {(
+                  [
+                    ['auto', t('dialog.languageAuto')],
+                    ['en', t('dialog.languageEn')],
+                    ['ru', t('dialog.languageRu')],
+                  ] as const
+                ).map(([value, label]) => (
+                  <label key={value} className="flex cursor-pointer items-center gap-1.5 text-sm text-foreground">
+                    <input
+                      type="radio"
+                      name="share-locale"
+                      checked={defaultLocale === value}
+                      onChange={() => setDefaultLocale(value)}
+                      className="size-3.5 accent-primary"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">{t('dialog.languageHint')}</p>
+            </fieldset>
+
+            {canTranslateNow && (
+              <label className="flex cursor-pointer items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={translateRequested}
+                  onChange={(e) => setTranslateRequested(e.target.checked)}
+                  className="mt-0.5 size-4 accent-primary"
+                  data-testid="share-translate-now"
+                />
+                <span>
+                  <span className="block text-sm text-foreground">{t('dialog.translateNow')}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {t('dialog.translateNowHint')}
+                  </span>
+                </span>
+              </label>
+            )}
 
             <fieldset className="flex flex-col gap-2">
               <legend className="text-sm font-medium text-foreground">

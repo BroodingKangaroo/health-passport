@@ -113,6 +113,10 @@ export function PrintSetup() {
         ...new Set(data.matrix.map((c) => c.category.trim()).filter(Boolean)),
       ]
       if (names.length > 0 || categories.length > 0) {
+        // The share dialog (Stage 3, S14) widened `TranslateLang` with 'ru';
+        // the print flow must NEVER send 'ru' here — the document renders ru
+        // from the source name natively, not through this endpoint. Keep
+        // `TARGETS` (the only producer of this value) free of 'ru'.
         const results = await translateBiomarkerNames(
           targetLanguage as TranslateLang,
           names,
@@ -187,6 +191,8 @@ export function PrintSetup() {
     setPreview(null)
     if (accepted.length > 0) {
       try {
+        // Same trap as the translate call above: 'ru' must never reach the
+        // commit endpoint from the print flow (render ru from the source).
         await commitTranslatedNames(
           targetLanguage as TranslateLang,
           accepted.map((i) => ({ id: i.id, name: i.translated })),

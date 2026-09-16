@@ -128,6 +128,30 @@ class TestTranslateBiomarkersEndpoint:
         ).first()
         assert defn.names["pl"] == "Test-Biomarker"
 
+    async def test_russian_is_a_valid_target_language_for_share(self, client, db_session, monkeypatch):
+        """S14: the share dialog's translate-now step persists names.ru through
+        the SAME endpoint — so `ru` must be a valid target here, tested with
+        the mocked client rather than a live LLM."""
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        _seed_plain_def(db_session)
+        fake = _fake_client({"translations": [{"id": "t1", "name": "Гемоглобин"}]})
+        monkeypatch.setattr("app.api.ai._get_client", lambda: fake)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={"lang": "ru", "names": [{"id": "local-test-1", "name": "Test Biomarker"}]},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["translations"] == [
+            {"id": "local-test-1", "name": "Гемоглобин", "source": "translated"}
+        ]
+        defn = db_session.query(BiomarkerDefinition).filter(
+            BiomarkerDefinition.id == "local-test-1"
+        ).first()
+        assert defn.names["ru"] == "Гемоглобин"
+        assert defn.names["en"] == "Test Biomarker"
+
     async def test_llm_failure_refunds_and_keeps_english(self, client, db_session, monkeypatch):
         monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
         _seed_plain_def(db_session)

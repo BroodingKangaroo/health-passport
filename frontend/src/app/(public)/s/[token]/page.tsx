@@ -34,10 +34,14 @@ interface SharedPageProps {
   searchParams: Promise<{ lang?: string }>
 }
 
-async function resolveLocale(searchParams: { lang?: string }): Promise<AppLocale> {
+async function resolveLocale(
+  searchParams: { lang?: string },
+  defaultLocale?: string | null,
+): Promise<AppLocale> {
   const [requestHeaders, cookieStore] = await Promise.all([headers(), cookies()])
   return resolveSharedLocale({
     lang: searchParams.lang,
+    defaultLocale,
     acceptLanguage: requestHeaders.get('accept-language'),
     cookieLocale: cookieStore.get('NEXT_LOCALE')?.value,
   })
@@ -46,6 +50,10 @@ async function resolveLocale(searchParams: { lang?: string }): Promise<AppLocale
 export async function generateMetadata({
   searchParams,
 }: Omit<SharedPageProps, 'params'>): Promise<Metadata> {
+  // Metadata can only see the URL and the request headers; the link's preset
+  // lives inside the record, so a pinned `default_locale` without `?lang=`
+  // keeps the pre-record title fallback. DocumentLang fixes `<html lang>`
+  // on the client once the record is known.
   const locale = await resolveLocale(await searchParams)
   const catalog = sharedViewMessages(locale) as { sharedView: { meta: { title: string } } }
   return {
@@ -75,8 +83,16 @@ async function loadSharedRecord(token: string): Promise<RecordLoad> {
 
 export default async function SharedRecordPage({ params, searchParams }: SharedPageProps) {
   const { token } = await params
-  const locale = await resolveLocale(await searchParams)
+  const lang = (await searchParams).lang
+  // The record can change the answer: the link's own `default_locale` (S10)
+  // outranks the browser once we know it. The dead-link/error states have no
+  // record, so they resolve without the preset.
+  const provisionalLocale = await resolveLocale({ lang })
   const loaded = await loadSharedRecord(token)
+  const locale =
+    loaded.kind === 'record'
+      ? await resolveLocale({ lang }, loaded.record.meta.default_locale)
+      : provisionalLocale
 
   return (
     <NextIntlClientProvider locale={locale} messages={sharedViewMessages(locale)}>

@@ -481,6 +481,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "The start date must not be after the end date.",
         "ru": "Дата начала не может быть позже даты окончания.",
     },
+    "share.locale_not_allowed": {
+        "en": "Choose one of these link languages: English, Russian.",
+        "ru": "Выберите один из доступных языков ссылки: английский, русский.",
+    },
     # ----- app/api/account.py -----
     "export.invalid_format": {
         "en": "Invalid export format '{format}'. Supported: json, csv.",

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { NextIntlClientProvider } from 'next-intl'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 
 import { SharedRecordView } from '@/components/share/SharedRecordView'
 import { SharedLoadError, SharedUnavailable } from '@/components/share/SharedStates'
@@ -226,11 +228,40 @@ describe('SharedRecordView', () => {
     expect(screen.queryByRole('link', { name: /settings/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /add|upload/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument()
-    // The only outbound link is the conversion CTA.
-    const links = screen.getAllByRole('link')
-    expect(links).toHaveLength(1)
-    expect(links[0]).toHaveAttribute('href', '/')
-    expect(links[0]).toHaveAttribute('rel', 'noreferrer')
+    // The only outbound links are the language switch and the CTA; the CTA is
+    // the measured click-through (S13) and stays referrer-safe.
+    const cta = screen.getByRole('link', { name: 'Make your own HealthPassport' })
+    expect(cta).toHaveAttribute('href', '/api/share/cta')
+    expect(cta).toHaveAttribute('rel', 'noreferrer')
+    // Regression guard (stage-3 review, F1): the CTA must be a PLAIN anchor,
+    // never a Next <Link> — a client-side RSC navigation would hit the
+    // counting endpoint twice (router fetch + document fallback) and double
+    // the funnel counter from the very first click. The source-level check is
+    // the cheap way to pin that: if 'next/link' ever comes back into this
+    // component, the test fails.
+    expect(cta.tagName).toBe('A')
+    const source = readFileSync(
+      path.resolve(process.cwd(), 'src/components/share/SharedRecordView.tsx'),
+      'utf8',
+    )
+    expect(source).not.toMatch(/from ['"]next\/link['"]/)
+  })
+
+  it('offers an EN | RU language switch that navigates with ?lang= and never writes a cookie', () => {
+    renderView('ru')
+    const group = screen.getByRole('group', { name: 'Язык' })
+    const english = within(group).getByRole('link', { name: 'Английский' })
+    const russian = within(group).getByRole('link', { name: 'Русский' })
+    expect(english).toHaveAttribute('href', '/s/hp_test?lang=en')
+    expect(russian).toHaveAttribute('href', '/s/hp_test?lang=ru')
+    // The active option is the currently resolved locale...
+    expect(russian).toHaveAttribute('data-state', 'active')
+    expect(english).toHaveAttribute('data-state', 'idle')
+    // ...and both are plain links: no JS, no cookie write. The cookie write
+    // path is additionally banned from the shared tree by the import graph
+    // test (shared-surface-imports.test.ts).
+    expect(english.tagName).toBe('A')
+    expect(russian.tagName).toBe('A')
   })
 
   it('renders the same record in Russian chrome', () => {

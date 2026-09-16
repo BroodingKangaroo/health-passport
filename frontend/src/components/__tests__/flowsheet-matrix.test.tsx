@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { FlowsheetMatrix } from '../health-passport/flowsheet-matrix'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type {
@@ -223,5 +223,93 @@ describe('FlowsheetMatrix date-range presets', () => {
     // Restoring "All" brings every column back.
     fireEvent.click(screen.getByRole('button', { name: 'All' }))
     expect(screen.getByText('Mar 09')).toBeInTheDocument()
+  })
+})
+
+describe('FlowsheetMatrix narrow layout (Stage 3, S11/S12)', () => {
+  /** jsdom has no matchMedia; stubbing it puts the component on the narrow
+   *  branch that real phones take. */
+  function stubNarrowViewport(matches: boolean) {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        matches,
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    )
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('renders card-per-biomarker below the breakpoint, hiding the wide table', () => {
+    stubNarrowViewport(true)
+    const { container } = renderI18n(
+      <FlowsheetMatrix
+        dates={makeDates(4)}
+        matrix={makeMatrix([
+          makeRow('hgb', 'Hemoglobin', ['150', '151', '149', '152']),
+          makeRow('tsh', 'TSH', ['2.5', '2.8', '3.0', '3.1']),
+        ])}
+        biomarkers={[makeBiomarker('hgb')]}
+      />,
+    )
+
+    // The wide grid is still in the DOM (print needs it) but hidden on
+    // screen; the cards replace it for actual reading.
+    const grid = container.querySelector('.overflow-x-auto') as HTMLElement
+    expect(grid.className).toContain('hidden')
+    expect(grid.className).toContain('print:block')
+
+    const cards = screen.getByTestId('flowsheet-cards')
+    expect(cards.className).toContain('print:hidden')
+    // Every biomarker gets a card with its latest value and the full history
+    // as chips — nothing is lost by dropping the columns.
+    expect(within(cards).getByText('Hemoglobin')).toBeInTheDocument()
+    expect(within(cards).getByText('TSH')).toBeInTheDocument()
+    expect(screen.getAllByText(/152/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/150/).length).toBeGreaterThan(0)
+    // A shared recipient gets no navigation affordance: rows stay text.
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('keeps the table-only layout on wide viewports (no duplicated cards)', () => {
+    stubNarrowViewport(false)
+    const { container } = renderI18n(
+      <FlowsheetMatrix
+        dates={makeDates(3)}
+        matrix={makeMatrix([makeRow('hgb', 'Hemoglobin', ['150', '151', '149'])])}
+        biomarkers={[makeBiomarker('hgb')]}
+      />,
+    )
+
+    expect(screen.queryByTestId('flowsheet-cards')).toBeNull()
+    const grid = container.querySelector('.overflow-x-auto') as HTMLElement
+    expect(grid.className).not.toContain('hidden')
+  })
+
+  it('cards navigate to the biomarker details when the caller provides the route', () => {
+    stubNarrowViewport(true)
+    const onOpenBiomarker = vi.fn()
+    renderI18n(
+      <FlowsheetMatrix
+        dates={makeDates(3)}
+        matrix={makeMatrix([makeRow('hgb', 'Hemoglobin', ['150', '151', '149'])])}
+        biomarkers={[makeBiomarker('hgb')]}
+        onOpenBiomarker={onOpenBiomarker}
+      />,
+    )
+
+    const cards = screen.getByTestId('flowsheet-cards')
+    const card = within(cards).getByRole('button', { name: /Hemoglobin/ })
+    fireEvent.click(card)
+    expect(onOpenBiomarker).toHaveBeenCalledWith('hgb')
   })
 })
