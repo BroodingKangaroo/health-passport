@@ -8,8 +8,8 @@ import {
   SharedLoadError,
   SharedUnavailable,
 } from '@/components/share/SharedStates'
-import { messages } from '@/i18n/messages'
 import { resolveSharedLocale } from '@/i18n/shared-locale'
+import { sharedViewMessages } from '@/i18n/shared-messages'
 import type { AppLocale } from '@/i18n/messages'
 import { fetchSharedRecord, SharedLinkUnavailableError } from '@/services/share'
 import type { SharedRecord } from '@/lib/share'
@@ -47,7 +47,7 @@ export async function generateMetadata({
   searchParams,
 }: Omit<SharedPageProps, 'params'>): Promise<Metadata> {
   const locale = await resolveLocale(await searchParams)
-  const catalog = messages[locale] as { sharedView: { meta: { title: string } } }
+  const catalog = sharedViewMessages(locale) as { sharedView: { meta: { title: string } } }
   return {
     title: catalog.sharedView.meta.title,
     // A shared clinical record must never be indexed, and the token must never
@@ -79,7 +79,7 @@ export default async function SharedRecordPage({ params, searchParams }: SharedP
   const loaded = await loadSharedRecord(token)
 
   return (
-    <NextIntlClientProvider locale={locale} messages={messages[locale]}>
+    <NextIntlClientProvider locale={locale} messages={sharedViewMessages(locale)}>
       <DocumentLang locale={locale} />
       {loaded.kind === 'record' && (
         <SharedRecordView token={token} record={loaded.record} locale={locale} />

@@ -1,8 +1,10 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import { NextIntlClientProvider } from 'next-intl'
 
 import { SharedRecordView } from '@/components/share/SharedRecordView'
 import { SharedLoadError, SharedUnavailable } from '@/components/share/SharedStates'
+import { sharedViewMessages } from '@/i18n/shared-messages'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type { SharedFlowsheet, SharedRecord } from '@/lib/share'
 
@@ -238,6 +240,22 @@ describe('SharedRecordView', () => {
     // The persisted Russian name is used as-is (the public view must never
     // trigger a translation run): it appears in the flag card and the trend.
     expect(screen.getAllByText('Гемоглобин').length).toBeGreaterThan(0)
+  })
+
+  it('renders under the trimmed recipient catalog, not the whole app catalog', async () => {
+    // The page ships `sharedViewMessages(locale)`, not `messages[locale]`; if a
+    // namespace it needs were dropped from that subset, next-intl would render
+    // the raw key path instead of the string.
+    render(
+      <NextIntlClientProvider locale="en" messages={sharedViewMessages('en')}>
+        <SharedRecordView token="hp_test" record={record} locale="en" />
+      </NextIntlClientProvider>,
+    )
+    await waitFor(() => expect(screen.getByText('TSH')).toBeInTheDocument())
+    expect(screen.getByPlaceholderText('Filter biomarkers...')).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(
+      /sharedView\.|timeline\.flowsheet\.|misc\.scaleNote\./,
+    )
   })
 })
 

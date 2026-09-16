@@ -76,6 +76,10 @@ SHARE_TOKEN_HEADER = "X-Share-Token"
 # to stop floods, not to meter a doctor.
 _PUBLIC_READ_LIMIT = 600
 _PUBLIC_READ_WINDOW_S = 60.0
+# Cap on the map itself: the public surface is reachable by anyone with
+# arbitrary source IPs, so without a bound it would keep one permanent deque
+# per IP ever seen.
+_PUBLIC_MAX_KEYS = 10_000
 _public_windows: dict[str, deque] = defaultdict(deque)
 _public_lock = threading.Lock()
 
@@ -86,10 +90,40 @@ def _public_requests_allowed(client_ip: str) -> bool:
         window = _public_windows[client_ip]
         while window and now - window[0] > _PUBLIC_READ_WINDOW_S:
             window.popleft()
-        if len(window) >= _PUBLIC_READ_LIMIT:
-            return False
-        window.append(now)
-        return True
+        allowed = len(window) < _PUBLIC_READ_LIMIT
+        if allowed:
+            window.append(now)
+    _prune_public_keys()
+    return allowed
+
+
+def _prune_public_keys() -> None:
+    """Bound the in-memory public read map (same shape as the auth throttle's
+    ``_prune_throttle_keys``).
+
+    A window whose entries are all older than the read window can never affect
+    a decision again, so it is dropped — that is what bounds the map when each
+    request comes from a distinct IP. A burst of distinct IPs can still exceed
+    the cap inside one window, so the least-recently-active windows are evicted
+    down to it; memory stays bounded by construction."""
+    now = datetime.now(timezone.utc).timestamp()
+    with _public_lock:
+        for key, window in list(_public_windows.items()):
+            while window and now - window[0] > _PUBLIC_READ_WINDOW_S:
+                window.popleft()
+            if not window:
+                del _public_windows[key]
+        over = len(_public_windows) - _PUBLIC_MAX_KEYS
+        if over <= 0:
+            return
+        evicted = 0
+        for key, _ in sorted(_public_windows.items(), key=lambda kv: kv[1][-1])[:over]:
+            del _public_windows[key]
+            evicted += 1
+    logger.warning(
+        "Public share throttle map exceeded %d keys — evicted %d least-recently-active windows",
+        _PUBLIC_MAX_KEYS, evicted,
+    )
 
 
 def reset_public_throttle() -> None:

@@ -155,10 +155,13 @@ tenant's data, and it is deliberately one code path.
   stranger who finds a dead token learns nothing about what it was. Both
   public GETs depend on it, so no public endpoint can read owner data without
   passing through it.
-- **GET-only, no tenant id, no overrides**: the public router takes no
-  `patient_id`, no scope, no `include_*` and no `format`; every choice is read
-  from the link row. No existing router gains an alternative auth path, so no
-  write endpoint is one dependency-swap from being public.
+- **The public ENDPOINTS are GET-only, with no tenant id and no overrides**:
+  they take no `patient_id`, no scope, no `include_*` and no `format`; every
+  choice is read from the link row. The module also carries the three POST
+  owner routes (`/api/share/links`, `…/{id}/revoke`, `…/revoke-all`), which
+  authenticate normally and are unreachable with only a share token. No
+  existing router gains an alternative auth path, so no write endpoint is one
+  dependency-swap from being public.
 - **No session minting**: the public routes depend on `resolve_share_context`,
   never `get_current_user_or_anon` (which calls `get_or_create_anon_id` and
   sets a cookie). A recipient is a stranger even if they happen to be a

@@ -5,6 +5,14 @@ const staticProxy = process.env.STATIC_PROXY_URL || 'http://localhost:8000'
 
 const nextConfig = {
   output: 'standalone',
+  // `src/app/global-not-found.tsx` needs this flag in Next 16.2 (it is the
+  // documented mechanism; the convention becomes default once stable). The app
+  // has two ROOT layouts (the `(app)` and `(public)` route groups) and no
+  // `app/layout.tsx`, so without a global-not-found an unmatched URL would
+  // render Next's bare built-in document instead of the app's styled shell.
+  experimental: {
+    globalNotFound: true,
+  },
   images: {
     unoptimized: true,
   },

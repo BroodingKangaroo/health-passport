@@ -411,3 +411,43 @@ async def test_public_read_mints_no_session_or_usage(share_api, db_session):
     assert resp.status_code == 200
     assert "set-cookie" not in {key.lower() for key in resp.headers}
     assert db_session.query(UsageLimit).count() == before
+
+
+def test_public_throttle_drops_stale_ip_windows():
+    """The limiter is keyed by client IP on an unauthenticated route, so a
+    window whose entries have aged out must not keep its map entry alive."""
+    from app.api import share as share_api
+
+    share_api.reset_public_throttle()
+    now = datetime.now(timezone.utc).timestamp()
+    with share_api._public_lock:
+        share_api._public_windows["10.0.0.1"].append(
+            now - share_api._PUBLIC_READ_WINDOW_S - 1
+        )
+        share_api._public_windows["10.0.0.2"].append(now)
+
+    share_api._prune_public_keys()
+
+    assert "10.0.0.1" not in share_api._public_windows
+    assert "10.0.0.2" in share_api._public_windows
+
+
+def test_public_throttle_map_is_capped():
+    """A burst of distinct IPs inside one window must not grow the map past the
+    cap — the least-recently-active windows are evicted instead."""
+    from app.api import share as share_api
+
+    share_api.reset_public_throttle()
+    now = datetime.now(timezone.utc).timestamp()
+    over_by = 50
+    with share_api._public_lock:
+        for i in range(share_api._PUBLIC_MAX_KEYS + over_by):
+            # Descending timestamps ⇒ the last-inserted keys are the stalest.
+            share_api._public_windows[f"ip-{i}"].append(now - i * 0.001)
+
+    share_api._prune_public_keys()
+
+    assert len(share_api._public_windows) == share_api._PUBLIC_MAX_KEYS
+    # The freshest window survived; the stalest were dropped.
+    assert "ip-0" in share_api._public_windows
+    assert f"ip-{share_api._PUBLIC_MAX_KEYS + over_by - 1}" not in share_api._public_windows
