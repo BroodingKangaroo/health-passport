@@ -34,6 +34,13 @@ export const sharedViewMessages = {
         title: 'Visits, imaging and procedures',
         empty: 'No visits, imaging or procedures in this record.',
       },
+      excluded: {
+        note: 'Not shared through this link: {types}.',
+        blood_test: 'lab results',
+        doctor_visit: 'doctor visits',
+        instrumental_test: 'imaging and other tests',
+        procedure: 'procedures',
+      },
       results: {
         title: 'All results',
         loading: 'Loading all results...',
@@ -48,6 +55,15 @@ export const sharedViewMessages = {
       deadLink: {
         title: 'This link is no longer active.',
         body: 'If you still need this record, ask the person who shared it to send a new link.',
+      },
+      passcode: {
+        title: 'This record is protected.',
+        body: 'Enter the passcode the owner gave you to open it.',
+        label: 'Passcode',
+        submit: 'Open record',
+        checking: 'Checking...',
+        failed: 'That passcode is not correct.',
+        throttled: 'Too many attempts. Try again in a few minutes.',
       },
       error: {
         title: 'Could not load this record.',
@@ -87,6 +103,13 @@ export const sharedViewMessages = {
         title: 'Визиты, обследования и процедуры',
         empty: 'В этой карте нет визитов, обследований и процедур.',
       },
+      excluded: {
+        note: 'Не передаётся по этой ссылке: {types}.',
+        blood_test: 'анализы',
+        doctor_visit: 'визиты к врачу',
+        instrumental_test: 'обследования и снимки',
+        procedure: 'процедуры',
+      },
       results: {
         title: 'Все результаты',
         loading: 'Загрузка всех результатов...',
@@ -101,6 +124,15 @@ export const sharedViewMessages = {
       deadLink: {
         title: 'Эта ссылка больше не активна.',
         body: 'Если запись всё ещё нужна, попросите того, кто ею поделился, отправить новую ссылку.',
+      },
+      passcode: {
+        title: 'Эта запись защищена.',
+        body: 'Введите код доступа, который вам дал владелец.',
+        label: 'Код доступа',
+        submit: 'Открыть запись',
+        checking: 'Проверка...',
+        failed: 'Неверный код доступа.',
+        throttled: 'Слишком много попыток. Попробуйте ещё раз через несколько минут.',
       },
       error: {
         title: 'Не удалось загрузить эту запись.',

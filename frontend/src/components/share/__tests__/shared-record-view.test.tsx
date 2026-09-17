@@ -176,6 +176,18 @@ const renderView = (locale = 'en') =>
     </TestI18nProvider>,
   )
 
+/** The same view over a record whose link withholds some entry types (S16). */
+const renderScopedView = (scope: SharedRecord['meta']['scope']) =>
+  render(
+    <TestI18nProvider locale="en">
+      <SharedRecordView
+        token="hp_test"
+        record={{ ...record, meta: { ...record.meta, scope } }}
+        locale="en"
+      />
+    </TestI18nProvider>,
+  )
+
 describe('SharedRecordView', () => {
   it('opens on the orientation strip and the flagged results', () => {
     renderView()
@@ -262,6 +274,19 @@ describe('SharedRecordView', () => {
     // test (shared-surface-imports.test.ts).
     expect(english.tagName).toBe('A')
     expect(russian.tagName).toBe('A')
+  })
+
+  it('tells the recipient what the link leaves out (Stage 4, S16)', () => {
+    renderScopedView({ kind: 'all', exclude: ['instrumental_test', 'procedure'] })
+    const note = screen.getByTestId('share-scope-note')
+    expect(note).toHaveTextContent(
+      'Not shared through this link: imaging and other tests, procedures.',
+    )
+  })
+
+  it('says nothing about exclusions when the link withholds nothing', () => {
+    renderView()
+    expect(screen.queryByTestId('share-scope-note')).not.toBeInTheDocument()
   })
 
   it('renders the same record in Russian chrome', () => {

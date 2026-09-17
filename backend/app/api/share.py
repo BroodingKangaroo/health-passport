@@ -36,6 +36,7 @@ from app.api.timeline import (
     _instrumental_from_db,
     _visits_from_db,
 )
+from app.auth import get_password_hash, verify_password
 from app.db.models import (
     Patient,
 )
@@ -57,6 +58,8 @@ from app.schemas.share import (
     ShareNoticeResponse,
     ShareRecordHeader,
     ShareRecordMeta,
+    ShareUnlockRequest,
+    ShareUnlockResponse,
 )
 from app.services import share_links
 
@@ -65,6 +68,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/share", tags=["share"])
 
 SHARE_TOKEN_HEADER = "X-Share-Token"
+# The unlock grant (Stage 4, S15). A second credential for the same request:
+# the token says WHICH link, the grant says "this reader already typed the
+# code". It travels in a header for the same reason the token does — neither
+# is ever a URL, a query parameter or a log line.
+SHARE_GRANT_HEADER = "X-Share-Grant"
 
 # A rejected scope carries a machine-readable kind, never a localized string:
 # the service layer runs without a request locale (the create path is authed,
@@ -73,6 +81,8 @@ _SCOPE_ERROR_KEYS = {
     "kind": "share.scope_unknown_kind",
     "date": "share.scope_invalid_date",
     "range": "share.scope_invalid_range",
+    "exclude_shape": "share.exclude_invalid",
+    "exclude_type": "share.exclude_invalid",
 }
 
 # The public surface is unauthenticated, so a stolen or guessed token must not
@@ -91,6 +101,71 @@ _PUBLIC_READ_WINDOW_S = 60.0
 _PUBLIC_MAX_KEYS = 10_000
 _public_windows: dict[str, deque] = defaultdict(deque)
 _public_lock = threading.Lock()
+
+# Unlock attempts are throttled PER LINK, not per IP: the passcode is the weak
+# credential and the attacker is whoever holds a forwarded link, so the budget
+# has to follow the link rather than the network. Per-IP would let a small
+# botnet (or one person on a phone network) multiply the guess budget, and
+# per-link is also what makes a 6-character minimum defensible.
+#
+# The throttle is deliberately NOT an oracle: the 429 is shaped by the key
+# (the SHA-256 of whatever token was presented), so a garbage token gets the
+# same budget and the same answer as a real one, and the refusal is a 429 with
+# the shared "too many requests" detail rather than anything link-specific.
+_UNLOCK_LIMIT = 10
+_UNLOCK_WINDOW_S = 300.0
+_UNLOCK_MAX_KEYS = 10_000
+_unlock_windows: dict[str, deque] = defaultdict(deque)
+_unlock_lock = threading.Lock()
+
+
+def _unlock_key(raw_token: Optional[str]) -> str:
+    """The throttle key for an unlock attempt: the token's own hash.
+
+    Never the raw token, which must not be retained anywhere, and never the
+    passcode. Keying on the HASH means an attacker cannot dodge the budget by
+    varying whitespace and cannot spend a known link's budget by sending a
+    different string that hashes elsewhere."""
+    return share_links.hash_token((raw_token or "").strip())
+
+
+def _unlock_allowed(key: str) -> bool:
+    now = datetime.now(timezone.utc).timestamp()
+    with _unlock_lock:
+        window = _unlock_windows[key]
+        while window and now - window[0] > _UNLOCK_WINDOW_S:
+            window.popleft()
+        allowed = len(window) < _UNLOCK_LIMIT
+        if allowed:
+            # Count the ATTEMPT, not the success: a wrong guess must consume
+            # budget, or the throttle only limits correct codes.
+            window.append(now)
+    _prune_unlock_keys()
+    return allowed
+
+
+def _prune_unlock_keys() -> None:
+    """Bound the unlock map the same way :func:`_prune_public_keys` bounds the
+    read map: drop windows that can no longer affect a decision, then evict
+    least-recently-active ones down to the cap."""
+    now = datetime.now(timezone.utc).timestamp()
+    with _unlock_lock:
+        for key, window in list(_unlock_windows.items()):
+            while window and now - window[0] > _UNLOCK_WINDOW_S:
+                window.popleft()
+            if not window:
+                del _unlock_windows[key]
+        over = len(_unlock_windows) - _UNLOCK_MAX_KEYS
+        if over <= 0:
+            return
+        for key, _ in sorted(_unlock_windows.items(), key=lambda kv: kv[1][-1])[:over]:
+            del _unlock_windows[key]
+
+
+def reset_unlock_throttle() -> None:
+    """Clear the per-link unlock windows (the counter is per-process memory)."""
+    with _unlock_lock:
+        _unlock_windows.clear()
 
 
 def _public_requests_allowed(client_ip: str) -> bool:
@@ -196,7 +271,10 @@ def _date_range_for_context(context: share_links.ShareContext):
     page into a 500."""
     try:
         return share_links.date_range_from_scope(context.scope)
-    except share_links.ScopeError:
+    except (share_links.ScopeError, share_links.ExcludeError):
+        # Since Stage 4 normalize_scope validates the exclusion list too, so a
+        # malformed one surfaces from HERE as well as from the exclusion
+        # helper below. Both callers fail open and log.
         logger.error(
             "Share link %s carries an unparseable scope %r — serving the whole record",
             context.link_id, context.scope,
@@ -204,10 +282,35 @@ def _date_range_for_context(context: share_links.ShareContext):
         return None
 
 
+def _exclude_for_context(context: share_links.ShareContext) -> tuple[str, ...]:
+    """The link's scope as the builders' ``exclude`` argument.
+
+    The exact sibling of :func:`_date_range_for_context`, and it goes to every
+    builder that function goes to. A malformed stored value is logged and
+    treated as "nothing excluded" rather than 500-ing a recipient's page.
+    """
+    excluded = share_links.excluded_entry_types(context.scope)
+    if context.scope and isinstance(context.scope, dict):
+        raw = context.scope.get("exclude")
+        if raw is not None and not excluded:
+            logger.error(
+                "Share link %s carries an unparseable exclude list %r — serving "
+                "the whole record",
+                context.link_id, raw,
+            )
+    return excluded
+
+
+def _scope_context(context: share_links.ShareContext):
+    """Both halves of a link's scope, for the payload builders."""
+    return _date_range_for_context(context), _exclude_for_context(context)
+
+
 async def resolve_share_context(
     request: Request,
     db: Session = Depends(get_db),
     token: Optional[str] = Header(default=None, alias=SHARE_TOKEN_HEADER),
+    grant: Optional[str] = Header(default=None, alias=SHARE_GRANT_HEADER),
 ) -> share_links.ShareContext:
     """The single enforcement point of the public surface.
 
@@ -215,30 +318,69 @@ async def resolve_share_context(
     same 404 with the same localized detail, so a stranger who finds a dead
     token learns nothing about what it was. On success the open is counted
     (debounced — see ``share_links.mark_opened``).
+
+    A link that carries a passcode is refused the same way when the request
+    brings no valid grant, so an unauthenticated probe cannot tell a protected
+    link from a dead one (Stage 4, S15). The refusal is the SAME 404 rather
+    than a 401: a distinguishable "wrong passcode" answer would confirm that
+    the token is real.
     """
     client_ip = request.client.host if request.client else "unknown"
     if not _public_requests_allowed(client_ip):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=i18n.tr("share.too_many_requests"),
+            headers=_no_store_headers(),
         )
     link = share_links.resolve_share_link(db, token)
     if link is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=i18n.tr("share.link_unavailable"),
+            headers=_no_store_headers(),
+        )
+    if link.passcode_hash and not share_links.verify_grant(
+        grant, link.id, link.passcode_hash
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=i18n.tr("share.link_unavailable"),
+            headers=_no_store_headers(),
         )
     context = share_links.context_from_link(link)
     share_links.mark_opened(db, context.link_id)
     return context
 
 
+def _no_store_headers() -> dict[str, str]:
+    """The headers EVERY public response must carry — success and refusal
+    alike.
+
+    Revocation is effective on the next request only because nothing between
+    the recipient and this resolver may cache: these are security controls,
+    not performance preferences.
+
+    The refusal path needs them as much as the success path (Stage 4 review,
+    F2): a 404 used to ship with no cache headers at all. `Vary` names both
+    credentials because the protected flow fetches the SAME url twice with
+    different ones — a 404 without a grant, then a 200 with it — so a shared
+    cache keyed on the URL alone could pin the refused answer and serve it to
+    the unlocked reader.
+
+    Returned as a dict because `HTTPException` carries its own headers and
+    never sees the injected `Response`.
+    """
+    return {
+        "Cache-Control": "no-store",
+        "X-Robots-Tag": "noindex, nofollow",
+        "Vary": f"{SHARE_TOKEN_HEADER}, {SHARE_GRANT_HEADER}",
+    }
+
+
 def _no_store(response: Response) -> None:
-    """Revocation is effective on the next request only because nothing
-    between the recipient and this resolver may cache: these are security
-    controls, not performance preferences."""
-    response.headers["Cache-Control"] = "no-store"
-    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    """Apply :func:`_no_store_headers` to a response returned normally."""
+    for name, value in _no_store_headers().items():
+        response.headers[name] = value
 
 
 def _header_from_owner(db: Session, owner_id: str) -> Optional[ShareRecordHeader]:
@@ -267,11 +409,15 @@ def _build_shared_record(
     section — the entry set, and therefore each biomarker's reading history,
     visits, instrumental data and the flowsheet.
     """
-    date_range = _date_range_for_context(context)
+    date_range, exclude = _scope_context(context)
     biomarkers = [
         SharedBiomarkerResult.model_validate(result.model_dump())
         for result in _biomarkers_from_db(
-            db, context.owner_id, include_merged=False, date_range=date_range
+            db,
+            context.owner_id,
+            include_merged=False,
+            date_range=date_range,
+            exclude=exclude,
         )
     ]
     return SharedRecordResponse(
@@ -290,15 +436,126 @@ def _build_shared_record(
             else None
         ),
         events=_events_from_db(
-            db, context.owner_id, include_attachments=False, date_range=date_range
+            db,
+            context.owner_id,
+            include_attachments=False,
+            date_range=date_range,
+            exclude=exclude,
         ),
         biomarkers=biomarkers,
         visits=_visits_from_db(
-            db, context.owner_id, include_attachments=False, date_range=date_range
+            db,
+            context.owner_id,
+            include_attachments=False,
+            date_range=date_range,
+            exclude=exclude,
         ),
         instrumental=_instrumental_from_db(
-            db, context.owner_id, include_attachments=False, date_range=date_range
+            db,
+            context.owner_id,
+            include_attachments=False,
+            date_range=date_range,
+            exclude=exclude,
         ),
+    )
+
+
+@router.get("/status")
+async def share_status(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    token: Optional[str] = Header(default=None, alias=SHARE_TOKEN_HEADER),
+) -> dict:
+    """Whether this link resolves, and whether it needs a passcode.
+
+    The ONE thing the public surface tells an unauthenticated caller about a
+    link before a record is read, and it exists because a protected link has
+    to render a prompt rather than a record (Stage 4, S15): the page must know
+    to show the passcode form instead of the dead-link page.
+
+    It deliberately answers only two questions — "does a live link match this
+    token" and "is it protected" — and it is throttled and no-store like every
+    other public route. It never returns the owner, the scope, the expiry or
+    any content, so it is not a read of the record: a caller holding a token
+    already knows the link exists, and a caller without one gets the same 404
+    they get everywhere else.
+
+    Returns 404 for a dead token (identical to the read paths) and 200 with
+    ``{"requires_passcode": bool}`` otherwise.
+    """
+    _no_store(response)
+    client_ip = request.client.host if request.client else "unknown"
+    if not _public_requests_allowed(client_ip):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=i18n.tr("share.too_many_requests"),
+            headers=_no_store_headers(),
+        )
+    link = share_links.resolve_share_link(db, token)
+    if link is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=i18n.tr("share.link_unavailable"),
+            headers=_no_store_headers(),
+        )
+    return {"requires_passcode": bool(link.passcode_hash)}
+
+
+@router.post("/unlock", response_model=ShareUnlockResponse)
+async def unlock_shared_link(
+    response: Response,
+    payload: ShareUnlockRequest,
+    db: Session = Depends(get_db),
+) -> ShareUnlockResponse:
+    """Exchange a link's passcode for a short-lived read grant (Stage 4, S15).
+
+    Public and passcode-gated, but the ONLY thing it can return is a grant to
+    read a link the caller already holds the token for — it widens nothing.
+
+    Failures are uniform: a wrong code, a link with no passcode and a token
+    that does not exist all produce the same localized 400 with the same
+    detail, so this endpoint cannot be used to discover which tokens are real
+    or which links are protected. The throttle is keyed on the presented
+    token's hash and counts ATTEMPTS, so guessing a real link's six-character
+    code is 10 tries per 5 minutes, not an afternoon.
+
+    The grant is an HMAC over the link id, its expiry and a fingerprint of the
+    stored passcode hash — nothing is persisted, and changing the passcode
+    invalidates every grant already issued.
+    """
+    _no_store(response)
+    # A missing/null key arrives as "" (see ShareUnlockRequest) and takes the
+    # same uniform refusal as a wrong code.
+    token = payload.token or ""
+    passcode = payload.passcode or ""
+    key = _unlock_key(token)
+    if not _unlock_allowed(key):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=i18n.tr("share.too_many_requests"),
+            headers=_no_store_headers(),
+        )
+
+    def refuse() -> HTTPException:
+        return HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=i18n.tr("share.unlock_failed"),
+            headers=_no_store_headers(),
+        )
+
+    link = share_links.resolve_share_link(db, token)
+    if link is None or not link.passcode_hash:
+        # A dead token and an unprotected link answer identically: the only
+        # thing this endpoint may ever confirm is "yes, that was the code".
+        raise refuse()
+    if not verify_password(passcode, link.passcode_hash):
+        raise refuse()
+
+    grant, expires_at = share_links.issue_grant(link.id, link.passcode_hash)
+    return ShareUnlockResponse(
+        grant=grant,
+        expires_at=datetime.fromtimestamp(expires_at, tz=timezone.utc).isoformat(),
     )
 
 
@@ -323,8 +580,9 @@ async def get_shared_flowsheet(
     down the recipient's first paint. Same scope, so the columns are exactly
     the blood tests the record payload showed."""
     _no_store(response)
+    date_range, exclude = _scope_context(context)
     dates, matrix, biomarkers = _build_flowsheet(
-        db, context.owner_id, date_range=_date_range_for_context(context)
+        db, context.owner_id, date_range=date_range, exclude=exclude
     )
     return FlowsheetResponse(dates=dates, matrix=matrix, biomarkers=biomarkers)
 
@@ -348,6 +606,7 @@ def _link_summary(
         scope=_scope_payload(link.scope),
         include_header=bool(link.include_header),
         default_locale=link.default_locale,
+        requires_passcode=bool(link.passcode_hash),
         state=_link_state(link, now),
         has_new_data=(
             link.revoked_at is None
@@ -399,6 +658,29 @@ async def create_share_link(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=i18n.tr(_SCOPE_ERROR_KEYS[exc.kind]),
         ) from exc
+    except share_links.ExcludeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=i18n.tr(_SCOPE_ERROR_KEYS[f"exclude_{exc.kind}"]),
+        ) from exc
+
+    try:
+        passcode = share_links.validate_passcode(request.passcode)
+    except share_links.PasscodeError as exc:
+        # Two distinct sentences: "at least N characters" is the wrong thing
+        # to tell someone whose code was too LONG (Stage 4 review, F6).
+        detail = (
+            i18n.tr("share.passcode_too_long")
+            if exc.kind == "too_long"
+            else i18n.tr(
+                "share.passcode_too_short",
+                min=share_links.SHARE_PASSCODE_MIN_LENGTH,
+            )
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=detail,
+        ) from exc
 
     link, raw_token = share_links.create_link(
         db,
@@ -408,6 +690,7 @@ async def create_share_link(
         scope=scope,
         include_header=request.include_header,
         default_locale=request.default_locale,
+        passcode_hash=get_password_hash(passcode) if passcode else None,
     )
     return ShareLinkCreatedResponse(
         id=link.id,
@@ -417,6 +700,7 @@ async def create_share_link(
         scope=_scope_payload(link.scope),
         include_header=bool(link.include_header),
         default_locale=link.default_locale,
+        requires_passcode=bool(link.passcode_hash),
     )
 
 
@@ -440,6 +724,7 @@ async def share_cta(
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=i18n.tr("share.too_many_requests"),
+            headers=_no_store_headers(),
         )
     share_links.record_cta_click(db)
     redirect = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)

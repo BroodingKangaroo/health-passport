@@ -14,6 +14,8 @@ still enforces revocation and expiry on every read.
 """
 
 import hashlib
+import hmac
+import logging
 import secrets
 import uuid
 from dataclasses import dataclass
@@ -21,6 +23,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -28,6 +31,8 @@ from app.db.models import (
     ShareFunnelEvent,
     ShareLink,
 )
+
+logger = logging.getLogger(__name__)
 
 # "hp_" makes a leaked token identifiable to secret scanners and greppable in
 # an incident; the body carries 256 bits of entropy.
@@ -53,6 +58,120 @@ FUNNEL_LINK_REVOKED = "link_revoked"
 # separates recipient counters from sender actions (see the model).
 FUNNEL_CTA_CLICKED = "cta_clicked"
 
+# The optional passcode (Stage 4, S15). Six is the floor the plan commits to:
+# a four-character code is not a secret, and the copy must not imply that it
+# is.
+SHARE_PASSCODE_MIN_LENGTH = 6
+# How long an unlock lasts. Short enough that a grant left in a tab is not a
+# standing credential, long enough to read a record and its table.
+SHARE_GRANT_TTL_SECONDS = 3600
+# Domain separator: the same SECRET_KEY signs session tokens, and a grant must
+# never be mistakable for one.
+_GRANT_CONTEXT = "share-grant-v1"
+
+
+def validate_passcode(passcode: Optional[str]) -> Optional[str]:
+    """Return the passcode to hash, or ``None`` when the link is unprotected.
+
+    Raises :class:`PasscodeError` for anything the create endpoint must refuse
+    with a localized 400. Validation lives here rather than in the router so
+    the minimum length cannot drift from the hash that stores it.
+    """
+    if passcode is None:
+        return None
+    if not isinstance(passcode, str):
+        raise PasscodeError("length")
+    if len(passcode) < SHARE_PASSCODE_MIN_LENGTH:
+        raise PasscodeError("length")
+    # bcrypt silently truncates past 72 bytes; refusing is honest about what
+    # the code protects, and matches the account-password path's reasoning.
+    # Its own kind, because telling a 73-byte code it is "at least 6
+    # characters" is the wrong sentence (Stage 4 review, F6).
+    if len(passcode.encode("utf-8")) > 72:
+        raise PasscodeError("too_long")
+    return passcode
+
+
+class PasscodeError(ValueError):
+    """A passcode the create endpoint must reject with a localized 400.
+
+    Carries a stable ``kind`` ("length" / "too_long") rather than a localized
+    string, the same pattern as :class:`ScopeError`.
+    """
+
+    def __init__(self, kind: str):
+        super().__init__(kind)
+        self.kind = kind
+
+
+def _passcode_fingerprint(passcode_hash: Optional[str]) -> str:
+    """A short, non-reversible stand-in for the stored passcode hash.
+
+    The grant is signed over this rather than over the bcrypt hash itself, so
+    a sender who sets a new passcode invalidates every outstanding grant
+    without the server storing a token or a version counter for it. It is a
+    fingerprint of a HASH, so it leaks nothing usable.
+    """
+    if not passcode_hash:
+        return "-"
+    return hashlib.sha256(passcode_hash.encode("utf-8")).hexdigest()[:16]
+
+
+def issue_grant(link_id: str, passcode_hash: Optional[str]) -> tuple[str, int]:
+    """Mint a short-lived unlock grant for one link. Returns (grant, ttl).
+
+    HMAC-SHA256 over ``link_id | expiry | passcode fingerprint``, signed with
+    the app secret. Nothing is stored: the grant is verifiable from the link
+    row alone, and because the passcode fingerprint is part of the signed
+    message, changing the passcode invalidates every grant already issued.
+    """
+    expires_at = int(datetime.now(timezone.utc).timestamp()) + SHARE_GRANT_TTL_SECONDS
+    message = "|".join(
+        (_GRANT_CONTEXT, link_id, str(expires_at), _passcode_fingerprint(passcode_hash))
+    )
+    signature = hmac.new(
+        _grant_secret(), message.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+    return f"{expires_at}.{signature}", expires_at
+
+
+def _grant_secret() -> bytes:
+    """The signing key, read lazily so a test can point it at its own value.
+
+    ``app.auth`` resolves SECRET_KEY at import time; reading it here keeps one
+    source of truth for the secret instead of copying it at import.
+    """
+    from app import auth
+
+    return auth.SECRET_KEY.encode("utf-8")
+
+
+def verify_grant(grant: Optional[str], link_id: str, passcode_hash: Optional[str]) -> bool:
+    """Whether ``grant`` unlocks ``link_id`` right now.
+
+    False for a missing, malformed, expired or mismatched grant — including a
+    grant minted before the passcode changed, because the fingerprint is part
+    of the signed message. Compared with :func:`hmac.compare_digest`.
+    """
+    if not grant:
+        return False
+    expires_raw, _, signature = grant.partition(".")
+    if not expires_raw or not signature:
+        return False
+    try:
+        expires_at = int(expires_raw)
+    except ValueError:
+        return False
+    if expires_at <= int(datetime.now(timezone.utc).timestamp()):
+        return False
+    message = "|".join(
+        (_GRANT_CONTEXT, link_id, str(expires_at), _passcode_fingerprint(passcode_hash))
+    )
+    expected = hmac.new(
+        _grant_secret(), message.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)
+
 
 def generate_token() -> str:
     return TOKEN_PREFIX + secrets.token_urlsafe(TOKEN_BYTES)
@@ -77,6 +196,47 @@ class ScopeError(ValueError):
     def __init__(self, kind: str):
         super().__init__(kind)
         self.kind = kind
+
+
+# The four entry types that exist (models.MedicalEntry.type). Exclusions are
+# deliberately the whole vocabulary rather than a per-entry curation UI: the
+# point is "do not send my imaging" in one click (S16).
+SHARE_ENTRY_TYPES = ("blood_test", "doctor_visit", "instrumental_test", "procedure")
+
+
+class ExcludeError(ValueError):
+    """An exclusion list the create endpoint must reject with a localized 400.
+
+    ``kind`` is "type" (an unknown entry type) or "shape" (not a list, or a
+    list the client padded with junk). Stable markers, mapped to i18n keys by
+    the router, the same convention as :class:`ScopeError`.
+    """
+
+    def __init__(self, kind: str):
+        super().__init__(kind)
+        self.kind = kind
+
+
+def normalize_exclude(raw: object) -> Optional[list[str]]:
+    """Validate a create request's exclusion list into canonical form.
+
+    Returns ``None`` when nothing is excluded (so an empty list and an absent
+    list are the same stored value), otherwise the four known types in their
+    canonical order. Any unknown type or non-list shape raises
+    :class:`ExcludeError` — a client cannot park junk in the stored scope.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise ExcludeError("shape")
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str) or item not in SHARE_ENTRY_TYPES:
+            raise ExcludeError("type")
+        seen.add(item)
+    if not seen:
+        return None
+    return [entry_type for entry_type in SHARE_ENTRY_TYPES if entry_type in seen]
 
 
 @dataclass(frozen=True)
@@ -115,19 +275,29 @@ def _day_end(day: str) -> datetime:
 def normalize_scope(scope: Optional[dict]) -> Optional[dict]:
     """Validate and canonicalise a create request's scope.
 
-    Returns ``None`` for the whole record (the wire shape ``{"kind": "all"}``)
-    or ``{"kind": "range", "from": "YYYY-MM-DD"|None, "to": ...}``. Unknown
-    kinds, unparseable dates and an inverted range raise :class:`ScopeError`,
-    and only the three known keys survive — a client cannot park junk in the
-    stored scope.
+    Returns ``None`` for the whole record with nothing excluded (the wire
+    shape ``{"kind": "all"}``) or a canonical dict describing the window
+    and/or the exclusions. Unknown kinds, unparseable dates and an inverted
+    range raise :class:`ScopeError`; a bad exclusion list raises
+    :class:`ExcludeError`; only known keys survive, so a client cannot park
+    junk in the stored scope.
+
+    ``exclude`` rides BOTH kinds (S16): "the last two years, but not the
+    imaging" is one scope, not two features. The stored shape is
+    ``{"kind": "all", "exclude": [...]}`` or
+    ``{"kind": "range", "from": ..., "to": ..., "exclude": [...]}``, with the
+    key absent when nothing is excluded.
     """
     if scope is None:
         return None
     if not isinstance(scope, dict):
         raise ScopeError("kind")
     kind = scope.get("kind")
+    exclude = normalize_exclude(scope.get("exclude"))
     if kind == "all":
-        return None
+        # The whole record with an exclusion is still a narrowed read, so it
+        # must be stored rather than collapsed to None.
+        return {"kind": "all", "exclude": exclude} if exclude else None
     if kind != "range":
         raise ScopeError("kind")
     raw_from = scope.get("from")
@@ -136,11 +306,27 @@ def normalize_scope(scope: Optional[dict]) -> Optional[dict]:
     last = _parse_scope_date(raw_to) if raw_to is not None else None
     if first is not None and last is not None and first > last:
         raise ScopeError("range")
-    return {
+    normalized = {
         "kind": "range",
         "from": first.isoformat() if first else None,
         "to": last.isoformat() if last else None,
     }
+    if exclude:
+        normalized["exclude"] = exclude
+    return normalized
+
+
+def excluded_entry_types(scope: Optional[dict]) -> tuple[str, ...]:
+    """The entry types a stored scope excludes, canonical order.
+
+    Never raises: a row edited outside the app is served with its exclusions
+    applied where they parse, and the caller logs the rest."""
+    if not isinstance(scope, dict):
+        return ()
+    try:
+        return tuple(normalize_exclude(scope.get("exclude")) or ())
+    except ExcludeError:
+        return ()
 
 
 def date_range_from_scope(scope: Optional[dict]) -> Optional[DateRange]:
@@ -149,9 +335,14 @@ def date_range_from_scope(scope: Optional[dict]) -> Optional[DateRange]:
     The create path validates before storing, so a row can only carry ``None``
     or a well-formed range; a malformed value raises :class:`ScopeError` and
     the caller (the public read path) decides what to do about it.
+
+    Since Stage 4 a scope may also be ``{"kind": "all", "exclude": [...]}`` —
+    the whole record minus some entry types — which is no window at all and
+    returns ``None`` here. The exclusions travel separately
+    (:func:`excluded_entry_types`); this function only ever describes dates.
     """
     normalized = normalize_scope(scope)
-    if normalized is None:
+    if normalized is None or normalized.get("kind") != "range":
         return None
     return DateRange(
         start=_day_start(normalized["from"]) if normalized["from"] else None,
@@ -174,6 +365,9 @@ class ShareContext:
     default_locale: Optional[str]
     created_at: datetime
     expires_at: datetime
+    # True when the link carries a passcode. The hash itself stays out of the
+    # context: the read path only ever needs the boolean and the grant check.
+    requires_passcode: bool = False
 
 
 def record_watermark(db: Session, owner_id: str) -> Optional[datetime]:
@@ -203,15 +397,18 @@ def create_link(
     scope: Optional[dict] = None,
     include_header: bool = True,
     default_locale: Optional[str] = None,
+    passcode_hash: Optional[str] = None,
 ) -> tuple[ShareLink, str]:
     """Create a link owned by ``owner_id`` and return ``(row, raw_token)``.
 
-    ``scope`` must already be normalised by :func:`normalize_scope` and
-    ``ttl_days`` already checked against :func:`allowed_expiry_days` — the
-    router owns those decisions because they need the request locale and the
-    principal. The raw token is returned exactly once; only its SHA-256 is
-    stored, so the sender can never re-open the link from the list (technical
-    plan §4.2).
+    ``scope`` must already be normalised by :func:`normalize_scope`,
+    ``passcode_hash`` already produced by :func:`validate_passcode` +
+    ``auth.get_password_hash``, and ``ttl_days`` already checked against
+    :func:`allowed_expiry_days` — the router owns those decisions because they
+    need the request locale and the principal. The raw token is returned
+    exactly once; only its SHA-256 is stored, so the sender can never re-open
+    the link from the list (technical plan §4.2). The raw passcode never
+    reaches here at all: only its hash, which is what gets stored.
 
     ``notified_record_at`` starts at the owner's *current* watermark, so data
     that already existed when the link was made never raises a new-data
@@ -226,6 +423,7 @@ def create_link(
         owner_id=owner_id,
         is_anonymous=is_anonymous,
         scope=scope,
+        passcode_hash=passcode_hash,
         include_header=include_header,
         include_notes=False,
         default_locale=default_locale,
@@ -287,6 +485,7 @@ def context_from_link(link: ShareLink) -> ShareContext:
         default_locale=link.default_locale,
         created_at=link.created_at,
         expires_at=link.expires_at,
+        requires_passcode=bool(link.passcode_hash),
     )
 
 
@@ -305,9 +504,60 @@ def mark_opened(db: Session, link_id: str) -> bool:
     evaluated by the same statement that writes. A refresh inside
     ``SHARE_OPEN_DEBOUNCE_SECONDS`` therefore leaves no trace at all, not even
     a moved ``last_opened_at``. Returns whether this call counted.
+
+    **Best-effort: a counter that cannot be written must never fail the read
+    that triggered it.** The public read path holds a SQLite snapshot from its
+    own SELECT, and SQLite refuses a write that would have to upgrade a stale
+    snapshot (``SQLITE_BUSY_SNAPSHOT``); ``PRAGMA busy_timeout`` does not cover
+    that case, because waiting can never make a stale snapshot current. So an
+    ``OperationalError`` is logged, the transaction rolled back, and the open
+    simply goes uncounted: an uncounted open is a metric we can lose, a 500 is
+    a recipient who cannot see their record (Stage 4 review, F1).
+
+    Deliberately NO retry. A retry was MEASURED to make contention worse: the
+    fresh transaction no longer conflicts instantly, so it waits out
+    ``busy_timeout`` instead, and because these reads are blocking DB work
+    inside a single event loop, a burst compounds into a stall (30 simultaneous
+    reads were still pending at 60 s). Failing fast and moving on is what keeps
+    overlapping reads returning.
+
+    The rollback is safe here because the public read path performs no other
+    write in this session, and every caller builds its :class:`ShareContext`
+    from plain values BEFORE calling this.
     """
+    try:
+        return _mark_opened_once(db, link_id)
+    except OperationalError:
+        # A stale read snapshot or a competing writer: give up on the counter.
+        db.rollback()
+        logger.warning(
+            "Could not count an open for share link %s: another writer holds "
+            "the lock. Serving the read anyway and losing the increment.",
+            link_id,
+        )
+        return False
+
+
+def _mark_opened_once(db: Session, link_id: str) -> bool:
+    """One attempt at the debounced counting UPDATE."""
     now = datetime.now(timezone.utc)
     stale_before = now - timedelta(seconds=SHARE_OPEN_DEBOUNCE_SECONDS)
+
+    # Return BEFORE touching the write lock when the link was already opened
+    # inside the debounce window. The UPDATE's WHERE clause would reject it
+    # anyway -- but only after taking SQLite's write lock, and taking that lock
+    # on every refresh is what turned a burst of reads into contention. The
+    # predicate stays in the WHERE clause too, so two concurrent opens still
+    # cannot both pass it.
+    last_opened = (
+        db.query(ShareLink.last_opened_at).filter(ShareLink.id == link_id).scalar()
+    )
+    if last_opened is not None:
+        if last_opened.tzinfo is None:
+            last_opened = last_opened.replace(tzinfo=timezone.utc)
+        if last_opened >= stale_before:
+            return False
+
     watermark = (
         select(func.max(MedicalEntry.created_at))
         .where(MedicalEntry.patient_id == ShareLink.owner_id)

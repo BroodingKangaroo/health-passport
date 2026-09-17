@@ -71,6 +71,39 @@ class ShareLinkCreatedResponse(BaseModel):
     scope: dict
     include_header: bool
     default_locale: Optional[str] = None
+    # Whether the link needs a passcode — never the passcode, never its hash.
+    # The recipient's own page is the only place the code is ever typed.
+    requires_passcode: bool = False
+
+
+class ShareUnlockRequest(BaseModel):
+    """The unlock body: the raw link token and the code the recipient typed.
+
+    Both travel in a POST body rather than the URL, for the same reason the
+    read token travels in a header — this repo has no log-scrubbing layer, and
+    whatever is in a path is written to stdout."""
+
+    # Both default to "" so a body that OMITS either key (or sends null) takes
+    # the SAME uniform 400 the wrong-code path takes, instead of a 422 that
+    # echoes the token back in a validation detail. An empty code can never
+    # match a stored hash, so this cannot let anything in (Stage 4 review, F4).
+    # A body that is not valid JSON is still refused by request validation —
+    # the plan's §4 sentence was corrected to say exactly that.
+    token: Optional[str] = ""
+    passcode: Optional[str] = ""
+
+
+class ShareUnlockResponse(BaseModel):
+    """A short-lived unlock grant.
+
+    A bearer credential: it expires, it dies with the link, and the recipient
+    keeps it in `sessionStorage` rather than a cookie (the share surface sets
+    no cookie by contract). The expiry is echoed so the client can drop the
+    grant instead of waiting for a 404.
+    """
+
+    grant: str
+    expires_at: str
 
 
 class ShareLinkCreateRequest(BaseModel):
@@ -89,6 +122,11 @@ class ShareLinkCreateRequest(BaseModel):
     scope: Optional[dict] = None
     include_header: bool = True
     default_locale: Optional[str] = None
+    # Optional passcode (Stage 4, S15). The minimum length is validated in the
+    # router beside the other principal-dependent rules, and the raw value is
+    # hashed before it reaches the row: never stored, echoed or logged. A link
+    # without one behaves exactly as it did before Stage 4.
+    passcode: Optional[str] = None
 
 
 class ShareLinkSummary(BaseModel):
@@ -113,6 +151,9 @@ class ShareLinkSummary(BaseModel):
     # The sender's per-link language preset (Stage 3, S10): "en" / "ru" or
     # None when the recipient's browser decides.
     default_locale: Optional[str] = None
+    # True when the link needs a passcode (Stage 4, S15). The card renders a
+    # "protected" marker from this; the passcode itself is unrecoverable.
+    requires_passcode: bool = False
     # "active" | "expired" | "revoked" — revoked wins over expired.
     state: str
     # True when the owner's record is newer than what this link has been
@@ -158,6 +199,8 @@ __all__ = [
     "ShareNoticeResponse",
     "ShareRecordHeader",
     "ShareRecordMeta",
+    "ShareUnlockRequest",
+    "ShareUnlockResponse",
     "SharedBiomarkerDefinition",
     "SharedBiomarkerResult",
     "SharedRecordResponse",

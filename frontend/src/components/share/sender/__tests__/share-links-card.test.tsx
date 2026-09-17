@@ -39,6 +39,7 @@ function link(overrides: Partial<ShareLinkSummary>): ShareLinkSummary {
     scope: { kind: 'all' },
     include_header: true,
     default_locale: null,
+    requires_passcode: false,
     state: 'active',
     has_new_data: false,
     ...overrides,
@@ -60,6 +61,64 @@ beforeEach(() => {
   vi.clearAllMocks()
   session.current = { data: { user: { id: 'user-1' } }, status: 'authenticated' }
   listShareLinks.mockResolvedValue({ links: [] })
+})
+
+describe('ShareLinksCard - Stage 4 markers', () => {
+  it('marks a protected link, and only that one (S15)', async () => {
+    listShareLinks.mockResolvedValue({
+      links: [
+        link({ id: 'plain', requires_passcode: false }),
+        link({ id: 'locked', requires_passcode: true }),
+      ],
+    })
+    renderCard()
+
+    const rows = await screen.findAllByTestId('share-link-row')
+    expect(within(rows[0]).queryByTestId('share-protected')).not.toBeInTheDocument()
+    expect(within(rows[1]).getByTestId('share-protected')).toBeInTheDocument()
+    // The card learns only THAT a passcode exists — never the code.
+    expect(within(rows[1]).getByTestId('share-protected')).toHaveTextContent('Passcode')
+  })
+
+  it('shows the exclusions in words beside the scope (S16)', async () => {
+    listShareLinks.mockResolvedValue({
+      links: [
+        link({ id: 'partial', scope: { kind: 'all', exclude: ['instrumental_test'] } }),
+        link({ id: 'full', scope: { kind: 'all' } }),
+      ],
+    })
+    renderCard()
+
+    const rows = await screen.findAllByTestId('share-link-row')
+    expect(within(rows[0]).getByTestId('share-exclusions')).toHaveTextContent(
+      'Without: imaging and other tests',
+    )
+    // A whole-record link says nothing about exclusions.
+    expect(within(rows[1]).queryByTestId('share-exclusions')).not.toBeInTheDocument()
+  })
+
+  it('shows exclusions on a date-ranged link too, because they ride both kinds', async () => {
+    listShareLinks.mockResolvedValue({
+      links: [
+        link({
+          id: 'ranged',
+          scope: {
+            kind: 'range',
+            from: '2026-01-01',
+            to: '2026-03-31',
+            exclude: ['blood_test', 'doctor_visit'],
+          },
+        }),
+      ],
+    })
+    renderCard()
+
+    const row = (await screen.findAllByTestId('share-link-row'))[0]
+    expect(within(row).getByTestId('share-scope')).toHaveTextContent('–')
+    expect(within(row).getByTestId('share-exclusions')).toHaveTextContent(
+      'Without: lab results, doctor visits',
+    )
+  })
 })
 
 describe('ShareLinksCard', () => {

@@ -485,6 +485,26 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Choose one of these link languages: English, Russian.",
         "ru": "Выберите один из доступных языков ссылки: английский, русский.",
     },
+    # Stage 4, S15/S16: the passcode and the entry-type exclusions.
+    "share.passcode_too_short": {
+        "en": "The passcode must be at least {min} characters.",
+        "ru": "Код доступа должен содержать не менее {min} символов.",
+    },
+    "share.passcode_too_long": {
+        "en": "The passcode must be 72 bytes or fewer.",
+        "ru": "Код доступа должен быть не длиннее 72 байт.",
+    },
+    "share.exclude_invalid": {
+        "en": "That entry type cannot be excluded from a share link.",
+        "ru": "Этот тип записи нельзя исключить из ссылки.",
+    },
+    # One uniform unlock failure: a wrong code, a link without a passcode and
+    # an unknown token are indistinguishable, so this text may not hint at
+    # what exists.
+    "share.unlock_failed": {
+        "en": "That passcode is not correct.",
+        "ru": "Неверный код доступа.",
+    },
     # ----- app/api/account.py -----
     "export.invalid_format": {
         "en": "Invalid export format '{format}'. Supported: json, csv.",

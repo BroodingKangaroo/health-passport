@@ -16,7 +16,7 @@ from app.api._serializers import (
     result_schema,
 )
 from app.api.auth import get_current_user_or_anon
-from app.api.timeline import DateRange, _apply_date_range
+from app.api.timeline import DateRange, _apply_share_scope
 from app.db.models import (
     BiomarkerDefinition as BiomarkerDefinitionModel,
 )
@@ -46,16 +46,19 @@ def _build_flowsheet(
     db: Session,
     patient_id: str,
     date_range: Optional[DateRange] = None,
+    exclude: Optional[tuple[str, ...]] = None,
 ):
     """Build the longitudinal table, optionally narrowed to a shared link's
     day window.
 
-    ``date_range`` is None for the authed route (today's behaviour, unchanged)
-    and is only ever set from a link's scope. Every column, every cell and
-    every biomarker row follows the window because they are all derived from
-    this one blood-test set.
+    ``date_range`` / ``exclude`` are None for the authed route (today's
+    behaviour, unchanged) and are only ever set from a link's scope. Every
+    column, every cell and every biomarker row follow both, because they are
+    all derived from this one blood-test set. Applying a link's scope through
+    the same helper the other builders use is what stops an exclusion from
+    reaching four sections out of five.
     """
-    blood_tests = _apply_date_range(
+    blood_tests = _apply_share_scope(
         db.query(MedicalEntryModel)
         .filter(
             MedicalEntryModel.type == "blood_test",
@@ -67,6 +70,7 @@ def _build_flowsheet(
             MedicalEntryModel.id,
         ),
         date_range,
+        exclude,
         MedicalEntryModel.date,
     ).all()
 

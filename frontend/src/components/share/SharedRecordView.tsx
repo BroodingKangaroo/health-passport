@@ -8,7 +8,9 @@ import { FlowsheetMatrix } from '@/components/health-passport/flowsheet-matrix'
 import { Button } from '@/components/ui/button'
 import { LanguageSwitch } from '@/components/share/language-switch'
 import { formatReference } from '@/lib/reference'
-import { biomarkerName, flaggedBiomarkers, SHARE_TOKEN_HEADER } from '@/lib/share'
+import { biomarkerName, flaggedBiomarkers } from '@/lib/share'
+import { readShareGrant } from '@/lib/share-grant'
+import { fetchSharedFlowsheet } from '@/services/share'
 import type { SharedFlowsheet, SharedRecord } from '@/lib/share'
 import { STATUS_TEXT_CLASS, isOutOfRange } from '@/lib/status-labels'
 import { cn, formatDate, formatNumber } from '@/lib/utils'
@@ -63,9 +65,9 @@ export function SharedRecordView({ token, record, locale }: SharedRecordViewProp
               ? t('orientation.ownedBy', { name: record.header.name })
               : t('orientation.anonymous')}
           </h1>
-          {record.header?.dob ? (
-            <p className="text-sm text-muted-foreground">{record.header.dob}</p>
-          ) : null}
+      {record.header?.dob ? (
+        <p className="text-sm text-muted-foreground">{record.header.dob}</p>
+      ) : null}
           <p className="text-sm text-muted-foreground">
             {t('orientation.lastUpdated', {
               date: formatDate(record.meta.last_updated, dateLocale),
@@ -76,6 +78,7 @@ export function SharedRecordView({ token, record, locale }: SharedRecordViewProp
               date: formatDate(record.meta.expires_at, dateLocale),
             })}
           </p>
+          <ScopeNote scope={record.meta.scope} />
         </div>
       </header>
 
@@ -210,6 +213,28 @@ export function SharedRecordView({ token, record, locale }: SharedRecordViewProp
   )
 }
 
+/**
+ * What this link withholds (Stage 4, S16).
+ *
+ * Shown to the RECIPIENT, not only the sender: a doctor who cannot find the
+ * imaging must be able to tell "the owner did not share it" from "the record
+ * has none", and silence would invite the wrong conclusion about the patient.
+ * Rendered only when something is actually excluded, so the common case adds
+ * nothing to the page.
+ */
+function ScopeNote({ scope }: { scope: SharedRecord['meta']['scope'] }) {
+  const t = useTranslations('sharedView')
+  const excluded = scope.exclude ?? []
+  if (excluded.length === 0) return null
+  const labels = excluded.map((entryType) => t(`excluded.${entryType}`)).join(', ')
+  return (
+    <p className="text-xs text-muted-foreground" data-testid="share-scope-note">
+      {t('excluded.note', { types: labels })}
+    </p>
+  )
+}
+
+
 function FlagCard({
   biomarker,
   locale,
@@ -273,13 +298,13 @@ function SharedResults({ token }: { token: string }) {
     let cancelled = false
     async function load() {
       try {
-        const res = await fetch('/api/share/flowsheet', {
-          headers: { [SHARE_TOKEN_HEADER]: token },
-          cache: 'no-store',
-          referrerPolicy: 'no-referrer',
-        })
-        if (!res.ok) throw new Error(`flowsheet responded ${res.status}`)
-        const payload = (await res.json()) as SharedFlowsheet
+        // The grant travels with the table read too: a protected link reaches
+        // this point already unlocked, and a missing grant would 404 here
+        // while the record above it rendered fine (Stage 4, S15).
+        const payload = (await fetchSharedFlowsheet(
+          token,
+          readShareGrant(token),
+        )) as SharedFlowsheet
         if (!cancelled) {
           setFlowsheet(payload)
           setStatus('ready')

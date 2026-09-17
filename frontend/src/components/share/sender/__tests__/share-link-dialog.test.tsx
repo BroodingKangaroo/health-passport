@@ -121,6 +121,7 @@ describe('ShareLinkButton', () => {
         scope: { kind: 'range', from: '2026-01-01', to: '2026-03-31' },
         include_header: true,
         default_locale: null,
+        passcode: null,
       }),
     )
 
@@ -146,6 +147,7 @@ describe('ShareLinkButton', () => {
         scope: null,
         include_header: false,
         default_locale: null,
+        passcode: null,
       }),
     )
   })
@@ -165,6 +167,7 @@ describe('ShareLinkButton', () => {
         scope: { kind: 'range', from: '2026-01-01', to: null },
         include_header: true,
         default_locale: null,
+        passcode: null,
       }),
     )
   })
@@ -246,8 +249,120 @@ describe('ShareLinkButton', () => {
         scope: null,
         include_header: true,
         default_locale: null,
+        passcode: null,
       }),
     )
+  })
+
+  it('sends the exclusions the sender ticked, in canonical order (Stage 4, S16)', async () => {
+    createShareLink.mockResolvedValue(created)
+    renderButton()
+    openDialog()
+
+    fireEvent.click(await screen.findByTestId('share-exclude-procedure'))
+    fireEvent.click(screen.getByTestId('share-exclude-instrumental_test'))
+    fireEvent.click(screen.getByRole('button', { name: 'Create link' }))
+
+    await waitFor(() =>
+      expect(createShareLink).toHaveBeenCalledWith({
+        expiry_days: 7,
+        // The canonical order the server stores, not the click order.
+        scope: { kind: 'all', exclude: ['instrumental_test', 'procedure'] },
+        include_header: true,
+        default_locale: null,
+        passcode: null,
+      }),
+    )
+  })
+
+  it('warns before an exclusion empties the results table (Stage 4, S16)', async () => {
+    createShareLink.mockResolvedValue(created)
+    renderButton()
+    openDialog()
+
+    // No warning until the sender actually picks lab results.
+    expect(screen.queryByTestId('share-exclude-warning')).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByTestId('share-exclude-blood_test'))
+    expect(screen.getByTestId('share-exclude-warning')).toBeInTheDocument()
+    // Unticking it takes the warning away again.
+    fireEvent.click(screen.getByTestId('share-exclude-blood_test'))
+    expect(screen.queryByTestId('share-exclude-warning')).not.toBeInTheDocument()
+  })
+
+  it('sends no scope at all when nothing is excluded and the whole record is chosen', async () => {
+    createShareLink.mockResolvedValue(created)
+    renderButton()
+    openDialog()
+
+    fireEvent.click(await screen.findByTestId('share-exclude-doctor_visit'))
+    fireEvent.click(screen.getByTestId('share-exclude-doctor_visit'))
+    fireEvent.click(screen.getByRole('button', { name: 'Create link' }))
+
+    await waitFor(() =>
+      expect(createShareLink).toHaveBeenCalledWith({
+        expiry_days: 7,
+        scope: null,
+        include_header: true,
+        default_locale: null,
+        passcode: null,
+      }),
+    )
+  })
+
+  it('sends a passcode when one is typed, and none when the field is empty (Stage 4, S15)', async () => {
+    createShareLink.mockResolvedValue({ ...created, requires_passcode: true })
+    renderButton()
+    openDialog()
+
+    fireEvent.change(await screen.findByTestId('share-passcode'), {
+      target: { value: 'swordfish' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Create link' }))
+
+    await waitFor(() =>
+      expect(createShareLink).toHaveBeenCalledWith(
+        expect.objectContaining({ passcode: 'swordfish' }),
+      ),
+    )
+  })
+
+  it('refuses a too-short passcode locally instead of letting the request 400 (Stage 4, S15)', async () => {
+    createShareLink.mockResolvedValue(created)
+    renderButton()
+    openDialog()
+
+    fireEvent.change(await screen.findByTestId('share-passcode'), {
+      target: { value: 'abc' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Create link' }))
+
+    expect(
+      await screen.findByText('The passcode must be at least 6 characters.'),
+    ).toBeInTheDocument()
+    // Nothing was sent: the dialog's rule and the server's must agree, so a
+    // refusal here is not a second opinion, it is the same rule.
+    expect(createShareLink).not.toHaveBeenCalled()
+    // Correcting it clears the message.
+    fireEvent.change(screen.getByTestId('share-passcode'), {
+      target: { value: 'abcdef' },
+    })
+    expect(
+      screen.queryByText('The passcode must be at least 6 characters.'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('never echoes the passcode back into the result panel', async () => {
+    createShareLink.mockResolvedValue({ ...created, requires_passcode: true })
+    renderButton()
+    openDialog()
+
+    fireEvent.change(await screen.findByTestId('share-passcode'), {
+      target: { value: 'swordfish' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Create link' }))
+
+    await screen.findByText(/\/s\/hp_abc123$/)
+    expect(document.body.textContent).not.toContain('swordfish')
   })
 
   it('pins the link to Russian, which the recipient can still override on the page', async () => {
@@ -266,6 +381,7 @@ describe('ShareLinkButton', () => {
         scope: null,
         include_header: true,
         default_locale: 'ru',
+        passcode: null,
       }),
     )
   })

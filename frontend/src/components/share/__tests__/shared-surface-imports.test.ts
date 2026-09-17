@@ -23,7 +23,7 @@ const FORBIDDEN_IMPORTS = [
   '@/i18n/api-locale',
 ]
 
-const ROOTS = ['src/components/share', "src/app/(public)"]
+const ROOTS = ['src/components/share', "src/app/(public)", 'src/lib/share-grant.ts']
 
 function walk(dir: string): string[] {
   const out: string[] = []
@@ -46,7 +46,12 @@ describe('shared surface import graph', () => {
   it('never imports the write API, the auth token or the authed providers', () => {
     const offenders: string[] = []
     for (const root of ROOTS) {
-      for (const file of walk(path.resolve(process.cwd(), root))) {
+      // `src/lib/share-grant.ts` is a FILE, not a directory: the walker would
+      // silently skip it, so a file root is checked directly (Stage 4 added
+      // the grant helper to the recipient tree).
+      const absolute = path.resolve(process.cwd(), root)
+      const files = statSync(absolute).isDirectory() ? walk(absolute) : [absolute]
+      for (const file of files) {
         const source = readFileSync(file, 'utf8')
         for (const forbidden of FORBIDDEN_IMPORTS) {
           if (source.includes(`'${forbidden}'`) || source.includes(`"${forbidden}"`)) {

@@ -56,17 +56,50 @@ retries.
   `src/app/global-error.tsx` and the metadata files stay at the app root.
 - **No `AuthProvider`** in the public tree — that is the point of the split.
   No `SessionProvider`, no `QueryProvider`, no leave-guard, no toast host.
-- **Server-rendered record.** The page is a server component that fetches the
-  record with `cache: 'no-store'` and the token in the `X-Share-Token` header
-  (`src/services/share.ts`). `no-store` is load-bearing: revocation and expiry
-  are evaluated per request on the backend, so ANY cache in front of this read
-  would keep a revoked link alive. `dynamic = 'force-dynamic'` is explicit for
-  the same reason.
+- **Server-rendered record (unprotected links).** The page is a server
+  component that fetches the record with `cache: 'no-store'` and the token in
+  the `X-Share-Token` header (`src/services/share.ts`). `no-store` is
+  load-bearing: revocation and expiry are evaluated per request on the backend,
+  so ANY cache in front of this read would keep a revoked link alive.
+  `dynamic = 'force-dynamic'` is explicit for the same reason. A
+  passcode-protected link does NOT take this path — see "Two first-paint
+  paths" below.
+- **Two first-paint paths (Stage 4, S15).** An UNPROTECTED link is read on
+  the server and arrives in the first paint exactly as it did in Stage 1. A
+  PASSCODE-PROTECTED one cannot be: the first request carries no code, so the
+  server would have nothing to render. The page therefore asks
+  `GET /api/share/status` (server-side, `shareApiUrl`), and for a protected
+  link renders `SharedUnlockGate` — the prompt (`SharedPasscodePrompt`), then
+  the client's unlock and record fetch — instead of the record. A dead token
+  answers 404 from the same probe and still gets `SharedUnavailable`. The cost
+  is paid only by links that opt into a passcode; nothing about the unprotected
+  path changed.
+- **The grant lives in `sessionStorage`, never a cookie (Stage 4).** After a
+  successful unlock the client stores `{token, grant, expiresAt}` under
+  `hp.share.grant` (`src/lib/share-grant.ts`). Per-link (unlocking one record
+  cannot leak a grant into another opened in the same tab), expiry-checked
+  before it is ever sent, and never placed in a cookie or the URL — the share
+  surface sets no cookie by contract, and a grant in a query string would land
+  in history and `Referer`. Every access is wrapped in try/catch: a sandboxed
+  or full `sessionStorage` degrades to "unlock again", not a broken page.
+- **A refused read is never cached (Stage 4 review, F2).** The public refusals
+  carry the same `Cache-Control: no-store` / `X-Robots-Tag` /
+  `Vary: X-Share-Token, X-Share-Grant` set as a successful read (see the
+  backend doc), which is what stops the protected flow's second fetch — the one
+  carrying `X-Share-Grant` — from being served a cached 404 left by the first.
+- **Browser-side share calls are same-origin (Stage 4).** `services/share.ts`
+  routes through `shareApiUrl()`: the Next SERVER addresses `STATIC_PROXY_URL`
+  directly (the `/api/*` rewrite applies to incoming requests only), while a
+  fetch from the recipient's BROWSER must use the same-origin `/api/*` path —
+  the proxy origin is a different origin from the page and would be blocked.
+  This applies to `unlockSharedRecord`, the gate's record read and the
+  flowsheet read, all of which carry the grant in `X-Share-Grant`.
 - **Read-only by construction.** The shared tree renders `SharedRecordView`
   (+ the reused `FlowsheetMatrix`) and is forbidden from importing
   `services/api.ts`, `lib/auth-token`, `AuthProvider` or `QueryProvider`; a
   test walks the import graph under `src/components/share` (excluding
-  `sender/`) and `src/app/(public)` and fails on a violation. The reused
+  `sender/`) and `src/app/(public)` and fails on a violation, plus the bare
+  `src/lib/share-grant.ts` file (the walker takes file roots too). The reused
   matrix rows are deliberately inert here: `FlowsheetMatrix.onOpenBiomarker` is
   omitted, so a row is text rather than a door into `/details` (the flowsheet
   view passes the callback; `TimelineContent.onViewDetails` uses the same

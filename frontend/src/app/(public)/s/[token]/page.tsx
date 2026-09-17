@@ -8,11 +8,16 @@ import {
   SharedLoadError,
   SharedUnavailable,
 } from '@/components/share/SharedStates'
+import { SharedUnlockGate } from '@/components/share/SharedUnlockGate'
 import { resolveSharedLocale } from '@/i18n/shared-locale'
 import { sharedViewMessages } from '@/i18n/shared-messages'
 import type { AppLocale } from '@/i18n/messages'
-import { fetchSharedRecord, SharedLinkUnavailableError } from '@/services/share'
-import type { SharedRecord } from '@/lib/share'
+import {
+  fetchShareStatus,
+  fetchSharedRecord,
+  SharedLinkUnavailableError,
+} from '@/services/share'
+import { sharedFirstPaint, type SharedRecord } from '@/lib/share'
 
 /**
  * The public recipient page: `/s/<token>`.
@@ -26,6 +31,14 @@ import type { SharedRecord } from '@/lib/share'
  * The route group `(public)` gives it a root layout with no `AuthProvider`,
  * which is what keeps a recipient from minting a session just by opening a
  * link.
+ *
+ * TWO FIRST-PAINT PATHS since Stage 4 (S15). An unprotected link is read here
+ * on the server and arrives in the first paint, exactly as it did in Stage 1.
+ * A passcode-protected link cannot be: the request carries no code, so the
+ * server would have nothing to render. It asks `/api/share/status` whether the
+ * link needs a code and, if it does, renders the prompt and lets the client
+ * unlock and fetch the record. The cost of the feature is paid only by the
+ * links that opt into it.
  */
 export const dynamic = 'force-dynamic'
 
@@ -67,12 +80,25 @@ export async function generateMetadata({
 
 type RecordLoad =
   | { kind: 'record'; record: SharedRecord }
+  | { kind: 'protected' }
   | { kind: 'unavailable' }
   | { kind: 'error' }
 
-/** Kept JSX-free and out of the component so the render tree is plain. */
+/**
+ * Kept JSX-free and out of the component so the render tree is plain.
+ *
+ * The status probe runs first: a protected link must render the prompt rather
+ * than the dead-link page, and the read that follows (only for an unprotected
+ * link) is the same server-side read Stage 1 shipped. The decision itself
+ * lives in `sharedFirstPaint()` so it can be unit-tested — a server component
+ * is not.
+ */
 async function loadSharedRecord(token: string): Promise<RecordLoad> {
   try {
+    const status = await fetchShareStatus(token)
+    const paint = sharedFirstPaint(status)
+    if (paint === 'unavailable') return { kind: 'unavailable' }
+    if (paint === 'protected') return { kind: 'protected' }
     return { kind: 'record', record: await fetchSharedRecord(token) }
   } catch (error) {
     return error instanceof SharedLinkUnavailableError
@@ -100,6 +126,9 @@ export default async function SharedRecordPage({ params, searchParams }: SharedP
       {loaded.kind === 'record' && (
         <SharedRecordView token={token} record={loaded.record} locale={locale} />
       )}
+      {/* A protected link cannot be read on the server: the prompt is the
+          first paint and the client unlocks from the grant it holds. */}
+      {loaded.kind === 'protected' && <SharedUnlockGate token={token} locale={locale} />}
       {loaded.kind === 'unavailable' && <SharedUnavailable />}
       {loaded.kind === 'error' && <SharedLoadError />}
     </NextIntlClientProvider>

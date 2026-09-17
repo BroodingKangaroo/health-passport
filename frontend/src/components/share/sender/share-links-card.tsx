@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-import { Link2, Sparkles } from 'lucide-react'
+import { Link2, Lock, Sparkles } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,10 +11,23 @@ import { Card } from '@/components/ui/card'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useAuthPrincipal } from '@/lib/hooks/useAuthPrincipal'
 import { listShareLinks, revokeAllShareLinks, revokeShareLink } from '@/services/api'
-import type { ShareLinkScope, ShareLinkState, ShareLinkSummary } from '@/lib/share'
+import type {
+  ShareEntryType,
+  ShareLinkScope,
+  ShareLinkState,
+  ShareLinkSummary,
+} from '@/lib/share'
 import { formatDate } from '@/lib/utils'
 
 type BadgeVariant = 'normal' | 'outline' | 'chip'
+
+/** The card's word for each excludable entry type, matching the dialog's. */
+const EXCLUDE_LABEL_KEY: Record<ShareEntryType, string> = {
+  blood_test: 'excludeBloodTest',
+  doctor_visit: 'excludeDoctorVisit',
+  instrumental_test: 'excludeInstrumentalTest',
+  procedure: 'excludeProcedure',
+}
 
 /** Link liveness is its own scale — none of these are health statuses. */
 const STATE_BADGE: Record<ShareLinkState, { variant: BadgeVariant; className?: string }> = {
@@ -48,6 +61,24 @@ function scopeText(
   return scope.from
     ? t('scopeFrom', { from: scopeDay(scope.from, dateLocale) })
     : t('scopeUntil', { to: scopeDay(scope.to as string, dateLocale) })
+}
+
+/**
+ * What the link withholds, in the sender's own words (Stage 4, S16).
+ *
+ * Rendered as its own line rather than folded into the scope sentence: "Whole
+ * record, without imaging" is two separate choices, and a sender scanning the
+ * list needs to see at a glance which links are partial.
+ */
+function exclusionText(
+  scope: ShareLinkScope,
+  t: (key: string, values?: Record<string, string>) => string,
+): string | null {
+  const excluded = scope.exclude ?? []
+  if (excluded.length === 0) return null
+  return t('scopeExclude', {
+    types: excluded.map((entryType) => t(EXCLUDE_LABEL_KEY[entryType])).join(', '),
+  })
 }
 
 /**
@@ -162,6 +193,7 @@ export function ShareLinksCard() {
         <ul className="flex flex-col gap-2">
           {links.map((link) => {
             const badge = STATE_BADGE[link.state]
+            const exclusions = exclusionText(link.scope, t)
             return (
               <li
                 key={link.id}
@@ -174,10 +206,24 @@ export function ShareLinksCard() {
                     <Badge variant={badge.variant} className={badge.className}>
                       {t(`state.${link.state}`)}
                     </Badge>
+                    {/* A protected link is a different promise from an open
+                        one, so the marker sits beside the state, not in the
+                        detail line: it is what the sender scans for (S15). */}
+                    {link.requires_passcode && (
+                      <Badge variant="outline" data-testid="share-protected">
+                        <Lock className="size-3" />
+                        {t('protected')}
+                      </Badge>
+                    )}
                     <span className="text-sm text-foreground" data-testid="share-scope">
                       {scopeText(link.scope, t, dateLocale)}
                     </span>
                   </div>
+                  {exclusions && (
+                    <span className="text-xs text-muted-foreground" data-testid="share-exclusions">
+                      {exclusions}
+                    </span>
+                  )}
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span>{t('expires', { date: formatDate(link.expires_at, dateLocale) })}</span>
                     {link.default_locale && (

@@ -852,12 +852,13 @@ async def test_link_list_reports_state_scope_and_new_data(share_api, db_session)
         "open_count",
         "last_opened_at",
         "is_anonymous",
-        "scope",
-        "include_header",
-        "default_locale",
-        "state",
-        "has_new_data",
-    }
+            "scope",
+            "include_header",
+            "default_locale",
+            "requires_passcode",
+            "state",
+            "has_new_data",
+        }
     assert summary["state"] == "active"
     assert summary["has_new_data"] is False
     assert summary["open_count"] == 0

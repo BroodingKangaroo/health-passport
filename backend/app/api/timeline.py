@@ -80,11 +80,42 @@ def _apply_date_range(query, date_range: Optional[DateRange], date_column):
     return query
 
 
+def _apply_exclusions(query, exclude: Optional[tuple[str, ...]]):
+    """Drop excluded entry types from a builder's query.
+
+    The second half of a shared link's scope (Stage 4, S16), and it lives next
+    to :func:`_apply_date_range` for the same reason: one central place, so no
+    section can forget it. The Stage 2 review's one real defect risk was a
+    filter that reached four sections out of five, and an exclusion that
+    misses the flowsheet leaks exactly the imaging the sender switched off.
+
+    ``exclude`` is None on every authed route (no filtering at all) and is
+    only ever set from a link's scope, so an exclusion can narrow a shared
+    read but never widen one. An empty tuple is treated as "nothing excluded".
+    """
+    if not exclude:
+        return query
+    return query.filter(MedicalEntryModel.type.notin_(exclude))
+
+
+def _apply_share_scope(query, date_range, exclude, date_column):
+    """Both halves of a link's scope, in one call.
+
+    Every public builder goes through this rather than calling the two helpers
+    separately: a section that applies only the window and forgets the
+    exclusions is the exact leak this centralisation exists to prevent.
+    """
+    return _apply_exclusions(
+        _apply_date_range(query, date_range, date_column), exclude
+    )
+
+
 def _events_from_db(
     db: Session,
     patient_id: str,
     include_attachments: bool = True,
     date_range: Optional[DateRange] = None,
+    exclude: Optional[tuple[str, ...]] = None,
 ):
     # Same-day tests are ordered by insertion time then id, so the event
     # order (and therefore the timeline's default selection) is deterministic.
@@ -93,7 +124,7 @@ def _events_from_db(
     # ``include_attachments=False`` is what keeps a public share payload free
     # of /static/uploads URLs and filenames (technical plan §6); the authed
     # timeline keeps the default.
-    entries = _apply_date_range(
+    entries = _apply_share_scope(
         db.query(MedicalEntryModel)
         .options(selectinload(MedicalEntryModel.attachments))
         .filter(MedicalEntryModel.patient_id == patient_id)
@@ -103,6 +134,7 @@ def _events_from_db(
             MedicalEntryModel.id,
         ),
         date_range,
+        exclude,
         MedicalEntryModel.date,
     ).all()
     return [
@@ -178,12 +210,13 @@ def _biomarkers_from_db(
     patient_id: str,
     include_merged: bool = True,
     date_range: Optional[DateRange] = None,
+    exclude: Optional[tuple[str, ...]] = None,
 ):
     # A shared link's window is applied to the blood-test ENTRY set, and the
     # reading history is then built from exactly those entries — so a reading
     # whose entry falls outside the window can never resurface inside another
     # entry's history (the leak the Stage 2 plan's risk section names).
-    blood_tests = _apply_date_range(
+    blood_tests = _apply_share_scope(
         db.query(MedicalEntryModel)
         .filter(
             MedicalEntryModel.type == "blood_test",
@@ -191,6 +224,7 @@ def _biomarkers_from_db(
         )
         .order_by(MedicalEntryModel.date),
         date_range,
+        exclude,
         MedicalEntryModel.date,
     ).all()
     if not blood_tests:
@@ -217,7 +251,9 @@ def _biomarkers_from_db(
     )
     # Belt and braces: the entry set above is already narrowed, so this only
     # ever excludes rows the join could not have brought in anyway.
-    rows_query = _apply_date_range(rows_query, date_range, MedicalEntryModel.date)
+    rows_query = _apply_share_scope(
+        rows_query, date_range, exclude, MedicalEntryModel.date
+    )
     # The shared view excludes readings merged in from a later upload (D15:
     # merged readings belong to the timeline details view only, exactly as the
     # flowsheet and print document already treat them).
@@ -301,17 +337,19 @@ def _visits_from_db(
     patient_id: str,
     include_attachments: bool = True,
     date_range: Optional[DateRange] = None,
+    exclude: Optional[tuple[str, ...]] = None,
 ):
     visits: dict[str, VisitData] = {}
     # Filtered on the ENTRY's date, not the visit's own date field: the entry
     # is what the timeline puts on the calendar (and what a shared link's scope
     # means to the sender who picked the range).
-    visit_data_rows = _apply_date_range(
+    visit_data_rows = _apply_share_scope(
         db.query(VisitDataModel, MedicalEntryModel)
         .options(selectinload(MedicalEntryModel.attachments))
         .join(MedicalEntryModel, VisitDataModel.entry_id == MedicalEntryModel.id)
         .filter(MedicalEntryModel.patient_id == patient_id),
         date_range,
+        exclude,
         MedicalEntryModel.date,
     ).all()
     for vd, entry in visit_data_rows:
@@ -342,14 +380,16 @@ def _instrumental_from_db(
     patient_id: str,
     include_attachments: bool = True,
     date_range: Optional[DateRange] = None,
+    exclude: Optional[tuple[str, ...]] = None,
 ):
     instrumental: dict[str, InstrumentalData] = {}
-    instrumental_data_rows = _apply_date_range(
+    instrumental_data_rows = _apply_share_scope(
         db.query(InstrumentalDataModel, MedicalEntryModel)
         .options(selectinload(MedicalEntryModel.attachments))
         .join(MedicalEntryModel, InstrumentalDataModel.entry_id == MedicalEntryModel.id)
         .filter(MedicalEntryModel.patient_id == patient_id),
         date_range,
+        exclude,
         MedicalEntryModel.date,
     ).all()
     for idd, entry in instrumental_data_rows:

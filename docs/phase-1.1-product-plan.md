@@ -817,6 +817,36 @@ Passcode-protected links, snapshot links, per-entry-type exclusions, and
 attachments each get their own decision when Stage 1–3 data says which one
 matters.
 
+**Stage 4 delivered (2026-09-17) — "safer sharing", chosen by judgement.**
+The evidence gate above has not been met: Stages 1–3 shipped within days and
+the dev database still held zero share links, so any of the four candidates
+would have been chosen on taste. Stage 4 therefore built the two things that
+reduce harm whether or not anyone wants them (a forwarded link anyone can
+open; a record carrying a category the sender never thought about), plus the
+reader that makes the gate real. See `docs/phase-1.1-stage-4-plan.md`.
+
+- **Passcode-protected links (S15).** Optional at creation, bcrypt-hashed on
+  the row, never returned or logged; the sender's card marks which links are
+  protected. A protected link refuses a read without a grant in the *same*
+  uniform 404 as a dead link, so possessing a token still reveals nothing. The
+  passcode is explicitly not protection against someone the sender handed the
+  code to, and the create copy says so.
+- **Per-entry-type exclusions (S16).** `{"kind":"all","exclude":[…]}` and its
+  ranged form answer "do not send my imaging" in one click, coarser than the
+  per-entry sharing still deferred. Excluding lab results empties the flags
+  block, the trends and the results table, so the dialog warns first and the
+  recipient is told what the link withholds.
+- **The metrics reader (S17).** `backend/scripts/share_metrics.py`, read-only
+  ops tooling — the shape the roadmap's gate needs to stop being rhetorical.
+
+**Still deferred, and why (S18).** Attachments remain the decision most likely
+to reverse for the right reason and still need the signed per-file token design
+plus one recipient interview. The 7-language chrome remains the largest gap
+against the printed PDF and still should not be built blind (Hebrew drags in
+RTL work no recipient has asked for). Snapshot links contradict the live
+promise. Per-entry and per-biomarker sharing stay out because S16 covers the
+real use case coarsely.
+
 ---
 
 ## 14. Where this plan disagrees with the roadmap

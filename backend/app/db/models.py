@@ -245,6 +245,11 @@ class ShareLink(Base):
     is_anonymous = Column(Boolean, nullable=False, default=True)
     # null = whole passport, {"kind": "range", "from": …, "to": …} = a window.
     scope = Column(JSON, nullable=True)
+    # bcrypt hash of the sender's optional passcode (Stage 4, S15). The raw
+    # code is never stored, returned or logged; this column is what lets the
+    # public read tell "no passcode" (NULL) from "a passcode is required"
+    # without the row ever holding the secret the recipient types.
+    passcode_hash = Column(String, nullable=True)
     include_header = Column(Boolean, nullable=False, default=True)
     # Retained, never sent (Stage 2, S3): entry free-text notes never travel,
     # so the flag left the API surface. The column stays because this repo's

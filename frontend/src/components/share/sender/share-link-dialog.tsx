@@ -9,8 +9,13 @@ import { Input } from '@/components/ui/input'
 import { ModalDialog } from '@/components/ui/modal-dialog'
 import { useAuthPrincipal } from '@/lib/hooks/useAuthPrincipal'
 import { createShareLink, fetchFlowsheetData, translateBiomarkerNames } from '@/services/api'
-import { shareUrl } from '@/lib/share'
-import type { ShareLinkCreated } from '@/lib/share'
+import {
+  SHARE_ENTRY_TYPES,
+  SHARE_PASSCODE_MIN_LENGTH,
+  shareUrl,
+  type ShareEntryType,
+  type ShareLinkCreated,
+} from '@/lib/share'
 import { cn, formatDate } from '@/lib/utils'
 
 /**
@@ -21,6 +26,14 @@ import { cn, formatDate } from '@/lib/utils'
 const REGISTERED_EXPIRY_DAYS = [1, 7, 30] as const
 const ANONYMOUS_EXPIRY_DAYS = [1, 7] as const
 const DEFAULT_EXPIRY_DAYS = 7
+
+/** The label key for each excludable entry type, on both sides of the dialog. */
+const EXCLUDE_LABEL_KEY: Record<ShareEntryType, string> = {
+  blood_test: 'excludeBloodTest',
+  doctor_visit: 'excludeDoctorVisit',
+  instrumental_test: 'excludeInstrumentalTest',
+  procedure: 'excludeProcedure',
+}
 
 /**
  * The sender's entry point, sitting next to Print/export — the same "give this
@@ -63,6 +76,13 @@ function ShareLinkDialog({ open, onClose }: { open: boolean; onClose: () => void
   const [to, setTo] = useState('')
   const [expiryDays, setExpiryDays] = useState<number>(DEFAULT_EXPIRY_DAYS)
   const [includeHeader, setIncludeHeader] = useState(true)
+  // Stage 4 (S16): entry types this link withholds. An empty set is the
+  // whole record, which is what the request sends as `null`.
+  const [excluded, setExcluded] = useState<ShareEntryType[]>([])
+  // Stage 4 (S15): optional passcode. Held in component state only — never
+  // prefilled, never echoed back, cleared with the rest of the form.
+  const [passcode, setPasscode] = useState('')
+  const [passcodeError, setPasscodeError] = useState(false)
   // "auto" = no preset: the recipient's browser decides (S10). The link can
   // also be pinned to English or Russian, and the recipient can always switch
   // on the page itself.
@@ -95,7 +115,21 @@ function ShareLinkDialog({ open, onClose }: { open: boolean; onClose: () => void
       setTranslateRequested(false)
       setTranslateState('idle')
       setMissingRuNames(null)
+      setExcluded([])
+      setPasscode('')
+      setPasscodeError(false)
     }
+  }
+
+  function toggleExcluded(entryType: ShareEntryType) {
+    setExcluded((current) =>
+      current.includes(entryType)
+        ? current.filter((value) => value !== entryType)
+        : // Canonical order, so the request matches what the server stores.
+          SHARE_ENTRY_TYPES.filter(
+            (value) => current.includes(value) || value === entryType,
+          ),
+    )
   }
 
   // Fetching the definition set is the owner's half of the feature, so it is
@@ -148,14 +182,28 @@ function ShareLinkDialog({ open, onClose }: { open: boolean; onClose: () => void
   async function create(e: FormEvent) {
     e.preventDefault()
     if (rangeInvalid) return
+    // The server enforces this too; refusing here saves a round trip and keeps
+    // the message next to the field. The two rules must not disagree.
+    if (passcode.length > 0 && passcode.length < SHARE_PASSCODE_MIN_LENGTH) {
+      setPasscodeError(true)
+      return
+    }
+    setPasscodeError(false)
     setBusy(true)
     setCopied(false)
     try {
+      const exclude = excluded.length > 0 ? excluded : undefined
       const link = await createShareLink({
         expiry_days: expiryDays,
-        scope: scopeKind === 'range' ? { kind: 'range', from: from || null, to: to || null } : null,
+        scope:
+          scopeKind === 'range'
+            ? { kind: 'range', from: from || null, to: to || null, exclude }
+            : exclude
+              ? { kind: 'all', exclude }
+              : null,
         include_header: includeHeader,
         default_locale: defaultLocale === 'auto' ? null : defaultLocale,
+        passcode: passcode.length > 0 ? passcode : null,
       })
       setCreated(link)
       setFailed(false)
@@ -289,6 +337,37 @@ function ShareLinkDialog({ open, onClose }: { open: boolean; onClose: () => void
 
             <fieldset className="flex flex-col gap-2">
               <legend className="text-sm font-medium text-foreground">
+                {t('dialog.exclude')}
+              </legend>
+              <div className="flex flex-col gap-1.5">
+                {SHARE_ENTRY_TYPES.map((entryType) => (
+                  <label
+                    key={entryType}
+                    className="flex cursor-pointer items-center gap-1.5 text-sm text-foreground"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={excluded.includes(entryType)}
+                      onChange={() => toggleExcluded(entryType)}
+                      className="size-3.5 accent-primary"
+                      data-testid={`share-exclude-${entryType}`}
+                    />
+                    {t(`dialog.${EXCLUDE_LABEL_KEY[entryType]}`)}
+                  </label>
+                ))}
+              </div>
+              {/* Excluding lab results empties the flags section, the trends
+                  and the whole results table. Warn BEFORE the sender finds it
+                  on the recipient's screen (S16). */}
+              {excluded.includes('blood_test') && (
+                <p className="text-xs text-amber-600" role="status" data-testid="share-exclude-warning">
+                  {t('dialog.excludeEmptiesResults')}
+                </p>
+              )}
+            </fieldset>
+
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-sm font-medium text-foreground">
                 {t('dialog.language')}
               </legend>
               <div className="flex flex-wrap gap-x-4 gap-y-1.5">
@@ -375,6 +454,35 @@ function ShareLinkDialog({ open, onClose }: { open: boolean; onClose: () => void
                 </span>
               </span>
             </label>
+
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-sm font-medium text-foreground">
+                {t('dialog.passcode')}
+              </legend>
+              <p className="text-xs text-muted-foreground">{t('dialog.passcodeHint')}</p>
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                {t('dialog.passcodeLabel')}
+                <Input
+                  type="password"
+                  value={passcode}
+                  autoComplete="new-password"
+                  spellCheck={false}
+                  placeholder={t('dialog.passcodePlaceholder', {
+                    min: SHARE_PASSCODE_MIN_LENGTH,
+                  })}
+                  onChange={(e) => {
+                    setPasscode(e.target.value)
+                    if (passcodeError) setPasscodeError(false)
+                  }}
+                  data-testid="share-passcode"
+                />
+              </label>
+              {passcodeError && (
+                <p className="text-xs text-destructive" role="alert">
+                  {t('dialog.passcodeTooShort', { min: SHARE_PASSCODE_MIN_LENGTH })}
+                </p>
+              )}
+            </fieldset>
 
             {isAnonymous && (
               <p className="text-xs text-amber-600">{t('dialog.anonymousWarning')}</p>

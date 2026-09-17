@@ -212,7 +212,19 @@ tenant's data, and it is deliberately one code path.
   record watermark in `first_open_record_at` / `last_open_record_at`, so "came
   back after new data" is `open_count > 1 AND last_open_record_at >
   first_open_record_at`. It remains the feature's only write on a GET: no IP,
-  no user agent, no per-visit rows.
+  no user agent, no per-visit rows. **It is BEST-EFFORT (Stage 4 review, F1)**:
+  a counter that cannot be written must never fail the read that triggered it,
+  so an `OperationalError` is logged, the transaction rolled back, and the open
+  goes uncounted. There is deliberately **no retry**: a fresh transaction no
+  longer conflicts instantly, so it waits out `busy_timeout` instead, and
+  because these reads are blocking DB work inside a single event loop a burst
+  compounds into a stall (measured: 30 simultaneous reads still pending at
+  45-60 s). Failing fast is what keeps overlapping reads returning. The
+  statement is additionally **not issued at all** while the link is inside its
+  debounce window (a cheap pre-check, with the same predicate still in the WHERE
+  clause), so an ordinary refresh never takes SQLite's write lock. Measured on a
+  spare-port stack with a throwaway DB: 30 simultaneous reads of one fresh link
+  → 30 x 200, slowest 0.09 s, versus 30 x timeout with the pre-fix counter.
 - **Record watermark and the new-data notice (Stage 2, S9)**: the watermark is
   `MAX(medical_entries.created_at)` for the owner (`share_links.record_watermark`).
   `notified_record_at` is initialised to it at creation, so pre-existing data
@@ -241,6 +253,69 @@ tenant's data, and it is deliberately one code path.
   appear in a URL, so attribution is off the table by construction. The loop
   is measured as clicks ÷ links opened, which is what the roadmap's CTA
   question asks.
+- **Entry-type exclusions (Stage 4, S16)**: the scope gains an optional
+  `exclude` list — a subset of `blood_test` / `doctor_visit` /
+  `instrumental_test` / `procedure` — valid on BOTH kinds, so
+  `{"kind": "all", "exclude": ["instrumental_test"]}` and a range with
+  exclusions are both one scope. `share_links.normalize_exclude` dedupes and
+  canonically orders them; an unknown type or a non-list is a localized 400
+  (`share.exclude_invalid`), and an empty list stores as `None` (the whole
+  record). Enforcement is central, next to the date range, and for the reason
+  the Stage 2 review named: `_apply_share_scope(query, date_range, exclude,
+  date_column)` (`app/api/timeline.py`) is the ONE call each builder makes, and
+  it applies the window AND the exclusions together — `_events_from_db`,
+  `_biomarkers_from_db` (both the entry set and the belt-and-braces readings
+  query), `_visits_from_db`, `_instrumental_from_db` and `_build_flowsheet`.
+  A filter that reached four sections out of five would leak exactly what the
+  sender switched off, so no builder calls the two helpers separately. The
+  authed routes pass no range and no exclusions, so their behaviour is
+  unchanged; `meta.scope` and the create response report the canonical list.
+  Excluding `blood_test` empties the biomarker lists, the trends and the
+  flowsheet, which is why the dialog warns before it happens.
+- **Passcode protection (Stage 4, S15)**: the create body may carry
+  `passcode` (≥ 6 characters, ≤ 72 bytes for bcrypt; anything else is a
+  localized 400, `share.passcode_too_short`). It is stored ONLY as a bcrypt
+  hash (`auth.get_password_hash`) in `share_links.passcode_hash`, never
+  returned, echoed or logged; the create response and the list summary report
+  `requires_passcode` instead. `POST /api/share/unlock` takes `{token,
+  passcode}` in the BODY (never a URL) and is public. Failures are uniform: a
+  wrong code, a link with no passcode and an unknown token all return the same
+  localized 400 (`share.unlock_failed`), so the endpoint cannot confirm that a
+  token exists; it is throttled PER LINK at 10 attempts / 5 minutes, keyed on
+  the SHA-256 of the presented token, so a garbage token has its own budget and
+  a 429 reveals nothing. Success returns a short-lived **HMAC-SHA256 grant**
+  over `link_id | expiry | fingerprint(sha256(passcode_hash))`, signed with
+  `SECRET_KEY` (`share_links.issue_grant` / `verify_grant`). Nothing is
+  persisted: the fingerprint is why a future passcode change invalidates every
+  outstanding grant with no token table and no version counter.
+- **The grant on the read path**: `resolve_share_context` takes an optional
+  `X-Share-Grant` and, when the link has a `passcode_hash`, refuses a read
+  without a valid grant — with the SAME uniform 404 as a dead link, so an
+  unauthenticated probe cannot tell a protected link from a dead one. Both
+  public reads (`/record`, `/flowsheet`) go through that resolver, so the check
+  is in one place and cannot be forgotten; the grant is verified against the
+  resolved link, so it dies with revocation and expiry.
+- **`GET /api/share/status` (Stage 4, S15)**: the one public endpoint that
+  answers before a record is read — `{"requires_passcode": bool}`, 404 for a
+  dead token. It exists because a protected link CANNOT be server-rendered: the
+  first request carries no code, so the page has to know whether to render the
+  prompt or the record. It returns nothing else — no owner, no scope, no
+  expiry, no content — and is throttled and `no-store` like every public route.
+- **Cache headers on BOTH paths (Stage 4 review, F2)**: every public response
+  carries `Cache-Control: no-store`, `X-Robots-Tag: noindex, nofollow` and
+  `Vary: X-Share-Token, X-Share-Grant` — the refusals (404 / 429 / 400)
+  included, via `_no_store_headers()` passed to the `HTTPException`. The
+  success path applies the same set through `_no_store(response)`. `Vary` is
+  not decoration: the protected flow fetches the SAME url twice with different
+  credentials (404 without a grant, 200 with one), so a shared cache keyed on
+  the URL alone could pin the refused answer.
+- **Metrics reader (Stage 4, S17)**: `backend/scripts/share_metrics.py` is the
+  read-only ops reader for the funnel — `--json`, `--since DAYS`, human table by
+  default. It prints what `share_funnel_events` and the link rows already hold
+  (links created/active/protected, opened, reopened, returned-after-new-data,
+  and the derived rates), never writes, and carries no recipient identity
+  because none was ever stored. A rate with no denominator prints `n/a`, not
+  `0%`.
 - **Ops takedown (Stage 2, S7)**: `backend/scripts/revoke_share_link.py` takes
   the raw token from a report, hashes it, revokes exactly that row
   (idempotently) and logs the action without printing the token. There is
