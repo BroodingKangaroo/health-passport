@@ -5,6 +5,10 @@ const staticProxy = process.env.STATIC_PROXY_URL || 'http://localhost:8000'
 
 const nextConfig = {
   output: 'standalone',
+  // Next 16.3 auto-generates `AGENTS.md` + `CLAUDE.md` in this directory when it
+  // detects an AI coding agent. This repo keeps one curated instruction file at
+  // the repo root, so generated duplicates here would only add drift.
+  agentRules: false,
   // `src/app/global-not-found.tsx` needs this flag in Next 16.2 (it is the
   // documented mechanism; the convention becomes default once stable). The app
   // has two ROOT layouts (the `(app)` and `(public)` route groups) and no
