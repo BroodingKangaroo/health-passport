@@ -24,18 +24,7 @@ import { useLeaveGuard } from '@/providers/leave-guard-provider'
 import { LanguageSwitch } from '@/components/shared/language-switch'
 import { ShareLinkButton } from '@/components/share/sender/share-link-dialog'
 import { NotificationBell } from './notification-bell'
-
-function formatDob(dob: string | undefined, locale: string): string {
-  if (!dob) return ''
-  const d = new Date(dob)
-  if (isNaN(d.getTime())) return dob
-  return d.toLocaleDateString(locale, {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  })
-}
+import { formatDob } from '@/lib/utils'
 
 export function HeaderBar() {
   const router = useRouter()

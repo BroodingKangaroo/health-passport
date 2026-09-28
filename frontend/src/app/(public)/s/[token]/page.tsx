@@ -17,7 +17,7 @@ import {
   fetchSharedRecord,
   SharedLinkUnavailableError,
 } from '@/services/share'
-import { sharedFirstPaint, type SharedRecord } from '@/lib/share'
+import { parseSharedView, sharedFirstPaint, type SharedRecord } from '@/lib/share'
 
 /**
  * The public recipient page: `/s/<token>`.
@@ -44,7 +44,7 @@ export const dynamic = 'force-dynamic'
 
 interface SharedPageProps {
   params: Promise<{ token: string }>
-  searchParams: Promise<{ lang?: string }>
+  searchParams: Promise<{ lang?: string; view?: string | string[] }>
 }
 
 async function resolveLocale(
@@ -109,7 +109,12 @@ async function loadSharedRecord(token: string): Promise<RecordLoad> {
 
 export default async function SharedRecordPage({ params, searchParams }: SharedPageProps) {
   const { token } = await params
-  const lang = (await searchParams).lang
+  const query = await searchParams
+  const lang = query.lang
+  // The view is a URL contract, not client state: with JavaScript off the
+  // server has to render the view the link asked for, and with it on the shell
+  // starts from the same value (shared-view plan §1).
+  const view = parseSharedView(query.view)
   // The record can change the answer: the link's own `default_locale` (S10)
   // outranks the browser once we know it. The dead-link/error states have no
   // record, so they resolve without the preset.
@@ -124,11 +129,24 @@ export default async function SharedRecordPage({ params, searchParams }: SharedP
     <NextIntlClientProvider locale={locale} messages={sharedViewMessages(locale)}>
       <DocumentLang locale={locale} />
       {loaded.kind === 'record' && (
-        <SharedRecordView token={token} record={loaded.record} locale={locale} />
+        <SharedRecordView
+          token={token}
+          record={loaded.record}
+          locale={locale}
+          initialView={view}
+          lang={lang}
+        />
       )}
       {/* A protected link cannot be read on the server: the prompt is the
           first paint and the client unlocks from the grant it holds. */}
-      {loaded.kind === 'protected' && <SharedUnlockGate token={token} locale={locale} />}
+      {loaded.kind === 'protected' && (
+        <SharedUnlockGate
+          token={token}
+          locale={locale}
+          initialView={view}
+          lang={lang}
+        />
+      )}
       {loaded.kind === 'unavailable' && <SharedUnavailable />}
       {loaded.kind === 'error' && <SharedLoadError />}
     </NextIntlClientProvider>

@@ -124,6 +124,21 @@ QUALITATIVE_VALUES = [
     "Negative", "Positive", "Detected", "Not detected",
     "Absent", "Present", "Normal", "Abnormal",
 ]
+# The closed enum a canonical qualitative comparison must land on. Raw
+# document text that ``normalize_qual`` could not map stays verbatim, so this
+# set is also the test for "is this text something we actually understand".
+_CANONICAL_QUAL_LOWER = frozenset(v.lower() for v in QUALITATIVE_VALUES)
+
+# Semi-quantitative result glyphs a clinician reads without a dictionary:
+# "++" on a dipstick is a measurement, not a remark. ``normalize_qual`` has no
+# mapping for them (they are not in the canonical enum), but rejecting them as
+# "uninterpretable" would silently drop a proteinuria "++" out of the shared
+# view's flags. A value is unreadable when it is PROSE, not when it is a glyph
+# (B3).
+_RESULT_GLYPHS = frozenset({
+    "+", "++", "+++", "++++", "-", "--", "±",
+    "trace", "traces", "следы", "след", "следы белка",
+})
 
 
 def normalize_qual(text: Any) -> Optional[str]:
@@ -502,6 +517,138 @@ def compute_status(value: Any, reference: Any) -> str:
         return _qual_status(value, expected)
 
     return "normal"
+
+
+def _is_number_text(text: Any) -> bool:
+    """Whether ``text`` IS a number (rather than merely containing one).
+
+    Strict on purpose: ``parse_value`` falls back to the first number it can
+    find, which is right for ingesting a messy lab cell and wrong for deciding
+    whether a stored string was meant as a number — ``"см.комм. 5"`` contains a
+    digit and is still a comment.
+    """
+    if isinstance(text, bool):
+        return False
+    if isinstance(text, (int, float)):
+        return math.isfinite(float(text))
+    if not isinstance(text, str):
+        return False
+    s = text.strip().replace(",", ".")
+    if not s:
+        return False
+    try:
+        return math.isfinite(float(s))
+    except ValueError:
+        return False
+
+
+def _is_canonical_qual(value: Any) -> bool:
+    """Whether ``value`` is one of the known qualitative terms."""
+    return isinstance(value, str) and value.strip().lower() in _CANONICAL_QUAL_LOWER
+
+
+def _is_recognisable_qual(value: Any) -> bool:
+    """Whether ``value`` is a qualitative result the app can read.
+
+    A canonical term, one of the raw spellings ``normalize_qual`` maps onto
+    one, or a semi-quantitative result glyph ("++", "Trace", "следы"). Prose
+    is not in this set — that is the whole point of it (B3).
+    """
+    if not isinstance(value, str):
+        return False
+    text = value.strip()
+    if not text:
+        return False
+    if _is_canonical_qual(text) or text.lower() in _RESULT_GLYPHS:
+        return True
+    # Membership, not ``normalize_qual(...) is not None``: that helper returns
+    # the input VERBATIM when it has no mapping, so it is never None for a
+    # non-empty string — "см.комм." would have counted as recognised.
+    return text.lower() in _QUAL_MAP
+
+
+# Sentence punctuation and abbreviations that mark a remark rather than a
+# result: "см.комм.", "see comment", "sample hemolysed, repeat". A colon is
+# NOT here on purpose — a titre ("1:160") is a measurement.
+_PROSE_MARKERS = (".", ",", ";", "!", "?", "…")
+
+
+def _looks_like_prose(value: Any) -> bool:
+    """Whether ``value`` reads as a comment instead of a result.
+
+    Multi-word text, or text carrying sentence punctuation. Applied only to
+    strings that are not numbers, canonical terms or result glyphs, so
+    "Not detected" (two words, canonical) never reaches it.
+    """
+    if not isinstance(value, str):
+        return False
+    text = value.strip()
+    if not text:
+        return False
+    if any(marker in text for marker in _PROSE_MARKERS):
+        return True
+    return len(text.split()) > 1
+
+
+def _is_readable_value(value: Any) -> bool:
+    """A number, a canonical term, a mapped spelling, or a result glyph."""
+    return _is_number_text(value) or _is_recognisable_qual(value)
+
+
+def is_interpretable(value: Any, reference: Any) -> bool:
+    """Whether a reading's status is a claim the app is entitled to make.
+
+    ``compute_status`` compares a value against a reference and reports the
+    result; it can only do that meaningfully when it understands both sides.
+    Raw document text it could not canonicalise — a ``см.комм.`` ("see
+    comment") remark, a free-text note, a tattered legacy range — compares
+    unequal to everything, so a qualitative reading like that comes back
+    ``"abnormal"``: a confident clinical signal computed from two strings
+    nobody understood.
+
+    True here means the comparison was between things we know:
+
+    - an interval reference and a value that IS a number (a matrix cell carries
+      its value as text, so a plain numeric string counts);
+    - a qualitative reference that states an expectation we can compare against,
+      and a value that is a readable measurement — a canonical term, a mapped
+      spelling, a result glyph, or a number the presence/absence bridge can
+      place;
+    - a qualitative reference with NO expectation, where the value itself is
+      readable. ``compute_status`` answers "normal" for every such reading, so
+      without this a "см.комм." remark would sit in the record as a confident
+      in-range result (B2).
+
+    False means the app compared things it does not understand — free-text on
+    either side, or a prose remark — and the status it stored is not a claim
+    anyone should repeat.
+
+    A reading with no reference at all is not a claim and passes. Callers that
+    present a status as a clinical signal (the shared view's flags, product
+    plan D13) must filter on this first; leaving an uninterpretable status in
+    place asserts an ``abnormal`` nothing supports.
+    """
+    kind = _get(reference, "kind")
+    if kind is None:
+        return True
+    if kind == "interval":
+        return _is_number_text(value)
+    if kind == "qualitative":
+        expected = _get(reference, "expected")
+        if not expected:
+            # No expectation to compare against. The value is the only thing
+            # that can turn "normal" into a claim worth standing behind.
+            return _is_readable_value(value)
+        if not _is_canonical_qual(expected):
+            return False
+        if _is_number_text(value):
+            return expected in _ABSENT_CANONICAL or expected in _PRESENT_CANONICAL
+        if _is_recognisable_qual(value):
+            return True
+        # An unrecognised string against a readable expectation. A glyph or a
+        # bare single word is a result the lab printed; only prose is a remark.
+        return not _looks_like_prose(value)
+    return True
 
 
 def _get(ref: Any, key: str, default: Any = None) -> Any:

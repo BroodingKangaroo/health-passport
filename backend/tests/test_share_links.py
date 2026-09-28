@@ -358,6 +358,283 @@ async def test_inferred_unit_flag_is_dropped(share_api, db_session):
     )
 
 
+async def test_uninterpretable_readings_never_reach_the_flags(share_api, db_session):
+    """D13's second case: a value the canonicaliser could not read at all.
+
+    ``см.комм.`` ("see comment") printed against a free-text expected range is
+    stored with status ``abnormal`` — ``compute_status`` compares two strings
+    nobody understood and finds them unequal. On the recipient's surface that
+    must never be a confident flag; it stays visible in the results table,
+    neutrally marked as printed in the source document.
+    """
+    client, _principal = share_api
+    db_session.add(
+        BiomarkerDefinition(
+            id="mucus-urine",
+            names={"en": "Mucus (urine)", "ru": "Слизь"},
+            synonyms=[],
+            category="Urinalysis",
+            reference={"kind": "qualitative", "expected": "отсут./незн.кол."},
+            unit="",
+            scope="global",
+            reference_source="global",
+        )
+    )
+    db_session.add(
+        MedicalEntry(
+            id="blood-urine",
+            patient_id=TEST_USER_ID,
+            type="blood_test",
+            date=datetime(2026, 3, 1, tzinfo=timezone.utc),
+            title="Urinalysis",
+        )
+    )
+    db_session.add(
+        BiomarkerReading(
+            entry_id="blood-urine",
+            biomarker_id="mucus-urine",
+            value_text="см.комм.",
+            reference={"kind": "qualitative", "expected": "отсут./незн.кол."},
+            status="abnormal",
+            original_name="Слизь",
+            original_value="см.комм.",
+        )
+    )
+    db_session.commit()
+
+    created = await _create_link(client)
+    body = (await _open(client, created["token"])).json()
+
+    unreadable = next(
+        b for b in body["biomarkers"] if b["definition"]["id"] == "mucus-urine"
+    )
+    assert unreadable["value"] == "см.комм."
+    # The neutral unknown status: not "abnormal", so it is neither a flag nor
+    # part of the "N of M readings" count the summary derives from statuses.
+    assert unreadable["status"] == ""
+    # A reading the app DOES understand keeps its status — this is a rule about
+    # unreadable values, not a blanket flattening of the payload.
+    readable = next(b for b in body["biomarkers"] if b["definition"]["id"] == "hb")
+    assert readable["status"] != ""
+    assert any(
+        b["status"] in {"low", "high", "abnormal"} for b in body["biomarkers"]
+    ), "interpretable out-of-range readings must still be flagged"
+    # The stored row is untouched: the rule is applied on the read path, not
+    # rewritten into the owner's data.
+    row = (
+        db_session.query(BiomarkerReading)
+        .filter(BiomarkerReading.biomarker_id == "mucus-urine")
+        .one()
+    )
+    assert row.status == "abnormal"
+
+    flowsheet = await client.get(
+        "/api/share/flowsheet", headers={SHARE_TOKEN_HEADER: created["token"]}
+    )
+    matrix = flowsheet.json()["matrix"]
+    cells = [
+        cell
+        for category in matrix
+        for row in category["rows"]
+        if row["id"] == "mucus-urine"
+        for cell in row["cells"]
+    ]
+    # Still shown, in full — a doctor can read the printed value — but marked.
+    assert any(cell["value"] == "см.комм." for cell in cells)
+    for cell in cells:
+        if cell["value"] == "—":
+            continue
+        assert cell["status"] == ""
+        assert cell["as_printed"] is True
+
+    hb_cells = [
+        cell
+        for category in matrix
+        for row in category["rows"]
+        if row["id"] == "hb"
+        for cell in row["cells"]
+    ]
+    assert any(cell["status"] == "low" for cell in hb_cells)
+    # The marker is emitted only where it means something, so a cell that was
+    # never neutralised carries no key at all — which is what keeps the authed
+    # payload byte-identical.
+    assert all("as_printed" not in cell for cell in hb_cells)
+
+
+async def test_flowsheet_cell_is_judged_against_its_own_readings_reference(
+    share_api, db_session
+):
+    """B1: a row carries ONE reference (from its earliest reading), so testing
+    every cell against it neutralises statuses the app computed correctly."""
+    client, _principal = share_api
+    db_session.add(
+        BiomarkerDefinition(
+            id="bili",
+            names={"en": "Bilirubin", "ru": "Билирубин"},
+            synonyms=[],
+            category="Liver Function",
+            reference={"kind": "qualitative", "expected": "Взрослые: до 20.5"},
+            unit="umol/L",
+            scope="global",
+            reference_source="global",
+        )
+    )
+    db_session.add_all(
+        [
+            MedicalEntry(
+                id="labs-old",
+                patient_id=TEST_USER_ID,
+                type="blood_test",
+                date=datetime(2023, 2, 20, tzinfo=timezone.utc),
+                title="Old panel",
+            ),
+            MedicalEntry(
+                id="labs-new",
+                patient_id=TEST_USER_ID,
+                type="blood_test",
+                date=datetime(2026, 3, 1, tzinfo=timezone.utc),
+                title="New panel",
+            ),
+        ]
+    )
+    db_session.add_all(
+        [
+            # The earliest reading: that lab printed a free-text range, so the
+            # ROW's reference (the snapshot this row reports) is unreadable —
+            # and the reading itself is the "see comment" case D13 covers.
+            BiomarkerReading(
+                entry_id="labs-old",
+                biomarker_id="bili",
+                value_text="см.комм.",
+                reference={"kind": "qualitative", "expected": "Взрослые: до 20.5"},
+                status="abnormal",
+                original_name="Билирубин",
+                original_value="см.комм.",
+            ),
+            # A later reading carried its own interval, and the number was
+            # compared against it at save time. Judged against the row's
+            # free-text reference this cell would be wrongly neutralised.
+            BiomarkerReading(
+                entry_id="labs-new",
+                biomarker_id="bili",
+                value=12.2,
+                reference={"kind": "interval", "low": 3.4, "high": 20.5},
+                status="normal",
+                original_name="Билирубин",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    created = await _create_link(client)
+    body = (
+        await client.get(
+            "/api/share/flowsheet", headers={SHARE_TOKEN_HEADER: created["token"]}
+        )
+    ).json()
+    row = next(
+        row
+        for category in body["matrix"]
+        for row in category["rows"]
+        if row["id"] == "bili"
+    )
+    values = {cell["value"]: cell for cell in row["cells"] if cell["value"] != "—"}
+    assert values["см.комм."]["status"] == ""
+    assert values["см.комм."]["as_printed"] is True
+    # The reading the app could read keeps the status it was given, even though
+    # the row's reference is the unreadable one from 2023.
+    assert values["12.2"]["status"] == "normal"
+    assert "as_printed" not in values["12.2"]
+
+
+async def test_a_prose_remark_without_an_expectation_is_not_a_confident_normal(
+    share_api, db_session
+):
+    """B2: ``{expected: null}`` makes compute_status answer "normal" for ANY
+    value, so the value itself has to decide whether that is a claim."""
+    client, _principal = share_api
+    db_session.add_all(
+        [
+            BiomarkerDefinition(
+                id="colour-urine",
+                names={"en": "Color (urine)", "ru": "Цвет (мочи)"},
+                synonyms=[],
+                category="Urinalysis",
+                reference={"kind": "qualitative", "expected": None},
+                unit="",
+                scope="global",
+                reference_source="pdf_extracted",
+            ),
+            BiomarkerDefinition(
+                id="nitrite-urine",
+                names={"en": "Nitrite (urine)", "ru": "Нитриты (мочи)"},
+                synonyms=[],
+                category="Urinalysis",
+                reference={"kind": "qualitative", "expected": None},
+                unit="",
+                scope="global",
+                reference_source="pdf_extracted",
+            ),
+        ]
+    )
+    db_session.add(
+        MedicalEntry(
+            id="urine-panel",
+            patient_id=TEST_USER_ID,
+            type="blood_test",
+            date=datetime(2026, 3, 1, tzinfo=timezone.utc),
+            title="Urinalysis",
+        )
+    )
+    db_session.add_all(
+        [
+            BiomarkerReading(
+                entry_id="urine-panel",
+                biomarker_id="colour-urine",
+                value_text="см.комм.",
+                reference={"kind": "qualitative", "expected": None},
+                status="normal",
+                original_name="Цвет",
+                original_value="см.комм.",
+            ),
+            # The same shape, a value the app CAN read: it keeps its status, so
+            # this is a rule about unreadable values, not a blanket flattening.
+            BiomarkerReading(
+                entry_id="urine-panel",
+                biomarker_id="nitrite-urine",
+                value_text="Not detected",
+                reference={"kind": "qualitative", "expected": None},
+                status="normal",
+                original_name="Нитриты",
+                original_value="не обнаружено",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    created = await _create_link(client)
+    body = (await _open(client, created["token"])).json()
+    by_id = {b["definition"]["id"]: b for b in body["biomarkers"]}
+    assert by_id["colour-urine"]["status"] == ""
+    assert by_id["nitrite-urine"]["status"] == "normal"
+
+    matrix = (
+        await client.get(
+            "/api/share/flowsheet", headers={SHARE_TOKEN_HEADER: created["token"]}
+        )
+    ).json()["matrix"]
+    cells = {
+        row["id"]: [c for c in row["cells"] if c["value"] != "—"]
+        for category in matrix
+        for row in category["rows"]
+        if row["id"] in {"colour-urine", "nitrite-urine"}
+    }
+    assert cells["colour-urine"][0]["status"] == ""
+    assert cells["colour-urine"][0]["as_printed"] is True
+    assert cells["nitrite-urine"][0]["status"] == "normal"
+    assert "as_printed" not in cells["nitrite-urine"][0]
+
+
 async def test_shared_flowsheet_serves_the_same_record(share_api):
     client, _principal = share_api
     created = await _create_link(client)

@@ -10,6 +10,7 @@ import { BiomarkerChart } from '@/components/shared/BiomarkerChart'
 import { ScaleNote } from '@/components/shared/ScaleNote'
 import { formatReference, unitLabel, displayUnit } from '@/lib/reference'
 import { qualitativeLabel } from '@/lib/qualitative-labels'
+import { useViewer } from '@/providers/viewer-provider'
 import type { BiomarkerResult, Reading, Status } from '@/lib/types'
 
 function MetricCard({
@@ -46,6 +47,13 @@ export function ExpandedBiomarkerDetails({
   const t = useTranslations('timeline.biomarker')
   const tRoot = useTranslations()
   const locale = useLocale()
+  // The trend chart is the owner's. A share recipient reads the table and the
+  // reading list; the correlation view (ST3) is the only chart the shared
+  // surface will grow, and it is lazy-loaded on its own. Gating here also
+  // means recharts is never fetched on a shared page at all — the
+  // `BiomarkerChart` boundary is dynamic, so nothing loads unless this
+  // renders.
+  const { isShared } = useViewer()
   const history = biomarker.history ?? []
   const current: Reading = {
     entry_id: biomarker.entry_id,
@@ -76,17 +84,21 @@ export function ExpandedBiomarkerDetails({
 
   return (
     <div className="flex flex-col gap-5 rounded-lg bg-muted/60 p-5">
-      <div>
-        <h3 className="text-sm font-semibold text-foreground">
-          {t('dynamics', { name: biomarker.definition.names.en })}
-        </h3>
-        <p className="mb-2 text-xs text-muted-foreground">
-          {t('reference', {
-            value: formatReference(biomarker.reference ?? biomarker.definition.reference, null, { lang: locale }),
-          })}
-        </p>
-        <BiomarkerChart biomarker={biomarker} data={chartData} height={250} />
-      </div>
+      {/* Heading, reference line and chart travel together: a "… Dynamics"
+          heading over nothing would be worse than no block at all. */}
+      {!isShared && (
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            {t('dynamics', { name: biomarker.definition.names.en })}
+          </h3>
+          <p className="mb-2 text-xs text-muted-foreground">
+            {t('reference', {
+              value: formatReference(biomarker.reference ?? biomarker.definition.reference, null, { lang: locale }),
+            })}
+          </p>
+          <BiomarkerChart biomarker={biomarker} data={chartData} height={250} />
+        </div>
+      )}
 
       <div className="flex gap-3">
         <MetricCard

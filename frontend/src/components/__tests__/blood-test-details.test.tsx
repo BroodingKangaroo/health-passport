@@ -20,16 +20,47 @@ const renderI18n = ((ui: React.ReactElement, options?: Parameters<typeof render>
   )
 }) as typeof render
 
-vi.mock('next/dynamic', () => ({
-  default: () => {
-    const MockComponent = ({ url, fill }: { url: string; fill?: boolean }) => (
-      <div data-testid="document-viewer" data-url={url} data-fill={fill ? 'true' : 'false'}>
-        Document Viewer: {url}
-      </div>
-    )
-    return MockComponent
-  },
-}))
+/**
+ * The PDF viewer (pdf.js plus an authenticated fetch) is stubbed. The mock
+ * looks at WHICH module is being loaded rather than stubbing every dynamic
+ * import: `entry-settings` now lazily loads its danger zone for real, and a
+ * blank-stub-everything mock would hide it from the Settings assertions.
+ */
+vi.mock('next/dynamic', async () => {
+  const React = await import('react')
+  return {
+    default: (loader: () => Promise<unknown>) => {
+      const source = String(loader)
+      if (source.includes('DocumentViewer')) {
+        function DocumentViewerStub({ url, fill }: { url: string; fill?: boolean }) {
+          return React.createElement(
+            'div',
+            {
+              'data-testid': 'document-viewer',
+              'data-url': url,
+              'data-fill': fill ? 'true' : 'false',
+            },
+            `Document Viewer: ${url}`,
+          )
+        }
+        return DocumentViewerStub
+      }
+      // The loader is `() => import(...).then((m) => m.X)`: it resolves to the
+      // component itself, not to the module namespace.
+      const Lazy = React.lazy(async () => ({
+        default: (await loader()) as React.ComponentType,
+      }))
+      function DynamicBoundary(props: Record<string, unknown>) {
+        return React.createElement(
+          React.Suspense,
+          { fallback: null },
+          React.createElement(Lazy, props),
+        )
+      }
+      return DynamicBoundary
+    },
+  }
+})
 
 const baseEvent: MedicalEvent = {
   id: 'test-event',
@@ -140,16 +171,18 @@ describe('BloodTestDetails', () => {
     expect(subtitle.getAttribute('title')).toBe(`Jan 15, 2027 · ${longLabName}`)
   })
 
-  it('renders a Settings tab and switches to it on click', () => {
+  it('renders a Settings tab and switches to it on click', async () => {
     renderI18n(<BloodTestDetails event={baseEvent} biomarkers={emptyBiomarkers} onViewDetails={vi.fn()} onDeleted={vi.fn()} />)
 
     const settingsTab = screen.getByRole('tab', { name: 'Settings' })
     expect(settingsTab).toBeDefined()
     fireEvent.click(settingsTab)
 
-    // The Settings panel surfaces the entry type and a Danger Zone heading
+    // The Settings panel surfaces the entry type and a Danger Zone heading.
+    // The danger zone is a lazily-imported module (it is the only part of the
+    // detail views that reaches the write API), so it arrives a tick later.
     expect(screen.getByText('Entry Details')).toBeDefined()
-    expect(screen.getByText('Danger Zone')).toBeDefined()
+    expect(await screen.findByText('Danger Zone')).toBeDefined()
   })
 
   it('exposes the detail toggles as a tablist wired to a single tabpanel', () => {

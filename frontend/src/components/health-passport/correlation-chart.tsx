@@ -24,8 +24,8 @@ import {
   coerceChartValue,
   dateTickFormatter,
   dateTickRenderer,
-  gapAwareLineShape,
 } from '@/lib/chart-series'
+import { gapAwareLineShape } from '@/lib/chart-line-shape'
 import { useChartAxisMode } from '@/lib/hooks/useChartAxisMode'
 import { AxisModeToggle } from '@/components/shared/axis-mode-toggle'
 import { pairwiseCorrelations, type PairStats } from '@/lib/stats'

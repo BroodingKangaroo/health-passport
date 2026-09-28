@@ -11,6 +11,7 @@ export const sharedViewMessages = {
       orientation: {
         ownedBy: 'Health record of {name}',
         anonymous: 'A shared health record',
+        dob: 'Date of birth {date}',
         lastUpdated: 'Last updated {date}',
         expires: 'This link expires {date}. The owner can revoke it at any time.',
         readOnly: 'Read-only',
@@ -20,15 +21,28 @@ export const sharedViewMessages = {
         en: 'English',
         ru: 'Russian',
       },
+      viewSwitch: {
+        label: 'View',
+        summary: 'Summary',
+        full: 'Full record',
+      },
+      rail: {
+        navigation: 'Sections',
+      },
       flags: {
         title: 'Needs attention',
         empty: 'No results outside the reference range in this record.',
         reference: 'Reference range',
         measured: 'Measured {date}',
+        colBiomarker: 'Biomarker',
+        colLatest: 'Latest result',
+        colStatus: 'Status',
+        count:
+          '{n, plural, one {# of {m} readings is outside the reference range} other {# of {m} readings are outside the reference range}}',
       },
       trends: {
         title: 'What changed',
-        since: 'Since {date}',
+        pointLabel: '{value}, measured {date}',
       },
       history: {
         title: 'Visits, imaging and procedures',
@@ -80,6 +94,7 @@ export const sharedViewMessages = {
       orientation: {
         ownedBy: 'Медицинская карта: {name}',
         anonymous: 'Медицинская карта, которой поделились',
+        dob: 'Дата рождения {date}',
         lastUpdated: 'Обновлено {date}',
         expires: 'Ссылка действует до {date}. Владелец может отозвать её в любой момент.',
         readOnly: 'Только просмотр',
@@ -89,15 +104,31 @@ export const sharedViewMessages = {
         en: 'Английский',
         ru: 'Русский',
       },
+      viewSwitch: {
+        label: 'Вид',
+        summary: 'Кратко',
+        full: 'Вся карта',
+      },
+      rail: {
+        navigation: 'Разделы',
+      },
       flags: {
         title: 'Требует внимания',
         empty: 'В этой карте нет результатов вне референсного диапазона.',
         reference: 'Референсный диапазон',
         measured: 'Измерено {date}',
+        colBiomarker: 'Показатель',
+        colLatest: 'Последний результат',
+        colStatus: 'Статус',
+        count:
+          // No separate few/many branches: the noun after "из {m}" is genitive
+          // plural for every count ("2 из 12 показателей"), which `other`
+          // already covers.
+          '{n, plural, one {# из {m} показателей вне референсного диапазона} other {# из {m} показателей вне референсного диапазона}}',
       },
       trends: {
         title: 'Что изменилось',
-        since: 'С {date}',
+        pointLabel: '{value}, измерено {date}',
       },
       history: {
         title: 'Визиты, обследования и процедуры',

@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DemoTimelineView } from '../landing/demo-view'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
 import { ThemeProvider } from '@/providers/theme-provider'
-import { DemoModeProvider } from '@/providers/demo-provider'
+import { ViewerProvider } from '@/providers/viewer-provider'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
@@ -40,7 +40,7 @@ function renderDemo(ui: React.ReactElement, locale = 'en'): RenderResult {
     <ThemeProvider>
       <QueryClientProvider client={new QueryClient()}>
         <TestI18nProvider locale={locale}>
-          <DemoModeProvider>{ui}</DemoModeProvider>
+          <ViewerProvider capability="demo">{ui}</ViewerProvider>
         </TestI18nProvider>
       </QueryClientProvider>
     </ThemeProvider>,
@@ -126,10 +126,18 @@ describe('DemoTimelineView', () => {
     expect(screen.queryByRole('button', { name: /View full details/ })).not.toBeInTheDocument()
   })
 
-  it('hides the delete danger zone in the entry settings tab (nothing to delete)', async () => {
+  /**
+   * /demo shows the product's REAL affordances minus the destructive one. The
+   * danger zone goes (its button would fire a delete for an id that does not
+   * exist), but the technical card stays — it is part of what the marketing
+   * page is showing. Both halves are asserted so neither can drift silently.
+   */
+  it('shows the entry settings minus the delete danger zone', async () => {
     renderDemo(<DemoTimelineView />)
 
     fireEvent.click(screen.getByRole('tab', { name: 'Settings' }))
+    expect(screen.getByText('Entry Details')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy entry ID' })).toBeInTheDocument()
     expect(screen.queryByText('Delete this entry')).not.toBeInTheDocument()
     expect(screen.queryByText('Danger Zone')).not.toBeInTheDocument()
   })

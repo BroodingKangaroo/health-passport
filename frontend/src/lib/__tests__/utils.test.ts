@@ -1,133 +1,28 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
 
-import { printAuthedDocument } from '../utils'
+import { formatDay } from '../utils'
 
-type PrintWindow = Window & {
-  print: () => void
-  onafterprint: ((ev: Event) => void) | null
-}
-
-function stubPrint(iframe: HTMLIFrameElement) {
-  const win = iframe.contentWindow as PrintWindow
-  win.print = vi.fn()
-  return win
-}
-
-describe('printAuthedDocument', () => {
-  beforeEach(() => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      blob: () =>
-        Promise.resolve(new Blob(['pdf-bytes'], { type: 'application/pdf' })),
-    }) as unknown as typeof fetch
-    Object.defineProperty(URL, 'createObjectURL', {
-      configurable: true,
-      writable: true,
-      value: vi.fn(() => 'blob:mock'),
-    })
-    Object.defineProperty(URL, 'revokeObjectURL', {
-      configurable: true,
-      writable: true,
-      value: vi.fn(),
-    })
+describe('formatDay', () => {
+  // Reading dates are wall-clock text from the source document: the backend
+  // stores them WITHOUT an offset. Parsed as a local instant and rendered in
+  // UTC, a midnight sample slides to the previous day for a reader east of
+  // UTC ("Sep 16, 2026 at 21:00" for a 17 September result) — the exact bug
+  // this anchors against.
+  it('keeps a bare midnight reading on its own calendar day', () => {
+    expect(formatDay('2026-09-17T00:00:00', 'en-US')).toBe('Sep 17, 2026')
   })
 
-  afterEach(() => {
-    document.querySelectorAll('iframe').forEach((el) => el.remove())
-    vi.restoreAllMocks()
+  it('keeps a bare reading time intact', () => {
+    expect(formatDay('2026-03-20T17:00:00', 'en-US')).toBe(
+      'Mar 20, 2026 at 17:00',
+    )
   })
 
-  it('removes the hidden iframe and revokes object URLs when printing finishes', async () => {
-    await printAuthedDocument('/static/uploads/report.pdf')
-
-    const iframe = document.querySelector('iframe') as HTMLIFrameElement
-    expect(iframe).toBeTruthy()
-    const win = stubPrint(iframe)
-    fireEvent.load(iframe)
-
-    expect(win.onafterprint).toBeTruthy()
-    win.onafterprint!(new Event('afterprint'))
-
-    expect(document.querySelector('iframe')).toBeNull()
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock')
+  it('renders an offset-carrying instant in UTC', () => {
+    expect(formatDay('2026-01-12T00:00:00+00:00', 'en-US')).toBe('Jan 12, 2026')
   })
 
-  it('cleans up even when afterprint never fires (safety timeout)', async () => {
-    vi.useFakeTimers()
-    try {
-      await printAuthedDocument('/static/uploads/report.pdf')
-
-      const iframe = document.querySelector('iframe') as HTMLIFrameElement
-      stubPrint(iframe)
-      fireEvent.load(iframe)
-      expect(document.querySelector('iframe')).not.toBeNull()
-
-      vi.advanceTimersByTime(60_000)
-
-      expect(document.querySelector('iframe')).toBeNull()
-      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock')
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('cleans up after the safety timeout even if load never fires', async () => {
-    vi.useFakeTimers()
-    try {
-      await printAuthedDocument('/static/uploads/report.pdf')
-
-      expect(document.querySelector('iframe')).not.toBeNull()
-      vi.advanceTimersByTime(60_000)
-      expect(document.querySelector('iframe')).toBeNull()
-      expect(URL.revokeObjectURL).toHaveBeenCalled()
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('removes the iframe when print() throws', async () => {
-    await printAuthedDocument('/static/uploads/report.pdf')
-
-    const iframe = document.querySelector('iframe') as HTMLIFrameElement
-    const win = iframe.contentWindow as PrintWindow
-    win.print = () => {
-      throw new Error('print blocked')
-    }
-    fireEvent.load(iframe)
-
-    expect(document.querySelector('iframe')).toBeNull()
-    expect(URL.revokeObjectURL).toHaveBeenCalled()
-  })
-
-  it('cleans up when the iframe has no contentWindow', async () => {
-    await printAuthedDocument('/static/uploads/report.pdf')
-
-    const iframe = document.querySelector('iframe') as HTMLIFrameElement
-    Object.defineProperty(iframe, 'contentWindow', {
-      configurable: true,
-      get: () => null,
-    })
-    fireEvent.load(iframe)
-
-    expect(document.querySelector('iframe')).toBeNull()
-    expect(URL.revokeObjectURL).toHaveBeenCalled()
-  })
-
-  it('revokes both blob URLs for an image document', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      blob: () => Promise.resolve(new Blob(['img'], { type: 'image/png' })),
-    }) as unknown as typeof fetch
-
-    await printAuthedDocument('/static/uploads/scan.png')
-
-    const iframe = document.querySelector('iframe') as HTMLIFrameElement
-    const win = stubPrint(iframe)
-    fireEvent.load(iframe)
-    win.onafterprint!(new Event('afterprint'))
-
-    // The HTML wrapper URL and the image URL.
-    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2)
+  it('falls back to the raw string when it is not a date', () => {
+    expect(formatDay('not a date', 'en-US')).toBe('not a date')
   })
 })

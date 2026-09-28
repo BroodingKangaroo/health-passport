@@ -1,6 +1,6 @@
 from typing import Optional, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_serializer
 
 from app.schemas.reference import Reference
 
@@ -106,6 +106,27 @@ class MatrixCell(BaseModel):
     # True when the LLM couldn't determine a cross-scale conversion. The
     # flowsheet cell still renders the raw value; the UI shows a warning.
     needs_review: bool = False
+    # True when the value is raw text from the source document that the
+    # canonicaliser could not interpret — a "see comment" remark, a free-text
+    # range. The reading has no trustworthy status, so the public share
+    # surface renders it neutrally and marks it as printed (product plan D13).
+    # The owner's own flowsheet never sets it.
+    as_printed: bool = False
+
+    @model_serializer(mode="wrap")
+    def _emit_as_printed_only_when_true(self, handler):
+        """Keep the authed payload byte-identical.
+
+        ``as_printed`` is only ever true on the share read path, so emitting
+        ``false`` on every cell of the owner's response would change a contract
+        nothing asked to change. Dropped rather than defaulted: the field is
+        absent from every payload that has nothing to mark, and present (true)
+        only where it means something. The frontend reads it as optional.
+        """
+        data = handler(self)
+        if not data.get("as_printed"):
+            data.pop("as_printed", None)
+        return data
 
 
 class MatrixRow(BaseModel):

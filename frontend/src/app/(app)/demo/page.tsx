@@ -1,12 +1,12 @@
 'use client'
 
-import { DemoModeProvider } from '@/providers/demo-provider'
+import { ViewerProvider } from '@/providers/viewer-provider'
 import { DemoTimelineView } from '@/components/landing/demo-view'
 
 export default function DemoPage() {
   return (
-    <DemoModeProvider>
+    <ViewerProvider capability="demo">
       <DemoTimelineView />
-    </DemoModeProvider>
+    </ViewerProvider>
   )
 }

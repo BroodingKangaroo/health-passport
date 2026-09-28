@@ -21,8 +21,8 @@ import {
   coerceChartValue,
   dateTickFormatter,
   dateTickRenderer,
-  gapAwareLineShape,
 } from '@/lib/chart-series'
+import { gapAwareLineShape } from '@/lib/chart-line-shape'
 import { statusColor } from '@/lib/status-labels'
 import { useChartAxisMode } from '@/lib/hooks/useChartAxisMode'
 import { AxisModeToggle } from '@/components/shared/axis-mode-toggle'

@@ -161,6 +161,12 @@ Two properties of this data shape the product:
 The page opens to one scrolling column, no login, no cookie wall, no banner
 over the content. Top to bottom:
 
+0. **A two-item view switch, "Summary | Full record", at the very top.** The
+   summary is what the page opens on and what everything below describes; the
+   full record is the app's own timeline and flowsheet over the same data,
+   read-only, for the reader who would rather recognise the product they
+   already know. It is a link pair in the URL (`?view=`), not a modal and not
+   a question asked before the reader has seen anything — see §4.7.
 1. **A one-line orientation strip.** Whose record this is (per the sender's
    header choice), how fresh it is ("Last updated 12 Sep 2026"), and that the
    link expires ("This link expires 22 Sep 2026 — the owner can revoke it at
@@ -195,6 +201,10 @@ still got the useful part of the visit.
   printed name, value and range as they appeared on the document.
 - Print or save the page with the browser's own print (D3 in §6 explains why
   the source documents themselves are not part of v1).
+- Switch between the short **Summary** and the **full record** — the app's own
+  views over the same shared data, with every write affordance removed. Both
+  views are the same URL with a different `?view=` value, so either one can be
+  bookmarked and sent on.
 - Switch the view's language, independent of the sender (§8).
 - Tap the "Make your own HealthPassport" link, which leads to the public
   landing page.
@@ -214,7 +224,7 @@ still got the useful part of the visit.
   the CTA and starts their own record gets a fresh identity, not a
   continuation of the one they were browsing.
 
-### 4.4 On a phone
+### 4.4 On a phone (and, since ST2, on a desktop)
 
 The doctor's first look is a phone in a corridor, not a desktop. The shared
 view is phone-first:
@@ -225,13 +235,41 @@ view is phone-first:
   than clip.
 - Values and reference ranges at a size that is readable while walking, with
   status encoded as a word plus a color, never color alone.
-- No sticky elements that eat the viewport, no modals, no welcome overlay.
+- No modals and no welcome overlay. On a phone the only pinned chrome is a
+  single ~68px strip carrying the view switch and the language switch.
 - The recipient's print output drops the app chrome, the language switch and
   the CTA.
+
+**The desktop amendment (ST2).** The paragraphs above were written for a
+phone, and a reader on a 1280px laptop was getting a phone layout with 40% of
+the screen empty. At `lg` and above the page is therefore a two-column shell:
+a 280px rail carrying the record's identity, the section links, the view
+switch and the language switch, beside the record itself, which widens from
+768px to 1024px. It is the same markup as the phone strip — the chrome
+container is `display: contents` below `lg`, so each control exists once — and
+the rail is `print:hidden`. The stuck-at-the-top rail is a deliberate
+exception to "no sticky elements that eat the viewport": it occupies the
+gutter the phone layout was wasting.
 
 Calm and glanceable is a marketing principle, and on a shared view it is also
 a clinical-utility requirement: the recipient has to be able to find the two
 flagged values before their attention runs out.
+
+### 4.7 The full record
+
+The second view is the app's own information architecture over someone else's
+data: the entry list with its type chips and search, beside the selected
+entry's detail (results table, visit, imaging), then the flowsheet. It is
+described as "marginally distinguishable" from the owner's view on purpose —
+the value is recognition, and the demonstration: a doctor who likes what they
+see is the best possible introduction to the product.
+
+What it is not: a second product. It renders the same components as the
+owner's timeline from the same payload, and the difference is structural
+rather than cosmetic — no upload, no add entry, no notifications, no entry
+settings, no documents tab, no charts, and no route into the authed app. A
+recipient cannot reach a write path because none is in the bundle they load,
+not because a button is hidden.
 
 ### 4.5 Reading to someone with no account
 
@@ -397,7 +435,7 @@ derivable answer.
 | **D10** | No-expiry links | **Not offered in v1** | An unlimited link is a permanent open door to clinical data, and the "promise" of revocation decays with the sender's memory. | No |
 | **D11** | Who may create links | **Registered users and anonymous-session users.** Anonymous links capped at **7 days maximum** (1 or 7 only, no 30) | Roadmap-mandated, and consistent with the anonymous trial funnel. The cap and the warning in §5.6 are what keep an anonymous public surface defensible. | **Yes** |
 | **D12** | Active-link count | **No product limit**; the list is the guard | Multiple links is the normal case (one per doctor). Expiry and revoke-all are the real controls; a cap would only create support friction. | No |
-| **D13** | Readings the app knows are unreliable (`needs_review`, failed scale conversion) | **Excluded from the "Needs attention" flags and the trend lines; shown in the full table with a neutral "not standardised" mark** | A number the app could not convert must not appear as a confident flag to a clinician. Showing it in the full table preserves transparency and the source value. | No |
+| **D13** | Readings the app knows are unreliable, in either of two ways: `needs_review` (failed scale conversion) **or a value the canonicaliser could not interpret at all** — a `см.комм.`-style remark, a free-text expectation. The stored status differs by shape: against a free-text expectation two strings nobody understands compare unequal and it is stored `abnormal`; against no expectation at all (`{expected: null}`) it is stored `normal`. A **result glyph** (`+`, `++`, `Trace`, `следы`) is NOT in this class — a dipstick reading is a measurement; only a *prose* remark is unreadable | **Excluded from the "Needs attention" flags, the count line and the trend lines; shown in the full table with a neutral "not standardised" / "printed as in the source document" mark** | A number the app could not convert, or two strings it could not read, must not appear as a confident flag to a clinician — and an unreadable value must not pass as a confident "normal" either. A value the lab printed as a symbol is still a result, so treating glyphs as unreadable would silently drop a proteinuria `++` from the flags. Showing it in the full table preserves transparency and the source value. | No |
 | **D14** | Recipient tracking | **First-open timestamp only, sender-visible.** No per-visit log, no IP, no device, no location, no "live viewer" indicator | The sender wants to know the doctor looked, not to watch them read. A viewer log turns a clinical tool into surveillance and invites the sender to refresh it. | **Yes** — see Q5 |
 | **D15** | Merged readings | **Excluded from the shared view, matching the flowsheet and print rules** | An existing, documented contract: merged readings appear only in the timeline details view. The shared view must not become a third place where they leak. | No |
 
@@ -723,7 +761,8 @@ to the recipient's identity.
 - **R5 — A clinician treats the app's flags as authoritative.** If the app's
   curated reference range disagrees with the lab's, a confident red flag is
   wrong. *Mitigation:* the reading's own reference and original printed range
-  are shown, D13 keeps unstandardised values out of the flags, and the
+  are shown, D13 keeps both unstandardised and uninterpretable values out of
+  the flags, and the
   disclaimer is on the page rather than in a footnote.
 - **R6 — Recipient friction kills the loop.** A cookie banner, a login wall, a
   slow first paint on a phone, or flags below the fold all cost the feature

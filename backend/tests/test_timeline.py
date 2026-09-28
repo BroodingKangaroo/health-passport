@@ -175,6 +175,23 @@ class TestFlowsheet:
         assert "Lipid Panel" in category_names
         assert "Vitamins" in category_names
 
+    async def test_flowsheet_payload_carries_no_share_only_fields(self, client):
+        """``as_printed`` is set by the share read path only and is emitted only
+        when true, so the authed payload has no such key anywhere — the owner's
+        contract stays byte-for-byte what it was before sharing added it."""
+        # when
+        resp = await client.get("/api/flowsheet")
+
+        # then
+        cells = [
+            cell
+            for category in resp.json()["matrix"]
+            for row in category["rows"]
+            for cell in row["cells"]
+        ]
+        assert cells
+        assert all("as_printed" not in cell for cell in cells)
+
     async def test_flowsheet_vitamin_d_missing_first_cell(self, client):
         # when
         resp = await client.get("/api/flowsheet")

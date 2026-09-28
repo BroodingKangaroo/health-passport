@@ -1,102 +1,8 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { getAccessToken } from '@/lib/auth-token'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
-}
-
-/**
- * Fetch a protected document (e.g. /static/uploads/...) with the auth token and
- * return a same-origin object URL. The raw URL cannot be used directly by an
- * <img>/<iframe>/<a download> because those requests can't send the
- * Authorization header, so the backend rejects them as anonymous (403).
- */
-export async function fetchAuthedObjectUrl(url: string): Promise<string> {
-  const token = getAccessToken()
-  const headers: Record<string, string> = token
-    ? { Authorization: `Bearer ${token}` }
-    : {}
-  const res = await fetch(url, { headers })
-  if (!res.ok) throw new Error(`Failed to load document: ${res.status}`)
-  const blob = await res.blob()
-  return URL.createObjectURL(blob)
-}
-
-const IMAGE_RE = /\.(jpg|jpeg|png|gif|webp|tiff|tif|bmp)$/i
-
-/**
- * Print a protected document. Fetches it with the auth token, then opens the
- * browser print dialog for it. Images are wrapped in a minimal HTML page with
- * print styles so the picture fits on a single page (otherwise the browser
- * prints the raw <img> at natural size, splitting it across pages). Cleanup
- * happens on `afterprint` (when the dialog is dismissed) rather than on a
- * timer, so the print dialog is never yanked out from under the user; a
- * safety timeout covers browsers that never fire it for a programmatic print.
- * The hidden iframe and both object URLs are always released.
- */
-export async function printAuthedDocument(url: string): Promise<void> {
-  const token = getAccessToken()
-  const headers: Record<string, string> = token
-    ? { Authorization: `Bearer ${token}` }
-    : {}
-  const res = await fetch(url, { headers })
-  if (!res.ok) throw new Error(`Failed to load document: ${res.status}`)
-  const blob = await res.blob()
-  const isImage = IMAGE_RE.test(url) || blob.type.startsWith('image/')
-
-  let src: string
-  let revoke: () => void
-  if (isImage) {
-    const imgUrl = URL.createObjectURL(blob)
-    const html = `<!doctype html><html><head><meta charset="utf-8"><style>
-      @page { margin: 0; }
-      html, body { margin: 0; padding: 0; height: 100%; }
-      img { display: block; margin: 0 auto; max-width: 100%; max-height: 100vh; width: auto; height: auto; object-fit: contain; page-break-inside: avoid; }
-    </style></head><body><img src="${imgUrl}"></body></html>`
-    src = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
-    revoke = () => {
-      URL.revokeObjectURL(src)
-      URL.revokeObjectURL(imgUrl)
-    }
-  } else {
-    src = URL.createObjectURL(blob)
-    revoke = () => URL.revokeObjectURL(src)
-  }
-
-  const iframe = document.createElement('iframe')
-  iframe.style.position = 'absolute'
-  iframe.style.width = '0'
-  iframe.style.height = '0'
-  iframe.style.border = '0'
-  document.body.appendChild(iframe)
-
-  let cleanedUp = false
-  const cleanup = () => {
-    if (cleanedUp) return
-    cleanedUp = true
-    iframe.remove()
-    revoke()
-  }
-
-  // Safety net armed BEFORE the load handler: an iframe that never fires
-  // `load` (revoked blob URL, replaced body) is still released. `cleanedUp`
-  // makes the afterprint/timeout/throw paths collapse into one cleanup, so
-  // the pending timer needs no cancellation.
-  setTimeout(cleanup, 60_000)
-
-  iframe.onload = () => {
-    const w = iframe.contentWindow
-    if (!w) {
-      // Nothing to print from — release instead of leaking the iframe/URLs.
-      cleanup()
-      return
-    }
-    w.onafterprint = cleanup
-    try { w.focus() } catch {}
-    try { w.print() } catch { cleanup() }
-  }
-  iframe.src = src
 }
 
 /**
@@ -116,6 +22,77 @@ export function formatDate(iso: string, locale = 'en-US'): string {
     return `${base}${dateConnector(locale)}${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
   }
   return base
+}
+
+/**
+ * A reading's date exactly as the document recorded it, in the reader's
+ * locale — never shifted by the reader's own clock.
+ *
+ * Reading dates are WALL-CLOCK values from the source document: the backend
+ * stores them without an offset ("2026-09-17T00:00:00"), and a midnight is a
+ * calendar date, not an instant. `new Date()` reads such a string in the
+ * reader's own zone and `formatDate` renders it back in that same zone, so it
+ * round-trips by luck; this helper renders in UTC instead, which for a bare
+ * string would move a midnight reading to the PREVIOUS DAY for a reader east
+ * of UTC ("Sep 16, 2026 at 21:00" for a 17 September sample).
+ *
+ * So a string with no offset is anchored to UTC before parsing — it is
+ * wall-clock text, and the calendar date and printed time must survive intact
+ * for every reader. A string that DOES carry an offset is a real instant and
+ * is left alone.
+ *
+ * `formatDate` is still the right helper for instants the app itself produced
+ * (when the record was last updated, when a link expires), where the reader's
+ * own clock is what makes the value meaningful.
+ */
+export function formatDay(iso: string, locale = 'en-US'): string {
+  const d = new Date(anchorOffsetlessToUtc(iso))
+  if (isNaN(d.getTime())) return iso
+  const base = d.toLocaleDateString(locale, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+  const hours = d.getUTCHours()
+  const minutes = d.getUTCMinutes()
+  if (hours !== 0 || minutes !== 0) {
+    return `${base}${dateConnector(locale)}${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
+  }
+  return base
+}
+
+/**
+ * "2026-09-17T00:00:00" → "2026-09-17T00:00:00Z"; anything already carrying
+ * `Z` or a numeric offset is returned unchanged. Date-only strings
+ * ("1997-10-20") are already parsed as UTC by the spec, so they are left too.
+ */
+function anchorOffsetlessToUtc(iso: string): string {
+  const trimmed = iso.trim()
+  if (!trimmed.includes('T')) return trimmed
+  return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed) ? trimmed : `${trimmed}Z`
+}
+
+/**
+ * A stored date of birth ("1990-01-01") in the reader's locale.
+ *
+ * Split across two surfaces before this existed — the header bar had its own
+ * copy and the shared record printed the raw ISO string, which is how a
+ * recipient could see "1997-10-20" while every other date on the page was
+ * spelled out. One helper, hoisted here so both read the same way.
+ * `timeZone: 'UTC'` is deliberate: the value is a calendar date with no time,
+ * so it must not shift by a day for a reader west of UTC.
+ */
+export function formatDob(dob: string | undefined, locale: string): string {
+  if (!dob) return ''
+  const d = new Date(dob)
+  if (isNaN(d.getTime())) return dob
+  return d.toLocaleDateString(locale, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
 }
 
 const COMPACT_UNITS = [

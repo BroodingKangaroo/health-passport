@@ -13,9 +13,111 @@ from app.services.reference import (
     _parse_numeric_token,
     _parse_range_side,
     compute_status,
+    is_interpretable,
     parse_reference,
     parse_value,
 )
+
+
+@pytest.mark.parametrize(
+    "value, reference, expected",
+    [
+        # The live case: a "see comment" remark against a free-text expected
+        # range. compute_status stores "abnormal"; the predicate says the app
+        # has no business making that claim.
+        ("см.комм.", {"kind": "qualitative", "expected": "отсут./незн.кол."}, False),
+        # A canonical term against a canonical expectation IS a comparison.
+        ("Absent", {"kind": "qualitative", "expected": "Absent"}, True),
+        ("Negative", {"kind": "qualitative", "expected": "Absent"}, True),
+        # Numeric against a canonical expectation bridges via absence/presence.
+        (0.0, {"kind": "qualitative", "expected": "Absent"}, True),
+        # …but not when the expectation is unreadable.
+        (0.0, {"kind": "qualitative", "expected": "отсут./незн.кол."}, False),
+        # Text that merely CONTAINS a digit is still text.
+        ("см.комм. 5", {"kind": "qualitative", "expected": "Normal"}, False),
+        # Intervals need a number; a matrix cell carries it as a string.
+        (10.2, {"kind": "interval", "low": 12, "high": 16}, True),
+        ("10.2", {"kind": "interval", "low": 12, "high": 16}, True),
+        ("—", {"kind": "interval", "low": 12, "high": 16}, False),
+        # No reference is not a claim.
+        ("Negative", None, True),
+        # B2: a qualitative reference with NO expectation. compute_status
+        # answers "normal" for every value here, so a "see comment" remark
+        # would otherwise sit in the record as a confident in-range result.
+        ("см.комм.", {"kind": "qualitative", "expected": None}, False),
+        # …while a value the app can read still passes.
+        ("Not detected", {"kind": "qualitative", "expected": None}, True),
+        ("Negative", {"kind": "qualitative", "expected": None}, True),
+        (0.0, {"kind": "qualitative", "expected": None}, True),
+    ],
+)
+def test_is_interpretable(value, reference, expected):
+    assert is_interpretable(value, reference) is expected
+
+
+# B3: the predicate must not reject a result a clinician reads instantly. A
+# dipstick "++" is a measurement; treating it as unreadable would silently drop
+# a proteinuria flag out of "Needs attention". Only PROSE is unreadable.
+@pytest.mark.parametrize(
+    "value",
+    [
+        "+",
+        "++",
+        "+++",
+        "++++",
+        "-",
+        "±",
+        "Trace",
+        "traces",
+        "следы",
+        "след",
+        "Positive",
+        "Negative",
+        "Detected",
+        "Not detected",
+        "Absent",
+        "Present",
+        "Normal",
+        "Abnormal",
+        "не обнаружено",
+        "отрицательный",
+    ],
+)
+def test_result_glyphs_and_terms_stay_interpretable(value):
+    assert is_interpretable(value, {"kind": "qualitative", "expected": "Negative"}) is True
+    assert is_interpretable(value, {"kind": "qualitative", "expected": None}) is True
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "см.комм.",
+        "см.комм. 5",
+        "см. комм.",
+        "see comment",
+        "Sample hemolysed, repeat",
+        "результат будет позже",
+    ],
+)
+def test_prose_remarks_are_never_interpretable(value):
+    assert is_interpretable(value, {"kind": "qualitative", "expected": "Negative"}) is False
+    assert is_interpretable(value, {"kind": "qualitative", "expected": None}) is False
+
+
+def test_normalize_qual_verbatim_fallback_does_not_fool_the_predicate():
+    """``normalize_qual`` returns unmapped text unchanged, so "is not None" is
+    never a recognisability test — this is the bug the membership check fixes."""
+    from app.services.reference import normalize_qual
+
+    assert normalize_qual("см.комм.") == "см.комм."
+    assert is_interpretable("см.комм.", {"kind": "qualitative", "expected": None}) is False
+
+
+def test_uninterpretable_text_is_exactly_the_false_abnormal():
+    """The predicate earns its place: this pair is what stores "abnormal"."""
+    reference = {"kind": "qualitative", "expected": "отсут./незн.кол."}
+    assert compute_status("см.комм.", reference) == "abnormal"
+    assert is_interpretable("см.комм.", reference) is False
 
 
 @pytest.mark.parametrize("raw", ["nan", "NAN", "NaN", "inf", "-inf", "Infinity"])
@@ -153,4 +255,3 @@ def test_qual_status_unknown_for_unrecognized_expected_with_numeric_value():
     assert compute_status(5.0, {"kind": "qualitative", "expected": "Negative"}) == "abnormal"
     assert compute_status(5.0, {"kind": "qualitative", "expected": "Positive"}) == "normal"
     assert compute_status(0, {"kind": "qualitative", "expected": "Positive"}) == "abnormal"
-

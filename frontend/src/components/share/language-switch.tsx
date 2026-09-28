@@ -4,11 +4,18 @@ import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
+import { sharedViewHref, type SharedView } from '@/lib/share'
 import type { AppLocale } from '@/i18n/messages'
 
 interface LanguageSwitchProps {
   token: string
   locale: string
+  /**
+   * The view the reader is in. The language links rebuild the whole query
+   * string, so without this a reader who switched to the full record and then
+   * changed language would land back in the summary.
+   */
+  view?: SharedView
 }
 
 /**
@@ -20,7 +27,7 @@ interface LanguageSwitchProps {
  * path, with `lang` as the only query parameter. Hidden from print: the
  * printed shared view is the record, nothing else (S12).
  */
-export function LanguageSwitch({ token, locale }: LanguageSwitchProps) {
+export function LanguageSwitch({ token, locale, view = 'summary' }: LanguageSwitchProps) {
   const t = useTranslations('sharedView.language')
   const options: { value: AppLocale; label: string }[] = [
     { value: 'en', label: t('en') },
@@ -37,7 +44,7 @@ export function LanguageSwitch({ token, locale }: LanguageSwitchProps) {
         return (
           <Link
             key={option.value}
-            href={`/s/${token}?lang=${option.value}`}
+            href={sharedViewHref(token, view, option.value)}
             data-state={active ? 'active' : 'idle'}
             lang={option.value}
             className={cn(

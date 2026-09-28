@@ -1,215 +1,237 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { useTranslations } from 'next-intl'
 import { HeartPulse, Info } from 'lucide-react'
 
-import { FlowsheetMatrix } from '@/components/health-passport/flowsheet-matrix'
-import { Button } from '@/components/ui/button'
 import { LanguageSwitch } from '@/components/share/language-switch'
-import { formatReference } from '@/lib/reference'
-import { biomarkerName, flaggedBiomarkers } from '@/lib/share'
-import { readShareGrant } from '@/lib/share-grant'
-import { fetchSharedFlowsheet } from '@/services/share'
-import type { SharedFlowsheet, SharedRecord } from '@/lib/share'
-import { STATUS_TEXT_CLASS, isOutOfRange } from '@/lib/status-labels'
-import { cn, formatDate, formatNumber } from '@/lib/utils'
-import type { BiomarkerResult } from '@/lib/types'
+import { SharedFullRecord } from '@/components/share/SharedFullRecord'
+import { SharedSummary } from '@/components/share/SharedSummary'
+import { ViewToggle } from '@/components/share/ViewToggle'
+import { useSharedFlowsheet } from '@/components/share/use-shared-flowsheet'
+import { ViewerProvider } from '@/providers/viewer-provider'
+import { formatDate, formatDob } from '@/lib/utils'
+import {
+  parseSharedView,
+  sharedViewHref,
+  SHARED_VIEW_PARAM,
+  type SharedRecord,
+  type SharedView,
+} from '@/lib/share'
 
 interface SharedRecordViewProps {
   token: string
   record: SharedRecord
   locale: string
+  /** The view the URL asked for; `summary` unless `?view=full` (shared-view plan §1). */
+  initialView?: SharedView
+  /** The `?lang=` the URL carried, so the language links keep the reader's choice. */
+  lang?: string
 }
 
 /**
- * The recipient's view of a shared record.
+ * The recipient's view of a shared record, and the shell both of its views
+ * live in.
  *
- * Order is the product decision (product plan §4.1): orientation first, then
- * what needs attention, then what changed, then the non-lab history, then the
- * full table. A doctor who reads only the flags block has already got the
- * useful part of the visit.
+ * Two views of one record, chosen by the reader and carried in the URL
+ * (shared-view plan §1): the **summary** — the short clinical read, and the
+ * default — and the **full record**, which is the owner's own timeline and
+ * flowsheet over someone else's data.
  *
- * The record arrives as a prop — this component performs no record fetch of
- * its own, which is what lets the sender's preview render the same view over
- * an authenticated payload later. Only the "All results" table is fetched
- * lazily, from the public flowsheet endpoint, so it never weighs down the
- * first paint.
+ * The record arrives as a prop; only the flowsheet is fetched, lazily, inside
+ * the view that needs it. The shell owns what both views share: the record's
+ * identity, the language switch, the view toggle (a plain link pair, so it
+ * works without JavaScript) and the disclaimer.
+ *
+ * **One instance of each control.** At `lg` and above the chrome is a sticky
+ * rail in the first grid column; below `lg` the same elements are a sticky
+ * strip at the top of the page. That is one markup tree, not two: the chrome
+ * container is `display: contents` under `lg`, so its children join the page
+ * flow directly and the strip's `position: sticky` resolves against the page
+ * rather than against a short wrapper. Rendering the chrome twice and hiding
+ * one copy with CSS would put two language switches and two toggles in the
+ * DOM — invisible to the eye, but not to a screen reader or a test.
  */
-export function SharedRecordView({ token, record, locale }: SharedRecordViewProps) {
+export function SharedRecordView({
+  token,
+  record,
+  locale,
+  initialView = 'summary',
+  lang,
+}: SharedRecordViewProps) {
   const t = useTranslations('sharedView')
   const dateLocale = locale === 'ru' ? 'ru-RU' : 'en-US'
-  const flags = useMemo(() => flaggedBiomarkers(record.biomarkers), [record.biomarkers])
-  const trends = useMemo(
-    () => flags.filter((b) => (b.history?.length ?? 0) > 0),
-    [flags],
+  const [view, setView] = useState<SharedView>(initialView)
+  const stripRef = useRef<HTMLDivElement>(null)
+  const [stripH, setStripH] = useState(0)
+  // Fetched ONCE, here, and handed to whichever view is showing: the table
+  // belongs to both views, and letting each view own the fetch meant one
+  // request per Summary ↔ Full record switch (~1.3 MB each, from the backend).
+  const flowsheetState = useSharedFlowsheet(token)
+
+  const hrefFor = useCallback(
+    (next: SharedView) => sharedViewHref(token, next, lang),
+    [token, lang],
   )
-  const nonLabEvents = useMemo(
-    () => record.events.filter((event) => event.type !== 'blood_test').slice().reverse(),
-    [record.events],
-  )
+
+  // Switch in place. `pushState` (not `replaceState`) so Back returns to the
+  // view the reader came from, and so the URL stays the single source of
+  // truth — a reload or a copied link opens the same view.
+  const selectView = useCallback((next: SharedView) => {
+    setView(next)
+    const url = new URL(window.location.href)
+    url.searchParams.set(SHARED_VIEW_PARAM, next)
+    window.history.pushState(null, '', url)
+  }, [])
+
+  // Back/forward must move the view, not just the address bar. The server
+  // rendered the view the URL asked for; from here the client keeps them in
+  // step.
+  useEffect(() => {
+    const sync = () =>
+      setView(
+        parseSharedView(
+          new URL(window.location.href).searchParams.get(SHARED_VIEW_PARAM),
+        ),
+      )
+    window.addEventListener('popstate', sync)
+    return () => window.removeEventListener('popstate', sync)
+  }, [])
+
+  // The stacked (<lg) full view pins its event switcher under this strip; its
+  // height changes when the labels wrap (RU, zoom), so measure it rather than
+  // hardcoding an offset — the same pattern TimelineView uses for the app
+  // chrome. /demo and the owner's timeline set their own value.
+  useLayoutEffect(() => {
+    const el = stripRef.current
+    if (!el) return
+    const measure = () => setStripH(el.getBoundingClientRect().height)
+    measure()
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure)
+      return () => window.removeEventListener('resize', measure)
+    }
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card px-5 py-5 print:border-0 print:px-0">
-        <div className="mx-auto flex max-w-3xl flex-col gap-1.5">
-          <div className="flex items-start justify-between gap-3">
-            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <HeartPulse className="size-4 text-primary" aria-hidden />
-              {t('orientation.readOnly')}
-            </p>
-            <LanguageSwitch token={token} locale={locale} />
-          </div>
-          <h1 className="text-xl font-bold text-foreground">
-            {record.header?.name
-              ? t('orientation.ownedBy', { name: record.header.name })
-              : t('orientation.anonymous')}
-          </h1>
-      {record.header?.dob ? (
-        <p className="text-sm text-muted-foreground">{record.header.dob}</p>
-      ) : null}
-          <p className="text-sm text-muted-foreground">
-            {t('orientation.lastUpdated', {
-              date: formatDate(record.meta.last_updated, dateLocale),
-            })}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {t('orientation.expires', {
-              date: formatDate(record.meta.expires_at, dateLocale),
-            })}
-          </p>
-          <ScopeNote scope={record.meta.scope} />
-        </div>
-      </header>
-
-      <main className="mx-auto flex max-w-3xl flex-col gap-8 px-5 py-6">
-        <section aria-labelledby="shared-flags">
-          <h2 id="shared-flags" className="mb-3 text-base font-semibold text-foreground">
-            {t('flags.title')}
-          </h2>
-          {flags.length === 0 ? (
-            <p className="rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
-              {t('flags.empty')}
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-3">
-              {flags.map((biomarker) => (
-                <FlagCard
-                  key={biomarker.id}
-                  biomarker={biomarker}
-                  locale={locale}
-                  dateLocale={dateLocale}
-                />
-              ))}
-            </ul>
-          )}
-        </section>
-
-        {trends.length > 0 && (
-          <section aria-labelledby="shared-trends">
-            <h2 id="shared-trends" className="mb-3 text-base font-semibold text-foreground">
-              {t('trends.title')}
-            </h2>
-            <ul className="flex flex-col gap-2">
-              {trends.map((biomarker) => {
-                const series = [...(biomarker.history ?? []).map((r) => r.value), biomarker.value]
-                const since = biomarker.history?.[0]?.date ?? biomarker.date
-                return (
-                  <li
-                    key={biomarker.id}
-                    className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-lg border border-border bg-card px-4 py-3"
-                  >
-                    <span className="text-sm font-medium text-foreground">
-                      {biomarkerName(biomarker.definition, locale)}
-                    </span>
-                    <span className="font-mono text-sm tabular-nums text-foreground">
-                      {series.map((value) => formatNumber(value)).join(' → ')}
-                    </span>
-                    <span className="w-full text-xs text-muted-foreground">
-                      {t('trends.since', { date: formatDate(since, dateLocale) })}
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
-          </section>
-        )}
-
-        <section aria-labelledby="shared-history">
-          <h2 id="shared-history" className="mb-3 text-base font-semibold text-foreground">
-            {t('history.title')}
-          </h2>
-          {nonLabEvents.length === 0 ? (
-            <p className="rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
-              {t('history.empty')}
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-3">
-              {nonLabEvents.map((event) => {
-                const visit = record.visits[event.id]
-                const instrumental = record.instrumental[event.id]
-                const detail =
-                  visit?.verdict?.translated_en ||
-                  visit?.verdict?.original ||
-                  instrumental?.conclusion ||
-                  instrumental?.findings ||
-                  ''
-                return (
-                  <li
-                    key={event.id}
-                    className="rounded-lg border border-border bg-card px-4 py-3"
-                  >
-                    <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                      <span className="text-sm font-medium text-foreground">{event.title}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatDate(event.date, dateLocale)}
-                      </span>
-                    </div>
-                    {event.clinic ? (
-                      <p className="text-xs text-muted-foreground">{event.clinic}</p>
-                    ) : null}
-                    {detail ? (
-                      <p className="mt-1.5 text-sm text-foreground">{detail}</p>
-                    ) : null}
-                    {visit?.recommendations?.length ? (
-                      <ul className="mt-1.5 list-disc pl-5 text-sm text-muted-foreground">
-                        {visit.recommendations.map((rec, index) => (
-                          <li key={index}>{rec.translated_en || rec.original}</li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </section>
-
-        <SharedResults token={token} />
-      </main>
-
-      <footer className="mx-auto max-w-3xl px-5 pb-12">
-        <p className="flex items-start gap-2 rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
-          <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
-          {t('footer.disclaimer')}
-        </p>
-        <div className="mt-4 print:hidden">
-          {/* A plain anchor, deliberately NOT a Next <Link>: this href is an
-              API redirect endpoint, not an app route, and a client-side RSC
-              navigation would fire TWO requests at it (the router fetch plus
-              the fallback document load), doubling the S13 counter from the
-              first click. The browser goes straight to /api/share/cta and the
-              backend 302s once. */}
-          <a
-            href="/api/share/cta"
-            rel="noreferrer"
-            className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+    <ViewerProvider capability="shared">
+      <div
+        style={{ '--chrome-h': `${stripH}px` } as CSSProperties}
+        className="min-h-screen bg-background lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start"
+      >
+        {/* The chrome container. See the component docblock: `contents` below
+            `lg` is what lets the strip pin against the page, and it is also
+            what keeps one copy of every control in the DOM. */}
+        <div className="contents lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:gap-6 lg:overflow-y-auto lg:border-r lg:border-border lg:bg-card lg:px-5 lg:py-6">
+          {/* `order-2` at lg: the toggle and the language switch lead the
+              mobile flow (a sticky strip) but sit under the record's identity
+              in the desktop rail, where there is room for both. */}
+          <div
+            ref={stripRef}
+            data-testid="shared-control-strip"
+            className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-2 border-b border-border bg-card/95 px-5 py-2.5 backdrop-blur lg:static lg:order-2 lg:justify-start lg:border-b-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none print:hidden"
           >
-            {t('footer.cta')}
-          </a>
+            <ViewToggle view={view} hrefFor={hrefFor} onSelect={selectView} />
+            <LanguageSwitch token={token} locale={locale} view={view} />
+          </div>
+
+          <div className="border-b border-border px-5 py-4 lg:order-1 lg:border-b-0 lg:px-0 lg:py-0">
+            <div className="flex flex-col gap-1.5">
+              <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <HeartPulse className="size-4 text-primary" aria-hidden />
+                {t('orientation.readOnly')}
+              </p>
+              <h1 className="text-xl font-bold text-foreground lg:text-base">
+                {record.header?.name
+                  ? t('orientation.ownedBy', { name: record.header.name })
+                  : t('orientation.anonymous')}
+              </h1>
+              {record.header?.dob ? (
+                <p className="text-sm text-muted-foreground lg:text-xs">
+                  {t('orientation.dob', { date: formatDob(record.header.dob, dateLocale) })}
+                </p>
+              ) : null}
+              <p className="text-sm text-muted-foreground lg:text-xs">
+                {t('orientation.lastUpdated', {
+                  date: formatDate(record.meta.last_updated, dateLocale),
+                })}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t('orientation.expires', {
+                  date: formatDate(record.meta.expires_at, dateLocale),
+                })}
+              </p>
+              <ScopeNote scope={record.meta.scope} />
+            </div>
+          </div>
+
+          {/* Section links exist only in the summary: the full record's
+              sections are the timeline's own, and it navigates itself. */}
+          {view === 'summary' && (
+            <nav
+              aria-label={t('rail.navigation')}
+              className="hidden lg:order-3 lg:flex lg:flex-col lg:gap-1 print:hidden"
+            >
+              {[
+                { href: '#shared-flags', label: t('flags.title') },
+                { href: '#shared-trends', label: t('trends.title') },
+                { href: '#shared-history', label: t('history.title') },
+                { href: '#shared-results', label: t('results.title') },
+              ].map((item) => (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  className="rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  {item.label}
+                </a>
+              ))}
+            </nav>
+          )}
         </div>
-      </footer>
-    </div>
+
+        <div className="min-w-0">
+          {view === 'summary' ? (
+            <main className="mx-auto flex max-w-3xl flex-col gap-8 px-5 py-6 lg:max-w-5xl">
+              <SharedSummary
+                record={record}
+                locale={locale}
+                dateLocale={dateLocale}
+                flowsheetState={flowsheetState}
+              />
+            </main>
+          ) : (
+            <SharedFullRecord record={record} flowsheetState={flowsheetState} />
+          )}
+
+          <footer className="mx-auto max-w-3xl px-5 pb-12 lg:max-w-5xl">
+            <p className="flex items-start gap-2 rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
+              <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+              {t('footer.disclaimer')}
+            </p>
+            <div className="mt-4 print:hidden">
+              {/* A plain anchor, deliberately NOT a Next <Link>: this href is an
+                  API redirect endpoint, not an app route, and a client-side RSC
+                  navigation would fire TWO requests at it (the router fetch plus
+                  the fallback document load), doubling the S13 counter from the
+                  first click. The browser goes straight to /api/share/cta and the
+                  backend 302s once. */}
+              <a
+                href="/api/share/cta"
+                rel="noreferrer"
+                className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+              >
+                {t('footer.cta')}
+              </a>
+            </div>
+          </footer>
+        </div>
+      </div>
+    </ViewerProvider>
   )
 }
 
@@ -231,124 +253,5 @@ function ScopeNote({ scope }: { scope: SharedRecord['meta']['scope'] }) {
     <p className="text-xs text-muted-foreground" data-testid="share-scope-note">
       {t('excluded.note', { types: labels })}
     </p>
-  )
-}
-
-
-function FlagCard({
-  biomarker,
-  locale,
-  dateLocale,
-}: {
-  biomarker: BiomarkerResult
-  locale: string
-  dateLocale: string
-}) {
-  const t = useTranslations('sharedView')
-  const unit = biomarker.definition.canonical_unit || biomarker.definition.unit
-  const reference = formatReference(
-    biomarker.reference ?? biomarker.definition.reference,
-    unit,
-    { lang: locale },
-  )
-  return (
-    <li className="rounded-lg border border-border bg-card px-4 py-3">
-      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-        <div>
-          <p className="text-sm font-semibold text-foreground">
-            {biomarkerName(biomarker.definition, locale)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {t('flags.measured', { date: formatDate(biomarker.date, dateLocale) })}
-          </p>
-        </div>
-        <div className="text-right">
-          <p
-            className={cn(
-              'text-lg font-bold tabular-nums',
-              isOutOfRange(biomarker.status)
-                ? STATUS_TEXT_CLASS[biomarker.status]
-                : 'text-foreground',
-            )}
-          >
-            {formatNumber(biomarker.value)}
-            {unit ? ` ${unit}` : ''}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {t('flags.reference')}: {reference}
-          </p>
-        </div>
-      </div>
-    </li>
-  )
-}
-
-/**
- * The full longitudinal table. Fetched separately after first paint so the
- * record above it renders immediately; the token goes in the header, and the
- * request is no-store for the same reason the record read is.
- */
-function SharedResults({ token }: { token: string }) {
-  const t = useTranslations('sharedView')
-  const [flowsheet, setFlowsheet] = useState<SharedFlowsheet | null>(null)
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
-  const [attempt, setAttempt] = useState(0)
-
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      try {
-        // The grant travels with the table read too: a protected link reaches
-        // this point already unlocked, and a missing grant would 404 here
-        // while the record above it rendered fine (Stage 4, S15).
-        const payload = (await fetchSharedFlowsheet(
-          token,
-          readShareGrant(token),
-        )) as SharedFlowsheet
-        if (!cancelled) {
-          setFlowsheet(payload)
-          setStatus('ready')
-        }
-      } catch {
-        if (!cancelled) setStatus('error')
-      }
-    }
-    void load()
-    return () => {
-      cancelled = true
-    }
-  }, [token, attempt])
-
-  return (
-    <section aria-labelledby="shared-results">
-      <h2 id="shared-results" className="mb-3 text-base font-semibold text-foreground">
-        {t('results.title')}
-      </h2>
-      {status === 'loading' && (
-        <p className="text-sm text-muted-foreground">{t('results.loading')}</p>
-      )}
-      {status === 'error' && (
-        <div className="flex items-center gap-3">
-          <p className="text-sm text-muted-foreground">{t('results.error')}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setStatus('loading')
-              setAttempt((n) => n + 1)
-            }}
-          >
-            {t('results.retry')}
-          </Button>
-        </div>
-      )}
-      {status === 'ready' && flowsheet && flowsheet.matrix.length > 0 && (
-        <FlowsheetMatrix
-          dates={flowsheet.dates}
-          matrix={flowsheet.matrix}
-          biomarkers={flowsheet.biomarkers}
-        />
-      )}
-    </section>
   )
 }

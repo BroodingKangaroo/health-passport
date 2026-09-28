@@ -95,18 +95,52 @@ retries.
   This applies to `unlockSharedRecord`, the gate's record read and the
   flowsheet read, all of which carry the grant in `X-Share-Grant`.
 - **Read-only by construction.** The shared tree renders `SharedRecordView`
-  (+ the reused `FlowsheetMatrix`) and is forbidden from importing
-  `services/api.ts`, `lib/auth-token`, `AuthProvider` or `QueryProvider`; a
-  test walks the import graph under `src/components/share` (excluding
-  `sender/`) and `src/app/(public)` and fails on a violation, plus the bare
-  `src/lib/share-grant.ts` file (the walker takes file roots too). The reused
-  matrix rows are deliberately inert here: `FlowsheetMatrix.onOpenBiomarker` is
-  omitted, so a row is text rather than a door into `/details` (the flowsheet
-  view passes the callback; `TimelineContent.onViewDetails` uses the same
-  "omitted ⇒ affordance hidden" convention).
+  (+ the reused `FlowsheetMatrix` and, in the full record, `TimelineContent`)
+  and is forbidden from importing `services/api.ts`, `lib/auth-token`,
+  `AuthProvider`, `QueryProvider`, `i18n/api-locale`, `next-auth` and
+  `recharts`. `src/components/share/__tests__/shared-surface-imports.test.ts`
+  **walks the real import graph** from the recipient's roots, resolving `@/`
+  and relative specifiers and following `import()` too, distinguishing the
+  EAGER graph from what is behind a lazy boundary. Two assertions come out of
+  that: nothing forbidden is statically reachable (the recipient's first load
+  cannot contain a write path), and the lazily-reachable forbidden edges are
+  pinned to an explicit allow-list so adding one is a deliberate edit. The
+  walk is why this section is trustworthy — a per-file grep passes the moment
+  the offending import sits one file further away, which is exactly how the
+  full record's first draft would have shipped `services/api` to a stranger
+  (through `entry-settings`) and `lib/auth-token` to every page that formatted
+  a date (through `lib/utils`). The reused matrix rows are deliberately inert
+  here: `FlowsheetMatrix.onOpenBiomarker` is omitted, so a row is text rather
+  than a door into `/details` (the flowsheet view passes the callback;
+  `TimelineContent.onViewDetails` uses the same "omitted ⇒ affordance hidden"
+  convention).
 - **Metadata and headers.** The page sets `robots: noindex, nofollow` and
   `referrer: no-referrer`; `src/app/robots.ts` disallows `/s/`; the API
   responses carry `Cache-Control: no-store` and `X-Robots-Tag`.
+- **The recipient's message subset (ST1, widened in ST2).** Recipient copy is
+  the `sharedView` catalog plus `statuses` (the flags block spells the status
+  out through `StatusBadge`, so colour is never the only channel — §4.4 /
+  WCAG 1.4.1), `misc.scaleNote`, and — because the full record renders the
+  owner's own components — the `timeline.*` namespaces those components call
+  (`views.timeline`, `historyList`, `flowsheet`, `resultsPanel`, `biomarker`,
+  `bloodTest`, `doctorVisit`, `instrumentalTest`, `entrySettings`) plus a
+  single `common.loading` key. That last one is pinned to exactly that key by
+  a test: the rest of `common` is the app's "Sign out / Save / Cancel"
+  vocabulary and has no business on a stranger's page.
+  `sharedViewMessages()` in `src/i18n/shared-messages.ts` builds that subset and
+  `src/i18n/__tests__/shared-messages.test.ts` pins the namespace set, so
+  widening it is a deliberate edit rather than an accident. The flags block is a
+  row grid at `≥md` (biomarker / latest / range / status) and stays a card stack
+  below; names and ranges WRAP there rather than truncating, because a clipped
+  "Gamma glutamyl transf…" is unrecoverable on touch and on paper and this block
+  is what a recipient prints. The value and the reference render at full
+  precision to match the print editor; "What changed" shows the last three
+  readings, each dated, with the direction of each step; and reading dates go
+  through `formatDay`, not `formatDate` — reading dates are wall-clock text
+  stored WITHOUT an offset, so `formatDay` anchors an offset-less string to UTC
+  before parsing (a bare midnight parsed locally and rendered in UTC slides to
+  the previous day east of UTC), while a string that carries an offset is left
+  as the instant it is.
 - **Locale.** Resolved by the shared route itself
   (`src/i18n/shared-locale.ts`): `?lang=` → the link's `default_locale` (the
   sender's per-link preset, S10) → `Accept-Language` → `NEXT_LOCALE` → `en`.
@@ -131,6 +165,102 @@ retries.
   model): the CTA counts the click via `GET /api/share/cta` (S13) and is
   `print:hidden`, the language switch is `print:hidden`, and the print editor
   is not reachable from this tree.
+
+### Two views, one route (ST2) — summary and full record
+
+The shared route serves ONE record in TWO presentations, chosen by the reader
+and carried in the URL: `?view=summary` (the default) and `?view=full`.
+
+- **`?view=` is the whole state machine.** `parseSharedView()` in
+  `src/lib/share.ts` is the only place a URL value becomes a view, and
+  anything unrecognised falls back to `summary` — the view that stands on its
+  own. The server component reads it, so `?view=full` renders the full record
+  in the FIRST PAINT with JavaScript disabled, and the same URL is what a
+  bookmark or a forwarded link contains. `sharedViewHref()` builds the links,
+  and it keeps `?lang=` alongside `?view=` — a reader who switched to the full
+  record and then changed language must not land back in the summary.
+- **The toggle is a plain link pair.** `ViewToggle` renders two `<a>` elements
+  — `<Summary | Full record>` are just links, so the control works before
+  hydration and with JavaScript off. With JavaScript the click is intercepted
+  and the view swaps in place: no refetch and no scroll reset, because the
+  record is already loaded and the flowsheet payload is owned by the shell
+  (`useSharedFlowsheet`, called from `SharedRecordView`) rather than by the
+  table component each view renders. `history.pushState` keeps the URL in
+  step; `pushState` rather than `replaceState` so Back returns to the view the
+  reader came from, and a `popstate` listener moves the view when the reader
+  uses it. Modified clicks (new tab, save link) are left to the browser.
+  (`next/link` is NOT banned from this tree — the language switch uses it. The
+  one plain-anchor rule is the footer CTA, and it exists for a different
+  reason: it points at an API redirect, and a router navigation there would
+  fire two requests and double the click counter. That rule is pinned by a
+  source check on `SharedRecordView.tsx`, not by the import-graph test.)
+- **Where the toggle sits.** Above `lg` the chrome is a sticky 280px rail in
+  the first grid column; below `lg` the same elements are a sticky strip at
+  the top. It is ONE markup tree: the chrome container is `display: contents`
+  under `lg`, so its children join the page flow and the strip's
+  `position: sticky` resolves against the page rather than against a short
+  wrapper. Rendering the chrome twice and hiding one copy with CSS would put
+  two language switches and two toggles in the DOM — invisible to the eye, not
+  to a screen reader or a test. The container also measures itself into
+  `--chrome-h`, which is what the stacked full view's event switcher pins
+  under.
+- **`views/timeline-content.tsx` is the extracted body.** `TimelineContent`
+  (the history list + detail panes) moved out of `views/TimelineView.tsx`,
+  which keeps only the authed chrome (HeaderBar, NavBar, ShareNotice) and
+  re-exports for its existing callers. This is not cosmetic: importing
+  `TimelineView` would drag next-auth and `ShareNotice` (which talks to the
+  write API) into a stranger's bundle. The moved module takes a `landmark`
+  prop (`main` by default, `div` from the full view) because the shared shell
+  already provides the page's `<main>` and a nested one is invalid HTML.
+- **The viewer capability replaces `isDemo`.** `src/providers/viewer-provider.tsx`
+  exposes `owner | demo | shared`; a component that hides a write affordance
+  asks which VIEWER it is under, not "is this the marketing page". Components
+  that ask: `entry-settings` (renders nothing for a recipient; the danger zone
+  and the entry id are the owner's), the three detail views (the document and
+  settings tabs are not built for a recipient), and `ExpandedBiomarkerDetails`
+  (no charts here; the correlation view is ST3's). Defaults are `owner`, so a
+  surface that forgets to wrap its tree keeps full behaviour rather than
+  silently losing affordances.
+- **The lazy boundaries are load-bearing, and pinned.** Several modules sit
+  behind a dynamic import so they stay out of the recipient's eager graph:
+  `entry-delete` (the only part of `entry-settings` that reaches the write API
+  and react-query's `useQueryClient`, which throws without a provider),
+  `@/lib/authed-documents` (imported inside `document-tab`'s handlers — it
+  holds the bearer-token document helpers split out of `lib/utils`), and the
+  chart modules. `lib/chart-series.tsx` gave up its one runtime recharts
+  import (`Curve`) to `lib/chart-line-shape.tsx`: the flowsheet matrix imports
+  that module for `coerceChartValue` alone, and the runtime import dragged
+  ~350 KB of recharts into the first paint of every page that renders the
+  matrix. Its remaining recharts import is `import type`, which TypeScript
+  erases — the walker ignores type-only edges for exactly that reason.
+- **The shared surface loads no charts at all.** Two changes get it there: the
+  expanded reading row no longer renders its trend chart for a recipient
+  (`ExpandedBiomarkerDetails` asks the capability; the heading, reference line
+  and chart travel together, because a "… Dynamics" heading over nothing is
+  worse than no block), and `SharedFlowsheet` passes `showTrend={false}` so the
+  matrix drops its sparkline column — `FlowsheetMatrix` gained that prop,
+  defaulting to `true`, and it removes one 80px grid track rather than leaving
+  a hole. Those two were the only recharts consumers on the page.
+- **Measured effect.** The shared page's first-paint script list went from
+  1,058 KB across 12 chunks to 797 KB across 14, the 354 KB recharts chunk is
+  in neither view's server-rendered HTML, and a live run of both views reports
+  **zero** nodes matching `[class*="recharts"]` — the charting library is not
+  fetched at all, not merely deferred.
+- **Layout checks.** No page-level horizontal overflow at 1024 / 1280 / 1440 /
+  1920 in either view. Inside the pane, the results table is the one place the
+  rail costs something: it takes 280px of the viewport, which leaves the
+  detail pane narrower than the owner's, and between `lg` (1024px) and about
+  1400px that pushed the table past its pane — at 1280 the table overflowed by
+  ~133px and the column that fell off the right edge was **Status**, the
+  clinically meaningful one. (Measured against `/demo`, which renders the same
+  `TimelineContent` + `ResultsPanel` without a rail: 0px of overflow at 1280,
+  against 133px here.) Narrowing the rail is not a fix — 200px still leaves
+  717px against a 768px table — so the width comes from the table:
+  `ResultsPanel` takes a `minTableWidth` whose default is the capability's
+  floor (768px for the owner, 620px for a recipient). The floor only binds
+  when the pane is narrower than it, so wider viewports are untouched. Below
+  `lg` the shared view is single-column and far wider, so the recipient's
+  floor binds only in this one band.
 
 ### Sender surfaces (Stage 2) — dialog, card, notice
 

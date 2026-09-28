@@ -36,8 +36,15 @@ from app.schemas import (
     MatrixCell,
     MatrixRow,
 )
+from app.services.reference import is_interpretable
 
 logger = logging.getLogger(__name__)
+
+# The value a cell carries when the biomarker was not measured in that column.
+# The frontend mirrors it (`EMPTY_CELL_VALUE` in flowsheet-matrix.tsx) and the
+# share surface has to tell it apart from a real reading, so it is a named
+# constant rather than a literal repeated per branch.
+EMPTY_CELL_VALUE = "—"
 
 router = APIRouter()
 
@@ -47,6 +54,7 @@ def _build_flowsheet(
     patient_id: str,
     date_range: Optional[DateRange] = None,
     exclude: Optional[tuple[str, ...]] = None,
+    mark_as_printed: bool = False,
 ):
     """Build the longitudinal table, optionally narrowed to a shared link's
     day window.
@@ -57,6 +65,11 @@ def _build_flowsheet(
     all derived from this one blood-test set. Applying a link's scope through
     the same helper the other builders use is what stops an exclusion from
     reaching four sections out of five.
+
+    ``mark_as_printed`` is the one flag the share read path sets: it makes an
+    uninterpretable cell neutral and marked (D13) instead of carrying the
+    status stored at save time. The authed route leaves it False, so its
+    payload is byte-for-byte what it always was.
     """
     blood_tests = _apply_share_scope(
         db.query(MedicalEntryModel)
@@ -99,7 +112,13 @@ def _build_flowsheet(
     }
 
     defn_by_id, defn_by_loinc = _resolve_flowsheet_definitions(db, patient_id, biomarker_readings_map)
-    matrix = _build_matrix(blood_tests, biomarker_readings_map, defn_by_id, defn_by_loinc)
+    matrix = _build_matrix(
+        blood_tests,
+        biomarker_readings_map,
+        defn_by_id,
+        defn_by_loinc,
+        mark_as_printed=mark_as_printed,
+    )
     biomarkers = _build_biomarker_rows(blood_tests, biomarker_readings_map, defn_by_id, defn_by_loinc)
 
     return date_headers, matrix, biomarkers
@@ -170,6 +189,7 @@ def _build_matrix(
     biomarker_readings_map: dict[str, dict[str, BiomarkerReading]],
     defn_by_id: dict,
     defn_by_loinc: dict,
+    mark_as_printed: bool = False,
 ) -> list[MatrixCategory]:
     entry_language = {bt.id: bt.source_language for bt in blood_tests}
     cat_rows: dict[str, list[MatrixRow]] = {}
@@ -184,7 +204,13 @@ def _build_matrix(
         # wins, even when later entries use a different unit / scale).
         canonical_unit = defn.canonical_unit or defn.unit
         cells = [
-            _matrix_cell(def_id, bt.id, biomarker_readings_map)
+            _matrix_cell(
+                def_id,
+                bt.id,
+                biomarker_readings_map,
+                defn,
+                mark_as_printed,
+            )
             for bt in blood_tests
         ]
         first_reading = next(
@@ -234,17 +260,38 @@ def _matrix_cell(
     def_id: str,
     entry_id: str,
     biomarker_readings_map: dict[str, dict[str, BiomarkerReading]],
+    defn: Optional[BiomarkerDefinitionModel] = None,
+    mark_as_printed: bool = False,
 ) -> MatrixCell:
     reading = biomarker_readings_map.get(entry_id, {}).get(def_id)
     if reading is None:
-        return MatrixCell(value="—", status="normal")
+        return MatrixCell(value=EMPTY_CELL_VALUE, status="normal")
     rv = reading_value(reading)
-    return MatrixCell(
-        value=str(rv) if rv is not None else "—",
+    cell = MatrixCell(
+        value=str(rv) if rv is not None else EMPTY_CELL_VALUE,
         status=reading.status,
         scale_function=reading.scale_function,
         needs_review=bool(reading.needs_review),
     )
+    # The "the app could not read this" marker (product plan D13) is decided
+    # HERE, where the reading is in hand, because the reference it must be
+    # judged against is the READING's own — the one ``compute_status`` used at
+    # save time. The row's ``reference`` is a single snapshot taken from the
+    # earliest reading in the row, so testing a later cell against it compares
+    # the wrong pair and neutralises statuses the app computed correctly
+    # (e.g. a numeric Bilirubin against an older free-text row reference).
+    #
+    # ``mark_as_printed`` is set by the share read path only, so the owner's
+    # payload keeps exactly the cells it had before.
+    if (
+        mark_as_printed
+        and defn is not None
+        and cell.status
+        and cell.value != EMPTY_CELL_VALUE
+        and not is_interpretable(cell.value, effective_reference(reading, defn))
+    ):
+        cell = cell.model_copy(update={"status": "", "as_printed": True})
+    return cell
 
 
 def _build_biomarker_rows(

@@ -184,6 +184,10 @@ export interface MatrixCell {
   // True when the LLM couldn't determine a cross-scale conversion. The
   // flowsheet cell still renders the raw value; the UI shows a warning.
   needs_review?: boolean
+  // True when the value is raw text from the source document that the app
+  // could not interpret (product plan D13). Only the public share surface
+  // sets it; the cell renders the printed value neutrally and marks it.
+  as_printed?: boolean
 }
 
 export interface MatrixRow {

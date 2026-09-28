@@ -1,13 +1,13 @@
 'use client'
 
 import { useMemo, useState, useSyncExternalStore } from 'react'
+import dynamic from 'next/dynamic'
 import { useLocale, useTranslations } from 'next-intl'
 import { Search, ChevronRight, ArrowDown, ArrowUp } from 'lucide-react'
 
 import { cn, formatNumber } from '@/lib/utils'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Sparkline } from '@/components/shared/Sparkline'
 import { ScaleNote } from '@/components/shared/ScaleNote'
 import { formatReference, isQualitative } from '@/lib/reference'
 import { coerceChartValue, chartReferenceBounds } from '@/lib/chart-series'
@@ -15,6 +15,22 @@ import { qualitativeLabel } from '@/lib/qualitative-labels'
 import { activateOnKey } from '@/lib/a11y'
 import { STATUS_TEXT_CLASS as statusText, isOutOfRange } from '@/lib/status-labels'
 import type { DateHeader, MatrixCategory, MatrixCell, BiomarkerResult } from '@/lib/types'
+
+/**
+ * The trend sparkline is the ONLY consumer of recharts in the whole flowsheet,
+ * and recharts is ~350 KB of the page's JavaScript. A static import here put
+ * that chunk in the first paint of every page that renders the matrix —
+ * including the public shared record, which a stranger opens on a phone. The
+ * dynamic boundary moves it to its own chunk, fetched once the matrix is
+ * actually on screen.
+ *
+ * `ssr: false` because the chart is a pure client concern; the server has
+ * nothing useful to render for a 30px sparkline.
+ */
+const Sparkline = dynamic(
+  () => import('@/components/shared/Sparkline').then((m) => m.Sparkline),
+  { ssr: false },
+)
 
 // Fixed frozen-column widths. The name column MUST be a fixed pixel width
 // (not minmax): the trend column's sticky `left` offset is a plain CSS
@@ -94,10 +110,25 @@ function Cell({ cell }: { cell: MatrixCell }) {
     <span
       className={cn(
         'flex items-center justify-end gap-1 pl-3 text-[13px] tabular-nums',
-        isOut ? cn('font-bold', statusText[cell.status]) : 'text-foreground',
+        // A reading the app could not interpret is shown exactly as it was
+        // printed, neutrally, with a marker: it is information the reader may
+        // use, not a claim the app is making (D13).
+        cell.as_printed
+          ? 'text-muted-foreground'
+          : isOut
+            ? cn('font-bold', statusText[cell.status])
+            : 'text-foreground',
       )}
-      title={cell.value}
+      title={cell.as_printed ? t('asPrintedValue') : cell.value}
+      aria-label={
+        cell.as_printed ? `${cell.value} — ${t('asPrintedValue')}` : undefined
+      }
     >
+      {cell.as_printed && (
+        <span aria-hidden className="text-[10px] leading-none">
+          *
+        </span>
+      )}
       {qualitativeLabel(formatNumber(cell.value), locale)}
       <ScaleNote
         className="ml-0.5"
@@ -115,6 +146,15 @@ interface FlowsheetMatrixProps {
   matrix: MatrixCategory[]
   biomarkers: BiomarkerResult[]
   /**
+   * The trend-sparkline column. ON by default, because it is part of the
+   * owner's flowsheet and /demo — and OFF on the public share surface, where
+   * these mini-charts are the ONLY consumer of recharts and recharts is
+   * ~350 KB on a page a stranger opens on a phone. The values, ranges and
+   * reading history are unaffected; only the sparkline column goes away, so
+   * the grid loses one 80px track.
+   */
+  showTrend?: boolean
+  /**
    * Row → full-details navigation. Omitted on the public share surface: a
    * recipient has no details route, so rows stay plain, readable text instead
    * of navigating into the app.
@@ -126,6 +166,7 @@ export function FlowsheetMatrix({
   dates,
   matrix,
   biomarkers,
+  showTrend = true,
   onOpenBiomarker,
 }: FlowsheetMatrixProps) {
   const t = useTranslations('timeline.flowsheet')
@@ -134,19 +175,26 @@ export function FlowsheetMatrix({
   const [query, setQuery] = useState('')
   const [range, setRange] = useState<RangePreset>('all')
 
+  // Only the public share surface marks cells as printed-from-source, and it
+  // does so only when the record actually contains such a value — so the
+  // legend explains a marker the reader can see, and the owner's flowsheet
+  // (which never sets it) gains no line it cannot use.
+  const hasAsPrinted = useMemo(
+    () => matrix.some((cat) => cat.rows.some((r) => r.cells.some((c) => c.as_printed))),
+    [matrix],
+  )
+
   const shownDates = useMemo(
     () => (range === 'all' ? dates : dates.slice(-range)),
     [dates, range],
   )
 
-  const gridTemplateCols = `${NAME_COL_PX}px ${TREND_COL_PX}px ${shownDates
-    .map(() => `minmax(${MIN_DATE_COL_PX}px, 1fr)`)
-    .join(' ')} 32px`
+  const trendColPx = showTrend ? TREND_COL_PX : 0
+  const gridTemplateCols = `${NAME_COL_PX}px ${
+    showTrend ? `${TREND_COL_PX}px ` : ''
+  }${shownDates.map(() => `minmax(${MIN_DATE_COL_PX}px, 1fr)`).join(' ')} 32px`
   const gridMinWidth =
-    NAME_COL_PX +
-    TREND_COL_PX +
-    shownDates.length * MIN_DATE_COL_PX +
-    32
+    NAME_COL_PX + trendColPx + shownDates.length * MIN_DATE_COL_PX + 32
   const GRID_COLS = 'items-center'
 
   const filtered = useMemo(() => {
@@ -178,6 +226,12 @@ export function FlowsheetMatrix({
             <span aria-hidden className="mr-1">{EMPTY_CELL_VALUE}</span>
             {t('legendNotMeasured')}
           </p>
+          {hasAsPrinted && (
+            <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+              <span aria-hidden className="mr-1">*</span>
+              {t('legendAsPrinted')}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {dates.length >= RANGE_PRESET_MIN_COLUMNS && (
@@ -264,12 +318,14 @@ export function FlowsheetMatrix({
             <span className="sticky left-0 z-20 flex items-center bg-muted pl-4">
               {t('colBiomarkerReference')}
             </span>
-            <span
-              className="sticky z-20 flex items-center bg-muted text-left"
-              style={{ left: NAME_COL_PX }}
-            >
-              {t('colTrend')}
-            </span>
+            {showTrend && (
+              <span
+                className="sticky z-20 flex items-center bg-muted text-left"
+                style={{ left: NAME_COL_PX }}
+              >
+                {t('colTrend')}
+              </span>
+            )}
             {shownDates.map((date, i) => {
               const { day, year } = splitDateLabel(date.label)
               const isLatest = i === shownDates.length - 1
@@ -319,7 +375,7 @@ export function FlowsheetMatrix({
                 <span className="sticky left-0 z-10 bg-secondary py-2 pl-4 text-xs font-bold uppercase tracking-wide text-secondary-foreground">
                   {cat.category}
                 </span>
-                <span className="bg-secondary" />
+                {showTrend && <span className="bg-secondary" />}
                 {shownDates.map((_, i) => (
                   <span key={i} className="bg-secondary" />
                 ))}
@@ -379,17 +435,19 @@ export function FlowsheetMatrix({
                         {row.original} · {referenceText}
                       </p>
                     </div>
-                    <div
-                      className="sticky z-10 bg-card transition-colors group-focus-visible:bg-muted/50 group-hover:bg-muted/50"
-                      style={{ left: NAME_COL_PX }}
-                    >
-                      <Sparkline
-                        id={row.id}
-                        history={history}
-                        refMin={bounds?.low ?? undefined}
-                        refMax={bounds?.high ?? undefined}
-                      />
-                    </div>
+                    {showTrend && (
+                      <div
+                        className="sticky z-10 bg-card transition-colors group-focus-visible:bg-muted/50 group-hover:bg-muted/50"
+                        style={{ left: NAME_COL_PX }}
+                      >
+                        <Sparkline
+                          id={row.id}
+                          history={history}
+                          refMin={bounds?.low ?? undefined}
+                          refMax={bounds?.high ?? undefined}
+                        />
+                      </div>
+                    )}
                     {cells.map((cell, i) => (
                       <Cell key={i} cell={cell} />
                     ))}
@@ -470,11 +528,15 @@ export function FlowsheetMatrix({
                               <p
                                 className={cn(
                                   'flex items-center justify-end gap-0.5 text-base font-bold tabular-nums',
-                                  isOutOfRange(latest.status)
-                                    ? statusText[latest.status]
-                                    : 'text-foreground',
+                                  latest.as_printed
+                                    ? 'font-medium text-muted-foreground'
+                                    : isOutOfRange(latest.status)
+                                      ? statusText[latest.status]
+                                      : 'text-foreground',
                                 )}
+                                title={latest.as_printed ? t('asPrintedValue') : undefined}
                               >
+                                {latest.as_printed && <span aria-hidden>*</span>}
                                 {qualitativeLabel(formatNumber(latest.value), locale)}
                                 {row.unit ? ` ${row.unit}` : ''}
                                 <ScaleNote
@@ -548,9 +610,15 @@ function NarrowValueChip({
         <span
           className={cn(
             'tabular-nums',
-            isOut ? cn('font-medium', statusText[cell.status]) : 'text-foreground',
+            cell.as_printed
+              ? 'text-muted-foreground'
+              : isOut
+                ? cn('font-medium', statusText[cell.status])
+                : 'text-foreground',
           )}
+          title={cell.as_printed ? t('asPrintedValue') : undefined}
         >
+          {cell.as_printed && <span aria-hidden>*</span>}
           {qualitativeLabel(formatNumber(cell.value), locale)}
           {unit ? ` ${unit}` : ''}
         </span>

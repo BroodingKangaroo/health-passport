@@ -2,7 +2,39 @@ import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ResultsPanel } from '../health-passport/results-panel'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
+import { ViewerProvider } from '@/providers/viewer-provider'
 import type { BiomarkerDefinition, BiomarkerResult, Reference } from '@/lib/types'
+
+/**
+ * The results table's width floor. The owner keeps the width the six columns
+ * were designed for; the shared surface narrows it so a recipient's pane — 280
+ * of the viewport belongs to the desktop rail — can still show the STATUS
+ * column without a horizontal scroll at laptop widths (ST2 review, F1).
+ */
+describe('ResultsPanel table floor', () => {
+  function floorFor(capability: 'owner' | 'shared') {
+    const { container } = render(
+      <TestI18nProvider>
+        <ViewerProvider capability={capability}>
+          <ResultsPanel
+            biomarkers={[makeBiomarker('hb', 'Hemoglobin')]}
+            labName="Lab"
+            date="2026-01-12"
+          />
+        </ViewerProvider>
+      </TestI18nProvider>,
+    )
+    return container.querySelector<HTMLElement>('div[style*="min-width"]')?.style.minWidth
+  }
+
+  it('keeps the owner at 768px', () => {
+    expect(floorFor('owner')).toBe('768px')
+  })
+
+  it('narrows the recipient to 620px', () => {
+    expect(floorFor('shared')).toBe('620px')
+  })
+})
 
 const renderI18n = ((ui: React.ReactElement, options?: Parameters<typeof render>[1]) =>
   render(<TestI18nProvider>{ui}</TestI18nProvider>, options)) as typeof render

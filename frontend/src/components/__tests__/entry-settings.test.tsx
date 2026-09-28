@@ -188,7 +188,7 @@ describe('EntrySettings', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /Delete this entry/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Delete this entry/ }))
 
     // Popover opens
     await waitFor(() => {
@@ -229,7 +229,7 @@ describe('EntrySettings', () => {
       </TestI18nProvider>,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /Delete this entry/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Delete this entry/ }))
     const confirmButton = await screen.findByTestId('delete-confirm-button')
     fireEvent.click(confirmButton)
 
@@ -260,7 +260,7 @@ describe('EntrySettings', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /Delete this entry/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Delete this entry/ }))
     const confirmButton = await screen.findByTestId('delete-confirm-button')
     fireEvent.click(confirmButton)
 
@@ -283,7 +283,7 @@ describe('EntrySettings', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /Delete this entry/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Delete this entry/ }))
     await screen.findByTestId('delete-confirm')
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 

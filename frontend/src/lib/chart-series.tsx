@@ -1,4 +1,9 @@
-import { Curve, type CurveProps } from 'recharts'
+
+// Type-only, and therefore erased at build time: recharts' prop types are
+// useful here, its ~350 KB implementation is not. The one runtime recharts
+// import this module used to carry (`Curve`) now lives in
+// `lib/chart-line-shape.tsx`, so importing this file does not pull the
+// charting library into a page that only needs `coerceChartValue`.
 import type { XAxisTickContentProps } from 'recharts'
 
 import { intervalBounds, isQualitative, qualitativeToNumber } from './reference'
@@ -36,14 +41,14 @@ export function chartReferenceBounds(
   return isQualitative(ref) ? { low: 0, high: 1 } : intervalBounds(ref)
 }
 
-const DAY = 86_400_000
+export const DAY = 86_400_000
 // Minimum mapped cost between two DISTINCT timestamps on the warped axis.
 // asinh makes a few-hours gap nearly free, which would stack genuinely
 // distinct points; one unit keeps a visible slot for every distinct reading.
 const MIN_STEP = 1
 // A distinct gap longer than this reads as an absent period, not a trend step:
 // its segment is dashed and annotated with the elapsed months.
-const LONG_GAP_DAYS = 60
+export const LONG_GAP_DAYS = 60
 // In the warped axis a gap costing less than a fraction of the total span will
 // not fit a full date label; those ticks drop to month granularity so thinning
 // keeps more of them. (Width-independent: ~8 full labels fit across the axis.)
@@ -298,111 +303,4 @@ export function dateTickRenderer(
     )
   }
   return DateTick
-}
-
-type LineShapeProps = CurveProps & {
-  animationElapsedTime?: unknown
-  isAnimating?: unknown
-  isEntrance?: unknown
-  visibleLength?: unknown
-}
-
-const SHAPE_STRIPPED_PROPS = new Set([
-  'points',
-  'pathRef',
-  'animationElapsedTime',
-  'isAnimating',
-  'isEntrance',
-  'visibleLength',
-  'className',
-])
-
-/**
- * Line `shape` factory for a warped axis: draws the curve in solid runs split
- * wherever a series' consecutive readings are more than `LONG_GAP_DAYS` apart,
- * with a dashed bridge plus an elapsed-months label across each such absence
- * so a multi-year leg is not read as a smooth trend. The elapsed time is
- * measured per series, not from the axis' `longGaps`: a sparse series can skip
- * several union rows (other series' dates) and still span a long absence.
- */
-export function gapAwareLineShape(opts: {
-  gapLabel: (months: number) => string
-  compact?: boolean
-}) {
-  // Named function declaration so the React lint rule sees a display name.
-  function GapAwareLine(props: LineShapeProps) {
-    type ShapePoint = { x: number | null; y: number | null; payload?: unknown }
-    const points = ((props.points ?? []) as ShapePoint[]).filter(
-      (p): p is ShapePoint & { x: number; y: number } =>
-        typeof p.x === 'number' && typeof p.y === 'number',
-    )
-    if (points.length < 2) return null
-    const pointEpoch = (point: ShapePoint) => {
-      const date = (point.payload as { date?: string } | undefined)?.date
-      return typeof date === 'string' ? readingEpoch(date) : Number.NaN
-    }
-    const runs: (ShapePoint & { x: number; y: number })[][] = []
-    const bridges: {
-      a: ShapePoint & { x: number; y: number }
-      b: ShapePoint & { x: number; y: number }
-      months: number
-    }[] = []
-    let current = [points[0]]
-    for (let i = 1; i < points.length; i++) {
-      const prev = points[i - 1]
-      const next = points[i]
-      // Dash whatever elapsed time the reader actually sees missing, not just
-      // the axis' own consecutive-row gaps: a sparse series can skip several
-      // union rows (other series' dates) and still span a long absence.
-      const elapsedDays = (pointEpoch(next) - pointEpoch(prev)) / DAY
-      if (Number.isFinite(elapsedDays) && elapsedDays > LONG_GAP_DAYS) {
-        bridges.push({
-          a: prev,
-          b: next,
-          months: Math.max(1, Math.round(elapsedDays / 30.44)),
-        })
-        runs.push(current)
-        current = [next]
-      } else {
-        current.push(next)
-      }
-    }
-    runs.push(current)
-
-    const className = props.className
-    const curveProps = Object.fromEntries(
-      Object.entries(props).filter(([key]) => !SHAPE_STRIPPED_PROPS.has(key)),
-    ) as CurveProps
-
-    const fs = opts.compact ? 8 : 10
-    return (
-      <g>
-        {runs.map((run, i) =>
-          run.length > 1 ? (
-            <Curve
-              key={`run-${i}`}
-              {...curveProps}
-              className={i === 0 ? className : undefined}
-              points={run}
-            />
-          ) : null,
-        )}
-        {bridges.map((bridge, i) => (
-          <g key={`gap-${i}`}>
-            <Curve {...curveProps} points={[bridge.a, bridge.b]} strokeDasharray="4 4" />
-            <text
-              x={(bridge.a.x + bridge.b.x) / 2}
-              y={(bridge.a.y + bridge.b.y) / 2 - (opts.compact ? 6 : 8)}
-              textAnchor="middle"
-              fill="#71717a"
-              fontSize={fs}
-            >
-              {opts.gapLabel(bridge.months)}
-            </text>
-          </g>
-        ))}
-      </g>
-    )
-  }
-  return GapAwareLine
 }

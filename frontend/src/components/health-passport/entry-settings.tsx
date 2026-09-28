@@ -1,35 +1,40 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
-import { useQueryClient } from '@tanstack/react-query'
 import {
   Settings,
-  Trash2,
   Calendar,
   FileText,
   Pill,
   ClipboardList,
   FlaskConical,
   CheckCircle,
-  AlertTriangle,
   Copy,
   HardDrive,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn, formatDate } from '@/lib/utils'
 import { TYPE_VISUALS } from '@/lib/event-visuals'
-import { useDemoMode } from '@/providers/demo-provider'
-import { deleteEntry } from '@/services/api'
+import { useViewer } from '@/providers/viewer-provider'
 import type {
   BiomarkerResult,
   MedicalEvent,
   Status,
   VisitData,
 } from '@/lib/types'
+
+// The danger zone is the only piece here that reaches the write API and
+// react-query, so it is loaded on demand (see entry-delete.tsx). Importing it
+// statically would put `services/api` in the shared recipient graph, which the
+// import-graph test forbids.
+const EntryDelete = dynamic(
+  () => import('./entry-delete').then((m) => m.EntryDelete),
+  { ssr: false },
+)
 
 interface EntrySettingsProps {
   event: MedicalEvent
@@ -112,16 +117,12 @@ export function EntrySettings({
   onDeleted,
 }: EntrySettingsProps) {
   const t = useTranslations('timeline.entrySettings')
-  const tc = useTranslations('common')
   const locale = useLocale()
-  const queryClient = useQueryClient()
-  // Demo fixture has nothing to delete — the danger zone is meaningless
-  // there and its button would fire a real API call for a nonexistent id.
-  const { isDemo } = useDemoMode()
-  const [confirmOpen, setConfirmOpen] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
+  // Which kind of viewer is this? The demo fixture has nothing to delete and
+  // a share recipient is reading someone else's record, so both hide the
+  // owner-only half. That half is the danger zone (a real write) and the
+  // entry id (a support/debugging handle, not information about the record).
+  const { isOwner, isShared } = useViewer()
 
   const attachments = useMemo(() => event.attachments ?? [], [event.attachments])
   const attachmentCount = attachments.length
@@ -162,48 +163,10 @@ export function EntrySettings({
     return key ? t(key) : event.type
   }, [event.type, t])
 
-  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Clean up a pending copy-timer so a late setCopied can't fire after
-  // unmount (ISSUES.md #75).
-  useEffect(() => {
-    return () => {
-      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current)
-    }
-  }, [])
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(event.id)
-      setCopied(true)
-      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current)
-      copyTimerRef.current = setTimeout(() => setCopied(false), 1500)
-    } catch {
-      /* clipboard may be blocked in some contexts; ignore */
-    }
-  }
-
-  const handleDelete = async () => {
-    setDeleting(true)
-    setError(null)
-    try {
-      await deleteEntry(event.id)
-      // Invalidate cached server state so the deletion is reflected
-      // everywhere immediately (the flowsheet caches for 5 min, so
-      // invalidating only ['timeline'] would serve the deleted entry).
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['timeline'] }),
-        queryClient.invalidateQueries({ queryKey: ['flowsheet'] }),
-        queryClient.invalidateQueries({ queryKey: ['biomarker-definitions'] }),
-      ])
-      setConfirmOpen(false)
-      onDeleted()
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : t('deleteFailed')
-      setError(msg)
-    } finally {
-      setDeleting(false)
-    }
-  }
+  // A recipient never sees this component's body: the shared full view drops
+  // the settings tab entirely. This guard is the second layer for the case
+  // where a future surface renders it over someone else's record.
+  if (isShared) return null
 
   return (
     <div className="space-y-6">
@@ -294,90 +257,71 @@ export function EntrySettings({
         </div>
       </div>
 
-      <Card className="p-6">
-        <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-          {t('technical')}
-        </h3>
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background p-3">
-          <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">{t('entryId')}</p>
-            <p className="truncate font-mono text-xs text-foreground">{event.id}</p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleCopy}
-            aria-label={t('copyIdAria')}
-          >
-            <Copy className="size-3.5" />
-            {copied ? t('copied') : t('copy')}
-          </Button>
-        </div>
-      </Card>
+      {/* The entry id is a support/debugging handle: it belongs to the owner,
+          and /demo shows it too — the marketing surface is meant to show the
+          product's real affordances, and only the DESTRUCTIVE one is demo-
+          gated. A recipient reading someone else's record gets neither. */}
+      {!isShared && <EntryTechnicalCard eventId={event.id} />}
 
-      {!isDemo && (
-        <div className="rounded-xl border border-status-high/30 bg-status-high/5 p-6">
-          <div className="mb-2 flex items-center gap-2">
-            <AlertTriangle className="size-4 text-status-high" />
-            <h3 className="text-sm font-semibold text-status-high">{t('dangerZone')}</h3>
-          </div>
-          <p className="mb-4 text-sm text-muted-foreground">
-            {t('dangerWarning')}
-          </p>
-          <Popover open={confirmOpen} onOpenChange={setConfirmOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="destructive" disabled={deleting}>
-                <Trash2 className="size-4" />
-                {t('deleteEntry')}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="start"
-              side="top"
-              className="w-80"
-              data-testid="delete-confirm"
-            >
-              <div className="space-y-3">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">
-                    {t('deleteConfirmTitle', { type: typeLabel.toLowerCase() })}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {event.title}
-                  </p>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {t('deleteConfirmBody')}
-                </p>
-                {error && (
-                  <p className="rounded-md border border-status-high/30 bg-status-high/10 px-2 py-1 text-xs text-status-high">
-                    {error}
-                  </p>
-                )}
-                <div className="flex justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setConfirmOpen(false)}
-                    disabled={deleting}
-                  >
-                    {tc('cancel')}
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={handleDelete}
-                    disabled={deleting}
-                    data-testid="delete-confirm-button"
-                  >
-                    {deleting ? t('deleting') : tc('delete')}
-                  </Button>
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
+      {isOwner && (
+        <EntryDelete
+          event={event}
+          typeLabel={typeLabel}
+          onDeleted={onDeleted}
+        />
       )}
     </div>
+  )
+}
+
+/**
+ * The owner's copy-the-entry-id card. Holds its own copy state so the
+ * component above stays a plain render of records and stats.
+ */
+function EntryTechnicalCard({ eventId }: { eventId: string }) {
+  const t = useTranslations('timeline.entrySettings')
+  const [copied, setCopied] = useState(false)
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Clean up a pending copy-timer so a late setCopied can't fire after
+  // unmount (ISSUES.md #75).
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current)
+    }
+  }, [])
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(eventId)
+      setCopied(true)
+      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard may be blocked in some contexts; ignore */
+    }
+  }
+
+  return (
+    <Card className="p-6">
+      <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+        {t('technical')}
+      </h3>
+      <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background p-3">
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground">{t('entryId')}</p>
+          <p className="truncate font-mono text-xs text-foreground">{eventId}</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleCopy}
+          aria-label={t('copyIdAria')}
+        >
+          <Copy className="size-3.5" />
+          {copied ? t('copied') : t('copy')}
+        </Button>
+      </div>
+    </Card>
   )
 }

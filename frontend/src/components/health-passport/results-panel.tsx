@@ -23,11 +23,31 @@ import {
 } from '@/lib/reference'
 import { qualitativeLabel } from '@/lib/qualitative-labels'
 import { activateOnKey } from '@/lib/a11y'
+import { useViewer } from '@/providers/viewer-provider'
 import { ExpandedBiomarkerDetails } from './expanded-biomarker-details'
 import type { BiomarkerResult, MergedSource, Status } from '@/lib/types'
 
 const GRID_COLS =
   'grid grid-cols-[1.5fr_1.5fr_1fr_1.3fr_1fr_1.2fr_40px] items-center gap-x-3'
+
+/** The owner's results table floor — the width the six columns were designed for. */
+export const OWNER_TABLE_MIN_WIDTH = 768
+
+/**
+ * The shared surface's floor. A recipient's detail pane is narrower than the
+ * owner's because the desktop rail takes 280px of the viewport, and between
+ * ~1024px and ~1400px the 768px floor pushed the table past its pane: at 1280
+ * it overflowed by ~133px, which cut the STATUS column — the clinically
+ * meaningful one — off the right edge behind a horizontal scroll. This floor
+ * is the widest the table can be and still fit a 1280px pane (≈635px once the
+ * page's scrollbar is taken); wider viewports are unaffected, because the
+ * floor only binds when the pane is narrower than it.
+ *
+ * Below `lg` the shared view is single-column and the pane is far wider, so
+ * this only ever binds in that one band. Narrowing the rail was tried and is
+ * not sufficient (200px still leaves 717px against a 768px table).
+ */
+export const SHARED_TABLE_MIN_WIDTH = 620
 
 type SortCol = 'name' | 'original' | 'value' | 'unit' | 'reference' | 'status'
 type SortDir = 'asc' | 'desc'
@@ -144,6 +164,7 @@ export function ResultsPanel({
   title,
   entryId,
   onViewDetails,
+  minTableWidth,
 }: {
   biomarkers: BiomarkerResult[]
   labName: string
@@ -157,12 +178,21 @@ export function ResultsPanel({
   // entry restores the sort its user left behind.
   entryId?: string
   onViewDetails?: (id: string) => void
+  /**
+   * Floor for the results table's width. Defaults to the owner's 768px, or to
+   * the narrower shared floor when a recipient is reading (see the constants
+   * below) — an override exists mostly so a test can pin either number.
+   */
+  minTableWidth?: number
 }) {
   const [query, setQuery] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [sortsByEntry, setSortsByEntry] = useState<Record<string, SortState | null>>({})
   const t = useTranslations('timeline.resultsPanel')
   const locale = useLocale()
+  const { isShared } = useViewer()
+  const tableMinWidth =
+    minTableWidth ?? (isShared ? SHARED_TABLE_MIN_WIDTH : OWNER_TABLE_MIN_WIDTH)
   const titleId = useId()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [hOverflow, setHOverflow] = useState({ right: false })
@@ -318,7 +348,7 @@ export function ResultsPanel({
           tabIndex={0}
           className="scrollbar-none h-full scroll-pt-10 overflow-auto"
         >
-        <div className="min-w-[768px]">
+        <div style={{ minWidth: tableMinWidth }}>
           <div
             className={cn(
               GRID_COLS,

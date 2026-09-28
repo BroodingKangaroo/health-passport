@@ -6,7 +6,7 @@ import { useLocale, useTranslations } from 'next-intl'
 import { FileText, Download, Printer } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { cn, fetchAuthedObjectUrl, printAuthedDocument } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import type { EventAttachment } from '@/lib/types'
 
 function ViewerLoadingFallback() {
@@ -47,6 +47,11 @@ export function DocumentTab({ attachments }: { attachments: EventAttachment[] })
 
   const handleDownload = useCallback(async (name: string, url: string) => {
     try {
+      // Loaded on demand: this module reaches the bearer token, and the shared
+      // (recipient) tree renders no attachments at all — keeping it off the
+      // static graph is what stops `lib/auth-token` entering a stranger's
+      // bundle. The import graph test pins this as a lazy boundary.
+      const { fetchAuthedObjectUrl } = await import('@/lib/authed-documents')
       const objectUrl = await fetchAuthedObjectUrl(url)
       const a = document.createElement('a')
       a.href = objectUrl
@@ -63,6 +68,9 @@ export function DocumentTab({ attachments }: { attachments: EventAttachment[] })
 
   const handlePrint = useCallback(async (url: string) => {
     try {
+      // See handleDownload: on demand, so the bearer token stays off the
+      // shared tree's static graph.
+      const { printAuthedDocument } = await import('@/lib/authed-documents')
       await printAuthedDocument(url)
     } catch (e) {
       console.error('Print failed', e)

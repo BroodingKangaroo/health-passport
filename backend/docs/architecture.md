@@ -178,6 +178,34 @@ tenant's data, and it is deliberately one code path.
   `canonical_unit_inferred` is dropped (owner-facing verification UI). Entry
   free-text `notes` are absent because the timeline payload shape never
   carried them.
+- **D13 on the read path — an uninterpretable reading asserts nothing**: the
+  flags rule ("only a reliable reading is a confident flag") originally covered
+  `needs_review` alone. The other case is a value the canonicaliser could not
+  read at all. Two shapes reach it, and they store DIFFERENT statuses: a
+  `см.комм.` ("see comment") remark against a free-text expectation compares
+  unequal to it and stores `abnormal`, while the same remark against
+  `{expected: null}` short-circuits to `normal` — a confident in-range result.
+  `reference.is_interpretable(value, reference)` answers whether the comparison
+  was between things the app knows: an interval and a value that IS a number; a
+  qualitative expectation that is a canonical term, with a value that is a
+  canonical term, a mapped spelling, a result glyph (`+`, `++`, `Trace`,
+  `следы` — a dipstick result is a measurement, not prose), or a number the
+  presence/absence bridge can place; or no expectation at all, in which case the
+  VALUE alone must be readable. Prose (multi-word, or carrying sentence
+  punctuation) is never interpretable. Because the stored status is computed at
+  SAVE time and is not recomputed on read, `_build_shared_record` and the shared
+  flowsheet apply the rule as a PRESENTATION step on the recipient's payload
+  only: an uninterpretable status travels as `""` (neutral, out of the flags and
+  out of the count) and a matrix cell additionally carries `as_printed: true` so
+  the table shows the printed value with a marker. The marker is decided inside
+  `flowsheet._matrix_cell`, against the READING's own `effective_reference` —
+  the pair `compute_status` actually used. The row's `reference` is a single
+  snapshot taken from the row's EARLIEST reading, so judging every cell against
+  it neutralises later cells the app read correctly (a numeric Bilirubin against
+  an older free-text row reference). `MatrixCell.as_printed` defaults to `False`
+  and is serialized only when true, so the owner's flowsheet payload carries no
+  such key at all; the share route opts in via
+  `_build_flowsheet(mark_as_printed=True)`.
 - **Scope (Stage 2, S5)**: a link's `scope` is either NULL — the whole record,
   reported as `{"kind": "all"}` — or `{"kind": "range", "from", "to"}` at
   whole-day granularity with either end optional. It is validated at create

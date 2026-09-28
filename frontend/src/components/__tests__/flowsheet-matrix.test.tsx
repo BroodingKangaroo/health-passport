@@ -139,6 +139,33 @@ describe('FlowsheetMatrix cells', () => {
     expect(screen.getByText('Absent')).toBeInTheDocument()
   })
 
+  it('marks a cell the app could not interpret as printed in the source (D13)', () => {
+    const printed: MatrixRow = {
+      ...makeRow('mucus', 'Mucus (urine)', []),
+      reference: { kind: 'qualitative', expected: 'отсут./незн.кол.' },
+      cells: [{ value: 'см.комм.', status: '', as_printed: true }],
+    }
+    renderI18n(
+      <FlowsheetMatrix
+        dates={dates}
+        matrix={makeMatrix([printed])}
+        biomarkers={[]}
+      />,
+    )
+
+    // Shown in full — a doctor can read what the lab printed — but neutral,
+    // marked, and explained by a legend that only appears when such a cell is
+    // actually present.
+    expect(screen.getByText('см.комм.')).toBeInTheDocument()
+    expect(screen.getByText('см.комм.')).toHaveClass('text-muted-foreground')
+    expect(screen.getByText('printed as in the source document')).toBeInTheDocument()
+    expect(
+      screen.getByLabelText(
+        'см.комм. — Printed as in the source document — the app could not interpret it',
+      ),
+    ).toBeInTheDocument()
+  })
+
   it('renders unknown-status values neutrally (no bold/red flag)', () => {
     const row: MatrixRow = {
       ...makeRow('unk', 'Unclassifiable', ['7.7']),

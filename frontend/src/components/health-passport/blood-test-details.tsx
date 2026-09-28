@@ -6,6 +6,7 @@ import { FlaskConical, Paperclip, Settings } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { TYPE_VISUALS } from '@/lib/event-visuals'
+import { useViewer } from '@/providers/viewer-provider'
 import { ResultsPanel } from './results-panel'
 import { EntrySettings } from './entry-settings'
 import { DocumentTab } from './document-tab'
@@ -32,6 +33,7 @@ export function BloodTestDetails({
   const te = useTranslations('timeline.entrySettings')
   const locale = useLocale()
   const TypeIcon = TYPE_VISUALS.blood_test.icon
+  const { isShared } = useViewer()
   const tabBaseId = useId()
   const [activeTab, setActiveTab] = useState<DetailTab>('results')
   const tabsRef = useRef<HTMLDivElement>(null)
@@ -71,11 +73,16 @@ export function BloodTestDetails({
     tabRefs.current[tab]?.scrollIntoView({ inline: 'nearest', block: 'nearest' })
   }, [])
 
-  const TABS: { id: DetailTab; label: string; icon: typeof FlaskConical }[] = [
-    { id: 'results', label: t('testResults'), icon: FlaskConical },
-    { id: 'document', label: t('documents', { count: attachments.length }), icon: Paperclip },
-    { id: 'settings', label: t('settings'), icon: Settings },
-  ]
+  // A share recipient gets the results only: the source document is not
+  // shared (attachments never travel) and the settings tab is the owner's.
+  // Rendering a tab that leads to nothing is worse than not rendering it.
+  const TABS: { id: DetailTab; label: string; icon: typeof FlaskConical }[] = isShared
+    ? [{ id: 'results', label: t('testResults'), icon: FlaskConical }]
+    : [
+        { id: 'results', label: t('testResults'), icon: FlaskConical },
+        { id: 'document', label: t('documents', { count: attachments.length }), icon: Paperclip },
+        { id: 'settings', label: t('settings'), icon: Settings },
+      ]
 
   return (
     <div className="flex h-full w-full min-h-0 flex-col gap-3 bg-background print:block print:h-auto">

@@ -11,6 +11,7 @@ import {
 
 import { cn } from '@/lib/utils'
 import { TYPE_VISUALS } from '@/lib/event-visuals'
+import { useViewer } from '@/providers/viewer-provider'
 import { EntrySettings } from './entry-settings'
 import { DocumentTab } from './document-tab'
 import type { InstrumentalData, MedicalEvent } from '@/lib/types'
@@ -24,6 +25,7 @@ export function InstrumentalTestDetails({
   data: InstrumentalData
   onDeleted?: () => void
 }) {
+  const { isShared } = useViewer()
   const t = useTranslations('timeline.instrumentalTest')
   const te = useTranslations('timeline.entrySettings')
   const TypeIcon = TYPE_VISUALS.instrumental_test.icon
@@ -63,30 +65,35 @@ export function InstrumentalTestDetails({
             <Activity className="size-4" />
             {t('summary')}
           </button>
-          <span className="text-sm text-muted-foreground/20">|</span>
-          <button
-            onClick={() => setActiveTab('document')}
-            className={
-              activeTab === 'document'
-                ? 'inline-flex items-center gap-1.5 text-sm font-semibold text-foreground'
-                : 'inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
-            }
-          >
-            <Paperclip className="size-4" />
-            {t('originalDocument', { count: data.attachments.length })}
-          </button>
-          <span className="text-sm text-muted-foreground/20">|</span>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={
-              activeTab === 'settings'
-                ? 'inline-flex items-center gap-1.5 text-sm font-semibold text-foreground'
-                : 'inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
-            }
-          >
-            <Settings className="size-4" />
-            {t('settings')}
-          </button>
+          {/* Share recipients get the summary only — see doctor-visit-details. */}
+          {!isShared && (
+            <>
+              <span className="text-sm text-muted-foreground/20">|</span>
+              <button
+                onClick={() => setActiveTab('document')}
+                className={
+                  activeTab === 'document'
+                    ? 'inline-flex items-center gap-1.5 text-sm font-semibold text-foreground'
+                    : 'inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
+                }
+              >
+                <Paperclip className="size-4" />
+                {t('originalDocument', { count: data.attachments.length })}
+              </button>
+              <span className="text-sm text-muted-foreground/20">|</span>
+              <button
+                onClick={() => setActiveTab('settings')}
+                className={
+                  activeTab === 'settings'
+                    ? 'inline-flex items-center gap-1.5 text-sm font-semibold text-foreground'
+                    : 'inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
+                }
+              >
+                <Settings className="size-4" />
+                {t('settings')}
+              </button>
+            </>
+          )}
         </div>
       </div>
 

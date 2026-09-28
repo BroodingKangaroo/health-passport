@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { DocumentTab } from '../health-passport/document-tab'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type { EventAttachment } from '@/lib/types'
@@ -9,8 +9,9 @@ const { printAuthedDocument, fetchAuthedObjectUrl } = vi.hoisted(() => ({
   fetchAuthedObjectUrl: vi.fn(),
 }))
 
-vi.mock('@/lib/utils', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/utils')>()
+vi.mock('@/lib/authed-documents', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/lib/authed-documents')>()
   return { ...actual, printAuthedDocument, fetchAuthedObjectUrl }
 })
 
@@ -73,23 +74,32 @@ describe('DocumentTab', () => {
     expect(screen.getByTestId('document-viewer')).toHaveAttribute('data-url', '/static/uploads/scan.png')
   })
 
-  it('renders print/download inside the viewer chrome and prints the active url', () => {
+  it('renders print/download inside the viewer chrome and prints the active url', async () => {
     renderI18n(<DocumentTab attachments={attachments} />)
 
     const viewer = screen.getByTestId('document-viewer')
     fireEvent.click(within(viewer).getByRole('button', { name: 'Print' }))
-    expect(printAuthedDocument).toHaveBeenCalledWith('/static/uploads/report.pdf')
+    // The authed-document helpers are imported ON DEMAND (see document-tab):
+    // keeping the bearer token off the shared tree's static graph makes the
+    // first click's call land a microtask later.
+    await waitFor(() =>
+      expect(printAuthedDocument).toHaveBeenCalledWith('/static/uploads/report.pdf'),
+    )
 
     fireEvent.click(screen.getByText('scan.png'))
     fireEvent.click(within(screen.getByTestId('document-viewer')).getByRole('button', { name: 'Print' }))
-    expect(printAuthedDocument).toHaveBeenLastCalledWith('/static/uploads/scan.png')
+    await waitFor(() =>
+      expect(printAuthedDocument).toHaveBeenLastCalledWith('/static/uploads/scan.png'),
+    )
   })
 
-  it('downloads the active attachment from the viewer chrome', () => {
+  it('downloads the active attachment from the viewer chrome', async () => {
     renderI18n(<DocumentTab attachments={attachments} />)
 
     fireEvent.click(within(screen.getByTestId('document-viewer')).getByRole('button', { name: 'Download' }))
-    expect(fetchAuthedObjectUrl).toHaveBeenCalledWith('/static/uploads/report.pdf')
+    await waitFor(() =>
+      expect(fetchAuthedObjectUrl).toHaveBeenCalledWith('/static/uploads/report.pdf'),
+    )
   })
 
   it('hides print/download and the viewer url for URL-less attachments', () => {

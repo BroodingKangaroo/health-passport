@@ -62,6 +62,7 @@ from app.schemas.share import (
     ShareUnlockResponse,
 )
 from app.services import share_links
+from app.services.reference import is_interpretable
 
 logger = logging.getLogger(__name__)
 
@@ -399,6 +400,62 @@ def _last_updated(db: Session, owner_id: str, fallback: datetime) -> datetime:
     return share_links.record_watermark(db, owner_id) or fallback
 
 
+# ── D13 on the read path ──────────────────────────────────────────────────
+#
+# The shared view's "Needs attention" block asserts that a reading is outside
+# its reference range, and product plan D13 says only a reliable reading may
+# make that claim. ``needs_review`` (a failed cross-scale conversion) was the
+# only case Stage 1 covered; the other one is a value the canonicaliser could
+# not interpret at all. Two shapes reach it: a ``см.комм.`` ("see comment")
+# remark against a free-text expected range, which ``compute_status`` stores as
+# "abnormal" because two unknown strings compare unequal, and the same remark
+# against ``{expected: null}``, which short-circuits to "normal" — a confident
+# in-range result built from a value nobody read.
+#
+# The status is computed and persisted at SAVE time (AGENTS.md), so this is a
+# presentation rule applied to the recipient's payload rather than a data
+# migration: the reading keeps its stored status everywhere else, and on this
+# surface it travels as the neutral unknown status and is marked as printed in
+# the source document. It still appears in the results table, in full.
+#
+# This helper covers the RECORD payload. The flowsheet's cells are marked where
+# the reading is in hand — ``flowsheet._matrix_cell`` with
+# ``mark_as_printed=True`` — because a flowsheet row's reference is a single
+# snapshot from its earliest reading and is the wrong pair for every later cell.
+
+
+def _share_status(value, reference, status: str) -> str:
+    """The status a shared reading is allowed to assert."""
+    if not status:
+        return status
+    return status if is_interpretable(value, reference) else ""
+
+
+def _share_reliable_result(result):
+    """One biomarker result with every uninterpretable status neutralised.
+
+    The latest reading and each history reading are treated alike: the trend
+    row reads the series, and a false "abnormal" in the middle of it is the
+    same wrong claim as one at the top.
+    """
+    history = [
+        reading.model_copy(
+            update={
+                "status": _share_status(
+                    reading.value, reading.reference, reading.status
+                )
+            }
+        )
+        for reading in result.history
+    ]
+    return result.model_copy(
+        update={
+            "status": _share_status(result.value, result.reference, result.status),
+            "history": history,
+        }
+    )
+
+
 def _build_shared_record(
     db: Session, context: share_links.ShareContext
 ) -> SharedRecordResponse:
@@ -411,7 +468,9 @@ def _build_shared_record(
     """
     date_range, exclude = _scope_context(context)
     biomarkers = [
-        SharedBiomarkerResult.model_validate(result.model_dump())
+        SharedBiomarkerResult.model_validate(
+            _share_reliable_result(result).model_dump()
+        )
         for result in _biomarkers_from_db(
             db,
             context.owner_id,
@@ -581,10 +640,22 @@ async def get_shared_flowsheet(
     the blood tests the record payload showed."""
     _no_store(response)
     date_range, exclude = _scope_context(context)
+    # ``mark_as_printed`` is what neutralises an uninterpretable cell. It is
+    # decided inside the builder, against the READING's own reference — the
+    # row's reference is one snapshot from the earliest reading and is the
+    # wrong pair for every later cell.
     dates, matrix, biomarkers = _build_flowsheet(
-        db, context.owner_id, date_range=date_range, exclude=exclude
+        db,
+        context.owner_id,
+        date_range=date_range,
+        exclude=exclude,
+        mark_as_printed=True,
     )
-    return FlowsheetResponse(dates=dates, matrix=matrix, biomarkers=biomarkers)
+    return FlowsheetResponse(
+        dates=dates,
+        matrix=matrix,
+        biomarkers=[_share_reliable_result(result) for result in biomarkers],
+    )
 
 
 def _link_summary(

@@ -6,6 +6,7 @@ import { SharedPasscodePrompt, SharedLoadError } from '@/components/share/Shared
 import { SharedRecordView } from '@/components/share/SharedRecordView'
 import { clearShareGrant, readShareGrant, storeShareGrant } from '@/lib/share-grant'
 import type { SharedRecord } from '@/lib/share'
+import type { SharedView } from '@/lib/share'
 import {
   fetchSharedRecord,
   SharedRecordError,
@@ -56,9 +57,13 @@ function initialGrant(token: string): string | null {
 export function SharedUnlockGate({
   token,
   locale,
+  initialView,
+  lang,
 }: {
   token: string
   locale: string
+  initialView?: SharedView
+  lang?: string
 }) {
   const [phase, setPhase] = useState<Phase>('prompt')
   const [record, setRecord] = useState<SharedRecord | null>(null)
@@ -132,7 +137,15 @@ export function SharedUnlockGate({
   )
 
   if (phase === 'record' && record) {
-    return <SharedRecordView token={token} record={record} locale={locale} />
+    return (
+      <SharedRecordView
+        token={token}
+        record={record}
+        locale={locale}
+        initialView={initialView}
+        lang={lang}
+      />
+    )
   }
   if (phase === 'error') return <SharedLoadError />
   if (phase === 'loading') {

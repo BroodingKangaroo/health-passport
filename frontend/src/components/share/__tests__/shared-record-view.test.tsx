@@ -9,6 +9,7 @@ import { SharedLoadError, SharedUnavailable } from '@/components/share/SharedSta
 import { sharedViewMessages } from '@/i18n/shared-messages'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type { SharedFlowsheet, SharedRecord } from '@/lib/share'
+import type { Status } from '@/lib/types'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
@@ -79,6 +80,46 @@ const record: SharedRecord = {
         },
       ],
       reference: { kind: 'interval', low: 12, high: 16 },
+    },
+    {
+      id: 'wbc',
+      entry_id: 'blood-jan',
+      definition: {
+        id: 'wbc',
+        names: { en: 'White Blood Cells', ru: 'Лейкоциты' },
+        synonyms: [],
+        unit: '10^9/L',
+        category: 'Complete Blood Count',
+        scope: 'global',
+        reference: { kind: 'interval', low: 4, high: 10 },
+        reference_source: 'global',
+      },
+      value: 6.1,
+      date: '2026-01-12T00:00:00+00:00',
+      status: 'normal',
+      history: [],
+      reference: { kind: 'interval', low: 4, high: 10 },
+    },
+    {
+      // A value the canonicaliser could not read: the backend sends it with an
+      // empty status, so it is neither a flag nor part of the count (D13).
+      id: 'mucus',
+      entry_id: 'blood-jan',
+      definition: {
+        id: 'mucus',
+        names: { en: 'Mucus (urine)', ru: 'Слизь' },
+        synonyms: [],
+        unit: '',
+        category: 'Urinalysis',
+        scope: 'global',
+        reference: { kind: 'qualitative', expected: 'отсут./незн.кол.' },
+        reference_source: 'global',
+      },
+      value: 'см.комм.',
+      date: '2026-01-12T00:00:00+00:00',
+      status: '',
+      history: [],
+      reference: { kind: 'qualitative', expected: 'отсут./незн.кол.' },
     },
     {
       id: 'tsh',
@@ -207,7 +248,91 @@ describe('SharedRecordView', () => {
   it('shows the trend series for a flagged biomarker', () => {
     renderView()
     expect(screen.getByRole('heading', { name: 'What changed' })).toBeInTheDocument()
-    expect(screen.getByText('13.4 → 11.8 → 10.2')).toBeInTheDocument()
+    // Each point carries its own date: a bare chain of numbers with one date
+    // under it tells a reader nothing about when anything happened.
+    for (const value of ['13.4', '11.8', '10.2']) {
+      expect(screen.getByText(value)).toBeInTheDocument()
+    }
+    expect(screen.getByText('May 5, 2025')).toBeInTheDocument()
+    expect(screen.getByText('Oct 15, 2025')).toBeInTheDocument()
+    expect(screen.getByText('Jan 12, 2026')).toBeInTheDocument()
+    // Direction between the points, with no good/bad colouring.
+    expect(screen.getAllByLabelText(/measured/).length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('says the status in words, never colour alone (WCAG 1.4.1)', () => {
+    renderView()
+    const flags = screen
+      .getByRole('heading', { name: 'Needs attention' })
+      .closest('section')!
+    const row = within(flags).getByText('Hemoglobin').closest('li')!
+    // The word is visible next to the number…
+    expect(within(row).getByText('Low')).toBeInTheDocument()
+    // …and rides with the number for a screen reader.
+    const value = within(row).getByText('10.2 g/dL')
+    expect(value).toHaveAttribute('aria-label', '10.2 g/dL — Low')
+    // The high TSH was not standardised, so it is not a flag at all.
+    expect(screen.queryByText('9.9 mIU/L')).not.toBeInTheDocument()
+  })
+
+  it('states how many readings are outside the reference range', () => {
+    renderView()
+    // hb (low) and wbc (normal) are the two the app could actually evaluate;
+    // the needs_review TSH and the unreadable "см.комм." are neither counted
+    // as abnormal nor used to pad the denominator.
+    expect(screen.getByTestId('shared-flag-count')).toHaveTextContent(
+      '1 of 2 readings is outside the reference range',
+    )
+  })
+
+  it('keeps a value it cannot interpret out of the flags entirely', () => {
+    renderView()
+    expect(screen.queryByText('см.комм.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Mucus (urine)')).not.toBeInTheDocument()
+  })
+
+  it('caps the trend at the last three dated readings', () => {
+    const dated = (date: string, value: number, status: Status) => ({
+      entry_id: 'blood-x',
+      date,
+      value,
+      status,
+    })
+    const longSeries: SharedRecord = {
+      ...record,
+      biomarkers: [
+        {
+          ...record.biomarkers[0],
+          history: [
+            dated('2024-01-01T00:00:00+00:00', 4.2, 'normal'),
+            dated('2024-03-01T00:00:00+00:00', 4.63, 'normal'),
+            dated('2024-05-01T00:00:00+00:00', 4.65, 'normal'),
+            dated('2024-07-01T00:00:00+00:00', 4.92, 'normal'),
+            dated('2024-09-01T00:00:00+00:00', 4.37, 'low'),
+            dated('2024-11-01T00:00:00+00:00', 4.93, 'normal'),
+            dated('2025-01-01T00:00:00+00:00', 5.27, 'normal'),
+          ],
+          value: 5.06,
+        },
+      ],
+    }
+    render(
+      <TestI18nProvider locale="en">
+        <SharedRecordView token="hp_test" record={longSeries} locale="en" />
+      </TestI18nProvider>,
+    )
+    for (const shown of ['4.93', '5.27', '5.06']) {
+      expect(screen.getByText(shown)).toBeInTheDocument()
+    }
+    for (const hidden of ['4.2', '4.63', '4.65', '4.92']) {
+      expect(screen.queryByText(hidden)).not.toBeInTheDocument()
+    }
+  })
+
+  it('spells the date of birth out in the reader’s locale', () => {
+    renderView()
+    expect(screen.getByText('Date of birth Jan 1, 1990')).toBeInTheDocument()
+    expect(screen.queryByText('1990-01-01')).not.toBeInTheDocument()
   })
 
   it('lists the non-lab history with its conclusion and recommendations', () => {
@@ -264,8 +389,11 @@ describe('SharedRecordView', () => {
     const group = screen.getByRole('group', { name: 'Язык' })
     const english = within(group).getByRole('link', { name: 'Английский' })
     const russian = within(group).getByRole('link', { name: 'Русский' })
-    expect(english).toHaveAttribute('href', '/s/hp_test?lang=en')
-    expect(russian).toHaveAttribute('href', '/s/hp_test?lang=ru')
+    // The language links carry the current view as well as the language: a
+    // reader who switched to the full record and then changed language must
+    // land back in the full record, not in the summary.
+    expect(english).toHaveAttribute('href', '/s/hp_test?lang=en&view=summary')
+    expect(russian).toHaveAttribute('href', '/s/hp_test?lang=ru&view=summary')
     // The active option is the currently resolved locale...
     expect(russian).toHaveAttribute('data-state', 'active')
     expect(english).toHaveAttribute('data-state', 'idle')
@@ -291,7 +419,9 @@ describe('SharedRecordView', () => {
 
   it('renders the same record in Russian chrome', () => {
     renderView('ru')
-    expect(screen.getByText('Требует внимания')).toBeInTheDocument()
+    // `getByRole('heading')`: the rail's section nav legitimately repeats each
+    // section title as a link, so the bare text is ambiguous by design.
+    expect(screen.getByRole('heading', { name: 'Требует внимания' })).toBeInTheDocument()
     expect(screen.getByText(/Обновлено/)).toBeInTheDocument()
     // The persisted Russian name is used as-is (the public view must never
     // trigger a translation run): it appears in the flag card and the trend.

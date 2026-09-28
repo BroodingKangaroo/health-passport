@@ -31,6 +31,43 @@ export const SHARE_GRANT_STORAGE_KEY = 'hp.share.grant'
 export type ShareEntryType = 'blood_test' | 'doctor_visit' | 'instrumental_test' | 'procedure'
 
 /**
+ * The two views of one shared record (shared-view plan §1).
+ *
+ * `summary` is the short clinical read and the default; `full` is the record
+ * the way its owner sees it, read-only. The choice lives in the URL — never a
+ * cookie, never `localStorage` — so a recipient can bookmark it, send it on,
+ * and print it, and so the server can render the right view on first paint
+ * with JavaScript disabled.
+ */
+export type SharedView = 'summary' | 'full'
+
+export const SHARED_VIEW_PARAM = 'view'
+
+/** The URL's `?view=` value → the view to render. Anything unknown is the default. */
+export function parseSharedView(raw: string | string[] | undefined | null): SharedView {
+  const value = Array.isArray(raw) ? raw[0] : raw
+  return value === 'full' ? 'full' : 'summary'
+}
+
+/**
+ * A link to one view of a shared record, keeping the language choice.
+ *
+ * The view is written explicitly (`?view=summary` as well as `?view=full`) so
+ * a URL copied out of the address bar always says which view it opens — the
+ * default is decided by `parseSharedView`, not by the absence of the key.
+ */
+export function sharedViewHref(
+  token: string,
+  view: SharedView,
+  lang?: string | null,
+): string {
+  const params = new URLSearchParams()
+  if (lang) params.set('lang', lang)
+  params.set(SHARED_VIEW_PARAM, view)
+  return `/s/${token}?${params.toString()}`
+}
+
+/**
  * The four types a sender may exclude, in canonical order. The dialog renders
  * one checkbox each and the card reads the stored list back in words; the
  * backend refuses anything else, so this list is the vocabulary, not a
@@ -183,13 +220,88 @@ export type ShareLinkState = 'active' | 'expired' | 'revoked'
 
 /**
  * The "Needs attention" set: out-of-range AND reliable. A reading the app
- * could not standardise (`needs_review`) is never presented as a confident
- * flag — it still appears in the full table (D13).
+ * could not standardise (`needs_review`) or could not interpret at all (the
+ * backend sends it with an empty status — a `см.комм.`-style remark) is never
+ * presented as a confident flag. It still appears in the full table (D13).
  */
 export function flaggedBiomarkers(biomarkers: BiomarkerResult[]): BiomarkerResult[] {
   return biomarkers
     .filter((b) => isOutOfRange(b.status) && !b.needs_review)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+}
+
+/**
+ * The readings the summary line counts: the ones the app actually evaluated.
+ *
+ * A reading the app could not interpret carries a status of `""` (the backend
+ * neutralises it on the shared read path), and one that failed scale
+ * conversion carries `needs_review`. Neither is "in range" — they are
+ * unknown, and counting them in the denominator would inflate the reassurance
+ * the line gives.
+ */
+export function evaluableBiomarkers(biomarkers: BiomarkerResult[]): BiomarkerResult[] {
+  return biomarkers.filter((b) => b.status !== '' && !b.needs_review)
+}
+
+/** "N of M readings are outside the reference range" — counts, never a trend. */
+export function flagCounts(biomarkers: BiomarkerResult[]): {
+  outOfRange: number
+  total: number
+} {
+  const evaluable = evaluableBiomarkers(biomarkers)
+  return {
+    outOfRange: evaluable.filter((b) => isOutOfRange(b.status)).length,
+    total: evaluable.length,
+  }
+}
+
+export interface TrendPoint {
+  value: number | string | null
+  date: string
+  status: string
+}
+
+/**
+ * The tail of a biomarker's series, oldest first, always ending on the latest
+ * reading. The plan asks for "the last two or three values with direction";
+ * the chart-less summary renders three, each with its own date, because a
+ * chain of eight numbers with one date under it tells a reader nothing about
+ * when anything happened.
+ */
+export function trendPoints(biomarker: BiomarkerResult, limit = 3): TrendPoint[] {
+  const series: TrendPoint[] = [
+    ...(biomarker.history ?? []).map((reading) => ({
+      value: reading.value,
+      date: reading.date,
+      status: reading.status,
+    })),
+    { value: biomarker.value, date: biomarker.date, status: biomarker.status },
+  ]
+  return series.slice(-limit)
+}
+
+export type TrendDirection = 'up' | 'down' | 'flat'
+
+/** The step from one reading to the next, or null when it is not a number. */
+export function trendDirection(
+  from: number | string | null,
+  to: number | string | null,
+): TrendDirection | null {
+  const a = asNumber(from)
+  const b = asNumber(to)
+  if (a === null || b === null) return null
+  if (b > a) return 'up'
+  if (b < a) return 'down'
+  return 'flat'
+}
+
+function asNumber(value: number | string | null): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'string') {
+    const n = Number(value.trim())
+    return value.trim() !== '' && Number.isFinite(n) ? n : null
+  }
+  return null
 }
 
 /**

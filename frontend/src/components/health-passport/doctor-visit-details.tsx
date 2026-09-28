@@ -16,6 +16,7 @@ import {
 
 import { cn } from '@/lib/utils'
 import { TYPE_VISUALS } from '@/lib/event-visuals'
+import { useViewer } from '@/providers/viewer-provider'
 import { EntrySettings } from './entry-settings'
 import { DocumentTab } from './document-tab'
 import type { VisitData } from '@/lib/types'
@@ -24,6 +25,7 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
   const t = useTranslations('timeline.doctorVisit')
   const te = useTranslations('timeline.entrySettings')
   const TypeIcon = TYPE_VISUALS.doctor_visit.icon
+  const { isShared } = useViewer()
   const [activeTab, setActiveTab] = useState<'summary' | 'document' | 'settings'>('summary')
   const [showOriginal, setShowOriginal] = useState(false)
 
@@ -64,30 +66,38 @@ export function DoctorVisitDetails({ visit, entryId, onDeleted }: { visit: Visit
             <FileText className="size-4" />
             {showOriginal ? t('originalSummary') : t('translatedSummary')}
           </button>
-          <span className="text-sm text-muted-foreground/20">|</span>
-          <button
-            onClick={() => setActiveTab('document')}
-            className={
-              activeTab === 'document'
-                ? 'inline-flex items-center gap-1.5 text-sm font-semibold text-foreground'
-                : 'inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
-            }
-          >
-            <Paperclip className="size-4" />
-            {t('originalDocument', { count: visit.attachments.length })}
-          </button>
-          <span className="text-sm text-muted-foreground/20">|</span>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={
-              activeTab === 'settings'
-                ? 'inline-flex items-center gap-1.5 text-sm font-semibold text-foreground'
-                : 'inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
-            }
-          >
-            <Settings className="size-4" />
-            {t('settings')}
-          </button>
+          {/* A share recipient gets the summary only: the source document is
+              not shared (attachments never travel) and the settings tab is
+              the owner's. Rendering a tab that leads to nothing is worse than
+              not rendering it. */}
+          {!isShared && (
+            <>
+              <span className="text-sm text-muted-foreground/20">|</span>
+              <button
+                onClick={() => setActiveTab('document')}
+                className={
+                  activeTab === 'document'
+                    ? 'inline-flex items-center gap-1.5 text-sm font-semibold text-foreground'
+                    : 'inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
+                }
+              >
+                <Paperclip className="size-4" />
+                {t('originalDocument', { count: visit.attachments.length })}
+              </button>
+              <span className="text-sm text-muted-foreground/20">|</span>
+              <button
+                onClick={() => setActiveTab('settings')}
+                className={
+                  activeTab === 'settings'
+                    ? 'inline-flex items-center gap-1.5 text-sm font-semibold text-foreground'
+                    : 'inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground'
+                }
+              >
+                <Settings className="size-4" />
+                {t('settings')}
+              </button>
+            </>
+          )}
         </div>
 
         {activeTab === 'summary' && (
