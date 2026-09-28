@@ -21,7 +21,9 @@ import {
   LANG_NAME,
   SOURCE_LANG_EN,
   SOURCE_LANG_RU,
+  DOCUMENT_PROVENANCE,
   formatDob,
+  formatIsoDate,
   formatToday,
   genderLabel,
   TABLE_HEADINGS,
@@ -50,6 +52,7 @@ export function PrintEditor({
   bilingual,
   onBack,
   patient = null,
+  provenance = null,
 }: {
   dates: DateHeader[]
   matrix: MatrixCategory[]
@@ -58,6 +61,14 @@ export function PrintEditor({
   bilingual: boolean
   onBack: () => void
   patient?: CurrentUser | null
+  /**
+   * Set only for a document printed from a SHARED record (ST4, plan §4): it
+   * adds the block that says where the sheet came from, how long the link
+   * keeps working, and that it is not a diagnosis. Paper escapes revocation,
+   * so the printed page has to carry what the link cannot. The owner's own
+   * passport passes nothing and its output is unchanged.
+   */
+  provenance?: { expiresAt?: string | null } | null
 }) {
   const t = useTranslations('print.editor')
   const {
@@ -668,6 +679,27 @@ export function PrintEditor({
                 ? `${headings.note} / ${TABLE_HEADINGS.ru.note}`
                 : headings.note}
             </p>
+
+            {/* Provenance for a shared document (ST4, §4). Rendered inside
+                the paper, not the screen chrome, so it survives printing and
+                is what a colleague holding the sheet can read. */}
+            {provenance ? (
+              <div
+                data-testid="print-provenance"
+                className="mt-4 space-y-0.5 border-t border-gray-400 pt-2 text-gray-600"
+              >
+                <p className="font-medium">{DOCUMENT_PROVENANCE[lang].sharedVia}</p>
+                {provenance.expiresAt ? (
+                  <p>
+                    {DOCUMENT_PROVENANCE[lang].accessUntil.replace(
+                      '{date}',
+                      formatIsoDate(provenance.expiresAt, lang),
+                    )}
+                  </p>
+                ) : null}
+                <p>{DOCUMENT_PROVENANCE[lang].notDiagnosis}</p>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

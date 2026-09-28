@@ -855,9 +855,29 @@ async def translate_biomarker_names(
     unique_items = list({item_id: name for item_id, name in to_translate}.items())
     # Names and categories share one batched call: the chunk/retry machinery is
     # id-based, so categories just join under their synthetic ids.
-    combined = _translate_names_to_lang(
-        [*unique_items, *cat_items], payload.lang, client, glossary=glossary
+    #
+    # The call MUST run off the event loop (ST4 review, F1). The Mistral SDK is
+    # synchronous and its client is configured with a 300 s timeout, so calling
+    # it from an `async def` route parks the loop for the whole batch: while one
+    # translation is in flight the process answers nothing — no health check,
+    # no other user's request, and not even SIGTERM, because the signal handler
+    # cannot run either. That is the same reason `/api/extract` runs its OCR and
+    # LLM work in an executor (see `run_in_executor` below in that handler).
+    #
+    # Only the SDK call moves. The SQLAlchemy session stays on the request path
+    # and is never touched from the worker thread, so no session is shared
+    # across threads; everything the call needs (the cleaned items, the
+    # language, the client, the glossary) is a plain value captured before the
+    # hop.
+    def _translate_in_thread() -> dict[str, str]:
+        return _translate_names_to_lang(
+            [*unique_items, *cat_items], payload.lang, client, glossary=glossary
+        )
+
+    combined = await asyncio.get_running_loop().run_in_executor(
+        None, _translate_in_thread
     )
+
     defn_ids = {item_id for item_id, _name in unique_items}
     translated = {k: v for k, v in combined.items() if k in defn_ids}
     cleaned_by_cat_id = {

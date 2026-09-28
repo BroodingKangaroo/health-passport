@@ -7,10 +7,11 @@ vocabulary. ``meta`` and ``header`` are the only additions; they are what the
 recipient's orientation strip renders.
 """
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from app.schemas.ai import TranslateResponse
 from app.schemas.biomarker import BiomarkerDefinition, BiomarkerResult
 from app.schemas.common import TimelineResponse
 
@@ -37,6 +38,12 @@ class ShareRecordMeta(BaseModel):
     # {"kind": "all"} or {"kind": "range", "from": ..., "to": ...}
     scope: dict
     default_locale: Optional[str] = None
+    # The link's remaining AI translation runs (ST4, plan §5). Reported here so
+    # the recipient's print setup can say how many are left BEFORE spending
+    # one, without a second round trip; the translate response carries the
+    # updated count after a run.
+    translation_remaining: int = 0
+    translation_budget: int = 0
 
 
 class ShareRecordHeader(BaseModel):
@@ -104,6 +111,32 @@ class ShareUnlockResponse(BaseModel):
 
     grant: str
     expires_at: str
+
+
+class ShareTranslateRequest(BaseModel):
+    """A recipient's request to translate the record's own terminology.
+
+    The body carries the target language and NOTHING else. The owner's
+    endpoint takes a list of biomarker names from the client; here the server
+    derives the list from the link's own record (`_build_flowsheet` under the
+    link's scope), which is what bounds an LLM batch to "the biomarkers in
+    this record" by construction rather than by validating whatever a public
+    caller chose to send (ST4, and the Stage 3 review's catch in reverse).
+    """
+
+    lang: Literal["de", "fr", "es", "he", "pl", "ru"]
+
+
+class ShareTranslateResponse(TranslateResponse):
+    """The owner's response shape plus the link's remaining budget.
+
+    ``translations`` / ``categories`` are byte-identical to
+    ``/api/translate-biomarkers`` so the print setup's review dialog reads
+    both sources with one code path; ``remaining`` is what lets the UI say how
+    many runs are left without asking again.
+    """
+
+    remaining: int = 0
 
 
 class ShareLinkCreateRequest(BaseModel):
@@ -199,6 +232,8 @@ __all__ = [
     "ShareNoticeResponse",
     "ShareRecordHeader",
     "ShareRecordMeta",
+    "ShareTranslateRequest",
+    "ShareTranslateResponse",
     "ShareUnlockRequest",
     "ShareUnlockResponse",
     "SharedBiomarkerDefinition",

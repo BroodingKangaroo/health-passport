@@ -155,9 +155,12 @@ tenant's data, and it is deliberately one code path.
   stranger who finds a dead token learns nothing about what it was. Both
   public GETs depend on it, so no public endpoint can read owner data without
   passing through it.
-- **The public ENDPOINTS are GET-only, with no tenant id and no overrides**:
+- **The public READS are GET-only, with no tenant id and no overrides**:
   they take no `patient_id`, no scope, no `include_*` and no `format`; every
-  choice is read from the link row. The module also carries the owner routes
+  choice is read from the link row. Two public routes are POSTs and neither
+  reads owner data: `POST /api/share/unlock` mints a grant (Stage 4, S15) and
+  `POST /api/share/translate` spends the link's translation budget (ST4).
+  The module also carries the owner routes
   (`POST /api/share/links`, `…/{id}/revoke`, `…/revoke-all`, plus
   `GET /api/share/notice` and `POST /api/share/notice/ack`), which authenticate
   normally and are unreachable with only a share token. No existing router
@@ -298,6 +301,76 @@ tenant's data, and it is deliberately one code path.
   sender switched off, so no builder calls the two helpers separately. The
   authed routes pass no range and no exclusions, so their behaviour is
   unchanged; `meta.scope` and the create response report the canonical list.
+- **The recipient's AI translation budget (ST4, plan §5)**: giving a stranger
+  the print flow means giving them an LLM-backed feature, which is the one
+  part of this surface that costs money per use. Three rules bound it, all in
+  `POST /api/share/translate`:
+
+  1. **The payload is derived server-side.** The body carries the target
+     language and nothing else. `_share_translate_targets` rebuilds the link's
+     OWN flowsheet (same builders, same scope) and translates exactly its
+     rows, so "bounded to the record" is structural rather than a validation
+     of whatever a public caller sent. That is the Stage 3 review's
+     "171 referenced, not the 1500-entry dictionary" bound, enforced where it
+     cannot be bypassed.
+  2. **The budget lives on the link**: `share_links.translate_runs_used` +
+     `SHARE_TRANSLATION_BUDGET = 3`, reserved by ONE conditional UPDATE
+     (`spend_translation_run`, `used < budget` in the WHERE clause) so two
+     concurrent runs cannot both pass the last unit, and released by
+     `refund_translation_run` when the model produced nothing.
+     `meta.translation_remaining` / `meta.translation_budget` report it BEFORE
+     a run is spent; the translate response reports the updated count.
+     Exhaustion is a
+     429 with a localized detail (`share.translation_limit_reached`) — the
+     reader is told to ask for a new link, because registering is not a remedy
+     a stranger has and the owner's `ai.translation_limit_reached` text would
+     be a dead end.
+  3. **It is its own bucket.** No `UsageLimit` row is read or written on this
+     path: a recipient's run cannot decrement the owner's allowance and cannot
+     be charged to an anonymous session (a recipient has no session to charge).
+
+  The route derives a response byte-identical to `/api/translate-biomarkers`
+  (`translations` + `categories` + `source` classifications) plus `remaining`,
+  so the reused print-setup review dialog reads both sources through one code
+  path. It writes NOTHING to the record: no `names[lang]` (a recipient's
+  accepted terms live in memory for that document only) and no
+  `category_translation_cache` — an anonymous principal seeding headings every
+  other user's render then trusts is exactly what ISSUES.md #33 forbids. A run
+  with no LLM work (every name already persisted, every heading already
+  cached) is free and spends no budget; a run with no `MISTRAL_API_KEY`
+  returns the English fallback without spending one, because a call that can
+  never run must not be charged.
+
+  **The SDK call runs in a thread executor** (`run_in_executor`, the same
+  pattern `/api/extract` uses for its OCR and LLM work — ST4 review, F1). The
+  Mistral SDK is synchronous with a 300 s client timeout, so awaiting it inline
+  in an `async def` handler parked the event loop for the whole batch: one
+  in-flight translation answered nothing else on the process — not
+  `/openapi.json`, not another reader's request, not even SIGTERM, because the
+  signal handler is a loop callback. One unauthenticated request could wedge
+  the backend, the owner's app included. `/api/translate-biomarkers` had the
+  same shape and was fixed with it. Only the SDK call moves: the SQLAlchemy
+  session stays on the request path and is never touched from the worker
+  thread, and every argument is a plain value captured before the hop. The
+  budget semantics are unchanged — the run is reserved before the call, and an
+  exception from the executor refunds it before propagating. So does a
+  CANCELLATION (`asyncio.CancelledError`, which is a `BaseException` and
+  therefore needs naming explicitly): the thread hop is what makes that
+  reachable at all, since a client disconnect or a graceful shutdown cancels
+  the request while the worker thread is still inside the uncancellable call,
+  and nobody receives that answer. Measured live: a SIGTERM sent 1 s into a
+  translation closed the listening socket at t+3 s, the process exited at
+  t+6 s, and the link's counter was back to 0 afterwards. The owner's route
+  needs no equivalent refund — its quota increment is flushed but never
+  committed, so a cancelled request rolls it back when the session closes.
+
+  Two accepted limitations of the budget, recorded rather than fixed: a run
+  reserved before a process death mid-call is lost (the counter is on the row
+  and nothing sweeps it — a startup sweep keyed on a reserved-at timestamp is
+  the eventual shape), and the FastAPI request-validation path (422) answers
+  with the framework's English blob and none of the public headers, which is
+  pre-existing and app-wide (reproduced on `/api/share/unlock`), not
+  share-specific.
   Excluding `blood_test` empties the biomarker lists, the trends and the
   flowsheet, which is why the dialog warns before it happens.
 - **Passcode protection (Stage 4, S15)**: the create body may carry

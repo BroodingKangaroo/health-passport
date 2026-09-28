@@ -20,6 +20,7 @@ export function sharedViewMessages(locale: AppLocale): Record<string, unknown> {
   const timeline = catalog.timeline as Record<string, unknown> | undefined
   const misc = catalog.misc as Record<string, unknown> | undefined
   const common = catalog.common as Record<string, unknown> | undefined
+  const print = catalog.print as Record<string, unknown> | undefined
   const views = timeline?.views as Record<string, unknown> | undefined
   return {
     // The recipient's own chrome and the three states of the link.
@@ -43,8 +44,10 @@ export function sharedViewMessages(locale: AppLocale): Record<string, unknown> {
       instrumentalTest: timeline?.instrumentalTest,
       entrySettings: timeline?.entrySettings,
     },
-    // ScaleNote, the reused "converted / not standardised" marker.
-    misc: { scaleNote: misc?.scaleNote },
+    // ScaleNote, the reused "converted / not standardised" marker, and the
+    // leave guard the reused print-setup screen arms while a translation is
+    // in flight.
+    misc: { scaleNote: misc?.scaleNote, leaveGuard: misc?.leaveGuard },
     // The correlation section of the full record (ST3). The chart is the
     // app's own `CorrelationChart`, so its copy arrives with the namespaces
     // it actually calls: `correlation` is its own strings and `charts` is the
@@ -53,6 +56,16 @@ export function sharedViewMessages(locale: AppLocale): Record<string, unknown> {
     // of recharts the reader has not asked for yet.
     correlation: catalog.correlation,
     charts: catalog.charts,
+    // The recipient's print flow (ST4): the app's own print-setup screen, its
+    // review dialog and its print editor, reused over the share payload. Only
+    // the three namespaces those components call — `print.view` and
+    // `print.editorView` belong to the app's route wrappers, which the shared
+    // flow does not render.
+    print: {
+      setup: print?.setup,
+      review: print?.review,
+      editor: print?.editor,
+    },
     // One word: TimelineContent's loading line. The shared record is passed in
     // as a prop and never loads, so this branch does not render — but shipping
     // the key means it degrades to the real string rather than a raw key if

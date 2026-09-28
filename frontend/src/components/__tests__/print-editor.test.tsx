@@ -134,6 +134,7 @@ function PrintEditorInit(props: {
   bilingual: boolean
   onBack: () => void
   patient?: CurrentUser | null
+  provenance?: { expiresAt?: string | null } | null
   compactNumbers?: boolean
 }) {
   const { initFilters, setCompactNumbers } = usePrintConfig()
@@ -154,6 +155,7 @@ function renderEditor(props?: {
   matrix?: MatrixCategory[]
   biomarkers?: BiomarkerResult[]
   patient?: CurrentUser | null
+  provenance?: { expiresAt?: string | null } | null
   compactNumbers?: boolean
 }) {
   const dates = props?.dates ?? mockDates
@@ -168,6 +170,7 @@ function renderEditor(props?: {
         lang={props?.lang ?? 'en'}
         bilingual={props?.bilingual ?? false}
         patient={props?.patient ?? null}
+        provenance={props?.provenance ?? null}
         compactNumbers={props?.compactNumbers}
         onBack={vi.fn()}
       />
@@ -176,6 +179,44 @@ function renderEditor(props?: {
 }
 
 describe('PrintEditor', () => {
+  describe('provenance for a document printed from a shared record (ST4)', () => {
+    it('prints where the sheet came from, how long the link works and that it is not a diagnosis', () => {
+      renderEditor({
+        provenance: { expiresAt: '2026-09-22T10:00:00+00:00' },
+      })
+      const block = screen.getByTestId('print-provenance')
+      expect(block.textContent).toContain('Shared via HealthPassport')
+      // The expiry is rendered in the DOCUMENT's date format, not ISO.
+      expect(block.textContent).toContain('09.22.2026')
+      expect(block.textContent).toContain('not a medical diagnosis')
+    })
+
+    it('renders in the document language, not the UI locale', () => {
+      renderEditor({
+        lang: 'de',
+        provenance: { expiresAt: '2026-09-22T10:00:00+00:00' },
+      })
+      const block = screen.getByTestId('print-provenance')
+      expect(block.textContent).toContain('Geteilt über HealthPassport')
+      // The document's own date convention (the same one the DOB and
+      // "Generated" lines use), not the UI locale's.
+      expect(block.textContent).toContain('09.22.2026')
+      expect(block.textContent).toContain('keine medizinische Diagnose')
+    })
+
+    it('omits the expiry line when the link has none, and the block entirely for the owner', () => {
+      const { unmount } = renderEditor({ provenance: {} })
+      const block = screen.getByTestId('print-provenance')
+      expect(block.textContent).not.toContain('Link access until')
+      expect(block.textContent).toContain('Shared via HealthPassport')
+      unmount()
+
+      // The owner's own passport prints exactly as it did before ST4.
+      renderEditor()
+      expect(screen.queryByTestId('print-provenance')).toBeNull()
+    })
+  })
+
   it('renders all date columns in the table header', () => {
     renderEditor()
     expect(screen.getAllByText('10.08.2024').length).toBeGreaterThan(0)

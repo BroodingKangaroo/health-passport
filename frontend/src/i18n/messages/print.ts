@@ -31,6 +31,15 @@ export const printMessages = {
           pl: 'Polish',
         },
         cachedNotice: 'Already translated — regenerated instantly at no AI cost.',
+        // The recipient's per-link translation budget (shared-view plan ST4,
+        // §5). Rendered only on the shared surface: the owner's print flow is
+        // bounded by the app's usage limits instead, and says so through the
+        // API's own message. `budgetExhausted` is the block itself, so it
+        // names the remedy rather than only the refusal.
+        budgetRemaining:
+          '{count, plural, one {# AI translation left for this document} other {# AI translations left for this document}}',
+        budgetExhausted:
+          'No AI translations left for this document. Ask the person who shared it for a new link.',
         translating: 'Translating terminology… {elapsed}s',
         generate: 'Generate Document',
         leaveGuard:
@@ -136,6 +145,10 @@ export const printMessages = {
           pl: 'Польский',
         },
         cachedNotice: 'Уже переведено — документ собран мгновенно и без затрат на ИИ.',
+        budgetRemaining:
+          '{count, plural, one {Остался # ИИ-перевод для этого документа} few {Осталось # ИИ-перевода для этого документа} many {Осталось # ИИ-переводов для этого документа} other {Осталось # ИИ-перевода для этого документа}}',
+        budgetExhausted:
+          'ИИ-переводы для этого документа закончились. Попросите того, кто поделился записью, отправить новую ссылку.',
         translating: 'Переводим терминологию… {elapsed} с',
         generate: 'Создать документ',
         leaveGuard:

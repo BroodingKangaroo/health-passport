@@ -10,6 +10,11 @@ export const shareMessages = {
         body: 'Anyone with this link can view your record until it expires. You can revoke it at any time. The link always shows your record as it is now.',
         warning:
           'Anyone who has the link can open it, including anyone it gets forwarded to. It stops working on the expiry date or as soon as you revoke it.',
+        // Printing travels with the same sentence as the expiry (ST4): a
+        // printed sheet is the one output a revoked link cannot take back, so
+        // the sender hears it here rather than discovering it afterwards.
+        printWarning:
+          'The recipient can also print a copy, and a printed copy keeps working after the link expires or is revoked.',
         scope: 'What to share',
         scopeAll: 'Whole record',
         scopeRange: 'Date range',
@@ -111,6 +116,8 @@ export const shareMessages = {
         body: 'Любой, у кого есть эта ссылка, увидит вашу карту, пока не истечёт её срок. Отозвать ссылку можно в любой момент. По ссылке всегда видна текущая версия карты.',
         warning:
           'Ссылку сможет открыть любой, кому она попадёт в руки, в том числе при пересылке. Она перестанет работать в день истечения срока или сразу после отзыва.',
+        printWarning:
+          'Получатель может распечатать копию, и распечатанная копия продолжит действовать после того, как ссылка истечёт или будет отозвана.',
         scope: 'Что показывать',
         scopeAll: 'Всю карту',
         scopeRange: 'Диапазон дат',

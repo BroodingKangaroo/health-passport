@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -50,6 +50,11 @@ SHARE_EXPIRY_DAYS_ANONYMOUS = (1, 7)
 # page is the same visit, and the counter exists to answer "did anyone look,
 # and did they come back".
 SHARE_OPEN_DEBOUNCE_SECONDS = 300
+# How many AI translation runs a recipient may spend through one link (ST4,
+# plan §5). A share link has no UsageLimit row and no identity, so the budget
+# lives on the link: a stranger gets a small, visible allowance, and the thing
+# that bounds total spend is that creating links requires an owner session.
+SHARE_TRANSLATION_BUDGET = 3
 # Funnel events (S1) — sender actions only, never per recipient.
 FUNNEL_LINK_CREATED = "link_created"
 FUNNEL_LINK_REVOKED = "link_revoked"
@@ -368,6 +373,10 @@ class ShareContext:
     # True when the link carries a passcode. The hash itself stays out of the
     # context: the read path only ever needs the boolean and the grant check.
     requires_passcode: bool = False
+    # How many AI translation runs this link has left (ST4). Resolved with the
+    # rest of the link so the record payload can report the budget without a
+    # second query on every read.
+    translation_remaining: int = 0
 
 
 def record_watermark(db: Session, owner_id: str) -> Optional[datetime]:
@@ -486,6 +495,7 @@ def context_from_link(link: ShareLink) -> ShareContext:
         created_at=link.created_at,
         expires_at=link.expires_at,
         requires_passcode=bool(link.passcode_hash),
+        translation_remaining=translation_remaining(link),
     )
 
 
@@ -588,6 +598,68 @@ def _mark_opened_once(db: Session, link_id: str) -> bool:
     if updated:
         db.commit()
     return bool(updated)
+
+
+def translation_remaining(link: ShareLink) -> int:
+    """How many AI translation runs this link still has.
+
+    Read straight off the row; the caller is holding it already (the record
+    payload reports the budget, the print flow shows it before spending one).
+    """
+    used = link.translate_runs_used or 0
+    return max(SHARE_TRANSLATION_BUDGET - used, 0)
+
+
+def spend_translation_run(db: Session, link_id: str) -> tuple[bool, int]:
+    """Reserve one translation run, atomically. Returns
+    ``(reserved, remaining)``.
+
+    One conditional UPDATE (``used < budget``), the same pattern as
+    ``check_and_record_ai_usage``: two concurrent runs cannot both pass the
+    last unit, because the predicate and the increment are the same statement.
+    A recipient's run is charged to the LINK, never to the owner's or an
+    anonymous principal's ``UsageLimit`` — there is no UsageLimit row in this
+    path at all (shared-view plan §5).
+
+    ``remaining`` alone cannot answer "did I get the last unit" (a budget of
+    one succeeds and still reports zero left), so the rowcount is returned
+    with it.
+    """
+    result = db.execute(
+        update(ShareLink)
+        .where(
+            ShareLink.id == link_id,
+            ShareLink.translate_runs_used < SHARE_TRANSLATION_BUDGET,
+        )
+        .values(translate_runs_used=ShareLink.translate_runs_used + 1)
+    )
+    reserved = bool(result.rowcount)
+    db.commit()
+    used = (
+        db.query(ShareLink.translate_runs_used)
+        .filter(ShareLink.id == link_id)
+        .scalar()
+        or 0
+    )
+    return reserved, max(SHARE_TRANSLATION_BUDGET - used, 0)
+
+
+def refund_translation_run(db: Session, link_id: str) -> None:
+    """Give back a run that was reserved but produced nothing.
+
+    The LLM can fail after the reservation (no key, or a total failure), and a
+    failed run must not cost the recipient one of their three. A conditional
+    decrement, so concurrent refunds can never drive the counter negative.
+    """
+    db.execute(
+        update(ShareLink)
+        .where(
+            ShareLink.id == link_id,
+            ShareLink.translate_runs_used > 0,
+        )
+        .values(translate_runs_used=ShareLink.translate_runs_used - 1)
+    )
+    db.commit()
 
 
 def list_owner_links(db: Session, owner_id: str) -> list[ShareLink]:

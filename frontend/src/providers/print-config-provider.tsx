@@ -62,7 +62,22 @@ interface PrintConfigContextValue extends PrintConfigState {
 
 export const PrintConfigContext = createContext<PrintConfigContextValue | null>(null)
 
-export function PrintConfigProvider({ children }: { children: ReactNode }) {
+export function PrintConfigProvider({
+  children,
+  persist = true,
+}: {
+  children: ReactNode
+  /**
+   * Whether pending category translations are mirrored into `sessionStorage`.
+   *
+   * True for the owner — a refresh while preparing a document should not lose
+   * the headings it just translated. False for a recipient (ST4): nothing
+   * about a stranger's visit is stored, and the in-memory state is enough
+   * because the print flow is one tree — the setup and the editor stages are
+   * state, not a navigation, so the provider never unmounts between them.
+   */
+  persist?: boolean
+}) {
   const [mode, setMode] = useState<Mode>('original')
   const [targetLanguage, setTargetLanguageState] = useState<PrintLang>('en')
   const [layout, setLayout] = useState<'portrait' | 'landscape'>('portrait')
@@ -77,12 +92,16 @@ export function PrintConfigProvider({ children }: { children: ReactNode }) {
   // stored map synchronously instead of in an effect.
   const [hydratedLang, setHydratedLang] = useState<PrintLang>(targetLanguage)
   const [categoryTranslations, setCategoryTranslationsState] =
-    useState<CategoryTranslations>(() => readStoredTranslations(targetLanguage))
+    useState<CategoryTranslations>(() =>
+      persist ? readStoredTranslations(targetLanguage) : {},
+    )
   const [suppressSavedTranslations, setSuppressSavedTranslations] =
     useState(false)
   if (hydratedLang !== targetLanguage) {
     setHydratedLang(targetLanguage)
-    setCategoryTranslationsState(readStoredTranslations(targetLanguage))
+    setCategoryTranslationsState(
+      persist ? readStoredTranslations(targetLanguage) : {},
+    )
     setSuppressSavedTranslations(false)
   }
 
@@ -95,6 +114,7 @@ export function PrintConfigProvider({ children }: { children: ReactNode }) {
       setCategoryTranslationsState(map)
       // A successful run supersedes any prior failure suppression.
       setSuppressSavedTranslations(false)
+      if (!persist) return
       try {
         sessionStorage.setItem(categoryStorageKey(targetLanguage), JSON.stringify(map))
       } catch {
@@ -102,7 +122,7 @@ export function PrintConfigProvider({ children }: { children: ReactNode }) {
         // covers navigation into the editor.
       }
     },
-    [targetLanguage],
+    [targetLanguage, persist],
   )
 
   const initFilters = useCallback((dates: string[], biomarkers: string[]) => {

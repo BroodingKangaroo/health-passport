@@ -127,6 +127,12 @@ retries.
   single `common.loading` key. That last one is pinned to exactly that key by
   a test: the rest of `common` is the app's "Sign out / Save / Cancel"
   vocabulary and has no business on a stranger's page.
+  **ST4** adds the print flow's three namespaces — `print.setup`,
+  `print.review`, `print.editor` — because the recipient renders the app's own
+  print screens; `print.view` and `print.editorView` stay out, since those
+  belong to the authed route wrappers the shared flow does not render. It also
+  adds `misc.leaveGuard`, which the reused provider that guards an in-flight
+  translation calls.
   `sharedViewMessages()` in `src/i18n/shared-messages.ts` builds that subset and
   `src/i18n/__tests__/shared-messages.test.ts` pins the namespace set, so
   widening it is a deliberate edit rather than an accident. The flags block is a
@@ -332,6 +338,85 @@ timeline and the table, so it is not buried under the ~9,000px matrix.
   presses "Even spacing". That is a preference on the recipient's own machine,
   written only in response to their click; the shared surface still sets no
   cookie and keeps no view state outside the URL.
+
+### The recipient's print flow (ST4) — the passport, over a share
+
+What the owner calls "printing" is the app's own print flow (`/print-setup` →
+`/print-editor`), not `window.print()` of the page. A recipient reaches the
+same flow, and the whole point is that it is the same flow: the document a
+doctor produces is the document the record's owner would produce.
+
+- **Where it starts.** A Print button in the shared chrome — the same single
+  markup tree at both breakpoints, so it is in the first viewport on a phone
+  and in the rail on a desktop — present in BOTH views, because a doctor who
+  wants a sheet should not have to know which view they are looking at.
+- **The state is the URL**, like the view toggle: `?print=setup` and
+  `?print=editor` (`parseSharedPrint`, `SHARED_PRINT_PARAM` in
+  `src/lib/share.ts`), composed with `?lang=` and `?view=`. Back steps out of
+  the flow, and a reload or a forwarded URL lands on the same STEP. **Only the
+  step is in the URL**: the print CONFIGURATION — mode, target language,
+  layout, text size, and the column/biomarker selections — lives in
+  `PrintConfigProvider` state, so reloading `?print=editor` renders the
+  document with the defaults (found in the ST4 review: a reader who picked
+  *Translate to… German*, reloaded, and landed back on *Keep Original*, with
+  the untranslated document and no error). Putting the configuration in the
+  URL is a recorded follow-up, deliberately not done here. Closing the flow
+  drops only `print`, so the reader returns to the view they left.
+- **One lazy boundary.** `SharedRecordView` reaches
+  `components/share/SharedPrintFlow.tsx` through `next/dynamic`, and the flow
+  reaches the setup screen and the editor statically from there. Measured on a
+  production build: 14 chunks before the Print click, and exactly ONE more
+  (`2seauikxxzc0c.js`) after it, carrying the whole print slice — no recharts
+  chunk either side. `shared-surface-imports.test.ts` pins
+  `SharedPrintFlow` / `SharedPrintEditor` / `print-setup` / `print-editor` as
+  lazily-reachable and NOT eager, so a static import anywhere in the shared
+  tree fails the suite.
+- **`PrintSource` — the seam that makes the reuse possible**
+  (`src/providers/print-source-provider.tsx`). `print-setup.tsx` no longer
+  imports `services/api`: it asks the context for `fetchFlowsheet`,
+  `translate`, an optional `commit` and `enterEditor`. The owner's
+  implementation (`print-source-owner.tsx`, imported only by `PrintSetupView`)
+  calls the authed endpoints; the recipient's
+  (`components/share/share-print-source.ts`) calls `/api/share/flowsheet` and
+  `/api/share/translate`. That is why the shared tree can render the app's own
+  setup screen without dragging `services/api` into a stranger's bundle — and
+  why `print-setup`'s **budget line** can be shared by both: only the
+  recipient's source reports a `remaining` count.
+- **The editor container is the only new component**
+  (`components/share/SharedPrintEditor.tsx`): `PrintEditor` itself is reused
+  unchanged. The container supplies the share payload, selects every column
+  and biomarker up front (the owner's `PrintEditorView` does that after its
+  fetch; without it the recipient's document opened reading "Select at least
+  one date column" over an empty table — found live in a production build),
+  merges the terms accepted in the review dialog into the document's
+  definitions IN MEMORY (there is nowhere to persist them, and nothing a
+  stranger does may be written into someone else's record), and passes
+  `provenance`.
+- **Provenance on the paper** (`DOCUMENT_PROVENANCE` in
+  `src/lib/print-document.ts`, rendered by `print-editor.tsx`): "Shared via
+  HealthPassport", the link's expiry in the DOCUMENT's language, and the
+  not-a-diagnosis line, printed inside the document rather than the screen
+  chrome. A printed sheet is the one output that escapes revocation, so it
+  has to carry what the link cannot. The owner's own passport passes no
+  `provenance` and its output is byte-identical to before.
+- **`PrintConfigProvider` takes `persist`** (default `true` for the owner).
+  The recipient's flow mounts it with `persist={false}`, so the reused
+  provider's `sessionStorage` mirror of category headings is not written for a
+  stranger; setup and editor are two stages of ONE tree, so the in-memory copy
+  survives the switch.
+- **The recipient's print source posts the language and nothing else.** The
+  body is `{lang}` — the names and headings are derived server-side from the
+  link's own record — so a public caller cannot widen the LLM batch. The
+  X-Share-Token / X-Share-Grant pair travels in headers, and `Accept-Language`
+  carries the recipient's chosen locale so the budget refusal is localized.
+- **The budget is visible before it is spent** (`print.translation.budget*`):
+  "N AI translations left for this document", from `meta.translation_remaining`
+  in the record payload; a spent budget renders "No AI translations left for
+  this document. Ask the person who shared it for a new link." IN PLACE of the
+  generic failure toast, and the reader stays on the setup screen — navigating
+  to an untranslated document would look like a translation bug. The flow
+  mounts its own `Toaster`, because the recipient's page has no app shell and
+  the setup screen reports failures as toasts.
 
 ### Sender surfaces (Stage 2) — dialog, card, notice
 

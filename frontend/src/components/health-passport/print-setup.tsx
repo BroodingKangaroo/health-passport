@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { Languages, FileOutput, ChevronDown, LoaderCircle } from 'lucide-react'
@@ -11,10 +10,9 @@ import { Button } from '@/components/ui/button'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
 import { useLeaveGuard } from '@/providers/leave-guard-provider'
 import {
-  fetchFlowsheetData,
-  translateBiomarkerNames,
-  commitTranslatedNames,
-} from '@/services/api'
+  PrintTranslationLimitError,
+  usePrintSource,
+} from '@/providers/print-source-provider'
 import type { PrintLang, TranslateLang } from '@/lib/types'
 import {
   TranslationPreviewDialog,
@@ -35,14 +33,34 @@ const TARGETS: { id: PrintLang }[] = [
 
 const MODES: Mode[] = ['original', 'translate', 'bilingual']
 
-export function PrintSetup() {
+export function PrintSetup({
+  initialTranslationRemaining = null,
+  onTranslationRemaining,
+}: {
+  /**
+   * How many AI translation runs this document has left, shown BEFORE the
+   * reader spends one (shared-view plan §5). `null` — the owner's own flow —
+   * means "not metered here": the app's usage limits apply instead, and the
+   * setup screen stays silent about them.
+   */
+  initialTranslationRemaining?: number | null
+  /**
+   * Reports the count a run came back with, so the caller can keep showing the
+   * authoritative number when this component remounts (the recipient's setup
+   * and editor are two stages of one tree, so going back to setup would
+   * otherwise re-read the count from the record payload fetched at page load —
+   * stale by exactly the runs already spent).
+   */
+  onTranslationRemaining?: (remaining: number) => void
+} = {}) {
   const t = useTranslations('print.setup')
-  const router = useRouter()
+  const source = usePrintSource()
   const { mode, targetLanguage, setMode, setTargetLanguage, setCategoryTranslations, setSuppressSavedTranslations } =
     usePrintConfig()
   const { arm, disarm } = useLeaveGuard()
   const [translating, setTranslating] = useState(false)
   const [elapsed, setElapsed] = useState(0)
+  const [remaining, setRemaining] = useState<number | null>(initialTranslationRemaining)
   const [preview, setPreview] = useState<TranslationPreviewItem[] | null>(null)
   const [catPreview, setCatPreview] = useState<{ original: string; translated: string }[]>([])
   const [lastRun, setLastRun] = useState<{ cachedAll: boolean; failed: number } | null>(null)
@@ -70,12 +88,22 @@ export function PrintSetup() {
   function exitToEditor() {
     disarm({ pop: false })
     setTranslating(false)
-    router.push('/print-editor')
+    source.enterEditor()
   }
 
   async function handleGenerate() {
     if (mode === 'original' || targetLanguage === 'en') {
-      router.push('/print-editor')
+      source.enterEditor()
+      return
+    }
+    // This document already holds a COMPLETE translation for this language
+    // from earlier in this session: reuse it and spend nothing (ST4 review,
+    // F3). A recipient's run persists nothing, so the server cannot tell that
+    // the names were already paid for — without this, going back to the setup
+    // screen and pressing Generate again for the same language would spend a
+    // second run of the link's budget for an identical document.
+    if (source.cached?.(targetLanguage as TranslateLang)) {
+      source.enterEditor()
       return
     }
     // The document promises an AI translation: actually perform it before
@@ -96,7 +124,7 @@ export function PrintSetup() {
     arm(t('leaveGuard'), () => controller.abort())
     setTranslating(true)
     try {
-      const data = await fetchFlowsheetData({ signal: controller.signal })
+      const data = await source.fetchFlowsheet({ signal: controller.signal })
       const unique = new Map<string, string>()
       for (const cat of data.matrix) {
         for (const row of cat.rows) {
@@ -117,11 +145,15 @@ export function PrintSetup() {
         // the print flow must NEVER send 'ru' here — the document renders ru
         // from the source name natively, not through this endpoint. Keep
         // `TARGETS` (the only producer of this value) free of 'ru'.
-        const results = await translateBiomarkerNames(
+        const results = await source.translate(
           targetLanguage as TranslateLang,
           names,
-          { persist: false, signal: controller.signal, categories },
+          { signal: controller.signal, categories },
         )
+        if (typeof results.remaining === 'number') {
+          setRemaining(results.remaining)
+          onTranslationRemaining?.(results.remaining)
+        }
         // The API is keyed by trimmed headings, but the editor looks matrix
         // categories up verbatim — store one entry per RAW heading so
         // whitespace variants still resolve.
@@ -167,6 +199,14 @@ export function PrintSetup() {
       // The user confirmed leave mid-translation: stay silent — no toast,
       // no navigation. The leave has already happened.
       if (controller.signal.aborted) return
+      // A spent budget is a decision, not a failure: the reader stays here
+      // and is told what to do about it. Navigating to an English document
+      // would look like a translation bug (ST4, §5).
+      if (err instanceof PrintTranslationLimitError) {
+        setRemaining(0)
+        onTranslationRemaining?.(0)
+        return
+      }
       // Best-effort translation: never block the export. Force the editor to
       // render the English / source document for this run so the fallback
       // contract actually holds (saved translations would otherwise still
@@ -193,17 +233,24 @@ export function PrintSetup() {
       try {
         // Same trap as the translate call above: 'ru' must never reach the
         // commit endpoint from the print flow (render ru from the source).
-        await commitTranslatedNames(
+        const { saved } = (await source.commit?.(
           targetLanguage as TranslateLang,
           accepted.map((i) => ({ id: i.id, name: i.translated })),
-        )
-        toast.success(t('toastSaved', { count: accepted.length }))
+          // A run that fell back for some terms is not reusable, so a retry
+          // still reaches the model (see `PrintSource.cached`).
+          { complete: (lastRun?.failed ?? 0) === 0 },
+        )) ?? { saved: 0 }
+        // Zero saved is the recipient's case: the terms are applied to THIS
+        // document, and there is no future document to promise. The toast
+        // would otherwise tell a stranger their translations were stored in
+        // someone else's record.
+        if (saved > 0) toast.success(t('toastSaved', { count: saved }))
       } catch (err) {
         const reason = err instanceof Error ? err.message : 'unknown error'
         toast.error(t('toastSaveFailed', { reason }))
       }
     }
-    router.push('/print-editor')
+    source.enterEditor()
   }
 
   const target = TARGETS.find((x) => x.id === targetLanguage)
@@ -287,6 +334,24 @@ export function PrintSetup() {
         </div>
 
         <div className="border-t border-border px-6 py-4">
+          {/* The budget, stated before it is spent (shared-view plan §5). It
+              renders only when the document is metered — the owner's own
+              print flow has the app's usage limits behind it, not a
+              per-document allowance. */}
+          {remaining !== null && mode !== 'original' && targetLanguage !== 'en' && (
+            <p
+              data-testid="print-translation-budget"
+              role={remaining === 0 ? 'alert' : undefined}
+              className={cn(
+                'mb-3 text-xs',
+                remaining > 0 ? 'text-muted-foreground' : 'text-amber-600',
+              )}
+            >
+              {remaining > 0
+                ? t('budgetRemaining', { count: remaining })
+                : t('budgetExhausted')}
+            </p>
+          )}
           {!translating && lastRun && !preview && (
             <div className="mb-3 space-y-1">
               {lastRun.cachedAll && (

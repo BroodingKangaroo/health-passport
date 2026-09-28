@@ -1,4 +1,5 @@
 import json
+import threading
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
@@ -48,6 +49,44 @@ def _fake_client(payload=None, exc=None):
 
 
 class TestTranslateBiomarkersEndpoint:
+    async def test_the_sdk_call_runs_off_the_event_loop(
+        self, client, db_session, monkeypatch
+    ):
+        """ST4 review, F1 — the owner's route had the same shape as the share
+        one: a synchronous SDK call awaited inline from an `async def` handler.
+
+        A blocking call parks the loop for the client's 300 s timeout, which
+        takes the whole backend down for one request. The assertion is the
+        thread the call runs on: the test coroutine is on the loop's thread, so
+        anything running on that same thread is running on the loop.
+        """
+        monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+        _seed_plain_def(db_session)
+        seen: list[int] = []
+
+        def recording(items, lang, _client, glossary=None):
+            seen.append(threading.get_ident())
+            return {def_id: f"{name}-{lang}" for def_id, name in items}
+
+        monkeypatch.setattr("app.api.ai._get_client", lambda: _fake_client())
+        monkeypatch.setattr("app.api.ai._translate_names_to_lang", recording)
+
+        resp = await client.post(
+            "/api/translate-biomarkers",
+            json={
+                "lang": "pl",
+                "names": [{"id": "local-test-1", "name": "Test Biomarker"}],
+                "persist": False,
+            },
+        )
+
+        assert resp.status_code == 200
+        assert seen, "the translation seam must have been called"
+        assert seen[0] != threading.get_ident(), (
+            "the LLM call ran on the event loop — it must go through "
+            "run_in_executor, the way /api/extract does its LLM work"
+        )
+
     async def test_already_translated_short_circuits_without_key_or_quota(
         self, client, db_session, monkeypatch
     ):

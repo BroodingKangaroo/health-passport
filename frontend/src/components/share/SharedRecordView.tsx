@@ -2,23 +2,41 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
+import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
-import { HeartPulse, Info } from 'lucide-react'
+import { HeartPulse, Info, Printer } from 'lucide-react'
 
 import { LanguageSwitch } from '@/components/share/language-switch'
 import { SharedFullRecord } from '@/components/share/SharedFullRecord'
 import { SharedSummary } from '@/components/share/SharedSummary'
 import { ViewToggle } from '@/components/share/ViewToggle'
 import { useSharedFlowsheet } from '@/components/share/use-shared-flowsheet'
+import { Button } from '@/components/ui/button'
 import { ViewerProvider } from '@/providers/viewer-provider'
 import { formatDate, formatDob } from '@/lib/utils'
 import {
+  parseSharedPrint,
   parseSharedView,
+  SHARED_PRINT_PARAM,
   sharedViewHref,
   SHARED_VIEW_PARAM,
   type SharedRecord,
+  type SharedPrintStage,
   type SharedView,
 } from '@/lib/share'
+
+/**
+ * The print flow lives behind this boundary (ST4, plan §9): the setup screen
+ * and the print editor are a large slice of the app that reaches modules a
+ * recipient's page has no business loading. Nothing here is requested until
+ * the reader presses Print — that is what keeps the summary and the full
+ * record free of the print code as well as of recharts.
+ */
+const SharedPrintFlow = dynamic(
+  () =>
+    import('@/components/share/SharedPrintFlow').then((m) => m.SharedPrintFlow),
+  { ssr: false },
+)
 
 interface SharedRecordViewProps {
   token: string
@@ -26,6 +44,8 @@ interface SharedRecordViewProps {
   locale: string
   /** The view the URL asked for; `summary` unless `?view=full` (shared-view plan §1). */
   initialView?: SharedView
+  /** The print step the URL asked for, or null for the record itself (ST4, §4). */
+  initialPrint?: SharedPrintStage | null
   /** The `?lang=` the URL carried, so the language links keep the reader's choice. */
   lang?: string
 }
@@ -58,11 +78,13 @@ export function SharedRecordView({
   record,
   locale,
   initialView = 'summary',
+  initialPrint = null,
   lang,
 }: SharedRecordViewProps) {
   const t = useTranslations('sharedView')
   const dateLocale = locale === 'ru' ? 'ru-RU' : 'en-US'
   const [view, setView] = useState<SharedView>(initialView)
+  const [printStage, setPrintStage] = useState<SharedPrintStage | null>(initialPrint)
   const stripRef = useRef<HTMLDivElement>(null)
   const [stripH, setStripH] = useState(0)
   // Fetched ONCE, here, and handed to whichever view is showing: the table
@@ -85,16 +107,26 @@ export function SharedRecordView({
     window.history.pushState(null, '', url)
   }, [])
 
+  // `null` closes the flow and returns to the record it was opened from. The
+  // view the reader was on stays in the URL, so closing print puts them back
+  // exactly where they were.
+  const selectPrint = useCallback((next: SharedPrintStage | null) => {
+    setPrintStage(next)
+    const url = new URL(window.location.href)
+    if (next) url.searchParams.set(SHARED_PRINT_PARAM, next)
+    else url.searchParams.delete(SHARED_PRINT_PARAM)
+    window.history.pushState(null, '', url)
+  }, [])
+
   // Back/forward must move the view, not just the address bar. The server
   // rendered the view the URL asked for; from here the client keeps them in
   // step.
   useEffect(() => {
-    const sync = () =>
-      setView(
-        parseSharedView(
-          new URL(window.location.href).searchParams.get(SHARED_VIEW_PARAM),
-        ),
-      )
+    const sync = () => {
+      const params = new URL(window.location.href).searchParams
+      setView(parseSharedView(params.get(SHARED_VIEW_PARAM)))
+      setPrintStage(parseSharedPrint(params.get(SHARED_PRINT_PARAM)))
+    }
     window.addEventListener('popstate', sync)
     return () => window.removeEventListener('popstate', sync)
   }, [])
@@ -119,6 +151,19 @@ export function SharedRecordView({
 
   return (
     <ViewerProvider capability="shared">
+      {printStage ? (
+        // The print flow replaces the whole page, chrome included: it is the
+        // app's own document editor, not a panel inside the record.
+        <SharedPrintFlow
+          token={token}
+          record={record}
+          locale={locale}
+          stage={printStage}
+          onStage={(next) => selectPrint(next)}
+          onClose={() => selectPrint(null)}
+          flowsheetState={flowsheetState}
+        />
+      ) : (
       <div
         style={{ '--chrome-h': `${stripH}px` } as CSSProperties}
         className="min-h-screen bg-background lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start"
@@ -137,6 +182,21 @@ export function SharedRecordView({
           >
             <ViewToggle view={view} hrefFor={hrefFor} onSelect={selectView} />
             <LanguageSwitch token={token} locale={locale} view={view} />
+            {/* The passport printer, reachable from BOTH views and from
+                either breakpoint (plan §4): a doctor who wants a sheet to
+                show a colleague should not have to know which view they are
+                looking at. It opens the app's own print setup for this
+                record, not the browser's print of the page. */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => selectPrint('setup')}
+              data-testid="shared-print-button"
+            >
+              <Printer className="size-4" aria-hidden />
+              {t('print.button')}
+            </Button>
           </div>
 
           <div className="border-b border-border px-5 py-4 lg:order-1 lg:border-b-0 lg:px-0 lg:py-0">
@@ -231,6 +291,7 @@ export function SharedRecordView({
           </footer>
         </div>
       </div>
+      )}
     </ViewerProvider>
   )
 }

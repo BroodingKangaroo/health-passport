@@ -505,6 +505,19 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "That passcode is not correct.",
         "ru": "Неверный код доступа.",
     },
+    # The recipient's AI translation budget (ST4, plan §5). Deliberately not
+    # the owner's `ai.translation_limit_reached` text: registering is not the
+    # remedy a stranger has, and asking them to is a dead end.
+    "share.translation_limit_reached": {
+        "en": (
+            "This link has used all {budget} of its AI translations. Ask the "
+            "person who shared it to send a new link."
+        ),
+        "ru": (
+            "Эта ссылка израсходовала все переводы ({budget}). Попросите того, "
+            "кто ею поделился, отправить новую ссылку."
+        ),
+    },
     # ----- app/api/account.py -----
     "export.invalid_format": {
         "en": "Invalid export format '{format}'. Supported: json, csv.",

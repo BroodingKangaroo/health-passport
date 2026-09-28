@@ -282,6 +282,13 @@ class ShareLink(Base):
     # Superseded by notified_record_at before either was ever written; kept
     # because migrate_add_columns() never drops a column.
     last_notified_entry_at = Column(DateTime(timezone=True), nullable=True)
+    # The recipient's AI translation budget (ST4). A share link is a third
+    # principal class with no UsageLimit row, so the allowance a stranger may
+    # spend is carried by the link itself: one counter, shown to the recipient
+    # before they spend it and incremented by ONE conditional UPDATE so two
+    # concurrent runs cannot both pass the last unit. Never the owner's
+    # UsageLimit — a recipient's run must not touch the owner's allowance.
+    translate_runs_used = Column(Integer, nullable=False, default=0)
 
 
 class ExtractionTimingSample(Base):

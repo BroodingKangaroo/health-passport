@@ -28,6 +28,9 @@ describe('shared view message subset', () => {
         'common',
         'correlation',
         'misc',
+        // The recipient's print flow (ST4) is the app's own setup screen and
+        // print editor over the share payload, so their copy ships with it.
+        'print',
         'sharedView',
         'statuses',
         'timeline',
@@ -41,7 +44,6 @@ describe('shared view message subset', () => {
       'header.',
       'landing.',
       'auth.',
-      'print.',
       'settings.',
       'demo.',
     ]
@@ -65,6 +67,27 @@ describe('shared view message subset', () => {
         key.startsWith('common.'),
       )
       expect(commonKeys, locale).toEqual(['common.loading'])
+    }
+  })
+
+  /**
+   * The print flow is reused wholesale, and `print` is a large namespace: the
+   * route wrappers' copy (`view`, `editorView`) belongs to the authed pages,
+   * and shipping it would hand a stranger strings about screens they cannot
+   * reach. Pinned to the three namespaces the reused components actually call.
+   */
+  it('ships only the print namespaces the reused screens call', () => {
+    for (const locale of SUPPORTED_LOCALES) {
+      const printNamespaces = new Set(
+        flatten((sharedViewMessages(locale) as { print: unknown }).print).map(
+          (key) => key.split('.')[0],
+        ),
+      )
+      expect([...printNamespaces].sort(), locale).toEqual([
+        'editor',
+        'review',
+        'setup',
+      ])
     }
   })
 

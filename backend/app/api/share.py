@@ -17,6 +17,8 @@ endpoint gains an alternative auth path, so no write endpoint is one
 dependency-swap away from being public.
 """
 
+import asyncio
+import hashlib
 import logging
 import threading
 from collections import defaultdict, deque
@@ -28,6 +30,13 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app import i18n
+from app.api.ai import (
+    _CATEGORY_ID_PREFIX,
+    _category_cache_id,
+    _clean_translation_name,
+    _get_client,
+    _translate_names_to_lang,
+)
 from app.api.auth import get_current_user_or_anon
 from app.api.flowsheet import _build_flowsheet
 from app.api.timeline import (
@@ -37,13 +46,13 @@ from app.api.timeline import (
     _visits_from_db,
 )
 from app.auth import get_password_hash, verify_password
-from app.db.models import (
-    Patient,
-)
+from app.db.models import BiomarkerDefinition as BiomarkerDefinitionModel
+from app.db.models import CategoryTranslationCache, Patient
 from app.db.models import (
     ShareLink as ShareLinkModel,
 )
 from app.db.session import get_db
+from app.schemas.ai import CategoryTranslationItem, TranslationItem
 from app.schemas.common import FlowsheetResponse
 from app.schemas.share import (
     SharedBiomarkerResult,
@@ -58,6 +67,8 @@ from app.schemas.share import (
     ShareNoticeResponse,
     ShareRecordHeader,
     ShareRecordMeta,
+    ShareTranslateRequest,
+    ShareTranslateResponse,
     ShareUnlockRequest,
     ShareUnlockResponse,
 )
@@ -488,6 +499,8 @@ def _build_shared_record(
             ),
             scope=_scope_payload(context.scope),
             default_locale=context.default_locale,
+            translation_remaining=context.translation_remaining,
+            translation_budget=share_links.SHARE_TRANSLATION_BUDGET,
         ),
         header=(
             _header_from_owner(db, context.owner_id)
@@ -656,6 +669,345 @@ async def get_shared_flowsheet(
         matrix=matrix,
         biomarkers=[_share_reliable_result(result) for result in biomarkers],
     )
+
+
+# ── The recipient's translation budget (ST4, plan §5) ─────────────────────
+#
+# A share link is a THIRD principal class: no session, no cookie and no
+# ``UsageLimit`` row. Giving a stranger the print flow therefore means giving
+# them an LLM-backed feature, which is the one part of this feature that costs
+# money per use. Three rules bound it, all server-side:
+#
+# 1. **The payload is derived here, not sent by the client.** The owner's
+#    endpoint takes a list of biomarker names from the request; a public
+#    caller must not be able to ask the LLM to translate a dictionary it
+#    fetched elsewhere. This route rebuilds the link's own flowsheet and
+#    translates exactly its rows, so "bounded to the record" is structural.
+# 2. **The budget lives on the link.** One counter, reserved by a conditional
+#    UPDATE, so two concurrent runs cannot both pass the last unit.
+# 3. **Nothing is written to the record.** The recipient's run never touches
+#    the owner's ``names[lang]`` and never seeds the shared category cache —
+#    an anonymous principal must not be able to rewrite what every other
+#    user's render then trusts (ISSUES.md #32/#33), and the owner's AI
+#    allowance is not decremented (there is no UsageLimit in this path).
+
+
+def _share_translate_targets(
+    db: Session, context: share_links.ShareContext
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """The names and headings this link's record actually contains.
+
+    The same builders and the same scope as ``/api/share/flowsheet``, so the
+    batch can only ever contain the biomarkers a recipient can already see —
+    the Stage 3 review's "171 referenced, not 1500 dictionary entries" bound,
+    enforced on the server instead of in the dialog.
+    """
+    date_range, exclude = _scope_context(context)
+    _dates, matrix, _biomarkers = _build_flowsheet(
+        db,
+        context.owner_id,
+        date_range=date_range,
+        exclude=exclude,
+        mark_as_printed=True,
+    )
+    items: list[tuple[str, str]] = []
+    categories: list[str] = []
+    seen_ids: set[str] = set()
+    for category in matrix:
+        cleaned_category = (category.category or "").strip()
+        if cleaned_category and cleaned_category not in categories:
+            categories.append(cleaned_category)
+        for row in category.rows:
+            if row.id in seen_ids:
+                continue
+            # An empty name would invite the model to invent one.
+            name = (row.name or "").strip()
+            if not name:
+                continue
+            seen_ids.add(row.id)
+            items.append((row.id, name))
+    return items, categories
+
+
+def _share_translated_categories(
+    db: Session, lang: str, categories: list[str]
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Split the link's headings into ``(cleaned -> cached, cleaned -> synthetic
+    id)``.
+
+    Read-only against the shared cache: a recipient may benefit from a heading
+    another user already translated, but must never add to it (an anonymous
+    principal seeding that table would poison every later render).
+    """
+    cat_id_by_cleaned: dict[str, str] = {}
+    for raw in categories:
+        cleaned = _clean_translation_name(raw)
+        if not cleaned or cleaned in cat_id_by_cleaned:
+            continue
+        digest = hashlib.md5(cleaned.encode()).hexdigest()[:12]
+        cat_id_by_cleaned[cleaned] = f"{_CATEGORY_ID_PREFIX}{digest}"
+    cached: dict[str, str] = {}
+    if cat_id_by_cleaned:
+        rows = (
+            db.query(CategoryTranslationCache)
+            .filter(
+                CategoryTranslationCache.id.in_(
+                    [
+                        _category_cache_id(lang, cleaned)
+                        for cleaned in cat_id_by_cleaned
+                    ]
+                )
+            )
+            .all()
+        )
+        cached = {row.original: row.translated for row in rows}
+    return cached, cat_id_by_cleaned
+
+
+def _share_translation_response(
+    lang: str,
+    items: list[tuple[str, str]],
+    defn_by_id: dict,
+    translated: dict[str, str],
+    category_pairs: list[tuple[str, str]],
+    remaining: int,
+) -> ShareTranslateResponse:
+    """The response in the record's own order.
+
+    Byte-identical to the owner's ``/api/translate-biomarkers`` shape so the
+    print setup's review dialog reads both sources through one code path; the
+    ``source`` of each item is what the dialog's badges are built from.
+    """
+    translations: list[TranslationItem] = []
+    for def_id, requested in items:
+        defn = defn_by_id.get(def_id)
+        persisted = (defn.names or {}).get(lang) if defn is not None else None
+        if def_id in translated:
+            source = "translated"
+        elif persisted:
+            source = "cached"
+        else:
+            source = "fallback"
+        translations.append(
+            TranslationItem(
+                id=def_id,
+                name=translated.get(def_id) or persisted or requested,
+                source=source,
+            )
+        )
+    categories = [
+        CategoryTranslationItem(
+            original=original,
+            translated=translated_name or original,
+            source="translated" if translated_name else "fallback",
+        )
+        for original, translated_name in category_pairs
+    ]
+    return ShareTranslateResponse(
+        translations=translations, categories=categories, remaining=remaining
+    )
+
+
+@router.post("/translate", response_model=ShareTranslateResponse)
+async def translate_shared_record(
+    response: Response,
+    payload: ShareTranslateRequest,
+    context: share_links.ShareContext = Depends(resolve_share_context),
+    db: Session = Depends(get_db),
+) -> ShareTranslateResponse:
+    """Translate this link's own terminology, inside the link's budget.
+
+    Public and passcode-gated like the two read paths (it goes through
+    ``resolve_share_context``, so a revoked link spends nothing). The body
+    carries only the target language: the names, the headings and their count
+    all come from the record the link exposes.
+
+    A run that needs no LLM work — every name already persisted, every heading
+    already cached — is free and does not consume the budget, exactly as on the
+    owner's side. A run whose LLM call fails is refunded, so a broken key costs
+    the recipient nothing. The 429 is the ONLY way to exceed the budget and it
+    carries a localized message, never a silent English fallback.
+    """
+    _no_store(response)
+    lang = payload.lang
+    link = db.query(ShareLinkModel).filter(ShareLinkModel.id == context.link_id).first()
+    remaining = share_links.translation_remaining(link) if link is not None else 0
+
+    items, categories = _share_translate_targets(db, context)
+    ids = [def_id for def_id, _name in items]
+    defns = (
+        db.query(BiomarkerDefinitionModel)
+        .filter(BiomarkerDefinitionModel.id.in_(ids))
+        .all()
+        if ids
+        else []
+    )
+    defn_by_id = {d.id: d for d in defns}
+
+    to_translate = [
+        (def_id, name)
+        for def_id, name in items
+        if not ((defn_by_id.get(def_id).names or {}).get(lang) if defn_by_id.get(def_id) else None)
+    ]
+    cached_cats, cat_id_by_cleaned = _share_translated_categories(db, lang, categories)
+    cat_items = [
+        (cid, cleaned)
+        for cleaned, cid in cat_id_by_cleaned.items()
+        if cleaned not in cached_cats
+    ]
+
+    # Nothing to ask the model: the document is already translated for this
+    # language. Free, and reported with the budget untouched.
+    if not to_translate and not cat_items:
+        return _share_translation_response(
+            lang,
+            items,
+            defn_by_id,
+            {},
+            _category_pairs(categories, cat_id_by_cleaned, cached_cats, {}),
+            remaining,
+        )
+
+    client = _get_client()
+    if client is None:
+        # Without a key the call can never run, so the budget must not be
+        # touched: the document renders in English instead.
+        return _share_translation_response(
+            lang,
+            items,
+            defn_by_id,
+            {},
+            _category_pairs(categories, cat_id_by_cleaned, cached_cats, {}),
+            remaining,
+        )
+
+    reserved, remaining_after = share_links.spend_translation_run(db, context.link_id)
+    if not reserved:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=i18n.tr(
+                "share.translation_limit_reached",
+                budget=share_links.SHARE_TRANSLATION_BUDGET,
+            ),
+            headers=_no_store_headers(),
+        )
+
+    glossary: dict[str, str] = {}
+    for def_id, _name in items:
+        defn = defn_by_id.get(def_id)
+        if defn is None:
+            continue
+        existing = (defn.names or {}).get(lang)
+        en_name = (defn.names or {}).get("en")
+        if existing and en_name and existing != en_name:
+            glossary[en_name] = existing
+    for cleaned, translated_name in cached_cats.items():
+        glossary.setdefault(cleaned, translated_name)
+
+    # The SDK call runs OFF the event loop (ST4 review, F1). It is synchronous
+    # with a 300 s client timeout, so awaiting it inline parks the loop for the
+    # whole batch: with one translation in flight the process served nothing —
+    # not `/openapi.json`, not another reader's request, and not even SIGTERM,
+    # because the signal handler is a loop callback too. One unauthenticated
+    # request could therefore wedge the backend, the owner's app included.
+    # `run_in_executor` is the pattern `/api/extract` already uses for its OCR
+    # and LLM work.
+    #
+    # Only the SDK call moves: the session stays on the request path and is
+    # never touched from the worker thread. The budget was already reserved
+    # before this point, so both failure shapes still refund — `_translate_
+    # names_to_lang` is best-effort and returns {} for a soft failure (the
+    # `not combined` branch below), and a raised exception is refunded by the
+    # `except` around this await before it propagates.
+    def _translate_in_thread() -> dict[str, str]:
+        return _translate_names_to_lang(
+            [*dict(to_translate).items(), *cat_items], lang, client, glossary=glossary
+        )
+
+    try:
+        combined = await asyncio.get_running_loop().run_in_executor(
+            None, _translate_in_thread
+        )
+    except (Exception, asyncio.CancelledError):
+        # Anything that ends the run without giving the reader a document
+        # gives the run back: an unexpected failure (never a soft LLM failure —
+        # those return {}) AND a cancellation. `CancelledError` is a
+        # BaseException, and the thread hop is what makes it reachable at all —
+        # it covers a client disconnect or a graceful shutdown cancelling the
+        # request while the worker thread is still inside the call. The thread
+        # itself cannot be interrupted, so the model may still answer; nobody
+        # receives that answer, so nobody should be charged for it.
+        #
+        # (The owner's route needs no equivalent: its quota increment is only
+        # flushed, never committed, so a cancelled request rolls it back when
+        # the session closes.)
+        share_links.refund_translation_run(db, context.link_id)
+        logger.exception(
+            "Share translation failed for link %s — refunded one run",
+            context.link_id,
+        )
+        raise
+
+    defn_ids = {def_id for def_id, _name in to_translate}
+    translated = {k: v for k, v in combined.items() if k in defn_ids}
+    cleaned_by_cat_id = {
+        cid: cleaned
+        for cleaned, cid in cat_id_by_cleaned.items()
+        if cleaned not in cached_cats
+    }
+    fresh_cats = {
+        cleaned_by_cat_id[k]: v for k, v in combined.items() if k in cleaned_by_cat_id
+    }
+
+    if not combined:
+        # The model produced nothing: give the run back, the way the owner's
+        # path refunds a failed extraction. A recipient must not pay for an
+        # English fallback.
+        share_links.refund_translation_run(db, context.link_id)
+        return _share_translation_response(
+            lang,
+            items,
+            defn_by_id,
+            {},
+            _category_pairs(categories, cat_id_by_cleaned, cached_cats, {}),
+            remaining,
+        )
+
+    return _share_translation_response(
+        lang,
+        items,
+        defn_by_id,
+        translated,
+        _category_pairs(categories, cat_id_by_cleaned, cached_cats, fresh_cats),
+        remaining_after,
+    )
+
+
+def _category_pairs(
+    categories: list[str],
+    cat_id_by_cleaned: dict[str, str],
+    cached_cats: dict[str, str],
+    fresh_cats: dict[str, str],
+) -> list[tuple[str, str]]:
+    """``(raw heading, translation)`` in the record's order.
+
+    Keyed by the RAW heading because that is what the editor looks up, while
+    the cache and the model use the cleaned form. A heading with no
+    translation yet comes back as itself, exactly as the preview dialog
+    expects for a fallback row.
+    """
+    pairs: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for raw in categories:
+        if raw in seen:
+            continue
+        seen.add(raw)
+        cleaned = _clean_translation_name(raw)
+        translated_name = fresh_cats.get(cleaned) or cached_cats.get(cleaned)
+        if cat_id_by_cleaned.get(cleaned) is None:
+            translated_name = None
+        pairs.append((raw, translated_name or ""))
+    return pairs
 
 
 def _link_summary(

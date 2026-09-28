@@ -70,6 +70,19 @@ export function formatToday(lang: PrintLang): string {
   return lang === 'ru' ? `${d}.${mo}.${y}` : `${mo}.${d}.${y}`
 }
 
+/**
+ * An ISO-8601 instant (a link's expiry) as the document's own date format.
+ *
+ * Only the calendar date is read: an expiry is a day, and rendering it in the
+ * reader's timezone would move it. Anything unparseable is returned as it
+ * arrived rather than swallowed, so a bad value is visible instead of blank.
+ */
+export function formatIsoDate(value: string, lang: PrintLang): string {
+  const m = value.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!m) return value
+  return formatDob(`${m[1]}-${m[2]}-${m[3]}`, lang)
+}
+
 export function genderLabel(gender: string, lang: PrintLang): string {
   const cleaned = gender.trim()
   if (!cleaned) return ''
@@ -112,5 +125,66 @@ export const TABLE_HEADINGS: Record<PrintLang, { biomarker: string; title: strin
     biomarker: 'Biomarker',
     title: 'Wyniki bada\u0144 laboratoryjnych w czasie',
     note: '* Warto\u015Bci poza zakresem referencyjnym',
+  },
+}
+
+/**
+ * Provenance for a document printed from a SHARED record (ST4, plan §4).
+ *
+ * A printed sheet is the one output that escapes revocation: the sender can
+ * close a link, but not recall paper. So a shared document says where it came
+ * from, when the link stops working, and that it is not a diagnosis — the
+ * things a colleague handed a photocopy needs in order to judge it and to
+ * find its source.
+ *
+ * `{date}` is substituted with the link's expiry in this document's own date
+ * format. These are DOCUMENT-language strings, like `TABLE_HEADINGS` above —
+ * deliberately NOT entries in the UI catalogs.
+ */
+export const DOCUMENT_PROVENANCE: Record<
+  PrintLang,
+  { sharedVia: string; accessUntil: string; notDiagnosis: string }
+> = {
+  en: {
+    sharedVia: 'Shared via HealthPassport',
+    accessUntil: 'Link access until {date}',
+    notDiagnosis:
+      'This document was generated from a record shared by its owner. It is not a medical diagnosis.',
+  },
+  ru: {
+    sharedVia: '\u041F\u0435\u0440\u0435\u0434\u0430\u043D\u043E \u0447\u0435\u0440\u0435\u0437 HealthPassport',
+    accessUntil: '\u0414\u043E\u0441\u0442\u0443\u043F \u043F\u043E \u0441\u0441\u044B\u043B\u043A\u0435 \u0434\u043E {date}',
+    notDiagnosis:
+      '\u042D\u0442\u043E\u0442 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442 \u0441\u0444\u043E\u0440\u043C\u0438\u0440\u043E\u0432\u0430\u043D \u0438\u0437 \u0437\u0430\u043F\u0438\u0441\u0438, \u043A\u043E\u0442\u043E\u0440\u043E\u0439 \u043F\u043E\u0434\u0435\u043B\u0438\u043B\u0441\u044F \u0435\u0451 \u0432\u043B\u0430\u0434\u0435\u043B\u0435\u0446. \u042D\u0442\u043E \u043D\u0435 \u043C\u0435\u0434\u0438\u0446\u0438\u043D\u0441\u043A\u0438\u0439 \u0434\u0438\u0430\u0433\u043D\u043E\u0437.',
+  },
+  de: {
+    sharedVia: 'Geteilt \u00FCber HealthPassport',
+    accessUntil: 'Linkzugriff bis {date}',
+    notDiagnosis:
+      'Dieses Dokument wurde aus einer vom Eigent\u00FCmer geteilten Akte erstellt. Es ist keine medizinische Diagnose.',
+  },
+  fr: {
+    sharedVia: 'Partag\u00E9 via HealthPassport',
+    accessUntil: 'Acc\u00E8s au lien jusqu\u2019au {date}',
+    notDiagnosis:
+      'Ce document a \u00E9t\u00E9 g\u00E9n\u00E9r\u00E9 \u00E0 partir d\u2019un dossier partag\u00E9 par son titulaire. Il ne constitue pas un diagnostic m\u00E9dical.',
+  },
+  es: {
+    sharedVia: 'Compartido v\u00EDa HealthPassport',
+    accessUntil: 'Acceso al enlace hasta {date}',
+    notDiagnosis:
+      'Este documento se gener\u00F3 a partir de un historial compartido por su titular. No es un diagn\u00F3stico m\u00E9dico.',
+  },
+  he: {
+    sharedVia: '\u05E9\u05D5\u05EA\u05E3 \u05D3\u05E8\u05DA HealthPassport',
+    accessUntil: '\u05D2\u05D9\u05E9\u05D4 \u05DC\u05E7\u05D9\u05E9\u05D5\u05E8 \u05E2\u05D3 {date}',
+    notDiagnosis:
+      '\u05DE\u05E1\u05DE\u05DA \u05D6\u05D4 \u05D4\u05D5\u05E4\u05E7 \u05DE\u05E8\u05E9\u05D5\u05DE\u05D4 \u05E9\u05E9\u05D5\u05EA\u05E4\u05D4 \u05E2\u05DC \u05D9\u05D3\u05D9 \u05D1\u05E2\u05DC\u05D9\u05D4. \u05D0\u05D9\u05E0\u05D5 \u05D0\u05D1\u05D7\u05D5\u05DF \u05E8\u05E4\u05D5\u05D0\u05D9.',
+  },
+  pl: {
+    sharedVia: 'Udost\u0119pnione przez HealthPassport',
+    accessUntil: 'Dost\u0119p do linku do {date}',
+    notDiagnosis:
+      'Ten dokument powsta\u0142 na podstawie dokumentacji udost\u0119pnionej przez jej w\u0142a\u015Bciciela. Nie jest diagnoz\u0105 medyczn\u0105.',
   },
 }

@@ -81,6 +81,16 @@ export const sharedViewMessages = {
           'This is a personal health record kept by its owner and shared with you at their invitation. It is not a medical opinion or a diagnosis.',
         cta: 'Make your own HealthPassport',
       },
+      // The recipient's print flow (ST4): the app's own passport printer,
+      // opened from the record. `print.setup` and `print.editor` carry the
+      // screens' own copy — these lines are the chrome around them.
+      print: {
+        button: 'Print',
+        backToRecord: 'Back to record',
+        loading: 'Loading the table for printing...',
+        tableUnavailable: 'Could not load the table this document is built from.',
+        retry: 'Try again',
+      },
       deadLink: {
         title: 'This link is no longer active.',
         body: 'If you still need this record, ask the person who shared it to send a new link.',
@@ -177,6 +187,13 @@ export const sharedViewMessages = {
         disclaimer:
           'Это личная медицинская карта, которую ведёт её владелец и которой он поделился с вами по своей инициативе. Это не медицинское заключение и не диагноз.',
         cta: 'Создайте свою HealthPassport',
+      },
+      print: {
+        button: 'Печать',
+        backToRecord: 'К записи',
+        loading: 'Загрузка таблицы для печати...',
+        tableUnavailable: 'Не удалось загрузить таблицу, из которой строится документ.',
+        retry: 'Попробовать снова',
       },
       deadLink: {
         title: 'Эта ссылка больше не активна.',

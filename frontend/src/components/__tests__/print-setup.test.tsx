@@ -4,6 +4,10 @@ import { PrintSetup } from '@/components/health-passport/print-setup'
 import { PrintConfigProvider } from '@/providers/print-config-provider'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
 import { LeaveGuardProvider } from '@/providers/leave-guard-provider'
+import {
+  PrintSourceProvider,
+  type PrintSource,
+} from '@/providers/print-source-provider'
 import { TestI18nProvider } from '@/test/i18n-test-provider'
 import type { FlowsheetResponse } from '@/lib/types'
 import type { TranslatedName } from '@/services/api'
@@ -84,10 +88,34 @@ function renderComponent() {
   return renderI18n(
     <LeaveGuardProvider>
       <PrintConfigProvider>
-        <PrintSetup />
+        <PrintSourceProvider source={testPrintSource()}>
+          <PrintSetup />
+        </PrintSourceProvider>
       </PrintConfigProvider>
     </LeaveGuardProvider>,
   )
+}
+
+/**
+ * The owner-shaped print source over the mocked API functions (ST4).
+ *
+ * `PrintSetup` no longer imports `services/api` itself — the shared surface
+ * renders the same screen over a share-scoped source — so the seam is
+ * supplied here. The shape mirrors `createOwnerPrintSource`, including
+ * `persist: false` on the translate call and the commit step that reports the
+ * saved count.
+ */
+function testPrintSource(): PrintSource {
+  return {
+    fetchFlowsheet: (opts) => mockFetchFlowsheet(opts) as Promise<FlowsheetResponse>,
+    translate: (lang, names, opts) =>
+      mockTranslate(lang, names, { persist: false, ...opts }) as Promise<{
+        names: Map<string, TranslatedName>
+        categories: Record<string, string>
+      }>,
+    commit: async (lang, items) => ({ saved: (await mockCommit(lang, items)) as number }),
+    enterEditor: () => mockPush('/print-editor'),
+  }
 }
 
 function selectTranslateModeAndLang(lang: string) {
@@ -624,8 +652,10 @@ describe('PrintSetup', () => {
     renderI18n(
       <LeaveGuardProvider>
         <PrintConfigProvider>
-          <PrintSetup />
-          <Probe />
+          <PrintSourceProvider source={testPrintSource()}>
+            <PrintSetup />
+            <Probe />
+          </PrintSourceProvider>
         </PrintConfigProvider>
       </LeaveGuardProvider>,
     )

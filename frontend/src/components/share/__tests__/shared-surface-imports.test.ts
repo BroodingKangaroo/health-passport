@@ -45,4 +45,27 @@ describe('shared surface import graph', () => {
     const { lazyHits } = walk(ROOTS)
     expect([...lazyHits].sort()).toEqual([...ALLOWED_LAZY].sort())
   })
+
+  /**
+   * ST4's bundle claim, pinned where it can actually break: the whole print
+   * flow — the app's own setup screen, the review dialog and the print editor
+   * — must be reachable ONLY through the `next/dynamic` boundary the Print
+   * button opens. A static import anywhere in the shared tree would put all of
+   * it, and the 7-language document maps with it, into a stranger's first
+   * paint.
+   */
+  it('reaches the print flow only through the lazy boundary', () => {
+    const { staticFiles, lazyFiles } = walk(ROOTS)
+    for (const file of [
+      'src/components/share/SharedPrintFlow.tsx',
+      'src/components/share/SharedPrintEditor.tsx',
+      'src/components/health-passport/print-setup.tsx',
+      'src/components/health-passport/print-editor.tsx',
+    ]) {
+      const absolute = path.resolve(process.cwd(), file)
+      expect(exists(absolute), file).toBe(true)
+      expect(lazyFiles.has(absolute), `${file} should be lazily reachable`).toBe(true)
+      expect(staticFiles.has(absolute), `${file} must not be eager`).toBe(false)
+    }
+  })
 })

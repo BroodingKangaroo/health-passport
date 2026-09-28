@@ -250,6 +250,12 @@ function ShareLinkDialog({ open, onClose }: { open: boolean; onClose: () => void
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">{t('dialog.body')}</p>
           <p className="mt-2 text-xs text-muted-foreground">{t('dialog.warning')}</p>
+          {/* Printing travels with the expiry sentence (ST4, §4): a printed
+              sheet is the one output a revoked link cannot recall, so the
+              sender is told before they share, not after. */}
+          <p className="mt-2 text-xs text-muted-foreground">
+            {t('dialog.printWarning')}
+          </p>
         </div>
 
         {created ? (

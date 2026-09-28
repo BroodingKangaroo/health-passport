@@ -17,7 +17,12 @@ import {
   fetchSharedRecord,
   SharedLinkUnavailableError,
 } from '@/services/share'
-import { parseSharedView, sharedFirstPaint, type SharedRecord } from '@/lib/share'
+import {
+  parseSharedPrint,
+  parseSharedView,
+  sharedFirstPaint,
+  type SharedRecord,
+} from '@/lib/share'
 
 /**
  * The public recipient page: `/s/<token>`.
@@ -44,7 +49,11 @@ export const dynamic = 'force-dynamic'
 
 interface SharedPageProps {
   params: Promise<{ token: string }>
-  searchParams: Promise<{ lang?: string; view?: string | string[] }>
+  searchParams: Promise<{
+    lang?: string
+    view?: string | string[]
+    print?: string | string[]
+  }>
 }
 
 async function resolveLocale(
@@ -115,6 +124,11 @@ export default async function SharedRecordPage({ params, searchParams }: SharedP
   // server has to render the view the link asked for, and with it on the shell
   // starts from the same value (shared-view plan §1).
   const view = parseSharedView(query.view)
+  // Same contract for the print flow's two steps (ST4, §4): the URL says
+  // whether the reader is on the record, on the print setup or on the
+  // document. The flow itself is client-rendered behind a lazy boundary, but
+  // which stage to open is decided here so a bookmark or a reload lands on it.
+  const print = parseSharedPrint(query.print)
   // The record can change the answer: the link's own `default_locale` (S10)
   // outranks the browser once we know it. The dead-link/error states have no
   // record, so they resolve without the preset.
@@ -134,6 +148,7 @@ export default async function SharedRecordPage({ params, searchParams }: SharedP
           record={loaded.record}
           locale={locale}
           initialView={view}
+          initialPrint={print}
           lang={lang}
         />
       )}
@@ -144,6 +159,7 @@ export default async function SharedRecordPage({ params, searchParams }: SharedP
           token={token}
           locale={locale}
           initialView={view}
+          initialPrint={print}
           lang={lang}
         />
       )}

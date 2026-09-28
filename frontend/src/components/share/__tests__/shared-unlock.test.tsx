@@ -24,6 +24,8 @@ const record: SharedRecord = {
     last_updated: '2026-09-12T08:00:00+00:00',
     scope: { kind: 'all' },
     default_locale: null,
+    translation_remaining: 3,
+    translation_budget: 3,
   },
   header: { name: 'Test User', dob: '1990-01-01', gender: 'Other' },
   events: [],

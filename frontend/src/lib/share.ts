@@ -68,6 +68,46 @@ export function sharedViewHref(
 }
 
 /**
+ * The print flow's two steps (shared-view plan ST4, §4).
+ *
+ * `null` means the reader is looking at the record; `setup` is the app's own
+ * print-setup screen (mode, target language, layout, filters) and `editor` is
+ * the document with its Print button. Carried in the URL for the same reason
+ * the view is: a doctor can bookmark the editor, reload without losing the
+ * document they configured, and step Back out with the browser button.
+ */
+export type SharedPrintStage = 'setup' | 'editor'
+
+export const SHARED_PRINT_PARAM = 'print'
+
+/** The URL's `?print=` value → the print stage, or null for the record. */
+export function parseSharedPrint(
+  raw: string | string[] | undefined | null,
+): SharedPrintStage | null {
+  const value = Array.isArray(raw) ? raw[0] : raw
+  if (value === 'setup' || value === 'editor') return value
+  return null
+}
+
+/**
+ * A link to the record, one of its views, or one step of the print flow.
+ *
+ * `view` is written explicitly (see `sharedViewHref`); `print` is written only
+ * when the print flow is open, so the record URL stays clean.
+ */
+export function sharedHref(
+  token: string,
+  options: { view?: SharedView; lang?: string | null; print?: SharedPrintStage | null } = {},
+): string {
+  const params = new URLSearchParams()
+  if (options.lang) params.set('lang', options.lang)
+  if (options.view) params.set(SHARED_VIEW_PARAM, options.view)
+  if (options.print) params.set(SHARED_PRINT_PARAM, options.print)
+  const query = params.toString()
+  return query ? `/s/${token}?${query}` : `/s/${token}`
+}
+
+/**
  * The four types a sender may exclude, in canonical order. The dialog renders
  * one checkbox each and the card reads the stored list back in words; the
  * backend refuses anything else, so this list is the vocabulary, not a
@@ -82,6 +122,22 @@ export const SHARE_ENTRY_TYPES: readonly ShareEntryType[] = [
 
 /** The minimum passcode length the server enforces (S15). */
 export const SHARE_PASSCODE_MIN_LENGTH = 6
+
+/**
+ * The reader has spent this document's AI translation budget (ST4, plan §5).
+ *
+ * A decision rather than a failure: the setup screen answers it with
+ * "ask the person who shared it for a new link" instead of the
+ * "translation failed, using English" toast. Only the share translate call
+ * throws it — the owner's flow is bounded by the app's usage limits, which
+ * carry their own localized API message.
+ */
+export class SharedTranslationLimitError extends Error {
+  constructor() {
+    super('share translation budget exhausted')
+    this.name = 'SharedTranslationLimitError'
+  }
+}
 
 /** What the shared page should render for a link, before any record is read. */
 export type SharedFirstPaint = 'record' | 'protected' | 'unavailable'
@@ -108,6 +164,9 @@ export interface ShareRecordMeta {
   last_updated: string
   scope: ShareLinkScope
   default_locale: string | null
+  /** AI translation runs this link has left (ST4). Never the owner's quota. */
+  translation_remaining: number
+  translation_budget: number
 }
 
 export interface ShareRecordHeader {

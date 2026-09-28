@@ -6,7 +6,7 @@ import { SharedPasscodePrompt, SharedLoadError } from '@/components/share/Shared
 import { SharedRecordView } from '@/components/share/SharedRecordView'
 import { clearShareGrant, readShareGrant, storeShareGrant } from '@/lib/share-grant'
 import type { SharedRecord } from '@/lib/share'
-import type { SharedView } from '@/lib/share'
+import type { SharedPrintStage, SharedView } from '@/lib/share'
 import {
   fetchSharedRecord,
   SharedRecordError,
@@ -58,11 +58,13 @@ export function SharedUnlockGate({
   token,
   locale,
   initialView,
+  initialPrint,
   lang,
 }: {
   token: string
   locale: string
   initialView?: SharedView
+  initialPrint?: SharedPrintStage | null
   lang?: string
 }) {
   const [phase, setPhase] = useState<Phase>('prompt')
@@ -143,6 +145,7 @@ export function SharedUnlockGate({
         record={record}
         locale={locale}
         initialView={initialView}
+        initialPrint={initialPrint}
         lang={lang}
       />
     )

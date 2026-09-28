@@ -103,6 +103,18 @@ where known. Because a printed sheet cannot be recalled, the sender's dialog
 copy must say that a recipient can print the record, in the same sentence as
 the expiry.
 
+**As shipped (ST4):** the flow is entered from a Print button in the shared
+chrome, present in BOTH views and at both breakpoints, and its two steps are
+`?print=setup` / `?print=editor` on the record's own route — URL state, like the
+view toggle, so Back steps out of the flow and a reload or a shared URL lands on
+the same STEP. Only the step is in the URL: the print CONFIGURATION (mode,
+target language, layout, text size, column and biomarker selections) lives in
+`PrintConfigProvider` state and resets, so a bookmarked editor URL renders the
+document with the default configuration — recorded as a follow-up, not fixed
+here. The provenance block renders inside the printed document, in the
+document's own language, rather than as screen chrome; the owner's own passport
+passes no provenance and its output is unchanged.
+
 ---
 
 ## 5. Recipients and AI cost — the translation limit
@@ -125,6 +137,16 @@ abuse surface on a public page, so the limit is explicit and server-side:
 because a recipient has no identity by design: a stranger gets a small,
 visible, bounded allowance, and the link's owner sets how much of their record
 a stranger may have translated.
+
+**As shipped (ST4):** the budget is `share_links.translate_runs_used` with
+`SHARE_TRANSLATION_BUDGET = 3`, reserved by one conditional UPDATE and refunded
+when the model produced nothing. The bounded payload is enforced one step
+earlier than written above — the request body is `{lang}` and the server
+derives the names and headings from the link's own record — so there is no
+client-supplied list to bound. "Its own quota bucket" is the link's counter:
+no `UsageLimit` row is read or written on the path at all. Exhaustion is a
+localized 429, and the reader sees it on the setup screen rather than getting
+an untranslated document.
 
 ---
 
@@ -315,6 +337,39 @@ Done when: a recipient can generate a document in each target language without
 writing to the owner's dictionary or consuming the owner's quota; the budget
 blocks the next run with a localized message; the printed document carries
 provenance; a backend test proves the owner's `UsageLimit` is untouched.
+
+**Shipped (ST4).** All of the above holds, with five details where reality
+differs from this plan:
+
+- **The payload is derived by the SERVER, not bounded by validating the
+  client's.** §5 asked for "only the biomarkers present in the shared record".
+  The route goes further: the body is `{lang}` and nothing else, and
+  `_share_translate_targets` rebuilds the link's own flowsheet to decide what
+  to translate. A public caller therefore cannot widen the batch even
+  accidentally, and the "171 referenced, not the 1500-entry dictionary" bound
+  holds by construction rather than by comparison.
+- **"Its own quota bucket" is the LINK's counter, not a second `UsageLimit`
+  row.** `share_links.translate_runs_used` + `SHARE_TRANSLATION_BUDGET = 3`,
+  reserved by one conditional UPDATE and refunded when the model produced
+  nothing. No `UsageLimit` row is read or written on this path at all, which
+  is the strongest form of "not the owner's allowance".
+- **The failure message is the setup screen's, not only the API's.** A 429
+  carries a localized `share.translation_limit_reached`, and the client turns
+  it into a typed error so the reader stays on the setup screen and reads
+  "No AI translations left for this document. Ask the person who shared it for
+  a new link." Navigating to an untranslated document would have looked like a
+  translation bug.
+- **`persist: false` was not enough on its own — the recipient must not COMMIT
+  either.** The review dialog's confirm step persists through
+  `/translate-biomarkers/commit` for an owner; a recipient's `commit` applies
+  the accepted terms to the document in memory and reports `saved: 0`, which
+  is also what suppresses the "saved for future documents" toast.
+- **The print flow needed one fix found live, in a production build.** The
+  owner's `PrintEditorView` selects every column and biomarker after its
+  fetch; the shared container did not, so the recipient's document opened
+  reading "Select at least one date column" over an empty table. Measured
+  after the fix: 3,584 populated cells, no empty-table message, 14 chunks
+  before the Print click and one more after it.
 
 ---
 

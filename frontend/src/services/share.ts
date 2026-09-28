@@ -1,4 +1,9 @@
-import { SHARE_GRANT_HEADER, SHARE_TOKEN_HEADER, type SharedRecord } from '@/lib/share'
+import {
+  SHARE_GRANT_HEADER,
+  SHARE_TOKEN_HEADER,
+  SharedTranslationLimitError,
+  type SharedRecord,
+} from '@/lib/share'
 
 /**
  * Server-side access to the public share API.
@@ -206,4 +211,71 @@ export async function fetchSharedFlowsheet(
   })
   if (!res.ok) throw new SharedRecordError(`share flowsheet responded ${res.status}`)
   return res.json()
+}
+
+export interface SharedTranslationItem {
+  id: string
+  name: string
+  source: 'translated' | 'cached' | 'fallback'
+}
+
+export interface SharedCategoryTranslation {
+  original: string
+  translated: string
+  source: 'translated' | 'fallback'
+}
+
+export interface SharedTranslationResult {
+  translations: SharedTranslationItem[]
+  categories: SharedCategoryTranslation[]
+  /** AI runs left on this LINK after the call (ST4, plan §5). */
+  remaining: number
+}
+
+/**
+ * Translate this link's own terminology, inside the link's budget.
+ *
+ * The body carries only the language: the names and headings are derived
+ * server-side from the record the link exposes, so a recipient cannot ask the
+ * model to translate anything they were not already given. The token and the
+ * grant travel in headers for the same reason every other share call puts
+ * them there — a header is not a URL, a log line or a referrer.
+ *
+ * This runs in the recipient's BROWSER, so it addresses the SAME-ORIGIN
+ * `/api/*` path (the `next.config.mjs` rewrite proxies it) rather than
+ * `STATIC_PROXY_URL`, which is a different origin from the page.
+ *
+ * A spent budget is a 429 and surfaces as {@link SharedTranslationLimitError}
+ * — the ONE outcome the caller must not treat as a generic failure, because
+ * the right answer is a message, not an English-fallback document.
+ */
+export async function translateSharedRecord(
+  token: string,
+  lang: string,
+  opts: { grant?: string | null; locale?: string; signal?: AbortSignal } = {},
+): Promise<SharedTranslationResult> {
+  let res: Response
+  try {
+    res = await fetch('/api/share/translate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        [SHARE_TOKEN_HEADER]: token,
+        ...(opts.grant ? { [SHARE_GRANT_HEADER]: opts.grant } : {}),
+        // The recipient's chosen language, not the browser's: the refusal is
+        // localized from this header, and the reader picked their language
+        // explicitly (`?lang=`).
+        ...(opts.locale ? { 'Accept-Language': opts.locale } : {}),
+      },
+      body: JSON.stringify({ lang }),
+      cache: 'no-store',
+      referrerPolicy: 'no-referrer',
+      signal: opts.signal,
+    })
+  } catch (cause) {
+    throw new SharedRecordError(`share translate request failed: ${String(cause)}`)
+  }
+  if (res.status === 429) throw new SharedTranslationLimitError()
+  if (!res.ok) throw new SharedRecordError(`share translate responded ${res.status}`)
+  return (await res.json()) as SharedTranslationResult
 }
