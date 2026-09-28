@@ -21,7 +21,12 @@ describe('shared view message subset', () => {
         flatten(sharedViewMessages(locale)).map((key) => key.split('.')[0]),
       )
       expect([...namespaces].sort(), locale).toEqual([
+        // The full record's correlation chart (ST3) is the app's own
+        // component, so these two arrive with it — the chart's copy and the
+        // axis-mode toggle / gap annotation it renders.
+        'charts',
         'common',
+        'correlation',
         'misc',
         'sharedView',
         'statuses',

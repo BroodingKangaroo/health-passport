@@ -29,6 +29,7 @@ import { gapAwareLineShape } from '@/lib/chart-line-shape'
 import { useChartAxisMode } from '@/lib/hooks/useChartAxisMode'
 import { AxisModeToggle } from '@/components/shared/axis-mode-toggle'
 import { pairwiseCorrelations, type PairStats } from '@/lib/stats'
+import { useViewer } from '@/providers/viewer-provider'
 import type { BiomarkerResult } from '@/lib/types'
 
 const CLINICAL_PALETTE = [
@@ -197,10 +198,28 @@ function strengthLabel(r: number, t: TFunction): string {
   return t('strength.negligible')
 }
 
-/** Plain-language confidence, replacing raw p-value jargon. */
-function confidenceLabel(n: number, p: number, t: TFunction): string {
+/**
+ * Plain-language confidence, replacing raw p-value jargon.
+ *
+ * `exploratory` is the RECIPIENT variant (shared-view plan §6, ST3 review). A
+ * shared record must not carry a significance verdict: this page ranks the top
+ * pairs by |r|, so the 5% threshold "likely a real relationship" leans on is
+ * never corrected for that selection, and on a clinician's screen it reads as
+ * an assertion. The recipient gets the sample size and the exploratory framing
+ * instead; the owner's own view is unchanged.
+ */
+function confidenceLabel(
+  n: number,
+  p: number,
+  t: TFunction,
+  exploratory = false,
+): string {
   if (n < 3 || !Number.isFinite(p)) return t('confidence.tooFew')
-  return p < 0.05 ? t('confidence.real') : t('confidence.chance')
+  return exploratory
+    ? t('confidence.exploratory', { count: n })
+    : p < 0.05
+      ? t('confidence.real')
+      : t('confidence.chance')
 }
 
 function rColor(r: number): string {
@@ -220,6 +239,7 @@ function CorrelationStats({
   biomarkers: BiomarkerResult[]
 }) {
   const t = useTranslations('correlation')
+  const { isShared } = useViewer()
   const nameOf = (id: string) =>
     biomarkers.find((b) => b.id === id)?.definition.names.en ?? id
   const entries = Object.entries(pairStats)
@@ -260,7 +280,12 @@ function CorrelationStats({
                   >
                     {strengthLabel(s.r, t)}
                   </span>
-                  {' · '}{t('readingsCount', { count: s.n })} · {confidenceLabel(s.n, s.p, t)}
+                  {' · '}
+                  {/* The recipient's phrase carries the sample size itself, so
+                      the separate count would only repeat it. */}
+                  {isShared
+                    ? confidenceLabel(s.n, s.p, t, true)
+                    : `${t('readingsCount', { count: s.n })} · ${confidenceLabel(s.n, s.p, t)}`}
                 </p>
               </div>
             )
@@ -287,6 +312,7 @@ function TopCorrelatedPairs({
   onApply: (pairKey: string) => void
 }) {
   const t = useTranslations('correlation')
+  const { isShared } = useViewer()
   if (pairs.length === 0) return null
   const nameOf = (id: string) =>
     biomarkers.find((b) => b.id === id)?.definition.names.en ?? id
@@ -309,13 +335,22 @@ function TopCorrelatedPairs({
               <button
                 type="button"
                 onClick={() => onApply(pairKey)}
-                title={t('topPairs.rowTitle', {
-                  a: nameOf(a),
-                  b: nameOf(b),
-                  strength: strengthLabel(s.r, t),
-                  readings: t('readingsCount', { count: s.n }),
-                  confidence: confidenceLabel(s.n, s.p, t),
-                })}
+                title={
+                  isShared
+                    ? t('topPairs.rowTitleExploratory', {
+                        a: nameOf(a),
+                        b: nameOf(b),
+                        strength: strengthLabel(s.r, t),
+                        confidence: confidenceLabel(s.n, s.p, t, true),
+                      })
+                    : t('topPairs.rowTitle', {
+                        a: nameOf(a),
+                        b: nameOf(b),
+                        strength: strengthLabel(s.r, t),
+                        readings: t('readingsCount', { count: s.n }),
+                        confidence: confidenceLabel(s.n, s.p, t),
+                      })
+                }
                 className={cn(
                   'flex w-full items-center gap-2 px-4 py-1.5 text-left transition-colors hover:bg-muted/30',
                   isSelected && 'bg-primary/10 hover:bg-primary/10',
@@ -358,6 +393,7 @@ function TopCorrelatedPairs({
 
 function CorrelationLegend() {
   const t = useTranslations('correlation')
+  const { isShared } = useViewer()
   return (
     <div className="border-t border-border bg-muted/10 px-4 py-2">
       <p className="text-[10px] leading-relaxed text-muted-foreground">
@@ -365,8 +401,16 @@ function CorrelationLegend() {
         <span className="font-medium">{t('legend.rPlusOne')}</span>
         {t('legend.afterPlusOne')}{' '}
         <span className="font-medium">{t('legend.rMinusOne')}</span>
-        {t('legend.afterMinusOne')}{' '}
-        {t('legend.confidence', { phrase: t('confidence.real') })}
+        {t('legend.afterMinusOne')}
+        {/* The threshold sentence explains "likely a real relationship" — a
+            significance claim. A recipient never sees that phrase, so the
+            explanation of it goes too (shared-view plan §6, ST3 review). */}
+        {!isShared && (
+          <>
+            {' '}
+            {t('legend.confidence', { phrase: t('confidence.real') })}
+          </>
+        )}
       </p>
     </div>
   )

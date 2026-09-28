@@ -45,6 +45,14 @@ export function sharedViewMessages(locale: AppLocale): Record<string, unknown> {
     },
     // ScaleNote, the reused "converted / not standardised" marker.
     misc: { scaleNote: misc?.scaleNote },
+    // The correlation section of the full record (ST3). The chart is the
+    // app's own `CorrelationChart`, so its copy arrives with the namespaces
+    // it actually calls: `correlation` is its own strings and `charts` is the
+    // axis-mode toggle plus the compressed-gap annotation. Both load with the
+    // page rather than with the chart — a few KB of JSON against the 350 KB
+    // of recharts the reader has not asked for yet.
+    correlation: catalog.correlation,
+    charts: catalog.charts,
     // One word: TimelineContent's loading line. The shared record is passed in
     // as a prop and never loads, so this branch does not render — but shipping
     // the key means it degrades to the real string rather than a raw key if

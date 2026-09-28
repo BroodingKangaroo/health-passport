@@ -61,6 +61,21 @@ export const sharedViewMessages = {
         error: 'Could not load all results.',
         retry: 'Try again',
       },
+      // The full record's correlation section (ST3). The chart itself is the
+      // app's own component, so its strings come from the `correlation` and
+      // `charts` namespaces; these lines are the recipient's framing, which
+      // the owner's surface does not need.
+      correlation: {
+        title: 'Correlation',
+        intro:
+          'Two measurements that tend to move together across the same dates. This is an exploratory look at this record, not a diagnosis, and it does not show that one measurement causes another.',
+        show: 'Show correlation chart',
+        loading: 'Loading chart...',
+        empty:
+          'Comparing biomarkers needs readings from at least two different ones. This record does not have that yet.',
+        caveat:
+          'Correlation is a statistical observation about this record alone. If a result here puzzles you, ask the person who shared it or their doctor.',
+      },
       footer: {
         disclaimer:
           'This is a personal health record kept by its owner and shared with you at their invitation. It is not a medical opinion or a diagnosis.',
@@ -146,6 +161,17 @@ export const sharedViewMessages = {
         loading: 'Загрузка всех результатов...',
         error: 'Не удалось загрузить все результаты.',
         retry: 'Повторить',
+      },
+      correlation: {
+        title: 'Корреляции',
+        intro:
+          'Два показателя, которые меняются согласованно в одни и те же даты. Это исследовательский взгляд на запись, а не диагноз, и он не означает, что одно измерение вызывает другое.',
+        show: 'Показать график корреляций',
+        loading: 'Загрузка графика...',
+        empty:
+          'Для сравнения нужны измерения хотя бы двух разных биомаркеров. В этой записи их пока нет.',
+        caveat:
+          'Корреляция — статистическое наблюдение только по этой записи. Если какой-то результат непонятен, спросите того, кто поделился записью, или его врача.',
       },
       footer: {
         disclaimer:

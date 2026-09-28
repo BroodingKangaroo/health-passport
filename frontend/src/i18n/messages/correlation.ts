@@ -24,6 +24,10 @@ export const correlationMessages = {
       topPairs: {
         hint: 'by |r| · strongest first',
         rowTitle: '{a} × {b} — {strength}, {readings}, {confidence}',
+        // Recipient only (shared-view plan §6, ST3 review): the shared view
+        // drops the separate readings slot because the exploratory phrasing
+        // below already names the sample size.
+        rowTitleExploratory: '{a} × {b} — {strength}, {confidence}',
       },
       strength: {
         composed: '{strength} {direction}',
@@ -38,6 +42,12 @@ export const correlationMessages = {
         tooFew: 'too few readings to tell',
         real: 'likely a real relationship',
         chance: 'could still be chance',
+        // Recipient only. A link must not carry a significance verdict: this
+        // page ranks the top pairs by |r|, so the threshold that "real" leans
+        // on is never corrected for that selection, and a clinician reads the
+        // result as an assertion. Say what it is instead — exploratory, on
+        // this many readings — and let the section's framing carry the rest.
+        exploratory: '{count, plural, other {exploratory: # shared readings}}',
       },
       empty: {
         noData: 'No biomarker data yet — add a blood test to get started.',
@@ -84,6 +94,7 @@ export const correlationMessages = {
       topPairs: {
         hint: 'по |r| · сильнейшие сверху',
         rowTitle: '{a} × {b} — {strength}, {readings}, {confidence}',
+        rowTitleExploratory: '{a} × {b} — {strength}, {confidence}',
       },
       strength: {
         composed: '{strength} {direction}',
@@ -98,6 +109,8 @@ export const correlationMessages = {
         tooFew: 'слишком мало показаний для вывода',
         real: 'вероятно, реальная взаимосвязь',
         chance: 'возможно, случайное совпадение',
+        exploratory:
+          '{count, plural, one {исследовательское наблюдение: # совместное измерение} few {исследовательское наблюдение: # совместных измерения} many {исследовательское наблюдение: # совместных измерений} other {исследовательское наблюдение: # совместных измерения}}',
       },
       empty: {
         noData:

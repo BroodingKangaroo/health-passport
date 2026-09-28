@@ -168,6 +168,23 @@ describe('SharedRecordView view switch', () => {
     expectNoMissingMessages()
   })
 
+  /**
+   * ST3: correlation belongs to the full record and to nothing else. The
+   * summary is the clinical read — surfacing pairs at n ≥ 4 and |r| ≥ 0.5 on
+   * the first screen a doctor sees reads as an assertion (plan §6), so the
+   * section exists in one view only and the assertion runs both ways.
+   */
+  it('keeps the correlation section out of the summary and inside the full record', () => {
+    const summary = renderView()
+    expect(screen.queryByTestId('shared-correlation')).toBeNull()
+    summary.unmount()
+
+    renderView('full')
+    expect(screen.getByTestId('shared-correlation')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Needs attention' })).not.toBeInTheDocument()
+    expectNoMissingMessages()
+  })
+
   it('offers the toggle as plain links that work without JavaScript', () => {
     renderView()
     const group = toggle()
@@ -267,7 +284,7 @@ describe('SharedRecordView view switch', () => {
     expect(screen.queryByText('TREND')).not.toBeInTheDocument()
   })
 
-  it('renders no chart when a reading row is expanded', () => {
+  it('renders the expanded row’s name and range but no chart', () => {
     renderView('full')
     // Expanding a row is how the owner reaches the trend chart. Assert the
     // panel really opened first, or "no chart" would pass on a row that never
@@ -275,9 +292,14 @@ describe('SharedRecordView view switch', () => {
     fireEvent.click(screen.getByRole('button', { name: /Hemoglobin/ }))
     expect(screen.getByText('LATEST')).toBeInTheDocument()
     expect(screen.getByText('READING HISTORY')).toBeInTheDocument()
-    // ...and a recipient gets the numbers and the reading list only: the
-    // chart, and therefore recharts, never loads on their page.
-    expect(screen.queryByText('Hemoglobin Dynamics')).not.toBeInTheDocument()
+    // A recipient still gets the block's heading and its reference line
+    // (ST3 review of ST2): they label the metric cards below, and dropping
+    // them with the chart left those cards unlabelled. Only the chart itself
+    // is withheld — the reading-history chips already carry every number it
+    // would draw.
+    expect(screen.getByText('Hemoglobin Dynamics')).toBeInTheDocument()
+    expect(screen.getByText(/Reference:/)).toBeInTheDocument()
+    // The chart, and therefore recharts, never loads on their page.
     expect(
       document.querySelector('[class*="recharts"]'),
     ).toBeNull()

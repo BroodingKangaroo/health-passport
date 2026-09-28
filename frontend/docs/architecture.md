@@ -234,15 +234,16 @@ and carried in the URL: `?view=summary` (the default) and `?view=full`.
   matrix. Its remaining recharts import is `import type`, which TypeScript
   erases — the walker ignores type-only edges for exactly that reason.
 - **The shared surface loads no charts at all.** Two changes get it there: the
-  expanded reading row no longer renders its trend chart for a recipient
-  (`ExpandedBiomarkerDetails` asks the capability; the heading, reference line
-  and chart travel together, because a "… Dynamics" heading over nothing is
-  worse than no block), and `SharedFlowsheet` passes `showTrend={false}` so the
-  matrix drops its sparkline column — `FlowsheetMatrix` gained that prop,
-  defaulting to `true`, and it removes one 80px grid track rather than leaving
-  a hole. Those two were the only recharts consumers on the page.
+  the expanded reading row drops its trend chart for a recipient
+  (`ExpandedBiomarkerDetails` asks the capability and, since the ST3 review of
+  ST2, keeps the heading and the reference line — they label the metric cards
+  below, and removing all three left those cards unlabelled), and
+  `SharedFlowsheet` passes `showTrend={false}` so the matrix drops its
+  sparkline column — `FlowsheetMatrix` gained that prop, defaulting to `true`,
+  and it removes one 80px grid track rather than leaving a hole.
 - **Measured effect.** The shared page's first-paint script list went from
-  1,058 KB across 12 chunks to 797 KB across 14, the 354 KB recharts chunk is
+  1,058 KB across 12 chunks to 797 KB across 14, the 342 KB recharts chunk
+  (350,506 bytes) is
   in neither view's server-rendered HTML, and a live run of both views reports
   **zero** nodes matching `[class*="recharts"]` — the charting library is not
   fetched at all, not merely deferred.
@@ -261,6 +262,76 @@ and carried in the URL: `?view=summary` (the default) and `?view=full`.
   when the pane is narrower than it, so wider viewports are untouched. Below
   `lg` the shared view is single-column and far wider, so the recipient's
   floor binds only in this one band.
+
+### The full record's correlation section (ST3)
+
+`components/share/SharedCorrelation.tsx` is the only place correlation appears
+on the recipient surface, and it appears in the **full record only** — the
+summary is the clinical read, and pairs at n ≥ 4 and |r| ≥ 0.5 on a doctor's
+first screen read as an assertion (shared-view plan §6). It sits between the
+timeline and the table, so it is not buried under the ~9,000px matrix.
+
+- **There is no `/api/share/correlation` endpoint.** The owner's correlation is
+  not a server computation: `views/CorrelationView.tsx` renders
+  `CorrelationChart` over the biomarkers in the payload and `lib/stats.ts` does
+  the arithmetic in the browser. The share record already carries the same
+  `biomarkers` array, already narrowed by the same five builders to the link's
+  date range and `scope.exclude`. Rendering the owner's own component over it
+  makes "the same numbers" structural; a Python twin would be a second
+  implementation of the same statistic.
+- **The chart is fetched on a click, not on mount.** `next/dynamic` imports its
+  target when the dynamic component mounts, so `SharedCorrelation` renders a
+  **Show correlation chart** button and mounts the chart only after it is
+  pressed. Measured on a production build with network capture at 1280 and
+  1024: 14 chunks and **zero** recharts requests before the click; 17 chunks
+  and exactly one after. (That chunk is 342 KB / 350,506 bytes. It is
+  content-hashed, so its filename changes on every build — the size is the
+  stable thing to quote, not the hash.)
+- **`hasReadings` is restated here, not imported.** `correlation-chart.tsx`
+  exports that predicate, but importing it would pull the chart module — and
+  recharts — into the eager graph of the shared tree. The import-graph test now
+  lists `components/health-passport/correlation-chart.tsx -> recharts` in
+  `ALLOWED_LAZY`; the mock in `shared-correlation.test.tsx` pins that the
+  module is not reached before the click.
+- **The input is narrower than the owner's by exactly the merged readings.**
+  Merged readings never travel (D15), so a merged-only biomarker cannot appear
+  on the recipient's chart and a merged reading cannot sit in a correlating
+  series. Measured against the live dev record: 160 owner biomarkers vs 131
+  shared, all 29 extras merged-only; after dropping merged readings from the
+  owner's side the two sets are identical, and both produce the **same pairs
+  with the same `n` and `r`**: 346 all-pairs each. The owner's own payload has
+  754. Counting only the *suggested* pairs — n ≥ 4 and |r| ≥ 0.5, what the
+  panel actually lists — the same three numbers are 161 (owner), 122
+  (owner-minus-merged) and 122 (shared). Comparing the owner's 161 with the
+  reduced 122, 79 suggestions are gone and 40 new ones appear, and **none of
+  those 119 pairs involves a merged-only biomarker**: they are pairs of
+  biomarkers present on both sides, whose relationship changes because merged
+  readings leave the series. That is the whole difference.
+- **Strings.** The section's own framing lives in `sharedView.correlation`
+  (EN/RU). The chart is the app's component, so `shared-messages.ts` also ships
+  the `correlation` and `charts` namespaces — both views ship them, because the
+  provider is page-level, and the pin test in
+  `src/i18n/__tests__/shared-messages.test.ts` records the set. Biomarker names
+  stay as the owner's record stored them; opening a shared link must never
+  trigger a translation run.
+- **The chart's confidence verdict is withheld from a recipient (ST3 review).**
+  The owner's panel prints `Strong positive · 7 readings · likely a real
+  relationship` and the legend explains the 5% threshold behind that phrase. A
+  shared link must not: the panel ranks pairs by |r|, so the threshold is never
+  corrected for that selection, and a clinician reads it as an assertion. For
+  `viewer.capability === 'shared'`, `confidenceLabel` returns
+  `correlation.confidence.exploratory` — "exploratory: 7 shared readings" —
+  which names the sample size itself, so the separate readings slot is dropped
+  on that branch (the row's `title` uses `topPairs.rowTitleExploratory` for the
+  same reason), and `CorrelationLegend` omits the threshold sentence
+  altogether. The section's framing paragraph and the page's not-a-diagnosis
+  line are unchanged. The owner's view is untouched; pinned by
+  `components/__tests__/correlation-confidence.test.tsx`, which renders both
+  capabilities.
+- **`useChartAxisMode` writes `hp.chartAxisMode` to localStorage** when a reader
+  presses "Even spacing". That is a preference on the recipient's own machine,
+  written only in response to their click; the shared surface still sets no
+  cookie and keeps no view state outside the URL.
 
 ### Sender surfaces (Stage 2) — dialog, card, notice
 

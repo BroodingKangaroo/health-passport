@@ -84,21 +84,26 @@ export function ExpandedBiomarkerDetails({
 
   return (
     <div className="flex flex-col gap-5 rounded-lg bg-muted/60 p-5">
-      {/* Heading, reference line and chart travel together: a "… Dynamics"
-          heading over nothing would be worse than no block at all. */}
-      {!isShared && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground">
-            {t('dynamics', { name: biomarker.definition.names.en })}
-          </h3>
-          <p className="mb-2 text-xs text-muted-foreground">
-            {t('reference', {
-              value: formatReference(biomarker.reference ?? biomarker.definition.reference, null, { lang: locale }),
-            })}
-          </p>
+      {/* The heading and the reference line belong to the block, not to the
+          chart: a recipient reading a shared record still needs to know which
+          biomarker this is and what its range is, and dropping all three
+          together (the ST2 behaviour) left the metric cards below with no
+          label at all. Only the CHART is owner-only — it is the sole reason
+          recharts would load on a shared page, and the reading-history chips
+          below already carry every number it would draw. */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground">
+          {t('dynamics', { name: biomarker.definition.names.en })}
+        </h3>
+        <p className={cn('text-xs text-muted-foreground', !isShared && 'mb-2')}>
+          {t('reference', {
+            value: formatReference(biomarker.reference ?? biomarker.definition.reference, null, { lang: locale }),
+          })}
+        </p>
+        {!isShared && (
           <BiomarkerChart biomarker={biomarker} data={chartData} height={250} />
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="flex gap-3">
         <MetricCard

@@ -130,10 +130,9 @@ a stranger may have translated.
 
 ## 6. Correlation
 
-The full record includes the correlation view, computed server-side from the
-same scope through a new share-scoped endpoint. This reverses an earlier
-decision to keep correlation off the recipient surface, so the reasons are
-recorded with it:
+The full record includes the correlation view, computed from the same scope.
+This reverses an earlier decision to keep correlation off the recipient
+surface, so the reasons are recorded with it:
 
 - It is a **claim risk**: the view suggests pairs at n ≥ 4 and |r| ≥ 0.5, which
   on a clinician's screen reads as an assertion. It keeps the app's existing
@@ -142,6 +141,19 @@ recorded with it:
 - It pulls **recharts** into the recipient's bundle, so it must be
   **lazy-loaded**; a bundle check is part of the acceptance criteria, not an
   aspiration.
+
+**Corrected in ST3: there is no share-scoped correlation endpoint, and there
+should not be one.** This section originally called for
+`GET /api/share/correlation` "computed server-side". The owner's correlation
+is not a server computation at all — `views/CorrelationView.tsx` renders
+`CorrelationChart` over the biomarkers in the `/api/timeline` payload, and
+`lib/stats.ts` does the arithmetic in the browser. The share record already
+carries the same `biomarkers` array, already narrowed to the link's date range
+and exclusions by the same five builders. A server-side twin would therefore
+be a *second implementation of the same numbers*, which is exactly the drift
+the "same numbers as the owner's view" criterion exists to prevent. The
+recipient's section renders the owner's own component over the owner's own
+payload shape, so equality is structural rather than maintained by hand.
 
 ---
 
@@ -191,7 +203,7 @@ differs from the plan:
 
 - **"No recharts in the summary's bundle" is met literally, not just at first
   paint.** The shared page's initial script list dropped from 1,058 KB across
-  12 chunks to 797 KB across 14, the 354 KB recharts chunk is in neither view's
+  12 chunks to 797 KB across 14, the 342 KB recharts chunk is in neither view's
   server-rendered HTML, and a live run of both views reports zero
   `[class*="recharts"]` nodes — nothing is fetched, lazily or otherwise. Two
   gaps had to close for that: the matrix's sparkline column
@@ -250,6 +262,48 @@ same record and scope; it is absent from the summary; recharts is not in the
 summary's first-paint bundle; the framing and disclaimer are present; the
 suites are green.
 
+**Shipped (ST3).** All of the above holds, with the endpoint replaced as §6
+now explains, and four details worth recording:
+
+- **The chart arrives on a CLICK, not on mount.** `next/dynamic` still imports
+  its target when it mounts, so a section that rendered the dynamic chart
+  unconditionally would fetch recharts on the full record's first paint. The
+  section renders a **Show correlation chart** button and mounts the chart only
+  after it is pressed. Measured on a production build with network capture: 14
+  chunks and **zero** recharts requests before the click, 17 chunks and one
+  recharts request after, at both 1280 and 1024.
+- **`SharedCorrelation` restates `hasReadings` rather than importing it.**
+  `correlation-chart.tsx` exports that predicate, but importing it would pull
+  the chart — and recharts — into the shared tree's *eager* graph. The
+  duplication is deliberate and pinned by the import-graph test, which now
+  lists `correlation-chart.tsx -> recharts` as a lazy edge.
+- **The correlation input is narrower than the owner's, by exactly the merged
+  readings.** Measured against the live dev record: the owner's payload has 160
+  biomarkers, the share payload 131, and the 29 extras are merged-only
+  readings (D15). After dropping merged readings from the owner's side, the two
+  sets are identical point for point, and both surfaces produce the same 346
+  pairs with the same `n` and `r` (the owner's own payload has 754). Of the
+  pairs the panel actually lists — the *suggested* ones, n ≥ 4 and |r| ≥ 0.5 —
+  the owner has 161 where the reduced sets have 122; 79 suggestions are gone
+  and 40 new ones appear, and **none of those 119 involves a merged-only
+  biomarker**. They are pairs of biomarkers present on both sides whose
+  relationship changes because merged readings leave the series.
+- **Sibling fix from the ST2 review.** The expanded reading row now keeps its
+  heading and reference line for a recipient and drops only the chart
+  (`expanded-biomarker-details.tsx`): dropping all three left the metric cards
+  below unlabelled, and the reading-history chips already carry the numbers the
+  chart would draw.
+- **The confidence verdict does not travel (ST3 review, F3).** §6's rule was
+  "if it cannot be made unambiguous, correlation stays out"; the ruling keeps
+  the chart and removes the claim. For a `shared` viewer the panel and the pair
+  label replace `likely a real relationship` with
+  `exploratory: {count} shared readings` — the sample size named in the phrase
+  itself — and the legend drops the sentence explaining the 5% threshold,
+  because that sentence exists only to explain the phrase. The panel ranks
+  pairs by |r|, so the threshold is never corrected for that selection effect,
+  and a significance verdict on seven points in front of a clinician is exactly
+  the assertion §6 was guarding against. The owner's view is unchanged.
+
 ### ST4 — The print passport and the translation limit
 
 The recipient print flow (setup → editor) over the share payload; the per-link
@@ -271,9 +325,10 @@ provenance; a backend test proves the owner's `UsageLimit` is untouched.
   and the viewer capability; the frontend invariant: two views in one route,
   the `?view=` contract, lazy-loaded correlation.
 - `frontend/docs/architecture.md` — the two views, the toggle, the capability,
-  the catalog scope, the lazy boundaries.
-- `backend/docs/architecture.md` — the correlation endpoint, the translation
-  budget and its bucket.
+  the catalog scope, the lazy boundaries, the correlation section (ST3).
+- `backend/docs/architecture.md` — the translation budget and its bucket. **No
+  ST3 change**: the correlation replacement in §6 removes the only backend item
+  this plan had for that file.
 - `docs/phase-1.1-product-plan.md` — §4.1 (the second view), §4.4 (the desktop
   shell), D13 (the uninterpretable-value rule), and the correlation reversal.
 - `docs/phase-1.1-stage-3-plan.md` — S12's print sentence, which this
