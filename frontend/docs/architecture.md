@@ -156,8 +156,16 @@ retries.
   recipient's own app language; the EN|RU switch
   (`src/components/share/language-switch.tsx`) is plain `?lang=` links, and
   the cookie writer (`i18n/api-locale`) is banned from this tree by the import
-  graph test. `<html lang>` comes from the layout (layouts never receive
-  `searchParams`); `DocumentLang` corrects it when the final locale disagrees.
+  graph test. `<html lang>` is resolved by the layout, on the server — a
+  layout cannot read `searchParams`, so `src/middleware.ts` (matched to `/s/`)
+  carries `?lang=` into the render as a REQUEST header, dropping any inbound
+  copy first so a recipient cannot forge a locale. The layout then resolves
+  `?lang=` → `Accept-Language` → `NEXT_LOCALE`, which is everything it can
+  know; the link's own `default_locale` lives inside the record, so
+  `DocumentLang` still corrects `<html lang>` after hydration for that one
+  case. This is review item 4: before the middleware, an English browser
+  opening `?lang=ru` shipped `lang="en"` until hydration — the tag screen
+  readers and `:lang()` rules read from is the one that was wrong.
 - **Language of the data is not the language of the chrome.** Biomarker names
   come from the persisted multilingual `names` map, and a public page must
   never fire a translation run (unbounded LLM cost behind a stranger's URL).
@@ -168,9 +176,11 @@ retries.
   the DOM and prints as a table regardless of the screen breakpoint; the
   language switch and the CTA are `print:hidden`.
 - **Print** is the browser's own print over the page (the app's existing
-  model): the CTA counts the click via `GET /api/share/cta` (S13) and is
-  `print:hidden`, the language switch is `print:hidden`, and the print editor
-  is not reachable from this tree.
+  model) for anything the reader chooses to print directly, but the PRINT
+  BUTTON opens the app's own passport flow — `?print=setup` → `?print=editor`,
+  the owner's own screens over the share payload (ST4, and the section below).
+  The CTA counts the click via `GET /api/share/cta` (S13) and is
+  `print:hidden`, and the language switch is `print:hidden` too.
 
 ### Two views, one route (ST2) — summary and full record
 
@@ -200,7 +210,7 @@ and carried in the URL: `?view=summary` (the default) and `?view=full`.
   reason: it points at an API redirect, and a router navigation there would
   fire two requests and double the click counter. That rule is pinned by a
   source check on `SharedRecordView.tsx`, not by the import-graph test.)
-- **Where the toggle sits.** Above `lg` the chrome is a sticky 280px rail in
+- **Where the toggle sits.** Above `lg` the chrome is a sticky 240px rail in
   the first grid column; below `lg` the same elements are a sticky strip at
   the top. It is ONE markup tree: the chrome container is `display: contents`
   under `lg`, so its children join the page flow and the strip's
@@ -210,6 +220,17 @@ and carried in the URL: `?view=summary` (the default) and `?view=full`.
   to a screen reader or a test. The container also measures itself into
   `--chrome-h`, which is what the stacked full view's event switcher pins
   under.
+
+  The rail was 280px until the whole-change review measured what the width cost
+  the rest of the page (its controls need 199px, so the extra 40px bought
+  nothing), and the full record now gives the history pane a wider floor
+  (`gridClassName="lg:grid-cols-[minmax(324px,26%)_1fr]"`, a prop
+  `TimelineContent` takes so the owner's own timeline keeps its 26%): at the
+  old widths the Russian type chips clipped the third one mid-word
+  (`Приём…`) while the English row fit, and the history cards were truncated
+  harder than the owner's. The two changes together fix that band without
+  shrinking the results pane it sits beside — at 1280 the detail pane is 656px
+  against 652px before, and the recipient's 620px table floor still holds.
 - **`views/timeline-content.tsx` is the extracted body.** `TimelineContent`
   (the history list + detail panes) moved out of `views/TimelineView.tsx`,
   which keeps only the authed chrome (HeaderBar, NavBar, ShareNotice) and
@@ -255,14 +276,16 @@ and carried in the URL: `?view=summary` (the default) and `?view=full`.
   fetched at all, not merely deferred.
 - **Layout checks.** No page-level horizontal overflow at 1024 / 1280 / 1440 /
   1920 in either view. Inside the pane, the results table is the one place the
-  rail costs something: it takes 280px of the viewport, which leaves the
+  rail costs something: it takes 240px of the viewport, which leaves the
   detail pane narrower than the owner's, and between `lg` (1024px) and about
   1400px that pushed the table past its pane — at 1280 the table overflowed by
   ~133px and the column that fell off the right edge was **Status**, the
   clinically meaningful one. (Measured against `/demo`, which renders the same
   `TimelineContent` + `ResultsPanel` without a rail: 0px of overflow at 1280,
-  against 133px here.) Narrowing the rail is not a fix — 200px still leaves
-  717px against a 768px table — so the width comes from the table:
+  against 133px here — a measurement taken at the old 280px rail; the narrower
+  rail gives that pane back 40px.) Trimming the rail was not a fix on its own
+  — 200px still left 717px against a 768px table — so the width comes from the
+  table:
   `ResultsPanel` takes a `minTableWidth` whose default is the capability's
   floor (768px for the owner, 620px for a recipient). The floor only binds
   when the pane is narrower than it, so wider viewports are untouched. Below
@@ -384,14 +407,34 @@ doctor produces is the document the record's owner would produce.
   recipient's source reports a `remaining` count.
 - **The editor container is the only new component**
   (`components/share/SharedPrintEditor.tsx`): `PrintEditor` itself is reused
-  unchanged. The container supplies the share payload, selects every column
-  and biomarker up front (the owner's `PrintEditorView` does that after its
-  fetch; without it the recipient's document opened reading "Select at least
-  one date column" over an empty table — found live in a production build),
-  merges the terms accepted in the review dialog into the document's
-  definitions IN MEMORY (there is nowhere to persist them, and nothing a
-  stranger does may be written into someone else's record), and passes
-  `provenance`.
+  unchanged. The container supplies the share payload, initialises the
+  selection (the owner's `PrintEditorView` does that after its fetch; without
+  it the recipient's document opened reading "Select at least one date
+  column" over an empty table — found live in a production build), merges the
+  terms accepted in the review dialog into the document's definitions IN
+  MEMORY (there is nowhere to persist them, and nothing a stranger does may be
+  written into someone else's record), and passes `provenance`.
+- **The default column selection fits the page, and an overflowing choice is
+  announced** (`components/share/print-fit.ts`, whole-change review item 1).
+  "Select every column and biomarker", copied from the owner's flow, is wrong
+  for a PAGE: a browser does not paginate a table horizontally, it scales the
+  page down to its floor and then clips. The reviewer rendered the document
+  and found the 27-column table produced four pages that all cut at the same
+  mid-column point, so the ten newest columns — including the reading the
+  summary flags as needing attention — were on none of them. The container now
+  measures the document's min-content (per column, via a hidden clone in a 1px
+  box, because on screen the table merely stretches) and on the first pass
+  keeps the NEWEST columns that fit `PRINT_PAGE_CONTENT_WIDTH` (780px: A4 is
+  794px and Letter 816px at 96dpi, and this stylesheet sets no page margin).
+  Later selection changes are reported, not overruled: `PrintEditor` takes an
+  optional `banner` slot and the recipient's editor fills it with
+  `print.editor.columnsOverflow`. The owner's editor passes nothing and its
+  default is unchanged.
+- **`print-setup` shows whose record it is and until when**
+  (`PrintSetup`'s optional `recordContext`, review item 2). The provenance
+  exists INSIDE the generated document, but a reader configuring one should
+  see it on the screen they are configuring from; it renders above the
+  translation-mode choice and the owner passes nothing.
 - **Provenance on the paper** (`DOCUMENT_PROVENANCE` in
   `src/lib/print-document.ts`, rendered by `print-editor.tsx`): "Shared via
   HealthPassport", the link's expiry in the DOCUMENT's language, and the

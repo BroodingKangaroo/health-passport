@@ -179,6 +179,10 @@ export const timelineMessages = {
         legendNotMeasured: 'not measured',
         legendAsPrinted: 'printed as in the source document',
         asPrintedValue: 'Printed as in the source document — the app could not interpret it',
+        legendReferenceEarliest:
+          'reference range recorded with the row’s earliest reading',
+        referenceEarliestHint:
+          'This reference range is the one recorded with the row’s earliest reading. Later readings may have been measured against a different range — each cell shows its own.',
         notMeasured: 'Not measured in this panel',
         showingCount: '{shown} of {total} panels',
         rangePickerLabel: 'Date range',
@@ -365,6 +369,10 @@ export const timelineMessages = {
         legendNotMeasured: 'не измерялось',
         legendAsPrinted: 'напечатано как в исходном документе',
         asPrintedValue: 'Напечатано как в исходном документе — приложение не смогло это распознать',
+        legendReferenceEarliest:
+          'референсный диапазон по самому раннему измерению в строке',
+        referenceEarliestHint:
+          'Это референсный диапазон, зафиксированный вместе с самым ранним измерением в строке. Более поздние измерения могли выполняться по другому диапазону — в каждой ячейке указан свой.',
         notMeasured: 'Не измерялось в этой панели',
         showingCount: '{shown} из {total} панелей',
         rangePickerLabel: 'Диапазон дат',

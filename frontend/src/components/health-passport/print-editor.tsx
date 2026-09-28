@@ -53,6 +53,7 @@ export function PrintEditor({
   onBack,
   patient = null,
   provenance = null,
+  banner = null,
 }: {
   dates: DateHeader[]
   matrix: MatrixCategory[]
@@ -69,6 +70,13 @@ export function PrintEditor({
    * passport passes nothing and its output is unchanged.
    */
   provenance?: { expiresAt?: string | null } | null
+  /**
+   * A screen-only notice under the toolbar. The recipient's editor uses it to
+   * say when the chosen date columns are wider than the paper, because a
+   * browser clips the overflow instead of paginating it (whole-change review,
+   * item 1). The owner's editor passes nothing and renders no such row.
+   */
+  banner?: React.ReactNode
 }) {
   const t = useTranslations('print.editor')
   const {
@@ -253,6 +261,15 @@ export function PrintEditor({
         </h1>
         <div className="w-[120px]" />
       </div>
+
+      {banner ? (
+        <div
+          data-testid="print-editor-banner"
+          className="border-b border-border bg-amber-50 px-5 py-2 text-xs text-amber-700 print:hidden dark:bg-amber-950/40 dark:text-amber-300"
+        >
+          {banner}
+        </div>
+      ) : null}
 
       {/* Stacked below lg: the fixed 350px sidebar left the paper preview
           off-screen on phones. The sidebar is capped so the document stays

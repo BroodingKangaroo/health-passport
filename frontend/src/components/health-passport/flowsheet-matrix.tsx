@@ -13,6 +13,7 @@ import { formatReference, isQualitative } from '@/lib/reference'
 import { coerceChartValue, chartReferenceBounds } from '@/lib/chart-series'
 import { qualitativeLabel } from '@/lib/qualitative-labels'
 import { activateOnKey } from '@/lib/a11y'
+import { useViewer } from '@/providers/viewer-provider'
 import { STATUS_TEXT_CLASS as statusText, isOutOfRange } from '@/lib/status-labels'
 import type { DateHeader, MatrixCategory, MatrixCell, BiomarkerResult } from '@/lib/types'
 
@@ -171,6 +172,7 @@ export function FlowsheetMatrix({
 }: FlowsheetMatrixProps) {
   const t = useTranslations('timeline.flowsheet')
   const locale = useLocale()
+  const { isShared } = useViewer()
   const isNarrow = useIsNarrow()
   const [query, setQuery] = useState('')
   const [range, setRange] = useState<RangePreset>('all')
@@ -230,6 +232,20 @@ export function FlowsheetMatrix({
             <p className="mt-0.5 text-[11px] text-muted-foreground/70">
               <span aria-hidden className="mr-1">*</span>
               {t('legendAsPrinted')}
+            </p>
+          )}
+          {/* A row's reference range is a snapshot from the row's EARLIEST
+              reading (the app's first-seen rule), while each cell carries the
+              range its own reading was measured against — so a lab that
+              narrowed a range later leaves the row labelled with the old one.
+              On the recipient's page that reads as two different normals for
+              one analyte, so the shared surface marks the row reference
+              instead of silently reconciling it (which would change the
+              owner's own flowsheet). */}
+          {isShared && (
+            <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+              <span aria-hidden className="mr-1">†</span>
+              {t('legendReferenceEarliest')}
             </p>
           )}
         </div>
@@ -431,8 +447,22 @@ export function FlowsheetMatrix({
                       <p className="truncate font-semibold text-foreground">
                         {row.name}
                       </p>
-                      <p className="truncate text-xs text-muted-foreground/70">
-                        {row.original} · {referenceText}
+                      {/* The earliest-reading marker sits OUTSIDE the
+                          truncating span: the line is cut in the shared
+                          surface's narrower pane, and a marker that scrolls
+                          off with the reference explains nothing. */}
+                      <p className="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground/70">
+                        <span className="truncate">
+                          {row.original} · {referenceText}
+                        </span>
+                        {isShared && (
+                          <span
+                            className="shrink-0"
+                            title={t('referenceEarliestHint')}
+                          >
+                            †
+                          </span>
+                        )}
                       </p>
                     </div>
                     {showTrend && (
@@ -520,6 +550,7 @@ export function FlowsheetMatrix({
                           </p>
                           <p className="truncate text-xs text-muted-foreground/70">
                             {row.original} · {referenceText}
+                            {isShared ? ' †' : ''}
                           </p>
                         </div>
                         <div className="shrink-0 text-right">

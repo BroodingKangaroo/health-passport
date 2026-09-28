@@ -166,7 +166,12 @@ export function SharedRecordView({
       ) : (
       <div
         style={{ '--chrome-h': `${stripH}px` } as CSSProperties}
-        className="min-h-screen bg-background lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start"
+        // 240px, not 280px: the rail only has to hold one row of controls
+        // (measured at 199px) plus the identity block, and the 40px it gives
+        // back is what lets the full record's history pane show its type
+        // chips without clipping a Russian label mid-word while the results
+        // table still fits its pane at 1280 (see `SharedFullRecord`).
+        className="min-h-screen bg-background lg:grid lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start"
       >
         {/* The chrome container. See the component docblock: `contents` below
             `lg` is what lets the strip pin against the page, and it is also

@@ -1,7 +1,7 @@
 import type { Viewport } from 'next'
-import { headers } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { Geist, Geist_Mono } from 'next/font/google'
-import { resolveSharedLocale } from '@/i18n/shared-locale'
+import { resolveSharedLocale, SHARE_LANG_HEADER } from '@/i18n/shared-locale'
 // globals.css lives at the app root so both root layouts import the same
 // stylesheet.
 import '@/app/globals.css'
@@ -26,19 +26,25 @@ export const viewport: Viewport = {
  * a session cookie for someone who is only opening a link. A share link has to
  * be readable by a stranger without creating anything about them.
  *
- * `<html lang>` comes from the recipient's `Accept-Language`; the page's
- * `?lang=` override is applied by a small client helper, because layouts do
- * not receive `searchParams`. Theming follows the system preference through
- * the `prefers-color-scheme` block in globals.css — no localStorage read, so
- * a recipient does not inherit the sender's theme.
+ * `<html lang>` is resolved HERE, on the server, in the same order the page
+ * uses: `?lang=` (carried in by the share middleware, because a layout cannot
+ * read `searchParams`) → `Accept-Language` → `NEXT_LOCALE`. Only the link's
+ * own `default_locale` is missing — that lives inside the record, so the
+ * page's `DocumentLang` helper applies it after hydration. Theming follows
+ * the system preference through the `prefers-color-scheme` block in
+ * globals.css — no localStorage read, so a recipient does not inherit the
+ * sender's theme.
  */
 export default async function PublicLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const [requestHeaders, cookieStore] = await Promise.all([headers(), cookies()])
   const locale = resolveSharedLocale({
-    acceptLanguage: (await headers()).get('accept-language'),
+    lang: requestHeaders.get(SHARE_LANG_HEADER),
+    acceptLanguage: requestHeaders.get('accept-language'),
+    cookieLocale: cookieStore.get('NEXT_LOCALE')?.value,
   })
   return (
     <html

@@ -232,6 +232,13 @@ function PrintFlowBody({
         <PrintSetup
           initialTranslationRemaining={translationRemaining}
           onTranslationRemaining={onTranslationRemaining}
+          // Whose record, and for how long: the provenance exists inside the
+          // generated document, but a reader configuring one should see it on
+          // the setup screen (shared-view review, item 2).
+          recordContext={{
+            name: record.header?.name ?? null,
+            expiresAt: record.meta.expires_at ?? null,
+          }}
         />
       </main>
     </div>

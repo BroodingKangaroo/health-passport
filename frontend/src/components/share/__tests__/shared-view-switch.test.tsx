@@ -263,7 +263,7 @@ describe('SharedRecordView view switch', () => {
   })
 
   /**
-   * The desktop rail takes 280px of the viewport, and between ~1024px and
+   * The desktop rail takes 240px of the viewport, and between ~1024px and
    * ~1400px the results table's owner-sized 768px floor did not fit the
    * recipient's pane — at 1280 it overflowed far enough to push the STATUS
    * column off the right edge. The recipient gets a narrower floor; the owner
@@ -284,6 +284,27 @@ describe('SharedRecordView view switch', () => {
     // ...and the trend column, the only recharts consumer on this page, is
     // gone: `SharedFlowsheet` passes `showTrend={false}`.
     expect(screen.queryByText('TREND')).not.toBeInTheDocument()
+  })
+
+  /**
+   * Review item 5: a flowsheet row labels itself with the reference recorded
+   * with its EARLIEST reading (the app's first-seen rule), while each cell
+   * carries the range its own reading was measured against. A lab that
+   * narrowed a range later therefore leaves one analyte showing two different
+   * normals on one page. Reconciling it would change the owner's own
+   * flowsheet, so the recipient's copy marks which one the row is showing.
+   */
+  it('says that a row reference is the earliest reading’s snapshot', async () => {
+    renderView()
+    expect(await screen.findByText('Longitudinal Lab Flowsheet')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'reference range recorded with the row’s earliest reading',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByTitle(/recorded with the row’s earliest reading/),
+    ).toBeInTheDocument()
   })
 
   it('renders the expanded row’s name and range but no chart', () => {

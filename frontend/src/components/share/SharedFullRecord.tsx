@@ -45,6 +45,10 @@ export function SharedFullRecord({
         error={null}
         refetch={() => {}}
         landmark="div"
+        // A wider history pane than the owner's 26%: the recipient's page also
+        // carries the desktop rail, and at 26% the RU type chips clipped the
+        // third one mid-word while the English row fit.
+        gridClassName="lg:grid-cols-[minmax(324px,26%)_1fr]"
       />
       {/* Between the timeline and the table, like the app's own tab order
           would put it — but above the matrix rather than under it, because a

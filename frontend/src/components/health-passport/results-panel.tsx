@@ -35,7 +35,7 @@ export const OWNER_TABLE_MIN_WIDTH = 768
 
 /**
  * The shared surface's floor. A recipient's detail pane is narrower than the
- * owner's because the desktop rail takes 280px of the viewport, and between
+ * owner's because the desktop rail takes 240px of the viewport, and between
  * ~1024px and ~1400px the 768px floor pushed the table past its pane: at 1280
  * it overflowed by ~133px, which cut the STATUS column — the clinically
  * meaningful one — off the right edge behind a horizontal scroll. This floor
@@ -45,7 +45,9 @@ export const OWNER_TABLE_MIN_WIDTH = 768
  *
  * Below `lg` the shared view is single-column and the pane is far wider, so
  * this only ever binds in that one band. Narrowing the rail was tried and is
- * not sufficient (200px still leaves 717px against a 768px table).
+ * not sufficient on its own (200px still leaves 717px against a 768px table);
+ * the rail is 240px today, which also gives the history pane the width its
+ * Russian type chips need.
  */
 export const SHARED_TABLE_MIN_WIDTH = 620
 
@@ -442,21 +444,26 @@ function SortHeaderCell({
         title={t('sortTooltip')}
         onClick={() => onCycle(col)}
         className={cn(
-          'flex w-full min-w-0 items-center gap-1 text-left transition-colors',
+          // `items-start`, not `items-center`: a label long enough to wrap
+          // (RU "Референсные значения" in the recipient's narrower pane) put
+          // the sort arrow beside its SECOND line, where it read as a
+          // collision with the text. Top-aligned, the arrow always sits on
+          // the first line, next to the label it sorts by.
+          'flex w-full min-w-0 items-start gap-1 text-left transition-colors',
           align === 'right' && 'justify-end',
           active ? 'text-foreground' : 'hover:text-foreground',
         )}
       >
         <span className="min-w-0">{label}</span>
         {active && dir === 'asc' && (
-          <ArrowUp className="size-3 shrink-0 text-primary" aria-hidden />
+          <ArrowUp className="mt-[3px] size-3 shrink-0 text-primary" aria-hidden />
         )}
         {active && dir === 'desc' && (
-          <ArrowDown className="size-3 shrink-0 text-primary" aria-hidden />
+          <ArrowDown className="mt-[3px] size-3 shrink-0 text-primary" aria-hidden />
         )}
         {!active && (
           <ArrowUpDown
-            className="size-3 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground"
+            className="mt-[3px] size-3 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground"
             aria-hidden
           />
         )}

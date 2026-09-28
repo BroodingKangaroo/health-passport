@@ -8,6 +8,11 @@ export const printMessages = {
         title: 'Prepare Document for Print/Export',
         subtitle: 'AI translation of medical terminology may take a few moments.',
         translationMode: 'Translation Mode',
+        context: {
+          name: 'Shared record of {name}',
+          anonymous: 'Shared medical record',
+          expires: 'This link stops working on {date}.',
+        },
         modes: {
           original: {
             title: 'Keep Original',
@@ -103,6 +108,8 @@ export const printMessages = {
         compactNumbers: 'Compact Large Numbers',
         compactHint: 'Show 10M, 1B instead of 10,000,000',
         print: 'Print Document',
+        columnsOverflow:
+          'More date columns are selected than fit on one page — the oldest columns will be cut off when printed. Clear some columns to keep everything.',
         emptyDates: 'Select at least one date column.',
         emptyBiomarkers: 'No biomarkers match your filters.',
         showBiomarker: 'Show {name}',
@@ -122,6 +129,11 @@ export const printMessages = {
         title: 'Подготовка документа к печати и экспорту',
         subtitle: 'Перевод медицинской терминологии с помощью ИИ может занять некоторое время.',
         translationMode: 'Режим перевода',
+        context: {
+          name: 'Общая карта: {name}',
+          anonymous: 'Общая медицинская карта',
+          expires: 'Ссылка перестанет работать {date}.',
+        },
         modes: {
           original: {
             title: 'Оставить оригинал',
@@ -213,6 +225,8 @@ export const printMessages = {
         compactNumbers: 'Компактные большие числа',
         compactHint: 'Показывать 10 млн, 1 млрд вместо 10 000 000',
         print: 'Печать документа',
+        columnsOverflow:
+          'Выбрано больше столбцов, чем помещается на страницу: самые старые столбцы будут обрезаны при печати. Снимите часть столбцов, чтобы ничего не потерялось.',
         emptyDates: 'Выберите хотя бы один столбец с датой.',
         emptyBiomarkers: 'Ни один показатель не подходит под фильтры.',
         showBiomarker: 'Показать {name}',

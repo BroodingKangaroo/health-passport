@@ -1,6 +1,20 @@
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, type AppLocale } from './messages'
 
 /**
+ * The request header the share middleware uses to hand `?lang=` to the
+ * server-rendered `<html lang>`. A layout cannot read `searchParams`, and the
+ * locale has to be right in the FIRST paint, so it travels as a header.
+ */
+export const SHARE_LANG_HEADER = 'x-share-lang'
+
+/** The `?lang=` value when it names a supported locale, else `null`. */
+export function shareLangHeaderValue(
+  raw: string | null | undefined,
+): AppLocale | null {
+  return isSupportedLocale(raw) ? raw : null
+}
+
+/**
  * Locale resolution for the PUBLIC share surface.
  *
  * The authed app resolves its locale from the `NEXT_LOCALE` cookie alone

@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { Languages, FileOutput, ChevronDown, LoaderCircle } from 'lucide-react'
 
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
 import { useLeaveGuard } from '@/providers/leave-guard-provider'
@@ -36,6 +36,7 @@ const MODES: Mode[] = ['original', 'translate', 'bilingual']
 export function PrintSetup({
   initialTranslationRemaining = null,
   onTranslationRemaining,
+  recordContext = null,
 }: {
   /**
    * How many AI translation runs this document has left, shown BEFORE the
@@ -52,8 +53,18 @@ export function PrintSetup({
    * stale by exactly the runs already spent).
    */
   onTranslationRemaining?: (remaining: number) => void
+  /**
+   * Whose record this document describes and how long the reader may produce
+   * one, shown above the translation choice (shared-view review, item 2). Set
+   * only by the recipient's flow: a doctor configuring a sheet should not have
+   * to generate a document to find out whose it is. The owner's own print flow
+   * passes nothing and its screen is unchanged.
+   */
+  recordContext?: { name?: string | null; expiresAt?: string | null } | null
 } = {}) {
   const t = useTranslations('print.setup')
+  const uiLocale = useLocale()
+  const dateLocale = uiLocale === 'ru' ? 'ru-RU' : 'en-US'
   const source = usePrintSource()
   const { mode, targetLanguage, setMode, setTargetLanguage, setCategoryTranslations, setSuppressSavedTranslations } =
     usePrintConfig()
@@ -274,6 +285,26 @@ export function PrintSetup({
             </div>
           </div>
         </div>
+
+        {recordContext ? (
+          <div
+            data-testid="print-setup-context"
+            className="border-b border-border bg-muted/30 px-6 py-3"
+          >
+            <p className="text-sm font-medium text-foreground">
+              {recordContext.name
+                ? t('context.name', { name: recordContext.name })
+                : t('context.anonymous')}
+            </p>
+            {recordContext.expiresAt ? (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {t('context.expires', {
+                  date: formatDate(recordContext.expiresAt, dateLocale),
+                })}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="space-y-3 px-6 py-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

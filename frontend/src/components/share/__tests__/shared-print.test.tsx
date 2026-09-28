@@ -231,6 +231,34 @@ describe('SharedPrintFlow budget', () => {
     )
   })
 
+  /**
+   * Review item 2: the setup screen configured a document without saying
+   * whose record it was or how long the link keeps working — the provenance
+   * only appeared INSIDE the generated sheet.
+   */
+  it('names the record and its expiry above the translation choice', () => {
+    renderFlow(
+      <SharedPrintFlow
+        token="hp_test"
+        record={record}
+        locale="en"
+        stage="setup"
+        onStage={() => {}}
+        onClose={() => {}}
+        flowsheetState={flowsheetState}
+      />,
+    )
+    const context = screen.getByTestId('print-setup-context')
+    expect(context).toHaveTextContent(/Test User/)
+    expect(context).toHaveTextContent(/Sep 22, 2026/)
+    // Above the mode choice, which is where a reader decides what to produce.
+    const modeHeading = screen.getByText('Translation Mode')
+    expect(
+      context.compareDocumentPosition(modeHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
   it('blocks on the spent budget with a message instead of an English document', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 429, json: async () => ({}) })
     const onStage = vi.fn()

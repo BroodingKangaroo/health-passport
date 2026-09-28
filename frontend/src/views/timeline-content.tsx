@@ -41,7 +41,18 @@ interface TimelineContentProps {
   // recipient has no session, so the button is hidden instead of navigating to
   // an empty or forbidden real-data view.
   onViewDetails?: (id: string) => void
+  /**
+   * The two-pane grid template at `lg`. The owner's timeline uses the
+   * default; the shared full record passes a wider list column, because its
+   * page also carries the desktop rail and at 26% the history pane is too
+   * narrow for the Russian type chips — the third one was clipped mid-word
+   * (`Приём…`) where the English row fits.
+   */
+  gridClassName?: string
 }
+
+const DEFAULT_GRID =
+  'lg:grid-cols-[minmax(288px,26%)_1fr]'
 
 export function TimelineContent({
   data,
@@ -50,6 +61,7 @@ export function TimelineContent({
   refetch,
   landmark = 'main',
   onViewDetails,
+  gridClassName,
 }: TimelineContentProps) {
   const t = useTranslations('timeline.views.timeline')
   const tc = useTranslations('common')
@@ -116,7 +128,12 @@ export function TimelineContent({
   }
 
   return (
-    <Landmark className="mx-auto grid w-full max-w-[1800px] flex-1 gap-5 p-5 lg:min-h-0 lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden lg:grid-cols-[minmax(288px,26%)_1fr] print:block print:h-auto print:overflow-visible">
+    <Landmark
+      className={cn(
+        'mx-auto grid w-full max-w-[1800px] flex-1 gap-5 p-5 lg:min-h-0 lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden print:block print:h-auto print:overflow-visible',
+        gridClassName ?? DEFAULT_GRID,
+      )}
+    >
       {/* min-w-0: grid items default to min-width:auto — without it a long
           unbreakable card title inflates the aside's intrinsic min-content
           and blows the column out below the lg breakpoint (the fixed

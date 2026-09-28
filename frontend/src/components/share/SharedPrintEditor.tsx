@@ -1,8 +1,14 @@
 'use client'
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 
 import { PrintEditor } from '@/components/health-passport/print-editor'
+import {
+  fittingColumnCount,
+  measureColumnWidths,
+  overflowsPage,
+} from '@/components/share/print-fit'
 import { usePrintConfig } from '@/hooks/usePrintConfig'
 import { dateId } from '@/lib/print-document'
 import type { SharedFlowsheet, SharedRecord } from '@/lib/share'
@@ -48,7 +54,19 @@ export function SharedPrintEditor({
   namesByLang: Record<string, Record<string, string>>
   onBack: () => void
 }) {
-  const { mode, targetLanguage, initFilters } = usePrintConfig()
+  const {
+    mode,
+    targetLanguage,
+    initFilters,
+    selectedDates,
+    setSelectedDates,
+  } = usePrintConfig()
+  const t = useTranslations('print.editor')
+  const wrapRef = useRef<HTMLDivElement>(null)
+  // The fit runs once per payload. A reader who then picks more columns keeps
+  // them — the warning below is the feedback, not another silent trim.
+  const fittedRef = useRef(false)
+  const [overflows, setOverflows] = useState(false)
 
   // Select every column and every biomarker up front, exactly as the owner's
   // `PrintEditorView` does after its fetch. Without this the editor opens with
@@ -62,6 +80,26 @@ export function SharedPrintEditor({
       flowsheet.matrix.flatMap((category) => category.rows.map((row) => row.id)),
     )
   }, [flowsheet, initFilters])
+
+  // What the paper can hold, measured from the rendered table (see
+  // `print-fit.ts`). The first pass trims the default selection to the newest
+  // columns that fit — without it a 27-column record printed four pages that
+  // all cut at the same mid-column point, and the newest results were on none
+  // of them. Every later pass only reports, so a reader who deliberately picks
+  // more columns is warned rather than overruled.
+  useLayoutEffect(() => {
+    const table = wrapRef.current?.querySelector('table')
+    if (!table) return
+    const widths = measureColumnWidths(table as HTMLTableElement)
+    if (widths.length === 0) return
+    setOverflows(overflowsPage(widths))
+    if (fittedRef.current) return
+    fittedRef.current = true
+    const keep = fittingColumnCount(widths)
+    if (keep < flowsheet.dates.length) {
+      setSelectedDates(flowsheet.dates.slice(-keep).map(dateId))
+    }
+  }, [flowsheet, selectedDates, setSelectedDates])
 
   // Mirrors PrintEditorView: `original` renders the source-language document,
   // `bilingual` pairs the translation with it, everything else translates.
@@ -93,26 +131,29 @@ export function SharedPrintEditor({
   const header = record.header
 
   return (
-    <PrintEditor
-      dates={[...flowsheet.dates]}
-      matrix={flowsheet.matrix}
-      biomarkers={biomarkers}
-      lang={lang}
-      bilingual={bilingual}
-      patient={
-        header
-          ? {
-              id: '',
-              email: '',
-              name: header.name,
-              dob: header.dob,
-              gender: header.gender,
-              external_id: '',
-            }
-          : null
-      }
-      onBack={onBack}
-      provenance={{ expiresAt: record.meta.expires_at }}
-    />
+    <div ref={wrapRef}>
+      <PrintEditor
+        dates={[...flowsheet.dates]}
+        matrix={flowsheet.matrix}
+        biomarkers={biomarkers}
+        lang={lang}
+        bilingual={bilingual}
+        patient={
+          header
+            ? {
+                id: '',
+                email: '',
+                name: header.name,
+                dob: header.dob,
+                gender: header.gender,
+                external_id: '',
+              }
+            : null
+        }
+        onBack={onBack}
+        provenance={{ expiresAt: record.meta.expires_at }}
+        banner={overflows ? t('columnsOverflow') : null}
+      />
+    </div>
   )
 }

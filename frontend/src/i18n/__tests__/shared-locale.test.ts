@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { resolveSharedLocale } from '@/i18n/shared-locale'
+import {
+  resolveSharedLocale,
+  shareLangHeaderValue,
+} from '@/i18n/shared-locale'
 
 /**
  * The recipient's language is the recipient's business: a share link must
@@ -57,5 +60,26 @@ describe('resolveSharedLocale', () => {
     expect(
       resolveSharedLocale({ acceptLanguage: '*;q=1.0', cookieLocale: 'fr' }),
     ).toBe('en')
+  })
+})
+
+/**
+ * The share middleware carries `?lang=` to the server-rendered `<html lang>`
+ * (review item 4). Only a value the site can actually render may travel —
+ * everything else has to fall through to `Accept-Language`, including a
+ * header a client tried to set on its own request.
+ */
+describe('shareLangHeaderValue', () => {
+  it('passes through a supported locale from the URL', () => {
+    expect(shareLangHeaderValue('en')).toBe('en')
+    expect(shareLangHeaderValue('ru')).toBe('ru')
+  })
+
+  it('refuses anything the site cannot render', () => {
+    expect(shareLangHeaderValue('de')).toBeNull()
+    expect(shareLangHeaderValue('ru-RU')).toBeNull()
+    expect(shareLangHeaderValue('')).toBeNull()
+    expect(shareLangHeaderValue(null)).toBeNull()
+    expect(shareLangHeaderValue(undefined)).toBeNull()
   })
 })
